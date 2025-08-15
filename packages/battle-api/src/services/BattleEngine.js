@@ -1,815 +1,645 @@
-const { v4: uuidv4 } = require('uuid');
-const { 
-  rollDice, 
-  calculateBattleResult, 
-  calculateDefenseBonus,
-  validateStats 
-} = require('../utils/dice');
-const { 
-  BATTLE_ACTIONS, 
-  BATTLE_STATUS, 
-  GAME_CONSTANTS,
-  WIN_CONDITIONS,
-  RULESETS,
-  determineTurnOrder,
-  checkBattleEndCondition,
-  canPlayerAct,
-  generateBattleMessage
-} = require('../utils/rules');
+// packages/battle-api/src/services/BattleEngine.js
+const logger = require('../config/logger');
+const { calculateDamage, calculateHeal, applyStatusEffect } = require('../utils/rules');
+const { rollDice, getRandomFloat, getRandomInt } = require('../utils/dice');
 
 class BattleEngine {
-  constructor(logger) {
-    this.battles = new Map(); // battleId -> battleState
-    this.logger = logger || console;
-    this.turnTimers = new Map(); // battleId -> timerId
+  constructor(battle) {
+    this.battle = battle;
+    this.player1 = battle.characters.player1.characterId;
+    this.player2 = battle.characters.player2.characterId;
+    this.settings = battle.settings;
+    this.debugInfo = {
+      calculations: {},
+      randomValues: [],
+      conditions: {}
+    };
   }
 
-  /**
-   * 새로운 전투 생성
-   */
-  createBattle(config) {
-    const battleId = uuidv4();
-    const ruleset = RULESETS[config.ruleset] || RULESETS.standard;
+  // 메인 액션 처리
+  async processAction(actorSlot, action) {
+    const startTime = Date.now();
     
-    const battle = {
-      id: battleId,
-      status: BATTLE_STATUS.WAITING,
-      ruleset: config.ruleset || 'standard',
-      
-      participants: {
-        A: this.createParticipant(config.participantA, ruleset),
-        B: this.createParticipant(config.participantB, ruleset)
-      },
-      
-      // 전투 진행 상태
-      currentTurn: null,
-      turnCount: 0,
-      turnStartTime: null,
-      actionQueue: [],
-      
-      // 로그 및 관전
-      battleLog: [],
-      spectators: new Set(),
-      
-      // 메타데이터
-      createdAt: new Date(),
-      settings: {
-        turnTimeLimit: config.turnTimeLimit || ruleset.turnTimeLimit,
-        maxTurns: config.maxTurns || ruleset.maxTurns,
-        autoStart: config.autoStart !== false,
-        allowSpectatorChat: config.allowSpectatorChat || false,
-        allowSurrender: ruleset.allowSurrender
+    try {
+      logger.info(`Processing action in battle ${this.battle.roomId}: ${actorSlot} -> ${action.type}`);
+
+      // 액터와 타겟 설정
+      const actor = this.getCharacter(actorSlot);
+      const targetSlot = this.getTargetSlot(actorSlot, action.target);
+      const target = this.getCharacter(targetSlot);
+
+      // 액션 유효성 검증
+      const validation = this.validateAction(actorSlot, action);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: validation.error,
+          processingTime: Date.now() - startTime
+        };
       }
-    };
 
-    this.battles.set(battleId, battle);
-    this.logger.info(`Battle created: ${battleId}`);
-    
-    return battle;
-  }
+      let result = {};
 
-  /**
-   * 참가자 객체 생성
-   */
-  createParticipant(config, ruleset) {
-    const stats = config.stats || ruleset.baseStats;
-    
-    // 스탯 유효성 검사
-    if (!validateStats(stats)) {
-      throw new Error('Invalid stats provided');
-    }
-    
-    return {
-      id: config.id,
-      name: config.name,
-      image: config.image || '/images/default-character.png',
-      
-      // HP
-      hp: GAME_CONSTANTS.STARTING_HP,
-      maxHp: GAME_CONSTANTS.MAX_HP,
-      
-      // 스탯 (1-5)
-      stats: {
-        attack: stats.attack,
-        defense: stats.defense,
-        agility: stats.agility,
-        luck: stats.luck
-      },
-      
-      // 상태 효과
-      statusEffects: [],
-      
-      // 연결 상태
-      connected: false,
-      socketId: null,
-      lastAction: null,
-      lastActionTime: null,
-      
-      // 전투 통계
-      damageDealt: 0,
-      damageTaken: 0,
-      actionsUsed: 0,
-      criticalHits: 0,
-      missedAttacks: 0,
-      dodgedAttacks: 0,
-      defenseActions: 0
-    };
-  }
+      // 액션 타입별 처리
+      switch (action.type) {
+        case 'attack':
+          result = await this.processAttack(actor, target, action);
+          break;
+        
+        case 'skill':
+          result = await this.processSkill(actor, target, action);
+          break;
+        
+        case 'defend':
+          result = await this.processDefend(actor, action);
+          break;
+        
+        case 'heal':
+          result = await this.processHeal(actor, target, action);
+          break;
+        
+        default:
+          throw new Error(`Unknown action type: ${action.type}`);
+      }
 
-  /**
-   * 전투 삭제
-   */
-  deleteBattle(battleId) {
-    this.clearTurnTimer(battleId);
-    return this.battles.delete(battleId);
-  }
+      // 상태 이상 처리 (턴 종료 시)
+      await this.processStatusEffects(actor);
+      if (target && target !== actor) {
+        await this.processStatusEffects(target);
+      }
 
-  /**
-   * 참가자 연결
-   */
-  connectParticipant(battleId, participantId, socketId) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return { success: false, error: 'Battle not found' };
+      // 전투 종료 조건 확인
+      const battleEndCheck = this.checkBattleEnd();
+      if (battleEndCheck.ended) {
+        result.battleEnded = true;
+        result.winner = battleEndCheck.winner;
+        result.reason = battleEndCheck.reason;
+      }
 
-    const participantKey = this.findParticipantKey(battle, participantId);
-    if (!participantKey) return { success: false, error: 'Participant not found' };
+      // 최종 결과 구성
+      const finalResult = {
+        ...result,
+        success: true,
+        actorSlot,
+        targetSlot,
+        actor: {
+          name: actor.name,
+          hp: actor.stats.hp,
+          maxHp: actor.stats.maxHp,
+          statusEffects: actor.statusEffects
+        },
+        target: target ? {
+          name: target.name,
+          hp: target.stats.hp,
+          maxHp: target.stats.maxHp,
+          statusEffects: target.statusEffects
+        } : null,
+        processingTime: Date.now() - startTime,
+        debug: this.debugInfo
+      };
 
-    const participant = battle.participants[participantKey];
-    participant.connected = true;
-    participant.socketId = socketId;
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: generateBattleMessage('player_joined', { player: participant.name }),
-      timestamp: new Date()
-    });
-
-    // 자동 시작 설정이고 모든 참가자가 연결되면 전투 시작
-    if (battle.settings.autoStart && this.areAllParticipantsConnected(battle)) {
-      this.startBattle(battleId);
-    }
-
-    return { success: true, participantKey };
-  }
-
-  /**
-   * 참가자 연결 해제
-   */
-  disconnectParticipant(battleId, socketId) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return false;
-
-    const participant = this.findParticipantBySocket(battle, socketId);
-    if (!participant) return false;
-
-    participant.connected = false;
-    participant.socketId = null;
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: generateBattleMessage('player_disconnected', { player: participant.name }),
-      timestamp: new Date()
-    });
-
-    // 전투 중이면 일시정지
-    if (battle.status === BATTLE_STATUS.ACTIVE) {
-      this.pauseBattle(battleId, 'disconnect');
-    }
-
-    return true;
-  }
-
-  /**
-   * 관전자 추가
-   */
-  addSpectator(battleId, socketId) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return false;
-
-    battle.spectators.add(socketId);
-    return true;
-  }
-
-  /**
-   * 관전자 제거
-   */
-  removeSpectator(battleId, socketId) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return false;
-
-    battle.spectators.delete(socketId);
-    return true;
-  }
-
-  /**
-   * 모든 참가자 연결 확인
-   */
-  areAllParticipantsConnected(battle) {
-    return Object.values(battle.participants).every(p => p.connected);
-  }
-
-  /**
-   * 전투 시작
-   */
-  startBattle(battleId) {
-    const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== BATTLE_STATUS.WAITING) {
-      return { success: false, error: 'Cannot start battle' };
-    }
-
-    if (!this.areAllParticipantsConnected(battle)) {
-      return { success: false, error: 'Not all participants connected' };
-    }
-
-    battle.status = BATTLE_STATUS.ACTIVE;
-    battle.currentTurn = determineTurnOrder(battle.participants);
-    battle.turnCount = 1;
-    battle.turnStartTime = Date.now();
-
-    const firstPlayer = battle.participants[battle.currentTurn];
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: generateBattleMessage('battle_start', { first: firstPlayer.name }),
-      participants: Object.values(battle.participants).map(p => ({
-        name: p.name,
-        hp: p.hp,
-        stats: p.stats
-      })),
-      timestamp: new Date()
-    });
-
-    // 턴 타이머 시작
-    this.startTurnTimer(battleId);
-
-    this.logger.info(`Battle started: ${battleId}, First turn: ${battle.currentTurn}`);
-    return { success: true };
-  }
-
-  /**
-   * 전투 일시정지
-   */
-  pauseBattle(battleId, reason = 'manual') {
-    const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== BATTLE_STATUS.ACTIVE) return false;
-
-    battle.status = BATTLE_STATUS.PAUSED;
-    this.clearTurnTimer(battleId);
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: `전투가 일시정지되었습니다. (${reason})`,
-      timestamp: new Date()
-    });
-
-    return true;
-  }
-
-  /**
-   * 전투 재개
-   */
-  resumeBattle(battleId) {
-    const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== BATTLE_STATUS.PAUSED) return false;
-
-    if (!this.areAllParticipantsConnected(battle)) {
-      return { success: false, error: 'Not all participants connected' };
-    }
-
-    battle.status = BATTLE_STATUS.ACTIVE;
-    battle.turnStartTime = Date.now();
-    this.startTurnTimer(battleId);
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: '전투가 재개되었습니다.',
-      timestamp: new Date()
-    });
-
-    return { success: true };
-  }
-
-  /**
-   * 액션 실행
-   */
-  executeAction(battleId, participantId, action) {
-    const battle = this.getBattle(battleId);
-    if (!battle) {
-      return { success: false, error: 'Battle not found' };
-    }
-
-    if (battle.status !== BATTLE_STATUS.ACTIVE) {
-      return { success: false, error: 'Battle not active' };
-    }
-
-    const participantKey = this.findParticipantKey(battle, participantId);
-    if (!participantKey || battle.currentTurn !== participantKey) {
-      return { success: false, error: 'Not your turn' };
-    }
-
-    const participant = battle.participants[participantKey];
-    
-    // 액션 유효성 검증
-    const validation = canPlayerAct(participant, battle.status);
-    if (!validation.valid) {
-      return { success: false, error: validation.reason };
-    }
-
-    // 액션 처리
-    const result = this.processAction(battle, participantKey, action);
-    
-    if (result.success) {
       // 통계 업데이트
-      participant.actionsUsed++;
-      participant.lastAction = action;
-      participant.lastActionTime = Date.now();
+      this.updateBattleStats(actorSlot, action, result);
 
-      // 로그 추가
-      this.addLogEntry(battle, result.logEntry);
+      return finalResult;
+
+    } catch (error) {
+      logger.error('Battle engine error:', error);
+      return {
+        success: false,
+        error: error.message,
+        processingTime: Date.now() - startTime
+      };
+    }
+  }
+
+  // 액션 유효성 검증
+  validateAction(actorSlot, action) {
+    const actor = this.getCharacter(actorSlot);
+
+    // 기본 검증
+    if (!actor.isAlive) {
+      return { valid: false, error: '행동할 수 없는 상태입니다.' };
+    }
+
+    // 액션별 검증
+    switch (action.type) {
+      case 'skill':
+        return this.validateSkillAction(actor, action);
       
-      // 전투 종료 체크
-      const endCheck = checkBattleEndCondition(battle.participants, battle.turnCount);
-      if (endCheck.ended) {
-        this.endBattle(battle, endCheck.condition, endCheck.winner);
-      } else {
-        this.nextTurn(battle);
+      case 'attack':
+        return this.validateAttackAction(actor, action);
+      
+      case 'defend':
+        return { valid: true };
+      
+      case 'heal':
+        return this.validateHealAction(actor, action);
+      
+      default:
+        return { valid: false, error: '알 수 없는 액션 타입입니다.' };
+    }
+  }
+
+  // 스킬 액션 검증
+  validateSkillAction(actor, action) {
+    if (!action.skillName) {
+      return { valid: false, error: '스킬명이 필요합니다.' };
+    }
+
+    const skill = actor.skills.find(s => s.name === action.skillName);
+    if (!skill) {
+      return { valid: false, error: '존재하지 않는 스킬입니다.' };
+    }
+
+    // 쿨다운 확인
+    if (!actor.canUseSkill(action.skillName)) {
+      return { valid: false, error: '스킬이 쿨다운 중입니다.' };
+    }
+
+    // 비용 확인 (MP 등이 있다면)
+    if (skill.cost && actor.stats.mp < skill.cost) {
+      return { valid: false, error: 'MP가 부족합니다.' };
+    }
+
+    return { valid: true };
+  }
+
+  // 공격 액션 검증
+  validateAttackAction(actor, action) {
+    if (actor.stats.hp <= 0) {
+      return { valid: false, error: '체력이 0 이하일 때는 공격할 수 없습니다.' };
+    }
+
+    return { valid: true };
+  }
+
+  // 힐 액션 검증
+  validateHealAction(actor, action) {
+    if (action.target && action.target !== 'self') {
+      const target = this.getCharacter(action.target);
+      if (!target.isAlive) {
+        return { valid: false, error: '죽은 대상을 치료할 수 없습니다.' };
       }
     }
 
+    return { valid: true };
+  }
+
+  // 공격 처리
+  async processAttack(actor, target, action) {
+    const attackRoll = rollDice(1, 100);
+    this.debugInfo.randomValues.push({ type: 'attack_roll', value: attackRoll });
+
+    // 명중률 계산
+    const hitChance = actor.stats.accuracy || 85;
+    const isHit = attackRoll <= hitChance;
+
+    if (!isHit) {
+      return {
+        type: 'attack',
+        hit: false,
+        damage: 0,
+        message: `${actor.name}의 공격이 빗나갔습니다!`
+      };
+    }
+
+    // 크리티컬 확인
+    const criticalRoll = rollDice(1, 100);
+    this.debugInfo.randomValues.push({ type: 'critical_roll', value: criticalRoll });
+    const isCritical = criticalRoll <= (actor.stats.criticalRate || 5);
+
+    // 데미지 계산
+    const baseDamage = actor.stats.attack;
+    const damageVariance = getRandomFloat(0.8, 1.2); // ±20% 변동
+    let finalDamage = Math.floor(baseDamage * damageVariance);
+
+    // 크리티컬 적용
+    if (isCritical) {
+      finalDamage = Math.floor(finalDamage * this.settings.ruleset.criticalMultiplier);
+    }
+
+    // 방어력 적용
+    const defense = target.stats.defense * this.settings.ruleset.defenseReduction;
+    finalDamage = Math.max(1, finalDamage - defense);
+
+    this.debugInfo.calculations.damage = {
+      baseDamage,
+      damageVariance,
+      criticalMultiplier: isCritical ? this.settings.ruleset.criticalMultiplier : 1,
+      defense,
+      finalDamage
+    };
+
+    // 데미지 적용
+    const actualDamage = target.takeDamage(finalDamage);
+    actor.battleStats.totalDamageDealt += actualDamage;
+
+    if (isCritical) {
+      actor.battleStats.criticalHits++;
+    }
+
+    return {
+      type: 'attack',
+      hit: true,
+      damage: actualDamage,
+      isCritical,
+      targetDefeated: !target.isAlive,
+      message: isCritical ? 
+        `${actor.name}이(가) ${target.name}에게 치명타로 ${actualDamage} 데미지를 입혔습니다!` :
+        `${actor.name}이(가) ${target.name}에게 ${actualDamage} 데미지를 입혔습니다!`
+    };
+  }
+
+  // 스킬 처리
+  async processSkill(actor, target, action) {
+    const skill = actor.skills.find(s => s.name === action.skillName);
+    
+    if (!skill) {
+      throw new Error('스킬을 찾을 수 없습니다.');
+    }
+
+    // 스킬 쿨다운 설정
+    const existingCooldown = actor.skillCooldowns.find(c => c.skillName === skill.name);
+    if (existingCooldown) {
+      existingCooldown.remainingTurns = skill.cooldown;
+    } else {
+      actor.skillCooldowns.push({
+        skillName: skill.name,
+        remainingTurns: skill.cooldown
+      });
+    }
+
+    actor.battleStats.skillsUsed++;
+
+    let result = {
+      type: 'skill',
+      skillName: skill.name,
+      skillType: skill.type,
+      effects: []
+    };
+
+    // 스킬 타입별 처리
+    switch (skill.type) {
+      case 'attack':
+        result = { ...result, ...(await this.processAttackSkill(actor, target, skill)) };
+        break;
+      
+      case 'heal':
+        result = { ...result, ...(await this.processHealSkill(actor, target, skill)) };
+        break;
+      
+      case 'buff':
+        result = { ...result, ...(await this.processBuffSkill(actor, target, skill)) };
+        break;
+      
+      case 'debuff':
+        result = { ...result, ...(await this.processDebuffSkill(actor, target, skill)) };
+        break;
+      
+      case 'special':
+        result = { ...result, ...(await this.processSpecialSkill(actor, target, skill)) };
+        break;
+    }
+
+    result.message = `${actor.name}이(가) ${skill.name}을(를) 사용했습니다!`;
+    
     return result;
   }
 
-  /**
-   * 액션 처리
-   */
-  processAction(battle, attackerKey, action) {
-    const attacker = battle.participants[attackerKey];
-    const defenderKey = attackerKey === 'A' ? 'B' : 'A';
-    const defender = battle.participants[defenderKey];
+  // 공격 스킬 처리
+  async processAttackSkill(actor, target, skill) {
+    const hitRoll = rollDice(1, 100);
+    const hitChance = (actor.stats.accuracy || 85) + (skill.accuracy || 0);
+    const isHit = hitRoll <= hitChance;
 
-    switch (action.type) {
-      case BATTLE_ACTIONS.ATTACK:
-        return this.processAttack(attacker, defender);
-      
-      case BATTLE_ACTIONS.DEFEND:
-        return this.processDefend(attacker);
-      
-      case BATTLE_ACTIONS.SURRENDER:
-        return this.processSurrender(battle, attacker);
-      
-      default:
-        return { success: false, error: 'Unknown action type' };
-    }
-  }
-
-  /**
-   * 공격 처리
-   */
-  processAttack(attacker, defender) {
-    const result = calculateBattleResult(attacker.stats, defender.stats);
-    
-    // 방어 보너스 적용
-    const defenseBonus = defender.statusEffects.find(e => e.type === 'defend');
-    if (defenseBonus && result.hit && !result.dodge) {
-      result.damage = Math.max(1, Math.floor(result.damage * 0.5));
-      result.defendReduced = true;
-    }
-    
-    // 데미지 적용
-    if (result.hit && !result.dodge && result.damage > 0) {
-      defender.hp = Math.max(0, defender.hp - result.damage);
-      attacker.damageDealt += result.damage;
-      defender.damageTaken += result.damage;
-      
-      if (result.critical) {
-        attacker.criticalHits++;
-      }
-    } else if (!result.hit) {
-      attacker.missedAttacks++;
-    } else if (result.dodge) {
-      defender.dodgedAttacks++;
-    }
-
-    // 방어 효과 제거 (사용됨)
-    if (defenseBonus) {
-      defender.statusEffects = defender.statusEffects.filter(e => e.type !== 'defend');
-    }
-
-    let message;
-    if (!result.hit) {
-      message = generateBattleMessage('attack_miss', { 
-        attacker: attacker.name 
-      });
-    } else if (result.dodge) {
-      message = generateBattleMessage('attack_dodge', { 
-        attacker: attacker.name,
-        defender: defender.name 
-      });
-    } else {
-      message = generateBattleMessage('attack_hit', {
-        attacker: attacker.name,
-        defender: defender.name,
-        damage: result.damage,
-        critical: result.critical
-      });
-      
-      if (result.defendReduced) {
-        message += ' (방어 효과로 데미지 감소)';
-      }
-    }
-
-    return {
-      success: true,
-      logEntry: {
-        type: 'attack',
-        attacker: attacker.name,
-        defender: defender.name,
-        hit: result.hit,
-        damage: result.damage,
-        critical: result.critical,
-        dodge: result.dodge,
-        attackRoll: result.attackRoll,
-        defenseRoll: result.defenseRoll,
-        defendReduced: result.defendReduced || false,
-        message,
-        timestamp: new Date()
-      },
-      effects: {
-        damageDealt: result.damage,
-        targetHp: defender.hp,
-        critical: result.critical,
-        hit: result.hit,
-        dodge: result.dodge
-      }
-    };
-  }
-
-  /**
-   * 방어 처리
-   */
-  processDefend(attacker) {
-    // 기존 방어 효과 제거
-    attacker.statusEffects = attacker.statusEffects.filter(e => e.type !== 'defend');
-    
-    // 방어 보너스 계산
-    const defenseRoll = rollDice(20);
-    const defenseBonus = calculateDefenseBonus(attacker.stats.defense, defenseRoll);
-    
-    // 새 방어 효과 추가
-    attacker.statusEffects.push({
-      type: 'defend',
-      duration: defenseBonus.duration,
-      value: defenseBonus.bonusDefense,
-      source: 'defend_action'
-    });
-
-    attacker.defenseActions++;
-
-    return {
-      success: true,
-      logEntry: {
-        type: 'defend',
-        participant: attacker.name,
-        roll: defenseRoll,
-        bonus: defenseBonus.bonusDefense,
-        message: generateBattleMessage('defend', { defender: attacker.name }),
-        timestamp: new Date()
-      }
-    };
-  }
-
-  /**
-   * 항복 처리
-   */
-  processSurrender(battle, surrenderer) {
-    if (!battle.settings.allowSurrender) {
-      return { success: false, error: 'Surrender not allowed in this ruleset' };
-    }
-
-    // 항복자의 HP를 0으로 만들어 전투 종료 조건 충족
-    surrenderer.hp = 0;
-
-    return {
-      success: true,
-      logEntry: {
-        type: 'surrender',
-        participant: surrenderer.name,
-        message: generateBattleMessage('surrender', { player: surrenderer.name }),
-        timestamp: new Date()
-      }
-    };
-  }
-
-  /**
-   * 다음 턴으로 진행
-   */
-  nextTurn(battle) {
-    // 상태 효과 처리
-    this.processStatusEffects(battle);
-    
-    // 턴 변경
-    battle.currentTurn = battle.currentTurn === 'A' ? 'B' : 'A';
-    battle.turnCount++;
-    battle.turnStartTime = Date.now();
-
-    // 최대 턴 수 체크
-    if (battle.turnCount > battle.settings.maxTurns) {
-      this.endBattle(battle, WIN_CONDITIONS.TIMEOUT);
-      return;
-    }
-
-    // 턴 타이머 재시작
-    this.startTurnTimer(battle.id);
-  }
-
-  /**
-   * 상태 효과 처리
-   */
-  processStatusEffects(battle) {
-    Object.values(battle.participants).forEach(participant => {
-      participant.statusEffects = participant.statusEffects.filter(effect => {
-        effect.duration--;
-        
-        if (effect.duration <= 0) {
-          // 상태 효과 종료 로그
-          this.addLogEntry(battle, {
-            type: 'status_effect',
-            participant: participant.name,
-            effect: effect.type,
-            message: `${participant.name}의 ${effect.source || effect.type} 효과가 종료되었습니다.`,
-            timestamp: new Date()
-          });
-          return false;
-        }
-        return true;
-      });
-    });
-  }
-
-  /**
-   * 전투 종료
-   */
-  endBattle(battle, reason = WIN_CONDITIONS.HP_ZERO, winner = null) {
-    battle.status = BATTLE_STATUS.ENDED;
-    battle.endedAt = new Date();
-    this.clearTurnTimer(battle.id);
-
-    // 승자 결정
-    if (!winner) {
-      if (reason === WIN_CONDITIONS.TIMEOUT) {
-        const participantA = battle.participants.A;
-        const participantB = battle.participants.B;
-        
-        if (participantA.hp > participantB.hp) {
-          winner = participantA;
-        } else if (participantB.hp > participantA.hp) {
-          winner = participantB;
-        }
-        // 동점이면 winner는 null (무승부)
-      } else {
-        const alive = Object.values(battle.participants).filter(p => p.hp > 0);
-        if (alive.length === 1) {
-          winner = alive[0];
-        }
-      }
-    }
-
-    const message = generateBattleMessage('battle_end', { 
-      winner: winner?.name,
-      reason 
-    });
-
-    this.addLogEntry(battle, {
-      type: 'battle_end',
-      message,
-      winner: winner?.name,
-      reason,
-      finalStats: this.calculateFinalStats(battle),
-      timestamp: new Date()
-    });
-
-    this.logger.info(`Battle ended: ${battle.id}, Winner: ${winner?.name || 'Draw'}, Reason: ${reason}`);
-  }
-
-  /**
-   * 최종 통계 계산
-   */
-  calculateFinalStats(battle) {
-    const stats = {};
-    
-    Object.entries(battle.participants).forEach(([key, participant]) => {
-      stats[key] = {
-        name: participant.name,
-        hp: participant.hp,
-        maxHp: participant.maxHp,
-        stats: participant.stats,
-        damageDealt: participant.damageDealt,
-        damageTaken: participant.damageTaken,
-        actionsUsed: participant.actionsUsed,
-        criticalHits: participant.criticalHits,
-        missedAttacks: participant.missedAttacks,
-        dodgedAttacks: participant.dodgedAttacks,
-        defenseActions: participant.defenseActions,
-        accuracy: participant.actionsUsed > 0 ? 
-          Math.round(((participant.actionsUsed - participant.missedAttacks) / participant.actionsUsed) * 100) : 0,
-        avgDamagePerHit: participant.criticalHits + (participant.actionsUsed - participant.missedAttacks - participant.defenseActions) > 0 ?
-          Math.round(participant.damageDealt / (participant.criticalHits + (participant.actionsUsed - participant.missedAttacks - participant.defenseActions))) : 0
+    if (!isHit) {
+      return {
+        hit: false,
+        damage: 0,
+        message: `${skill.name}이(가) 빗나갔습니다!`
       };
-    });
-    
-    return stats;
-  }
-
-  /**
-   * 턴 타이머 시작
-   */
-  startTurnTimer(battleId) {
-    this.clearTurnTimer(battleId);
-    
-    const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== BATTLE_STATUS.ACTIVE) return;
-
-    const timerId = setTimeout(() => {
-      this.handleTurnTimeout(battleId);
-    }, battle.settings.turnTimeLimit);
-
-    this.turnTimers.set(battleId, timerId);
-  }
-
-  /**
-   * 턴 타이머 제거
-   */
-  clearTurnTimer(battleId) {
-    const timerId = this.turnTimers.get(battleId);
-    if (timerId) {
-      clearTimeout(timerId);
-      this.turnTimers.delete(battleId);
     }
-  }
 
-  /**
-   * 턴 시간 초과 처리
-   */
-  handleTurnTimeout(battleId) {
-    const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== BATTLE_STATUS.ACTIVE) return;
+    // 스킬 데미지 계산
+    const skillPower = skill.power || 0;
+    const baseDamage = actor.stats.attack + skillPower;
+    const damageVariance = getRandomFloat(0.9, 1.1); // ±10% 변동
+    let finalDamage = Math.floor(baseDamage * damageVariance);
 
-    const currentParticipant = battle.participants[battle.currentTurn];
-    
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: generateBattleMessage('turn_timeout', { player: currentParticipant.name }),
-      timestamp: new Date()
-    });
+    // 방어력 적용
+    const defense = target.stats.defense * this.settings.ruleset.defenseReduction;
+    finalDamage = Math.max(1, finalDamage - defense);
 
-    // 자동 방어 액션 실행
-    this.executeAction(battleId, currentParticipant.id, {
-      type: BATTLE_ACTIONS.DEFEND
-    });
-  }
+    // 데미지 적용
+    const actualDamage = target.takeDamage(finalDamage);
+    actor.battleStats.totalDamageDealt += actualDamage;
 
-  /**
-   * 유틸리티 메서드들
-   */
-  findParticipantKey(battle, participantId) {
-    return Object.keys(battle.participants).find(
-      key => battle.participants[key].id === participantId
-    );
-  }
-
-  findParticipantBySocket(battle, socketId) {
-    return Object.values(battle.participants).find(
-      p => p.socketId === socketId
-    );
-  }
-
-  addLogEntry(battle, entry) {
-    battle.battleLog.push({
-      id: uuidv4(),
-      ...entry
-    });
-    
-    // 로그가 너무 길어지지 않도록 제한 (최대 200개)
-    if (battle.battleLog.length > 200) {
-      battle.battleLog = battle.battleLog.slice(-150);
+    // 스킬 효과 적용
+    const effects = [];
+    if (skill.effects && skill.effects.length > 0) {
+      for (const effect of skill.effects) {
+        const appliedEffect = await this.applySkillEffect(target, effect);
+        effects.push(appliedEffect);
+      }
     }
-  }
 
-  /**
-   * 전투 상태를 클라이언트에 전송할 형태로 직렬화
-   */
-  serializeBattleState(battle, viewerType = 'spectator', viewerId = null) {
-    const baseState = {
-      id: battle.id,
-      status: battle.status,
-      participants: {
-        A: {
-          name: battle.participants.A.name,
-          image: battle.participants.A.image,
-          hp: battle.participants.A.hp,
-          maxHp: battle.participants.A.maxHp,
-          stats: battle.participants.A.stats,
-          statusEffects: battle.participants.A.statusEffects,
-          connected: battle.participants.A.connected,
-          lastAction: battle.participants.A.lastAction
-        },
-        B: {
-          name: battle.participants.B.name,
-          image: battle.participants.B.image,
-          hp: battle.participants.B.hp,
-          maxHp: battle.participants.B.maxHp,
-          stats: battle.participants.B.stats,
-          statusEffects: battle.participants.B.statusEffects,
-          connected: battle.participants.B.connected,
-          lastAction: battle.participants.B.lastAction
-        }
-      },
-      currentTurn: battle.currentTurn,
-      turnCount: battle.turnCount,
-      turnStartTime: battle.turnStartTime,
-      battleLog: battle.battleLog.slice(-50), // 최근 50개 로그만
-      spectatorCount: battle.spectators.size,
-      settings: battle.settings,
-      createdAt: battle.createdAt,
-      endedAt: battle.endedAt
+    return {
+      hit: true,
+      damage: actualDamage,
+      effects,
+      targetDefeated: !target.isAlive
     };
+  }
 
-    // 참가자인 경우 추가 정보 제공
-    if (viewerType === 'participant' && viewerId) {
-      const participantKey = this.findParticipantKey(battle, viewerId);
-      if (participantKey) {
-        const participant = battle.participants[participantKey];
-        baseState.myRole = participantKey;
-        baseState.myTurn = battle.currentTurn === participantKey;
-        baseState.participants[participantKey].battleStats = {
-          damageDealt: participant.damageDealt,
-          damageTaken: participant.damageTaken,
-          actionsUsed: participant.actionsUsed,
-          criticalHits: participant.criticalHits,
-          missedAttacks: participant.missedAttacks,
-          dodgedAttacks: participant.dodgedAttacks,
-          defenseActions: participant.defenseActions
-        };
+  // 힐 스킬 처리
+  async processHealSkill(actor, target, skill) {
+    const healPower = skill.power || 0;
+    const baseHeal = healPower;
+    const healVariance = getRandomFloat(0.9, 1.1);
+    const finalHeal = Math.floor(baseHeal * healVariance);
+
+    const actualHeal = target.heal(finalHeal);
+
+    return {
+      heal: actualHeal,
+      effects: [],
+      message: `${target.name}이(가) ${actualHeal} 회복했습니다!`
+    };
+  }
+
+  // 버프 스킬 처리
+  async processBuffSkill(actor, target, skill) {
+    const effects = [];
+    
+    if (skill.effects && skill.effects.length > 0) {
+      for (const effect of skill.effects) {
+        const appliedEffect = await this.applySkillEffect(target, effect);
+        effects.push(appliedEffect);
       }
     }
 
-    return baseState;
+    return {
+      effects,
+      message: `${target.name}에게 버프가 적용되었습니다!`
+    };
   }
 
-  /**
-   * 전투 목록 조회 (관리자용)
-   */
-  getAllBattles() {
-    const battles = [];
-    this.battles.forEach(battle => {
-      battles.push({
-        id: battle.id,
-        status: battle.status,
-        participants: {
-          A: { name: battle.participants.A.name, connected: battle.participants.A.connected },
-          B: { name: battle.participants.B.name, connected: battle.participants.B.connected }
-        },
-        turnCount: battle.turnCount,
-        spectatorCount: battle.spectators.size,
-        createdAt: battle.createdAt,
-        endedAt: battle.endedAt
-      });
-    });
+  // 디버프 스킬 처리
+  async processDebuffSkill(actor, target, skill) {
+    const effects = [];
     
-    return battles.sort((a, b) => b.createdAt - a.createdAt);
+    if (skill.effects && skill.effects.length > 0) {
+      for (const effect of skill.effects) {
+        const appliedEffect = await this.applySkillEffect(target, effect);
+        effects.push(appliedEffect);
+      }
+    }
+
+    return {
+      effects,
+      message: `${target.name}에게 디버프가 적용되었습니다!`
+    };
   }
 
-  /**
-   * 활성 전투 수 조회
-   */
-  getActiveBattleCount() {
-    return Array.from(this.battles.values()).filter(
-      battle => battle.status === BATTLE_STATUS.ACTIVE || battle.status === BATTLE_STATUS.WAITING
-    ).length;
+  // 특수 스킬 처리
+  async processSpecialSkill(actor, target, skill) {
+    // 특수 스킬별 커스텀 로직
+    const effects = [];
+    
+    if (skill.effects && skill.effects.length > 0) {
+      for (const effect of skill.effects) {
+        const appliedEffect = await this.applySkillEffect(target, effect);
+        effects.push(appliedEffect);
+      }
+    }
+
+    return {
+      effects,
+      message: `${skill.name}의 특수 효과가 발동했습니다!`
+    };
   }
 
-  /**
-   * 메모리 정리 (오래된 전투 삭제)
-   */
-  cleanup() {
-    const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24시간
+  // 방어 처리
+  async processDefend(actor, action) {
+    // 방어 버프 적용 (다음 턴까지)
+    actor.addStatusEffect({
+      type: 'buff_defense',
+      value: Math.floor(actor.stats.defense * 0.5), // 방어력 50% 증가
+      duration: 1
+    });
 
-    this.battles.forEach((battle, battleId) => {
-      const age = now - battle.createdAt.getTime();
-      if (age > maxAge && battle.status === BATTLE_STATUS.ENDED) {
-        this.deleteBattle(battleId);
-        this.logger.info(`Cleaned up old battle: ${battleId}`);
+    return {
+      type: 'defend',
+      message: `${actor.name}이(가) 방어 자세를 취했습니다!`,
+      effects: [{
+        type: 'buff_defense',
+        applied: true,
+        duration: 1
+      }]
+    };
+  }
+
+  // 힐 처리
+  async processHeal(actor, target, action) {
+    const baseHeal = action.healAmount || 30;
+    const healVariance = getRandomFloat(0.8, 1.2);
+    const finalHeal = Math.floor(baseHeal * healVariance);
+
+    const actualHeal = target.heal(finalHeal);
+
+    return {
+      type: 'heal',
+      heal: actualHeal,
+      message: `${target.name}이(가) ${actualHeal} 회복했습니다!`
+    };
+  }
+
+  // 스킬 효과 적용
+  async applySkillEffect(target, effect) {
+    const duration = effect.duration || this.settings.ruleset.statusEffectDuration;
+    
+    target.addStatusEffect({
+      type: effect.type,
+      value: effect.value,
+      duration
+    });
+
+    return {
+      type: effect.type,
+      value: effect.value,
+      duration,
+      applied: true,
+      target: target.name
+    };
+  }
+
+  // 상태 이상 처리
+  async processStatusEffects(character) {
+    const expiredEffects = [];
+    
+    for (let i = character.statusEffects.length - 1; i >= 0; i--) {
+      const effect = character.statusEffects[i];
+      
+      // 지속 시간 감소
+      effect.duration--;
+      
+      // 효과 적용
+      switch (effect.type) {
+        case 'poison':
+          const poisonDamage = effect.value;
+          character.takeDamage(poisonDamage);
+          this.debugInfo.conditions.poison = { damage: poisonDamage };
+          break;
+        
+        case 'burn':
+          const burnDamage = effect.value;
+          character.takeDamage(burnDamage);
+          this.debugInfo.conditions.burn = { damage: burnDamage };
+          break;
+        
+        // 버프/디버프는 스탯에 영향을 주므로 별도 처리 불필요
+      }
+      
+      // 지속 시간이 끝난 효과 제거
+      if (effect.duration <= 0) {
+        expiredEffects.push(effect.type);
+        character.statusEffects.splice(i, 1);
+      }
+    }
+
+    return expiredEffects;
+  }
+
+  // 전투 종료 조건 확인
+  checkBattleEnd() {
+    const player1Alive = this.player1.isAlive;
+    const player2Alive = this.player2.isAlive;
+
+    if (!player1Alive && !player2Alive) {
+      return { ended: true, winner: 'draw', reason: 'both_defeated' };
+    }
+    
+    if (!player1Alive) {
+      return { ended: true, winner: 'player2', reason: 'knockout' };
+    }
+    
+    if (!player2Alive) {
+      return { ended: true, winner: 'player1', reason: 'knockout' };
+    }
+
+    // 최대 턴 수 확인
+    if (this.battle.turnNumber >= this.battle.settings.maxTurns) {
+      // HP가 더 높은 쪽 승리
+      if (this.player1.stats.hp > this.player2.stats.hp) {
+        return { ended: true, winner: 'player1', reason: 'timeout' };
+      } else if (this.player2.stats.hp > this.player1.stats.hp) {
+        return { ended: true, winner: 'player2', reason: 'timeout' };
+      } else {
+        return { ended: true, winner: 'draw', reason: 'timeout' };
+      }
+    }
+
+    return { ended: false };
+  }
+
+  // 전투 통계 업데이트
+  updateBattleStats(actorSlot, action, result) {
+    // 추가 통계 업데이트 로직
+    if (action.type === 'attack' && result.damage) {
+      // 이미 processAttack에서 처리됨
+    }
+    
+    if (action.type === 'skill') {
+      // 이미 processSkill에서 처리됨
+    }
+  }
+
+  // 헬퍼 메서드들
+  getCharacter(slot) {
+    return slot === 'player1' ? this.player1 : this.player2;
+  }
+
+  getTargetSlot(actorSlot, targetAction) {
+    if (targetAction === 'self') {
+      return actorSlot;
+    }
+    if (targetAction === 'enemy') {
+      return actorSlot === 'player1' ? 'player2' : 'player1';
+    }
+    return targetAction; // 명시적으로 지정된 경우
+  }
+
+  // 현재 버프/디버프가 적용된 실제 스탯 계산
+  getEffectiveStats(character) {
+    const baseStats = { ...character.stats };
+    
+    character.statusEffects.forEach(effect => {
+      switch (effect.type) {
+        case 'buff_attack':
+          baseStats.attack += effect.value;
+          break;
+        case 'debuff_attack':
+          baseStats.attack = Math.max(1, baseStats.attack - effect.value);
+          break;
+        case 'buff_defense':
+          baseStats.defense += effect.value;
+          break;
+        case 'debuff_defense':
+          baseStats.defense = Math.max(0, baseStats.defense - effect.value);
+          break;
       }
     });
+
+    return baseStats;
+  }
+
+  // 대사 관련 전투 이벤트 (새로 추가)
+  processDialogueEvent(playerSlot, dialogue) {
+    // 대사가 전투에 특별한 영향을 주는 경우 처리
+    // 예: 도발 대사로 상대방 공격력 일시 감소 등
+    
+    const effects = [];
+    
+    if (dialogue.category === 'taunt') {
+      const target = this.getCharacter(playerSlot === 'player1' ? 'player2' : 'player1');
+      
+      // 도발 효과: 상대방 정확도 일시 감소
+      target.addStatusEffect({
+        type: 'debuff_accuracy',
+        value: 10, // 정확도 10% 감소
+        duration: 2
+      });
+      
+      effects.push({
+        type: 'taunt_effect',
+        target: target.name,
+        description: '도발로 인해 집중력이 흐트러졌습니다!'
+      });
+    }
+
+    return {
+      dialogueEffects: effects,
+      message: effects.length > 0 ? '대사가 전투에 영향을 주었습니다!' : null
+    };
+  }
+
+  // 턴 시작 시 처리
+  async processTurnStart(playerSlot) {
+    const character = this.getCharacter(playerSlot);
+    
+    // 스킬 쿨다운 업데이트
+    character.updateCooldowns();
+    
+    // 상태 이상 지속 시간 업데이트는 액션 후에 처리
+    
+    return {
+      cooldownsUpdated: true,
+      availableSkills: character.skills.filter(skill => 
+        character.canUseSkill(skill.name)
+      ).map(skill => skill.name)
+    };
   }
 }
 
-module.exports = BattleEngine;투 조회
-   */
-  getBattle(battleId) {
-    return this.battles.get(battleId);
-  }
-
-  /**
-   * 전
+module.exports = BattleEngine;
