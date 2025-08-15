@@ -151,25 +151,21 @@ export const STAT_INFO = {
   attack: {
     name: '공격력',
     description: '주사위 굴림과 함께 데미지를 결정합니다',
-    icon: '⚔️',
     color: 'text-red-400'
   },
   defense: {
     name: '방어력', 
     description: '받는 데미지를 줄이고 방어 행동의 효과를 높입니다',
-    icon: '🛡️',
     color: 'text-blue-400'
   },
   agility: {
     name: '민첩',
     description: '명중률과 회피율, 선공 여부를 결정합니다',
-    icon: '💨',
     color: 'text-green-400'
   },
   luck: {
     name: '행운',
     description: '크리티컬 히트 확률을 높입니다',
-    icon: '🍀',
     color: 'text-yellow-400'
   }
 };
