@@ -1,34 +1,50 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import toast from 'react-hot-toast';
-import CharacterCard from './CharacterCard';
-import ActionPanel from './ActionPanel';
-import BattleLog from './BattleLog';
-import TurnIndicator from './TurnIndicator';
-import LoadingSpinner from '../shared/LoadingSpinner';
-import { useBattle } from '@/hooks/useBattle';
-import { BATTLE_STATUS } from '@/utils/constants';
+import useBattle from '../hooks/useBattle';
 
-export default function BattleField({ token, isSpectator = false }) {
+export default function BattleField({ apiUrl }) {
   const {
     battleState,
-    connected,
+    isConnected,
+    isConnecting,
     connectionError,
-    isReconnecting,
-    executeAction,
-    reconnect,
-    disconnect
-  } = useBattle(token, isSpectator);
+    isInBattle,
+    myTeam,
+    myPosition,
+    isMyTurn,
+    createBattle,
+    joinBattle,
+    attack,
+    defend,
+    dodge,
+    targetSelection,
+    confirmTargetSelection,
+    cancelTargetSelection,
+    toggleTarget,
+    canAct,
+    teamMates,
+    enemies
+  } = useBattle(apiUrl);
 
   const [selectedAction, setSelectedAction] = useState(null);
-  const [animationQueue, setAnimationQueue] = useState([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMobileControls, setShowMobileControls] = useState(false);
+  const [gameSetup, setGameSetup] = useState({
+    mode: '1v1',
+    playerName: '',
+    battleId: '',
+    showJoinForm: false,
+    playerStats: {
+      attack: 50,
+      defense: 30,
+      agility: 50,
+      maxHp: 100
+    }
+  });
 
   const battleFieldRef = useRef(null);
-  const lastLogCountRef = useRef(0);
 
   // 화면 크기 감지
   useEffect(() => {
@@ -41,138 +57,94 @@ export default function BattleField({ token, isSpectator = false }) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // 새 로그 감지 및 애니메이션
-  useEffect(() => {
-    if (!battleState?.battleLog) return;
-
-    const currentLogCount = battleState.battleLog.length;
-    if (currentLogCount > lastLogCountRef.current) {
-      const newLogs = battleState.battleLog.slice(lastLogCountRef.current);
-      newLogs.forEach(log => {
-        if (log.type === 'attack' && log.hit) {
-          triggerDamageAnimation(log);
-        }
-        if (soundEnabled) {
-          playSound(log.type);
-        }
-      });
-    }
-    lastLogCountRef.current = currentLogCount;
-  }, [battleState?.battleLog, soundEnabled]);
-
   // 키보드 단축키
   useEffect(() => {
     const handleKeyPress = (e) => {
-      if (!battleState || !isMyTurn() || isSpectator) return;
+      if (!canAct || targetSelection.isSelecting) return;
 
       switch (e.key) {
         case '1':
-          handleQuickAction({ type: 'attack' });
+          e.preventDefault();
+          handleQuickAction('attack');
           break;
         case '2':
-          handleQuickAction({ type: 'defend' });
+          e.preventDefault();
+          handleQuickAction('defend');
           break;
         case '3':
-          handleQuickAction({ type: 'heal' });
+          e.preventDefault();
+          handleQuickAction('dodge');
           break;
         case 'Escape':
-          setSelectedAction(null);
+          if (targetSelection.isSelecting) {
+            cancelTargetSelection();
+          }
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [battleState, isSpectator]);
+  }, [canAct, targetSelection.isSelecting, cancelTargetSelection]);
 
-  // 전투 타입 확인
-  const isTeamBattle = () => {
-    return battleState?.battleType && battleState.battleType !== '1v1';
-  };
+  const handleQuickAction = async (actionType) => {
+    if (!canAct) return;
 
-  // 현재 플레이어 정보 가져오기
-  const getCurrentPlayer = () => {
-    if (!battleState || !battleState.currentTurn) return null;
-    
-    if (isTeamBattle()) {
-      const { team, position } = battleState.currentTurn;
-      return battleState.teams?.[team]?.[position];
-    } else {
-      return battleState.participants?.[battleState.currentTurn];
+    try {
+      switch (actionType) {
+        case 'attack':
+          await attack();
+          break;
+        case 'defend':
+          await defend();
+          break;
+        case 'dodge':
+          await dodge();
+          break;
+      }
+    } catch (error) {
+      console.error('액션 실행 실패:', error);
     }
   };
 
-  // 내 턴인지 확인
-  const isMyTurn = () => {
-    if (!battleState) return false;
-    
-    if (isTeamBattle()) {
-      const currentPlayer = getCurrentPlayer();
-      return currentPlayer?.userId === battleState.myUserId;
-    } else {
-      return battleState.myTurn;
+  const handleCreateBattle = () => {
+    if (!gameSetup.playerName.trim()) {
+      alert('플레이어 이름을 입력하세요');
+      return;
     }
+    createBattle(gameSetup.mode);
   };
 
-  const triggerDamageAnimation = (logEntry) => {
-    const animation = {
-      id: Date.now(),
-      type: 'damage',
-      target: logEntry.defender,
-      damage: logEntry.damage,
-      critical: logEntry.critical
-    };
+  const handleJoinBattle = () => {
+    if (!gameSetup.playerName.trim() || !gameSetup.battleId.trim()) {
+      alert('플레이어 이름과 배틀 ID를 입력하세요');
+      return;
+    }
+    joinBattle(gameSetup.battleId, {
+      name: gameSetup.playerName,
+      ...gameSetup.playerStats
+    });
+  };
 
-    setAnimationQueue(prev => [...prev, animation]);
-
-    // 애니메이션 제거
-    setTimeout(() => {
-      setAnimationQueue(prev => prev.filter(a => a.id !== animation.id));
-    }, 2000);
+  const handleTargetClick = (targetId) => {
+    if (targetSelection.isSelecting) {
+      toggleTarget(targetId);
+    }
   };
 
   const playSound = (type) => {
-    // 실제 구현에서는 Audio API 사용
-    const audio = new Audio(`/sounds/sfx/${type}.mp3`);
-    audio.volume = 0.3;
-    audio.play().catch(() => {}); // 자동재생 정책으로 인한 에러 무시
-  };
-
-  const handleQuickAction = async (action) => {
-    if (!isMyTurn() || isSpectator) return;
-
+    if (!soundEnabled) return;
     try {
-      await executeAction(action);
+      const audio = new Audio(`/sounds/sfx/${type}.mp3`);
+      audio.volume = 0.3;
+      audio.play().catch(() => {});
     } catch (error) {
-      toast.error('액션 실행 실패: ' + error.message);
+      console.warn('사운드 재생 실패:', error);
     }
   };
 
-  const handleActionSelect = async (action) => {
-    if (!action) return;
-
-    try {
-      setSelectedAction(null);
-      await executeAction(action);
-      toast.success('액션이 실행되었습니다');
-    } catch (error) {
-      toast.error('액션 실행 실패: ' + error.message);
-    }
-  };
-
-  const handleReconnect = () => {
-    toast.loading('재연결 중...', { id: 'reconnect' });
-    reconnect()
-      .then(() => {
-        toast.success('재연결되었습니다', { id: 'reconnect' });
-      })
-      .catch(() => {
-        toast.error('재연결에 실패했습니다', { id: 'reconnect' });
-      });
-  };
-
-  // 팀 멤버 렌더링 (팀전용)
-  const renderTeamMembers = (team, teamName, isLeft = true) => {
+  // 팀 멤버 렌더링
+  const renderTeamMembers = (team, teamName, isMyTeamSide = false) => {
     if (!team || team.length === 0) return null;
 
     const teamSize = team.length;
@@ -180,32 +152,36 @@ export default function BattleField({ token, isSpectator = false }) {
     // 팀 크기에 따른 레이아웃 결정
     const getTeamLayout = () => {
       switch (teamSize) {
+        case 1: // 1v1
+          return 'flex justify-center items-center';
         case 2: // 2v2
-          return 'grid-rows-2 gap-8';
+          return 'grid grid-rows-2 gap-6';
         case 3: // 3v3
-          return 'grid-rows-3 gap-4';
+          return 'grid grid-rows-3 gap-4';
         case 4: // 4v4
-          return 'grid-rows-2 grid-cols-2 gap-4';
+          return 'grid grid-cols-2 grid-rows-2 gap-4';
         default:
-          return 'grid-rows-1';
+          return 'flex justify-center items-center';
       }
     };
 
     const layoutClass = getTeamLayout();
 
     return (
-      <div className={`grid ${layoutClass} h-full justify-center items-center`}>
+      <div className={`${layoutClass} h-full w-full max-w-md mx-auto`}>
         {team.map((member, index) => {
           if (!member) return null;
           
-          const isCurrentTurn = battleState.currentTurn?.team === teamName && 
-                                battleState.currentTurn?.position === index;
+          const isCurrentTurn = battleState.currentPlayer?.id === member.id;
+          const isSelectable = targetSelection.isSelecting && 
+                              targetSelection.availableTargets.some(t => t.id === member.id);
+          const isSelected = targetSelection.selectedTargets.includes(member.id);
           
           return (
             <motion.div
               key={`${teamName}-${index}`}
               initial={{ 
-                x: isLeft ? -100 : 100, 
+                x: isMyTeamSide ? -100 : 100, 
                 opacity: 0,
                 scale: 0.8 
               }}
@@ -219,15 +195,15 @@ export default function BattleField({ token, isSpectator = false }) {
                 delay: index * 0.2 
               }}
               className={`relative ${teamSize === 4 ? 'transform scale-90' : ''}`}
+              onClick={() => handleTargetClick(member.id)}
             >
               <CharacterCard
                 character={member}
-                isOpponent={teamName !== battleState.myTeam}
-                isActive={isCurrentTurn}
-                animationQueue={animationQueue.filter(a => a.target === member.name)}
+                isCurrentTurn={isCurrentTurn}
+                isSelectable={isSelectable}
+                isSelected={isSelected}
                 compact={teamSize > 2}
-                position={index + 1}
-                teamName={teamName}
+                teamColor={teamName === 'team1' ? 'blue' : 'red'}
               />
               
               {/* 포지션 번호 표시 */}
@@ -250,6 +226,15 @@ export default function BattleField({ token, isSpectator = false }) {
                   </div>
                 </motion.div>
               )}
+
+              {/* 선택 표시 */}
+              {isSelected && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute inset-0 border-4 border-yellow-400 rounded-lg pointer-events-none"
+                />
+              )}
             </motion.div>
           );
         })}
@@ -257,321 +242,423 @@ export default function BattleField({ token, isSpectator = false }) {
     );
   };
 
-  // 1v1 캐릭터 렌더링 (기존)
-  const renderSingleCharacter = (character, isLeft = true, isOpponent = false) => {
-    const isCurrentTurn = !isTeamBattle() && 
-                         ((isOpponent && battleState.currentTurn !== battleState.myRole) ||
-                          (!isOpponent && battleState.currentTurn === battleState.myRole));
+  // 캐릭터 카드 컴포넌트
+  const CharacterCard = ({ 
+    character, 
+    isCurrentTurn, 
+    isSelectable, 
+    isSelected, 
+    compact, 
+    teamColor 
+  }) => {
+    const healthPercent = (character.hp / character.maxHp) * 100;
+    const isDead = character.status === 'dead' || character.hp <= 0;
 
     return (
-      <motion.div
-        initial={{ x: isLeft ? -100 : 100, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="relative flex items-center justify-center h-full"
-      >
-        <CharacterCard
-          character={character}
-          isOpponent={isOpponent}
-          isActive={isCurrentTurn}
-          animationQueue={animationQueue.filter(a => a.target === character.name)}
-        />
-      </motion.div>
+      <div className={`
+        relative p-4 rounded-lg border-2 transition-all duration-300 cursor-pointer
+        ${isDead ? 'opacity-50 grayscale' : ''}
+        ${isCurrentTurn ? 'border-yellow-400 bg-yellow-100 shadow-lg transform scale-105' : 'border-gray-300 bg-white'}
+        ${isSelectable ? 'border-green-400 bg-green-50 hover:bg-green-100' : ''}
+        ${isSelected ? 'border-yellow-400 bg-yellow-200' : ''}
+        ${compact ? 'text-sm' : ''}
+      `}>
+        {/* 캐릭터 이름 */}
+        <div className="font-bold text-center mb-2">
+          {character.name}
+        </div>
+
+        {/* HP 바 */}
+        <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+          <div 
+            className={`h-3 rounded-full transition-all duration-500 ${
+              healthPercent > 60 ? 'bg-green-500' :
+              healthPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
+            }`}
+            style={{ width: `${healthPercent}%` }}
+          />
+        </div>
+
+        {/* HP 텍스트 */}
+        <div className="text-center text-sm mb-2">
+          HP: {character.hp}/{character.maxHp}
+        </div>
+
+        {/* 스탯 정보 */}
+        {!compact && (
+          <div className="text-xs text-gray-600 grid grid-cols-3 gap-1">
+            <div>공격: {character.attack || 50}</div>
+            <div>방어: {character.defense || 30}</div>
+            <div>민첩: {character.agility || 50}</div>
+          </div>
+        )}
+
+        {/* 상태 효과 표시 */}
+        {character.defendBuff && (
+          <div className="absolute top-1 right-1 bg-blue-500 text-white px-1 py-0.5 rounded text-xs">
+            방어
+          </div>
+        )}
+        {character.dodgeBuff && (
+          <div className="absolute top-1 right-1 bg-green-500 text-white px-1 py-0.5 rounded text-xs">
+            회피
+          </div>
+        )}
+      </div>
     );
   };
 
-  // 연결 상태 확인
-  if (!connected && !isReconnecting) {
+  // 연결 중 화면
+  if (isConnecting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-center p-8 bg-black/20 rounded-lg backdrop-blur-sm">
-          <LoadingSpinner className="w-16 h-16 mx-auto mb-4" />
-          <h2 className="text-white text-2xl mb-4">전투에 연결하는 중...</h2>
-          {connectionError && (
-            <div className="mt-4 p-4 bg-red-500/20 rounded-lg">
-              <p className="text-red-300 mb-3">{connectionError}</p>
-              <button 
-                onClick={handleReconnect}
-                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-              >
-                다시 연결
-              </button>
-            </div>
-          )}
+          <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <h2 className="text-white text-2xl mb-4">서버에 연결 중...</h2>
         </div>
       </div>
     );
   }
 
-  // 재연결 중
-  if (isReconnecting) {
+  // 연결 실패 화면
+  if (connectionError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-center p-8 bg-black/20 rounded-lg backdrop-blur-sm">
-          <LoadingSpinner className="w-16 h-16 mx-auto mb-4" />
-          <h2 className="text-white text-2xl mb-4">재연결 중...</h2>
-          <p className="text-gray-300">잠시만 기다려주세요</p>
-        </div>
-      </div>
-    );
-  }
-
-  // 전투 데이터 없음
-  if (!battleState) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center p-8 bg-black/20 rounded-lg backdrop-blur-sm">
-          <h2 className="text-white text-2xl mb-4">전투를 찾을 수 없습니다</h2>
-          <p className="text-gray-300 mb-4">올바른 링크인지 확인해주세요</p>
+          <h2 className="text-white text-2xl mb-4">연결 실패</h2>
+          <p className="text-red-300 mb-4">{connectionError}</p>
           <button 
-            onClick={() => window.location.href = '/'}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
-            메인으로 돌아가기
+            새로고침
           </button>
         </div>
       </div>
     );
   }
 
-  // 관람자 뷰
-  if (isSpectator) {
-    const battleTypeDisplay = isTeamBattle() ? battleState.battleType : '1v1';
-    
+  // 게임 설정 화면 (배틀에 참가하지 않은 경우)
+  if (!isInBattle) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="container mx-auto p-4">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-white text-2xl">전투 관람 - {battleTypeDisplay}</h1>
-            <div className="text-gray-300 text-sm">
-              턴 {battleState.turnCount}
-            </div>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="w-full max-w-2xl p-8 bg-black/20 rounded-lg backdrop-blur-sm">
+          <h1 className="text-white text-3xl text-center mb-8">팀전 배틀 시스템</h1>
           
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              {isTeamBattle() ? (
-                <div className="flex justify-between h-96">
-                  <div className="flex-1 bg-blue-600/10 rounded-lg p-4 mr-2">
-                    <h3 className="text-blue-300 text-center mb-4">Team 1</h3>
-                    {renderTeamMembers(battleState.teams?.team1, 'team1', true)}
-                  </div>
-                  <div className="flex-1 bg-red-600/10 rounded-lg p-4 ml-2">
-                    <h3 className="text-red-300 text-center mb-4">Team 2</h3>
-                    {renderTeamMembers(battleState.teams?.team2, 'team2', false)}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex justify-between mb-4">
-                  <CharacterCard character={battleState.participants.A} />
-                  <CharacterCard character={battleState.participants.B} />
-                </div>
-              )}
-            </div>
-            <div>
-              <TurnIndicator 
-                currentTurn={battleState.currentTurn}
-                turnCount={battleState.turnCount}
-                participantNames={isTeamBattle() ? 
-                  { team1: 'Team 1', team2: 'Team 2' } :
-                  {
-                    A: battleState.participants.A.name,
-                    B: battleState.participants.B.name
-                  }
-                }
+          <div className="bg-white rounded-lg p-6">
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                플레이어 이름:
+              </label>
+              <input
+                type="text"
+                value={gameSetup.playerName}
+                onChange={(e) => setGameSetup(prev => ({
+                  ...prev,
+                  playerName: e.target.value
+                }))}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                placeholder="이름을 입력하세요"
               />
-              <BattleLog logs={battleState.battleLog} className="mt-4" />
             </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                스탯 설정:
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(gameSetup.playerStats).map(([stat, value]) => (
+                  <div key={stat}>
+                    <label className="block text-gray-600 text-xs mb-1">
+                      {stat === 'attack' ? '공격력' :
+                       stat === 'defense' ? '방어력' :
+                       stat === 'agility' ? '민첩성' : '최대 HP'}:
+                    </label>
+                    <input
+                      type="number"
+                      value={value}
+                      onChange={(e) => setGameSetup(prev => ({
+                        ...prev,
+                        playerStats: {
+                          ...prev.playerStats,
+                          [stat]: parseInt(e.target.value) || 0
+                        }
+                      }))}
+                      className="w-full px-2 py-1 border rounded text-sm focus:outline-none focus:border-blue-500"
+                      min="10"
+                      max={stat === 'maxHp' ? "200" : "100"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                게임 모드:
+              </label>
+              <select 
+                value={gameSetup.mode} 
+                onChange={(e) => setGameSetup(prev => ({
+                  ...prev,
+                  mode: e.target.value
+                }))}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+              >
+                <option value="1v1">1 vs 1</option>
+                <option value="2v2">2 vs 2</option>
+                <option value="3v3">3 vs 3</option>
+                <option value="4v4">4 vs 4</option>
+              </select>
+            </div>
+
+            <div className="flex gap-4 mb-4">
+              <button 
+                onClick={handleCreateBattle}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+              >
+                새 배틀 생성
+              </button>
+              
+              <button 
+                onClick={() => setGameSetup(prev => ({
+                  ...prev,
+                  showJoinForm: !prev.showJoinForm
+                }))}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+              >
+                배틀 참가
+              </button>
+            </div>
+
+            {gameSetup.showJoinForm && (
+              <div className="border-t pt-4">
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-bold mb-2">
+                    배틀 ID:
+                  </label>
+                  <input
+                    type="text"
+                    value={gameSetup.battleId}
+                    onChange={(e) => setGameSetup(prev => ({
+                      ...prev,
+                      battleId: e.target.value
+                    }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="배틀 ID를 입력하세요"
+                  />
+                </div>
+                <button 
+                  onClick={handleJoinBattle}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                >
+                  참가하기
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  const currentPlayer = getCurrentPlayer();
-  const myTurn = isMyTurn();
-
+  // 배틀 화면
   return (
     <div 
       ref={battleFieldRef}
-      className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-hidden"
+      className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"
     >
       {/* 상단 UI */}
       <div className="absolute top-0 left-0 right-0 z-10 p-4">
         <div className="flex justify-between items-center">
-          {/* 턴 표시 */}
-          <TurnIndicator 
-            currentTurn={battleState.currentTurn}
-            myRole={battleState.myRole || battleState.myTeam}
-            myTurn={myTurn}
-            turnCount={battleState.turnCount}
-            turnStartTime={battleState.turnStartTime}
-            turnTimeLimit={battleState.settings?.turnTimeLimit}
-            participantNames={isTeamBattle() ? 
-              { team1: 'Team 1', team2: 'Team 2' } :
-              {
-                A: battleState.participants?.A?.name || 'Player A',
-                B: battleState.participants?.B?.name || 'Player B'
-              }
-            }
-            isTeamBattle={isTeamBattle()}
-            currentPlayerName={currentPlayer?.name}
-          />
-
-          {/* 전투 타입 표시 */}
-          <div className="bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg">
-            <span className="text-white text-sm font-medium">
-              {isTeamBattle() ? battleState.battleType : '1v1'}
-            </span>
+          {/* 배틀 정보 */}
+          <div className="bg-black/50 backdrop-blur-sm px-4 py-2 rounded-lg text-white">
+            <div className="text-sm">
+              {battleState.mode} | 상태: {battleState.status}
+            </div>
+            {battleState.currentPlayer && (
+              <div className="text-xs text-gray-300">
+                현재 턴: {battleState.currentPlayer.name}
+              </div>
+            )}
           </div>
 
           {/* 설정 버튼 */}
           <div className="flex gap-2">
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`px-3 py-2 rounded-lg text-white text-sm transition-colors ${
                 soundEnabled 
                   ? 'bg-green-600 hover:bg-green-700' 
                   : 'bg-gray-600 hover:bg-gray-700'
               }`}
             >
-              사운드
-            </button>
-
-            <button
-              onClick={disconnect}
-              className="p-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-white"
-            >
-              나가기
+              사운드 {soundEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* 메인 전투 영역 */}
-      <div className="relative h-screen flex">
-        {/* 왼쪽 팀/캐릭터 */}
-        <div className="flex-1 flex items-center justify-start pl-8">
-          {isTeamBattle() ? (
-            <div className="w-full h-full py-20">
-              <div className="text-center mb-4">
-                <h3 className="text-blue-300 text-xl font-bold">Team 1</h3>
+      {/* 선후공 결정 화면 */}
+      {battleState.status === 'initiative' && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold text-center mb-6">선후공 결정!</h2>
+            
+            <div className="space-y-4">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold mb-2">Team 1</h3>
+                <p>민첩성: {battleState.initiativeRolls.team1.agility}</p>
+                <p>주사위: {battleState.initiativeRolls.team1.diceRoll}</p>
+                <p className="font-bold">총합: {battleState.initiativeRolls.team1.total}</p>
               </div>
-              {renderTeamMembers(battleState.teams?.team1, 'team1', true)}
+              
+              <div className="text-center text-2xl font-bold">VS</div>
+              
+              <div className="text-center">
+                <h3 className="text-lg font-semibold mb-2">Team 2</h3>
+                <p>민첩성: {battleState.initiativeRolls.team2.agility}</p>
+                <p>주사위: {battleState.initiativeRolls.team2.diceRoll}</p>
+                <p className="font-bold">총합: {battleState.initiativeRolls.team2.total}</p>
+              </div>
             </div>
-          ) : (
-            renderSingleCharacter(
-              battleState.participants?.[battleState.myRole === 'A' ? 'B' : 'A'], 
-              true, 
-              true
-            )
-          )}
-        </div>
 
-        {/* 중앙 전투 정보 */}
-        <div className="flex-shrink-0 w-80 flex flex-col justify-center items-center relative">
-          {/* 전투 상태 표시 */}
-          <div className="mb-8 text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="bg-black/30 backdrop-blur-sm rounded-lg p-4"
-            >
-              <h3 className="text-white text-xl mb-2">
-                {battleState.status === BATTLE_STATUS.WAITING && '전투 대기 중'}
-                {battleState.status === BATTLE_STATUS.ACTIVE && '전투 진행 중'}
-                {battleState.status === BATTLE_STATUS.PAUSED && '일시정지'}
-                {battleState.status === BATTLE_STATUS.ENDED && '전투 종료'}
-              </h3>
-
-              {battleState.status === BATTLE_STATUS.ACTIVE && (
-                <p className="text-gray-300">
-                  턴 {battleState.turnCount}
-                </p>
+            <div className="mt-6 text-center">
+              {battleState.initiativeRolls.team1.total > battleState.initiativeRolls.team2.total ? (
+                <p className="text-blue-600 font-bold">Team 1이 선공!</p>
+              ) : battleState.initiativeRolls.team2.total > battleState.initiativeRolls.team1.total ? (
+                <p className="text-red-600 font-bold">Team 2가 선공!</p>
+              ) : (
+                <p className="text-gray-600">동점! 다시 굴립니다...</p>
               )}
-            </motion.div>
-          </div>
-
-          {/* VS 표시 */}
-          <motion.div
-            initial={{ scale: 0, rotate: 180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ delay: 0.5, duration: 0.8 }}
-            className="text-6xl font-bold text-white mb-8 drop-shadow-lg"
-          >
-            VS
-          </motion.div>
-
-          {/* 액션 패널 (모바일에서는 하단으로) */}
-          {!showMobileControls && myTurn && battleState.status === BATTLE_STATUS.ACTIVE && (
-            <motion.div
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-black/30 backdrop-blur-sm rounded-lg p-4"
-            >
-              <ActionPanel
-                character={currentPlayer}
-                battleState={battleState}
-                currentPlayer={currentPlayer}
-                onActionSelect={handleActionSelect}
-                disabled={!myTurn}
-              />
-            </motion.div>
-          )}
-        </div>
-
-        {/* 오른쪽 팀/캐릭터 */}
-        <div className="flex-1 flex items-center justify-end pr-8">
-          {isTeamBattle() ? (
-            <div className="w-full h-full py-20">
-              <div className="text-center mb-4">
-                <h3 className="text-red-300 text-xl font-bold">Team 2</h3>
-              </div>
-              {renderTeamMembers(battleState.teams?.team2, 'team2', false)}
             </div>
-          ) : (
-            renderSingleCharacter(
-              battleState.participants?.[battleState.myRole], 
-              false, 
-              false
-            )
-          )}
-        </div>
-      </div>
-
-      {/* 하단 전투 로그 */}
-      <div className="absolute bottom-0 left-0 right-0 h-48 bg-black/40 backdrop-blur-sm">
-        <BattleLog 
-          logs={battleState.battleLog}
-          maxHeight="12rem"
-        />
-      </div>
-
-      {/* 모바일 액션 패널 */}
-      {showMobileControls && myTurn && battleState.status === BATTLE_STATUS.ACTIVE && (
-        <div className="fixed bottom-52 left-0 right-0 p-4 bg-black/50 backdrop-blur-sm">
-          <ActionPanel
-            character={currentPlayer}
-            battleState={battleState}
-            currentPlayer={currentPlayer}
-            onActionSelect={handleActionSelect}
-            disabled={!myTurn}
-            isMobile={true}
-          />
+          </div>
         </div>
       )}
 
+      {/* 메인 전투 영역 */}
+      <div className="relative h-screen flex pt-20 pb-16">
+        {/* 왼쪽 팀 */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg">
+            <div className="text-center mb-4">
+              <h3 className={`text-xl font-bold ${
+                myTeam === 'team1' ? 'text-blue-300' : 'text-blue-400'
+              }`}>
+                Team 1 {myTeam === 'team1' && '(내 팀)'}
+              </h3>
+            </div>
+            {renderTeamMembers(battleState.teams?.team1, 'team1', true)}
+          </div>
+        </div>
+
+        {/* 중앙 VS */}
+        <div className="flex-shrink-0 w-32 flex items-center justify-center">
+          <motion.div
+            initial={{ scale: 0, rotate: 180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-6xl font-bold text-white drop-shadow-lg"
+          >
+            VS
+          </motion.div>
+        </div>
+
+        {/* 오른쪽 팀 */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg">
+            <div className="text-center mb-4">
+              <h3 className={`text-xl font-bold ${
+                myTeam === 'team2' ? 'text-red-300' : 'text-red-400'
+              }`}>
+                Team 2 {myTeam === 'team2' && '(내 팀)'}
+              </h3>
+            </div>
+            {renderTeamMembers(battleState.teams?.team2, 'team2', false)}
+          </div>
+        </div>
+      </div>
+
+      {/* 하단 액션 패널 */}
+      {canAct && !targetSelection.isSelecting && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+          <div className="bg-black/50 backdrop-blur-sm rounded-lg p-4">
+            <div className="flex gap-4">
+              <button
+                onClick={() => handleQuickAction('attack')}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-bold"
+              >
+                공격 (1)
+              </button>
+              <button
+                onClick={() => handleQuickAction('defend')}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-bold"
+              >
+                방어 (2)
+              </button>
+              <button
+                onClick={() => handleQuickAction('dodge')}
+                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-bold"
+              >
+                회피 (3)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 대상 선택 UI */}
+      {targetSelection.isSelecting && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+          <div className="bg-black/50 backdrop-blur-sm rounded-lg p-4">
+            <p className="text-white text-center mb-4">
+              대상을 선택하세요 ({targetSelection.selectedTargets.length}/{targetSelection.maxTargets})
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={confirmTargetSelection}
+                disabled={targetSelection.selectedTargets.length === 0}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                확인
+              </button>
+              <button
+                onClick={cancelTargetSelection}
+                className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 배틀 로그 */}
+      <div className="absolute bottom-0 left-0 right-0 bg-black/40 backdrop-blur-sm p-4 max-h-48 overflow-y-auto">
+        <div className="space-y-1">
+          {battleState.battleLogs?.slice(-10).map((log, index) => (
+            <div key={index} className="text-white text-sm">
+              <span className="text-gray-400 text-xs">
+                {new Date(log.timestamp).toLocaleTimeString()}
+              </span>
+              <span className="ml-2">{log.message}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* 연결 상태 표시 */}
-      {!connected && (
+      {!isConnected && (
         <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg">
           연결 끊김
         </div>
       )}
 
       {/* 키보드 단축키 안내 */}
-      <div className="fixed bottom-4 right-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-lg text-sm">
+      <div className="fixed top-20 right-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-lg text-sm">
         <p className="mb-1">단축키:</p>
-        <p>1: 공격 | 2: 방어 | 3: 힐</p>
+        <p>1: 공격 | 2: 방어 | 3: 회피</p>
+        <p>ESC: 취소</p>
       </div>
     </div>
   );
