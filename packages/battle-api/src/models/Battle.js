@@ -1,208 +1,291 @@
-// packages/battle-api/src/models/Battle.js
+// packages/battle-api/src/models/Battle.js (팀전 버전)
 const mongoose = require('mongoose');
 
 const battleSchema = new mongoose.Schema({
-  // 고유 식별자
+  // 기본 정보
   roomId: {
     type: String,
     required: true,
     unique: true,
-    index: true
+    trim: true
   },
   
   token: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
+  },
+  
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+    maxLength: 100
+  },
+  
+  description: {
+    type: String,
+    maxLength: 500,
+    default: ''
   },
 
-  // 전투 참가자
-  players: {
-    player1: {
+  // 팀전 구조 (새로 설계)
+  battleType: {
+    type: String,
+    enum: ['1v1', '2v2', '3v3', '4v4'],
+    required: true,
+    default: '1v1'
+  },
+
+  teams: {
+    team1: [{
+      position: {
+        type: Number,
+        required: true, // 0, 1, 2, 3 (최대 4명)
+      },
       characterId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Character',
         required: true
       },
+      playerId: String,
       socketId: String,
-      isConnected: {
+      isReady: {
         type: Boolean,
         default: false
       },
-      joinedAt: Date,
-      lastActionAt: Date,
-      // 대사 사용 여부 (턴당 1회 제한)
-      dialogueUsedThisTurn: {
+      isAlive: {
         type: Boolean,
-        default: false
+        default: true
+      },
+      joinedAt: {
+        type: Date,
+        default: Date.now
       }
-    },
-    player2: {
+    }],
+    team2: [{
+      position: {
+        type: Number,
+        required: true,
+      },
       characterId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Character',
         required: true
       },
+      playerId: String,
       socketId: String,
-      isConnected: {
+      isReady: {
         type: Boolean,
         default: false
       },
-      joinedAt: Date,
-      lastActionAt: Date,
-      // 대사 사용 여부 (턴당 1회 제한)
-      dialogueUsedThisTurn: {
+      isAlive: {
         type: Boolean,
-        default: false
-      }
-    }
-  },
-
-  // 턴 관리 (대사 시스템용으로 확장)
-  turnSystem: {
-    currentTurn: {
-      type: Number,
-      default: 1
-    },
-    currentPlayer: {
-      type: String,
-      enum: ['player1', 'player2'],
-      default: 'player1'
-    },
-    turnStartTime: {
-      type: Date,
-      default: Date.now
-    },
-    turnTimeLimit: {
-      type: Number,
-      default: 600 // 10분 = 600초
-    },
-    actionSubmitted: {
-      type: Boolean,
-      default: false
-    },
-    // 턴 히스토리
-    turnHistory: [{
-      turn: Number,
-      player: String,
-      startTime: Date,
-      endTime: Date,
-      action: String,
-      dialogueUsed: {
-        type: Boolean,
-        default: false
-      }
+        default: true
+      },
+      joinedAt: Date
     }]
   },
 
-  // 전투 상태
-  battleState: {
-    status: {
+  // 턴 관리 (팀전 지원)
+  currentTurn: {
+    team: {
       type: String,
-      enum: ['waiting', 'ready', 'in_progress', 'paused', 'completed', 'abandoned'],
-      default: 'waiting'
+      enum: ['team1', 'team2'],
+      default: 'team1'
     },
-    winner: {
-      type: String,
-      enum: ['player1', 'player2', 'draw'],
-      default: null
-    },
-    startedAt: Date,
-    endedAt: Date,
-    totalTurns: {
+    position: {
       type: Number,
-      default: 0
+      default: 0 // 팀 내 순서
     }
   },
+  
+  turnNumber: {
+    type: Number,
+    default: 1
+  },
+  
+  turnStartTime: {
+    type: Date,
+    default: Date.now
+  },
+  
+  turnTimeLimit: {
+    type: Number,
+    default: 600 // 10분 = 600초
+  },
 
-  // 대사 히스토리 (새로 추가)
+  // 턴 순서 관리
+  turnOrder: [{
+    team: String,
+    position: Number,
+    playerId: String
+  }],
+
+  // 액션 기록 (팀전 지원)
+  turnActions: [{
+    turn: Number,
+    actor: {
+      team: String,
+      position: Number,
+      playerId: String,
+      characterName: String
+    },
+    target: {
+      team: String,
+      position: Number,
+      playerId: String,
+      characterName: String
+    },
+    action: {
+      type: {
+        type: String,
+        enum: ['attack', 'skill', 'defend', 'heal', 'dialogue', 'pass']
+      },
+      skillName: String,
+      targetType: {
+        type: String,
+        enum: ['single', 'multiple', 'all_enemies', 'all_allies', 'self']
+      },
+      damage: Number,
+      heal: Number,
+      effects: [mongoose.Schema.Types.Mixed],
+      message: String,
+      timestamp: {
+        type: Date,
+        default: Date.now
+      }
+    },
+    result: {
+      success: Boolean,
+      targets: [{
+        team: String,
+        position: Number,
+        damage: Number,
+        heal: Number,
+        statusEffects: [mongoose.Schema.Types.Mixed]
+      }],
+      message: String
+    }
+  }],
+
+  // 대사 기록 (팀전 지원)
   dialogueHistory: [{
-    turn: {
-      type: Number,
-      required: true
-    },
-    player: {
-      type: String,
-      enum: ['player1', 'player2'],
-      required: true
-    },
-    characterName: {
-      type: String,
-      required: true
+    turn: Number,
+    actor: {
+      team: String,
+      position: Number,
+      playerId: String,
+      characterName: String
     },
     message: {
       type: String,
       required: true,
-      maxLength: 140,
-      trim: true
+      maxLength: 140
     },
     timestamp: {
       type: Date,
       default: Date.now
     },
-    // 프리셋 대사인지 직접 입력인지
-    isPreset: {
-      type: Boolean,
-      default: false
-    },
-    presetCategory: {
+    category: {
       type: String,
-      enum: ['attack', 'defend', 'skill', 'hurt', 'victory', 'defeat', 'taunt', 'general']
+      enum: ['attack', 'defend', 'skill', 'hurt', 'victory', 'defeat', 'taunt', 'general'],
+      default: 'general'
     }
   }],
 
-  // 액션 히스토리
-  actionHistory: [{
-    turn: Number,
-    player: String,
-    action: {
-      type: {
-        type: String,
-        enum: ['attack', 'defend', 'skill', 'item']
-      },
-      details: mongoose.Schema.Types.Mixed
-    },
-    result: mongoose.Schema.Types.Mixed,
-    timestamp: {
-      type: Date,
-      default: Date.now
-    }
-  }],
+  // 팀별 대사 사용 추적
+  dialogueUsage: {
+    team1: new Map(), // position -> {turn, used, timestamp}
+    team2: new Map()
+  },
 
-  // 전투 룰셋
-  rules: {
+  // 전투 설정
+  settings: {
     maxTurns: {
       type: Number,
-      default: 50
-    },
-    turnTimeLimit: {
-      type: Number,
-      default: 600 // 10분
+      default: 100 // 팀전은 더 긴 전투
     },
     allowSpectators: {
       type: Boolean,
       default: true
     },
-    enableDialogue: {
+    autoSave: {
       type: Boolean,
       default: true
     },
-    dialogueTimeLimit: {
-      type: Number,
-      default: 600 // 대사 입력 시간 제한 (10분)
-    },
-    maxDialogueLength: {
-      type: Number,
-      default: 140
-    },
-    autoProgressTurn: {
-      type: Boolean,
-      default: false
+    ruleset: {
+      criticalMultiplier: {
+        type: Number,
+        default: 1.5
+      },
+      defenseReduction: {
+        type: Number,
+        default: 0.5
+      },
+      statusEffectDuration: {
+        type: Number,
+        default: 3
+      },
+      dialogueEnabled: {
+        type: Boolean,
+        default: true
+      },
+      dialogueTimeLimit: {
+        type: Number,
+        default: 600
+      },
+      // 팀전 특별 규칙
+      friendlyFire: {
+        type: Boolean,
+        default: false
+      },
+      reviveAllowed: {
+        type: Boolean,
+        default: false
+      }
     }
   },
 
-  // 관람자 관리
+  // 전투 상태
+  status: {
+    type: String,
+    enum: ['waiting', 'ready', 'active', 'paused', 'finished', 'cancelled'],
+    default: 'waiting'
+  },
+
+  // 전투 결과
+  result: {
+    winner: {
+      type: String,
+      enum: ['team1', 'team2', 'draw', 'cancelled']
+    },
+    reason: {
+      type: String,
+      enum: ['elimination', 'timeout', 'surrender', 'disconnect', 'draw']
+    },
+    finalStats: {
+      team1: [{
+        position: Number,
+        damageDealt: Number,
+        damageTaken: Number,
+        skillsUsed: Number,
+        dialoguesUsed: Number,
+        survivedTurns: Number
+      }],
+      team2: [{
+        position: Number,
+        damageDealt: Number,
+        damageTaken: Number,
+        skillsUsed: Number,
+        dialoguesUsed: Number,
+        survivedTurns: Number
+      }]
+    },
+    endedAt: Date
+  },
+
+  // 관람자 (기존과 동일)
   spectators: [{
     socketId: String,
     joinedAt: {
@@ -211,53 +294,9 @@ const battleSchema = new mongoose.Schema({
     },
     nickname: {
       type: String,
-      default: 'Guest'
+      default: 'Anonymous'
     }
   }],
-
-  // 전투 통계
-  statistics: {
-    totalDamageDealt: {
-      player1: {
-        type: Number,
-        default: 0
-      },
-      player2: {
-        type: Number,
-        default: 0
-      }
-    },
-    skillsUsed: {
-      player1: {
-        type: Number,
-        default: 0
-      },
-      player2: {
-        type: Number,
-        default: 0
-      }
-    },
-    criticalHits: {
-      player1: {
-        type: Number,
-        default: 0
-      },
-      player2: {
-        type: Number,
-        default: 0
-      }
-    },
-    dialogueCount: {
-      player1: {
-        type: Number,
-        default: 0
-      },
-      player2: {
-        type: Number,
-        default: 0
-      }
-    }
-  },
 
   // 메타데이터
   createdBy: {
@@ -265,15 +304,9 @@ const battleSchema = new mongoose.Schema({
     default: 'admin'
   },
   
-  isPrivate: {
-    type: Boolean,
-    default: false
-  },
-  
-  // 리플레이 저장 여부
-  saveReplay: {
-    type: Boolean,
-    default: true
+  version: {
+    type: Number,
+    default: 2 // 팀전 버전
   }
 }, {
   timestamps: true,
@@ -281,211 +314,226 @@ const battleSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// 인덱스 설정
-battleSchema.index({ roomId: 1 });
-battleSchema.index({ token: 1 });
-battleSchema.index({ 'battleState.status': 1 });
-battleSchema.index({ createdAt: -1 });
-battleSchema.index({ 'players.player1.socketId': 1 });
-battleSchema.index({ 'players.player2.socketId': 1 });
-
-// 가상 필드: 전투 진행 시간
-battleSchema.virtual('duration').get(function() {
-  if (!this.battleState.startedAt) return 0;
-  
-  const endTime = this.battleState.endedAt || new Date();
-  return Math.floor((endTime - this.battleState.startedAt) / 1000); // 초 단위
+// 가상 필드: 현재 액터
+battleSchema.virtual('currentActor').get(function() {
+  const currentTeam = this.teams[this.currentTurn.team];
+  return currentTeam.find(member => member.position === this.currentTurn.position);
 });
 
-// 가상 필드: 현재 턴 남은 시간
-battleSchema.virtual('currentTurnTimeRemaining').get(function() {
-  if (!this.turnSystem.turnStartTime) return 0;
-  
-  const elapsed = Math.floor((new Date() - this.turnSystem.turnStartTime) / 1000);
-  return Math.max(0, this.turnSystem.turnTimeLimit - elapsed);
-});
-
-// 가상 필드: 양쪽 플레이어 모두 연결되었는지
-battleSchema.virtual('bothPlayersConnected').get(function() {
-  return this.players.player1.isConnected && this.players.player2.isConnected;
-});
-
-// 메서드: 다음 턴으로 넘어가기
-battleSchema.methods.nextTurn = function() {
-  // 턴 히스토리에 현재 턴 기록
-  this.turnSystem.turnHistory.push({
-    turn: this.turnSystem.currentTurn,
-    player: this.turnSystem.currentPlayer,
-    startTime: this.turnSystem.turnStartTime,
-    endTime: new Date(),
-    action: this.turnSystem.actionSubmitted ? 'submitted' : 'timeout',
-    dialogueUsed: this.players[this.turnSystem.currentPlayer].dialogueUsedThisTurn
-  });
-
-  // 다음 턴 설정
-  this.turnSystem.currentTurn++;
-  this.turnSystem.currentPlayer = this.turnSystem.currentPlayer === 'player1' ? 'player2' : 'player1';
-  this.turnSystem.turnStartTime = new Date();
-  this.turnSystem.actionSubmitted = false;
-  
-  // 대사 사용 상태 리셋
-  this.players.player1.dialogueUsedThisTurn = false;
-  this.players.player2.dialogueUsedThisTurn = false;
-  
-  this.battleState.totalTurns = this.turnSystem.currentTurn;
-};
-
-// 메서드: 대사 추가
-battleSchema.methods.addDialogue = function(player, characterName, message, isPreset = false, presetCategory = null) {
-  // 글자 수 제한 확인
-  if (message.length > this.rules.maxDialogueLength) {
-    throw new Error(`대사는 ${this.rules.maxDialogueLength}자를 초과할 수 없습니다.`);
-  }
-
-  // 현재 턴에 이미 대사를 사용했는지 확인
-  if (this.players[player].dialogueUsedThisTurn) {
-    throw new Error('이번 턴에 이미 대사를 입력했습니다.');
-  }
-
-  // 현재 플레이어의 턴인지 확인
-  if (this.turnSystem.currentPlayer !== player) {
-    throw new Error('자신의 턴이 아닙니다.');
-  }
-
-  // 시간 제한 확인
-  if (this.currentTurnTimeRemaining <= 0) {
-    throw new Error('턴 시간이 종료되었습니다.');
-  }
-
-  // 대사 추가
-  const dialogue = {
-    turn: this.turnSystem.currentTurn,
-    player,
-    characterName,
-    message: message.trim(),
-    timestamp: new Date(),
-    isPreset,
-    presetCategory
+// 가상 필드: 팀별 생존자 수
+battleSchema.virtual('aliveCount').get(function() {
+  return {
+    team1: this.teams.team1.filter(member => member.isAlive).length,
+    team2: this.teams.team2.filter(member => member.isAlive).length
   };
+});
 
-  this.dialogueHistory.push(dialogue);
-  this.players[player].dialogueUsedThisTurn = true;
-  this.statistics.dialogueCount[player]++;
-
-  return dialogue;
-};
-
-// 메서드: 플레이어 연결
-battleSchema.methods.connectPlayer = function(player, socketId) {
-  if (this.players[player]) {
-    this.players[player].socketId = socketId;
-    this.players[player].isConnected = true;
-    this.players[player].joinedAt = new Date();
-    
-    // 양쪽 플레이어가 모두 연결되면 전투 시작 준비
-    if (this.bothPlayersConnected && this.battleState.status === 'waiting') {
-      this.battleState.status = 'ready';
+// 메서드: 플레이어 찾기
+battleSchema.methods.findPlayer = function(playerId) {
+  for (const teamName of ['team1', 'team2']) {
+    const member = this.teams[teamName].find(m => m.playerId === playerId);
+    if (member) {
+      return {
+        team: teamName,
+        position: member.position,
+        member
+      };
     }
   }
+  return null;
 };
 
-// 메서드: 플레이어 연결 해제
-battleSchema.methods.disconnectPlayer = function(socketId) {
-  if (this.players.player1.socketId === socketId) {
-    this.players.player1.isConnected = false;
-    this.players.player1.socketId = null;
-  } else if (this.players.player2.socketId === socketId) {
-    this.players.player2.isConnected = false;
-    this.players.player2.socketId = null;
-  }
-
-  // 전투 중이라면 일시정지
-  if (this.battleState.status === 'in_progress') {
-    this.battleState.status = 'paused';
+// 메서드: 대상 유효성 검증
+battleSchema.methods.isValidTarget = function(actorTeam, actorPosition, targetTeam, targetPosition, actionType) {
+  const target = this.teams[targetTeam]?.find(m => m.position === targetPosition);
+  
+  if (!target) return false;
+  
+  switch (actionType) {
+    case 'attack':
+    case 'skill_attack':
+      // 공격은 상대 팀의 살아있는 멤버만
+      return targetTeam !== actorTeam && target.isAlive;
+    
+    case 'heal':
+    case 'defend':
+      // 힐/방어는 같은 팀의 살아있는 멤버만
+      return targetTeam === actorTeam && target.isAlive;
+    
+    case 'buff':
+      // 버프는 같은 팀만
+      return targetTeam === actorTeam && target.isAlive;
+    
+    case 'debuff':
+      // 디버프는 상대 팀만
+      return targetTeam !== actorTeam && target.isAlive;
+    
+    default:
+      return true;
   }
 };
 
-// 메서드: 관람자 추가
-battleSchema.methods.addSpectator = function(socketId, nickname = 'Guest') {
-  if (!this.rules.allowSpectators) {
-    throw new Error('이 전투는 관람이 허용되지 않습니다.');
+// 메서드: 사용 가능한 대상 목록
+battleSchema.methods.getAvailableTargets = function(actorTeam, actionType) {
+  const targets = [];
+  
+  for (const teamName of ['team1', 'team2']) {
+    for (const member of this.teams[teamName]) {
+      if (this.isValidTarget(actorTeam, null, teamName, member.position, actionType)) {
+        targets.push({
+          team: teamName,
+          position: member.position,
+          playerId: member.playerId,
+          characterName: member.characterId?.name || 'Unknown',
+          isAlive: member.isAlive
+        });
+      }
+    }
   }
+  
+  return targets;
+};
 
-  this.spectators.push({
-    socketId,
-    nickname,
-    joinedAt: new Date()
+// 메서드: 다음 턴 계산
+battleSchema.methods.nextTurn = function() {
+  // 현재 팀에서 다음 살아있는 멤버 찾기
+  let nextTeam = this.currentTurn.team;
+  let nextPosition = this.currentTurn.position;
+  
+  // 같은 팀에서 다음 살아있는 멤버 찾기
+  const currentTeamMembers = this.teams[nextTeam].filter(m => m.isAlive);
+  const currentIndex = currentTeamMembers.findIndex(m => m.position === nextPosition);
+  
+  if (currentIndex < currentTeamMembers.length - 1) {
+    // 같은 팀의 다음 멤버
+    nextPosition = currentTeamMembers[currentIndex + 1].position;
+  } else {
+    // 다른 팀으로 넘어가기
+    nextTeam = nextTeam === 'team1' ? 'team2' : 'team1';
+    const nextTeamMembers = this.teams[nextTeam].filter(m => m.isAlive);
+    
+    if (nextTeamMembers.length > 0) {
+      nextPosition = nextTeamMembers[0].position;
+      
+      // 한 바퀴 돌았으면 턴 번호 증가
+      if (nextTeam === 'team1') {
+        this.turnNumber++;
+      }
+    }
+  }
+  
+  this.currentTurn = {
+    team: nextTeam,
+    position: nextPosition
+  };
+  this.turnStartTime = new Date();
+};
+
+// 메서드: 대사 추가 (팀전 버전)
+battleSchema.methods.addDialogue = function(team, position, playerId, characterName, message, category = 'general') {
+  if (message.length > 140) {
+    throw new Error('대사는 140자를 초과할 수 없습니다.');
+  }
+  
+  // 현재 턴에 이미 대사를 사용했는지 확인
+  if (this.hasUsedDialogueThisTurn(team, position)) {
+    throw new Error('이번 턴에 이미 대사를 사용했습니다.');
+  }
+  
+  // 대사 기록 추가
+  const dialogueEntry = {
+    turn: this.turnNumber,
+    actor: {
+      team,
+      position,
+      playerId,
+      characterName
+    },
+    message: message.trim(),
+    category,
+    timestamp: new Date()
+  };
+  
+  this.dialogueHistory.push(dialogueEntry);
+  
+  // 대사 사용 표시
+  this.markDialogueUsed(team, position);
+  
+  return dialogueEntry;
+};
+
+// 메서드: 이번 턴에 대사 사용했는지 확인 (팀전 버전)
+battleSchema.methods.hasUsedDialogueThisTurn = function(team, position) {
+  if (!this.dialogueUsage[team]) return false;
+  
+  const key = `${position}_${this.turnNumber}`;
+  return this.dialogueUsage[team].has(key);
+};
+
+// 메서드: 대사 사용 표시 (팀전 버전)
+battleSchema.methods.markDialogueUsed = function(team, position) {
+  if (!this.dialogueUsage[team]) {
+    this.dialogueUsage[team] = new Map();
+  }
+  
+  const key = `${position}_${this.turnNumber}`;
+  this.dialogueUsage[team].set(key, {
+    turn: this.turnNumber,
+    used: true,
+    timestamp: new Date()
   });
 };
 
-// 메서드: 관람자 제거
-battleSchema.methods.removeSpectator = function(socketId) {
-  this.spectators = this.spectators.filter(spec => spec.socketId !== socketId);
-};
-
-// 메서드: 전투 시작
-battleSchema.methods.startBattle = function() {
-  if (this.battleState.status !== 'ready') {
-    throw new Error('전투를 시작할 수 없는 상태입니다.');
-  }
-
-  this.battleState.status = 'in_progress';
-  this.battleState.startedAt = new Date();
-  this.turnSystem.turnStartTime = new Date();
-};
-
-// 메서드: 전투 종료
-battleSchema.methods.endBattle = function(winner = null) {
-  this.battleState.status = 'completed';
-  this.battleState.endedAt = new Date();
-  this.battleState.winner = winner;
-};
-
-// 메서드: 턴 시간 초과 확인
-battleSchema.methods.isTimedOut = function() {
-  return this.currentTurnTimeRemaining <= 0;
-};
-
-// 메서드: 특정 플레이어의 대사 가져오기
-battleSchema.methods.getDialoguesByPlayer = function(player) {
-  return this.dialogueHistory.filter(dialogue => dialogue.player === player);
-};
-
-// 메서드: 특정 턴의 대사 가져오기
-battleSchema.methods.getDialoguesByTurn = function(turn) {
-  return this.dialogueHistory.filter(dialogue => dialogue.turn === turn);
-};
-
-// 스태틱 메서드: 토큰으로 전투 찾기
-battleSchema.statics.findByToken = function(token) {
-  return this.findOne({ token, 'battleState.status': { $ne: 'completed' } });
-};
-
-// 스태틱 메서드: 룸 ID로 전투 찾기
-battleSchema.statics.findByRoomId = function(roomId) {
-  return this.findOne({ roomId });
-};
-
-// 스태틱 메서드: 진행 중인 전투 목록
-battleSchema.statics.getActiveBattles = function() {
-  return this.find({ 
-    'battleState.status': { $in: ['waiting', 'ready', 'in_progress', 'paused'] }
-  }).sort({ createdAt: -1 });
-};
-
-// 미들웨어: 저장 전 검증
-battleSchema.pre('save', function(next) {
-  // 턴 시간 제한 확인
-  if (this.turnSystem.turnTimeLimit > 1800) { // 최대 30분
-    this.turnSystem.turnTimeLimit = 1800;
+// 메서드: 전투 종료 확인 (팀전 버전)
+battleSchema.methods.checkBattleEnd = function() {
+  const team1Alive = this.teams.team1.filter(m => m.isAlive).length;
+  const team2Alive = this.teams.team2.filter(m => m.isAlive).length;
+  
+  if (team1Alive === 0 && team2Alive === 0) {
+    return { ended: true, winner: 'draw', reason: 'both_teams_eliminated' };
   }
   
-  // 대사 길이 제한 확인
-  if (this.rules.maxDialogueLength > 200) { // 최대 200자
-    this.rules.maxDialogueLength = 200;
+  if (team1Alive === 0) {
+    return { ended: true, winner: 'team2', reason: 'elimination' };
   }
   
-  next();
-});
+  if (team2Alive === 0) {
+    return { ended: true, winner: 'team1', reason: 'elimination' };
+  }
+  
+  // 최대 턴 수 확인
+  if (this.turnNumber >= this.settings.maxTurns) {
+    if (team1Alive > team2Alive) {
+      return { ended: true, winner: 'team1', reason: 'timeout' };
+    } else if (team2Alive > team1Alive) {
+      return { ended: true, winner: 'team2', reason: 'timeout' };
+    } else {
+      return { ended: true, winner: 'draw', reason: 'timeout' };
+    }
+  }
+  
+  return { ended: false };
+};
+
+// 메서드: 팀 준비 상태 확인
+battleSchema.methods.isTeamReady = function(teamName) {
+  return this.teams[teamName].every(member => member.isReady);
+};
+
+// 메서드: 모든 팀 준비 완료 확인
+battleSchema.methods.allTeamsReady = function() {
+  return this.isTeamReady('team1') && this.isTeamReady('team2');
+};
+
+// 스태틱 메서드: 배틀 타입별 최대 인원
+battleSchema.statics.getMaxPlayersPerTeam = function(battleType) {
+  const typeMap = {
+    '1v1': 1,
+    '2v2': 2,
+    '3v3': 3,
+    '4v4': 4
+  };
+  return typeMap[battleType] || 1;
+};
 
 module.exports = mongoose.model('Battle', battleSchema);
