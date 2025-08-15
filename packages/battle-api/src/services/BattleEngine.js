@@ -1,6 +1,21 @@
 const { v4: uuidv4 } = require('uuid');
-const { rollDice, rollMultipleDice, calculateDamage } = require('../utils/dice');
-const { BATTLE_ACTIONS, BATTLE_STATUS, STATUS_EFFECTS, RULESETS } = require('../utils/rules');
+const { 
+  rollDice, 
+  calculateBattleResult, 
+  calculateDefenseBonus,
+  validateStats 
+} = require('../utils/dice');
+const { 
+  BATTLE_ACTIONS, 
+  BATTLE_STATUS, 
+  GAME_CONSTANTS,
+  WIN_CONDITIONS,
+  RULESETS,
+  determineTurnOrder,
+  checkBattleEndCondition,
+  canPlayerAct,
+  generateBattleMessage
+} = require('../utils/rules');
 
 class BattleEngine {
   constructor(logger) {
@@ -39,10 +54,11 @@ class BattleEngine {
       // 메타데이터
       createdAt: new Date(),
       settings: {
-        turnTimeLimit: config.turnTimeLimit || 30000, // 30초
-        maxTurns: config.maxTurns || 50,
-        autoStart: config.autoStart !== false, // 기본값 true
-        allowSpectatorChat: config.allowSpectatorChat || false
+        turnTimeLimit: config.turnTimeLimit || ruleset.turnTimeLimit,
+        maxTurns: config.maxTurns || ruleset.maxTurns,
+        autoStart: config.autoStart !== false,
+        allowSpectatorChat: config.allowSpectatorChat || false,
+        allowSurrender: ruleset.allowSurrender
       }
     };
 
@@ -56,52 +72,48 @@ class BattleEngine {
    * 참가자 객체 생성
    */
   createParticipant(config, ruleset) {
-    const baseStats = ruleset.baseStats;
-    const customStats = config.stats || {};
+    const stats = config.stats || ruleset.baseStats;
+    
+    // 스탯 유효성 검사
+    if (!validateStats(stats)) {
+      throw new Error('Invalid stats provided');
+    }
     
     return {
       id: config.id,
       name: config.name,
-      image: config.image,
+      image: config.image || '/images/default-character.png',
       
-      // HP/MP
-      hp: config.maxHp || baseStats.maxHp,
-      maxHp: config.maxHp || baseStats.maxHp,
-      mp: config.maxMp || baseStats.maxMp,
-      maxMp: config.maxMp || baseStats.maxMp,
+      // HP
+      hp: GAME_CONSTANTS.STARTING_HP,
+      maxHp: GAME_CONSTANTS.MAX_HP,
       
-      // 스탯
+      // 스탯 (1-5)
       stats: {
-        attack: customStats.attack || baseStats.attack,
-        defense: customStats.defense || baseStats.defense,
-        speed: customStats.speed || baseStats.speed,
-        accuracy: customStats.accuracy || baseStats.accuracy,
-        critical: customStats.critical || baseStats.critical,
-        luck: customStats.luck || baseStats.luck
+        attack: stats.attack,
+        defense: stats.defense,
+        agility: stats.agility,
+        luck: stats.luck
       },
       
-      // 상태
+      // 상태 효과
       statusEffects: [],
-      temporaryStats: {},
       
       // 연결 상태
       connected: false,
       socketId: null,
       lastAction: null,
+      lastActionTime: null,
       
       // 전투 통계
       damageDealt: 0,
       damageTaken: 0,
       actionsUsed: 0,
-      criticalHits: 0
+      criticalHits: 0,
+      missedAttacks: 0,
+      dodgedAttacks: 0,
+      defenseActions: 0
     };
-  }
-
-  /**
-   * 전투 조회
-   */
-  getBattle(battleId) {
-    return this.battles.get(battleId);
   }
 
   /**
@@ -128,7 +140,7 @@ class BattleEngine {
 
     this.addLogEntry(battle, {
       type: 'system',
-      message: `${participant.name}이 전투에 참여했습니다.`,
+      message: generateBattleMessage('player_joined', { player: participant.name }),
       timestamp: new Date()
     });
 
@@ -155,7 +167,7 @@ class BattleEngine {
 
     this.addLogEntry(battle, {
       type: 'system',
-      message: `${participant.name}의 연결이 끊어졌습니다.`,
+      message: generateBattleMessage('player_disconnected', { player: participant.name }),
       timestamp: new Date()
     });
 
@@ -210,17 +222,19 @@ class BattleEngine {
     }
 
     battle.status = BATTLE_STATUS.ACTIVE;
-    battle.currentTurn = this.determineTurnOrder(battle);
+    battle.currentTurn = determineTurnOrder(battle.participants);
     battle.turnCount = 1;
     battle.turnStartTime = Date.now();
 
+    const firstPlayer = battle.participants[battle.currentTurn];
+
     this.addLogEntry(battle, {
       type: 'system',
-      message: '⚔️ 전투가 시작되었습니다!',
+      message: generateBattleMessage('battle_start', { first: firstPlayer.name }),
       participants: Object.values(battle.participants).map(p => ({
         name: p.name,
         hp: p.hp,
-        mp: p.mp
+        stats: p.stats
       })),
       timestamp: new Date()
     });
@@ -228,7 +242,7 @@ class BattleEngine {
     // 턴 타이머 시작
     this.startTurnTimer(battleId);
 
-    this.logger.info(`Battle started: ${battleId}`);
+    this.logger.info(`Battle started: ${battleId}, First turn: ${battle.currentTurn}`);
     return { success: true };
   }
 
@@ -276,32 +290,6 @@ class BattleEngine {
   }
 
   /**
-   * 턴 순서 결정 (속도 기반)
-   */
-  determineTurnOrder(battle) {
-    const participants = Object.entries(battle.participants);
-    const [keyA, participantA] = participants[0];
-    const [keyB, participantB] = participants[1];
-
-    const speedA = this.getEffectiveStats(participantA).speed;
-    const speedB = this.getEffectiveStats(participantB).speed;
-
-    if (speedA > speedB) {
-      return keyA;
-    } else if (speedB > speedA) {
-      return keyB;
-    } else {
-      // 동일한 속도면 랜덤 + 운 스탯 고려
-      const luckA = participantA.stats.luck;
-      const luckB = participantB.stats.luck;
-      const randomA = rollDice(20) + luckA;
-      const randomB = rollDice(20) + luckB;
-      
-      return randomA >= randomB ? keyA : keyB;
-    }
-  }
-
-  /**
    * 액션 실행
    */
   executeAction(battleId, participantId, action) {
@@ -322,9 +310,9 @@ class BattleEngine {
     const participant = battle.participants[participantKey];
     
     // 액션 유효성 검증
-    const validation = this.validateAction(participant, action);
+    const validation = canPlayerAct(participant, battle.status);
     if (!validation.valid) {
-      return { success: false, error: validation.error };
+      return { success: false, error: validation.reason };
     }
 
     // 액션 처리
@@ -334,50 +322,21 @@ class BattleEngine {
       // 통계 업데이트
       participant.actionsUsed++;
       participant.lastAction = action;
+      participant.lastActionTime = Date.now();
 
       // 로그 추가
       this.addLogEntry(battle, result.logEntry);
       
       // 전투 종료 체크
-      if (this.checkBattleEnd(battle)) {
-        this.endBattle(battle);
+      const endCheck = checkBattleEndCondition(battle.participants, battle.turnCount);
+      if (endCheck.ended) {
+        this.endBattle(battle, endCheck.condition, endCheck.winner);
       } else {
         this.nextTurn(battle);
       }
     }
 
     return result;
-  }
-
-  /**
-   * 액션 유효성 검증
-   */
-  validateAction(participant, action) {
-    switch (action.type) {
-      case BATTLE_ACTIONS.ATTACK:
-        return { valid: true };
-      
-      case BATTLE_ACTIONS.DEFEND:
-        return { valid: true };
-      
-      case BATTLE_ACTIONS.SKILL:
-        if (!action.skill) {
-          return { valid: false, error: 'Skill not specified' };
-        }
-        if (participant.mp < action.skill.cost) {
-          return { valid: false, error: 'Insufficient MP' };
-        }
-        return { valid: true };
-      
-      case BATTLE_ACTIONS.ITEM:
-        if (!action.item) {
-          return { valid: false, error: 'Item not specified' };
-        }
-        return { valid: true };
-      
-      default:
-        return { valid: false, error: 'Unknown action type' };
-    }
   }
 
   /**
@@ -390,16 +349,13 @@ class BattleEngine {
 
     switch (action.type) {
       case BATTLE_ACTIONS.ATTACK:
-        return this.processAttack(attacker, defender, action);
+        return this.processAttack(attacker, defender);
       
       case BATTLE_ACTIONS.DEFEND:
-        return this.processDefend(attacker, action);
+        return this.processDefend(attacker);
       
-      case BATTLE_ACTIONS.SKILL:
-        return this.processSkill(attacker, defender, action);
-      
-      case BATTLE_ACTIONS.ITEM:
-        return this.processItem(attacker, action);
+      case BATTLE_ACTIONS.SURRENDER:
+        return this.processSurrender(battle, attacker);
       
       default:
         return { success: false, error: 'Unknown action type' };
@@ -409,52 +365,58 @@ class BattleEngine {
   /**
    * 공격 처리
    */
-  processAttack(attacker, defender, action) {
-    const attackerStats = this.getEffectiveStats(attacker);
-    const defenderStats = this.getEffectiveStats(defender);
+  processAttack(attacker, defender) {
+    const result = calculateBattleResult(attacker.stats, defender.stats);
     
-    // 명중률 계산
-    const accuracyRoll = rollDice(20);
-    const hitChance = attackerStats.accuracy - defenderStats.speed + accuracyRoll;
-    const isHit = hitChance >= 10; // 기본 명중 기준값
-    
-    if (!isHit) {
-      return {
-        success: true,
-        logEntry: {
-          type: 'attack',
-          attacker: attacker.name,
-          defender: defender.name,
-          hit: false,
-          roll: accuracyRoll,
-          message: `${attacker.name}의 공격이 빗나갔습니다! (${accuracyRoll})`,
-          timestamp: new Date()
-        }
-      };
+    // 방어 보너스 적용
+    const defenseBonus = defender.statusEffects.find(e => e.type === 'defend');
+    if (defenseBonus && result.hit && !result.dodge) {
+      result.damage = Math.max(1, Math.floor(result.damage * 0.5));
+      result.defendReduced = true;
     }
-
-    // 데미지 계산
-    const damageRoll = rollDice(20);
-    const baseDamage = calculateDamage(attackerStats.attack, defenderStats.defense, damageRoll);
-    
-    // 크리티컬 히트 체크
-    const criticalRoll = rollDice(100);
-    const isCritical = criticalRoll <= attackerStats.critical;
-    const finalDamage = isCritical ? Math.floor(baseDamage * 1.5) : baseDamage;
-    
-    // 방어 상태 효과 적용
-    const defendEffect = defender.statusEffects.find(e => e.type === 'defend');
-    const actualDamage = defendEffect 
-      ? Math.floor(finalDamage * (1 - defendEffect.value))
-      : finalDamage;
     
     // 데미지 적용
-    defender.hp = Math.max(0, defender.hp - actualDamage);
-    
-    // 통계 업데이트
-    attacker.damageDealt += actualDamage;
-    defender.damageTaken += actualDamage;
-    if (isCritical) attacker.criticalHits++;
+    if (result.hit && !result.dodge && result.damage > 0) {
+      defender.hp = Math.max(0, defender.hp - result.damage);
+      attacker.damageDealt += result.damage;
+      defender.damageTaken += result.damage;
+      
+      if (result.critical) {
+        attacker.criticalHits++;
+      }
+    } else if (!result.hit) {
+      attacker.missedAttacks++;
+    } else if (result.dodge) {
+      defender.dodgedAttacks++;
+    }
+
+    // 방어 효과 제거 (사용됨)
+    if (defenseBonus) {
+      defender.statusEffects = defender.statusEffects.filter(e => e.type !== 'defend');
+    }
+
+    let message;
+    if (!result.hit) {
+      message = generateBattleMessage('attack_miss', { 
+        attacker: attacker.name 
+      });
+    } else if (result.dodge) {
+      message = generateBattleMessage('attack_dodge', { 
+        attacker: attacker.name,
+        defender: defender.name 
+      });
+    } else {
+      message = generateBattleMessage('attack_hit', {
+        attacker: attacker.name,
+        defender: defender.name,
+        damage: result.damage,
+        critical: result.critical
+      });
+      
+      if (result.defendReduced) {
+        message += ' (방어 효과로 데미지 감소)';
+      }
+    }
 
     return {
       success: true,
@@ -462,17 +424,22 @@ class BattleEngine {
         type: 'attack',
         attacker: attacker.name,
         defender: defender.name,
-        hit: true,
-        damage: actualDamage,
-        critical: isCritical,
-        roll: damageRoll,
-        message: `${attacker.name}이 ${defender.name}에게 ${actualDamage} 데미지를 입혔습니다!${isCritical ? '크리티컬!' : ''} (${damageRoll})`,
+        hit: result.hit,
+        damage: result.damage,
+        critical: result.critical,
+        dodge: result.dodge,
+        attackRoll: result.attackRoll,
+        defenseRoll: result.defenseRoll,
+        defendReduced: result.defendReduced || false,
+        message,
         timestamp: new Date()
       },
       effects: {
-        damageDealt: actualDamage,
+        damageDealt: result.damage,
         targetHp: defender.hp,
-        critical: isCritical
+        critical: result.critical,
+        hit: result.hit,
+        dodge: result.dodge
       }
     };
   }
@@ -480,162 +447,57 @@ class BattleEngine {
   /**
    * 방어 처리
    */
-  processDefend(attacker, action) {
+  processDefend(attacker) {
     // 기존 방어 효과 제거
     attacker.statusEffects = attacker.statusEffects.filter(e => e.type !== 'defend');
+    
+    // 방어 보너스 계산
+    const defenseRoll = rollDice(20);
+    const defenseBonus = calculateDefenseBonus(attacker.stats.defense, defenseRoll);
     
     // 새 방어 효과 추가
     attacker.statusEffects.push({
       type: 'defend',
-      duration: 1,
-      value: 0.5, // 50% 데미지 감소
+      duration: defenseBonus.duration,
+      value: defenseBonus.bonusDefense,
       source: 'defend_action'
     });
+
+    attacker.defenseActions++;
 
     return {
       success: true,
       logEntry: {
         type: 'defend',
         participant: attacker.name,
-        message: `${attacker.name}이 방어 태세를 취했습니다!`,
+        roll: defenseRoll,
+        bonus: defenseBonus.bonusDefense,
+        message: generateBattleMessage('defend', { defender: attacker.name }),
         timestamp: new Date()
       }
     };
   }
 
   /**
-   * 스킬 처리
+   * 항복 처리
    */
-  processSkill(attacker, defender, action) {
-    const skill = action.skill;
-    
-    // MP 소모
-    attacker.mp -= skill.cost;
-    
-    let result = {
+  processSurrender(battle, surrenderer) {
+    if (!battle.settings.allowSurrender) {
+      return { success: false, error: 'Surrender not allowed in this ruleset' };
+    }
+
+    // 항복자의 HP를 0으로 만들어 전투 종료 조건 충족
+    surrenderer.hp = 0;
+
+    return {
       success: true,
       logEntry: {
-        type: 'skill',
-        attacker: attacker.name,
-        skill: skill.name,
+        type: 'surrender',
+        participant: surrenderer.name,
+        message: generateBattleMessage('surrender', { player: surrenderer.name }),
         timestamp: new Date()
-      },
-      effects: {
-        mpUsed: skill.cost,
-        casterMp: attacker.mp
       }
     };
-
-    // 스킬 타입별 처리
-    switch (skill.type) {
-      case 'damage':
-        const attackerStats = this.getEffectiveStats(attacker);
-        const defenderStats = this.getEffectiveStats(defender);
-        const damage = calculateDamage(
-          attackerStats.attack * skill.power, 
-          defenderStats.defense
-        );
-        
-        defender.hp = Math.max(0, defender.hp - damage);
-        attacker.damageDealt += damage;
-        defender.damageTaken += damage;
-        
-        result.logEntry.defender = defender.name;
-        result.logEntry.damage = damage;
-        result.logEntry.message = `${attacker.name}이 ${skill.name}을 사용해 ${defender.name}에게 ${damage} 데미지를 입혔습니다!`;
-        result.effects.damageDealt = damage;
-        result.effects.targetHp = defender.hp;
-        break;
-        
-      case 'heal':
-        const healAmount = Math.min(skill.power, attacker.maxHp - attacker.hp);
-        attacker.hp += healAmount;
-        
-        result.logEntry.heal = healAmount;
-        result.logEntry.message = `${attacker.name}이 ${skill.name}을 사용해 HP를 ${healAmount} 회복했습니다!`;
-        result.effects.healAmount = healAmount;
-        result.effects.casterHp = attacker.hp;
-        break;
-        
-      case 'buff':
-        attacker.statusEffects.push({
-          type: 'buff',
-          stat: skill.stat,
-          value: skill.value,
-          duration: skill.duration,
-          source: skill.name
-        });
-        
-        result.logEntry.message = `${attacker.name}이 ${skill.name}을 사용했습니다! ${skill.stat} +${skill.value} (${skill.duration}턴)`;
-        break;
-        
-      case 'debuff':
-        defender.statusEffects.push({
-          type: 'debuff',
-          stat: skill.stat,
-          value: skill.value,
-          duration: skill.duration,
-          source: skill.name
-        });
-        
-        result.logEntry.defender = defender.name;
-        result.logEntry.message = `${attacker.name}이 ${skill.name}을 사용해 ${defender.name}의 ${skill.stat}을 ${skill.value} 감소시켰습니다! (${skill.duration}턴)`;
-        break;
-    }
-
-    return result;
-  }
-
-  /**
-   * 아이템 처리
-   */
-  processItem(attacker, action) {
-    const item = action.item;
-    
-    switch (item.type) {
-      case 'heal':
-        const healAmount = Math.min(item.power, attacker.maxHp - attacker.hp);
-        attacker.hp += healAmount;
-        
-        return {
-          success: true,
-          logEntry: {
-            type: 'item',
-            participant: attacker.name,
-            item: item.name,
-            heal: healAmount,
-            message: `${attacker.name}이 ${item.name}을 사용해 HP를 ${healAmount} 회복했습니다!`,
-            timestamp: new Date()
-          },
-          effects: {
-            healAmount: healAmount,
-            targetHp: attacker.hp
-          }
-        };
-      
-      case 'mp_restore':
-        const mpAmount = Math.min(item.power, attacker.maxMp - attacker.mp);
-        attacker.mp += mpAmount;
-        
-        return {
-          success: true,
-          logEntry: {
-            type: 'item',
-            participant: attacker.name,
-            item: item.name,
-            mpRestore: mpAmount,
-            message: `${attacker.name}이 ${item.name}을 사용해 MP를 ${mpAmount} 회복했습니다!`,
-            timestamp: new Date()
-          },
-          effects: {
-            mpRestored: mpAmount,
-            targetMp: attacker.mp
-          }
-        };
-      
-      default:
-        return { success: false, error: 'Unknown item type' };
-    }
   }
 
   /**
@@ -652,7 +514,7 @@ class BattleEngine {
 
     // 최대 턴 수 체크
     if (battle.turnCount > battle.settings.maxTurns) {
-      this.endBattle(battle, 'timeout');
+      this.endBattle(battle, WIN_CONDITIONS.TIMEOUT);
       return;
     }
 
@@ -685,91 +547,77 @@ class BattleEngine {
   }
 
   /**
-   * 효과적인 스탯 계산 (버프/디버프 적용)
-   */
-  getEffectiveStats(participant) {
-    const baseStats = { ...participant.stats };
-    const effectiveStats = { ...baseStats };
-    
-    participant.statusEffects.forEach(effect => {
-      if (effect.type === 'buff' && effect.stat in effectiveStats) {
-        effectiveStats[effect.stat] += effect.value;
-      } else if (effect.type === 'debuff' && effect.stat in effectiveStats) {
-        effectiveStats[effect.stat] = Math.max(1, effectiveStats[effect.stat] - effect.value);
-      }
-    });
-    
-    return effectiveStats;
-  }
-
-  /**
-   * 전투 종료 조건 체크
-   */
-  checkBattleEnd(battle) {
-    const aliveParticipants = Object.values(battle.participants).filter(p => p.hp > 0);
-    return aliveParticipants.length <= 1;
-  }
-
-  /**
    * 전투 종료
    */
-  endBattle(battle, reason = 'normal') {
+  endBattle(battle, reason = WIN_CONDITIONS.HP_ZERO, winner = null) {
     battle.status = BATTLE_STATUS.ENDED;
     battle.endedAt = new Date();
     this.clearTurnTimer(battle.id);
 
-    let winner = null;
-    let message = '';
-
-    if (reason === 'timeout') {
-      // 시간 초과 시 HP가 높은 쪽 승리
-      const participantA = battle.participants.A;
-      const participantB = battle.participants.B;
-      
-      if (participantA.hp > participantB.hp) {
-        winner = participantA;
-        message = `시간 초과! ${winner.name}이 승리했습니다! (HP: ${winner.hp})`;
-      } else if (participantB.hp > participantA.hp) {
-        winner = participantB;
-        message = `시간 초과! ${winner.name}이 승리했습니다! (HP: ${winner.hp})`;
+    // 승자 결정
+    if (!winner) {
+      if (reason === WIN_CONDITIONS.TIMEOUT) {
+        const participantA = battle.participants.A;
+        const participantB = battle.participants.B;
+        
+        if (participantA.hp > participantB.hp) {
+          winner = participantA;
+        } else if (participantB.hp > participantA.hp) {
+          winner = participantB;
+        }
+        // 동점이면 winner는 null (무승부)
       } else {
-        message = '시간 초과! 무승부입니다!';
-      }
-    } else {
-      const alive = Object.values(battle.participants).filter(p => p.hp > 0);
-      if (alive.length === 1) {
-        winner = alive[0];
-        message = `${winner.name}이 승리했습니다!`;
-      } else {
-        message = '무승부입니다!';
+        const alive = Object.values(battle.participants).filter(p => p.hp > 0);
+        if (alive.length === 1) {
+          winner = alive[0];
+        }
       }
     }
 
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: message,
+    const message = generateBattleMessage('battle_end', { 
       winner: winner?.name,
-      reason: reason,
-      finalStats: {
-        A: {
-          name: battle.participants.A.name,
-          hp: battle.participants.A.hp,
-          damageDealt: battle.participants.A.damageDealt,
-          damageTaken: battle.participants.A.damageTaken,
-          criticalHits: battle.participants.A.criticalHits
-        },
-        B: {
-          name: battle.participants.B.name,
-          hp: battle.participants.B.hp,
-          damageDealt: battle.participants.B.damageDealt,
-          damageTaken: battle.participants.B.damageTaken,
-          criticalHits: battle.participants.B.criticalHits
-        }
-      },
+      reason 
+    });
+
+    this.addLogEntry(battle, {
+      type: 'battle_end',
+      message,
+      winner: winner?.name,
+      reason,
+      finalStats: this.calculateFinalStats(battle),
       timestamp: new Date()
     });
 
     this.logger.info(`Battle ended: ${battle.id}, Winner: ${winner?.name || 'Draw'}, Reason: ${reason}`);
+  }
+
+  /**
+   * 최종 통계 계산
+   */
+  calculateFinalStats(battle) {
+    const stats = {};
+    
+    Object.entries(battle.participants).forEach(([key, participant]) => {
+      stats[key] = {
+        name: participant.name,
+        hp: participant.hp,
+        maxHp: participant.maxHp,
+        stats: participant.stats,
+        damageDealt: participant.damageDealt,
+        damageTaken: participant.damageTaken,
+        actionsUsed: participant.actionsUsed,
+        criticalHits: participant.criticalHits,
+        missedAttacks: participant.missedAttacks,
+        dodgedAttacks: participant.dodgedAttacks,
+        defenseActions: participant.defenseActions,
+        accuracy: participant.actionsUsed > 0 ? 
+          Math.round(((participant.actionsUsed - participant.missedAttacks) / participant.actionsUsed) * 100) : 0,
+        avgDamagePerHit: participant.criticalHits + (participant.actionsUsed - participant.missedAttacks - participant.defenseActions) > 0 ?
+          Math.round(participant.damageDealt / (participant.criticalHits + (participant.actionsUsed - participant.missedAttacks - participant.defenseActions))) : 0
+      };
+    });
+    
+    return stats;
   }
 
   /**
@@ -810,7 +658,7 @@ class BattleEngine {
     
     this.addLogEntry(battle, {
       type: 'system',
-      message: `⏰ ${currentParticipant.name}의 턴 시간이 초과되어 자동으로 방어합니다.`,
+      message: generateBattleMessage('turn_timeout', { player: currentParticipant.name }),
       timestamp: new Date()
     });
 
@@ -860,20 +708,20 @@ class BattleEngine {
           image: battle.participants.A.image,
           hp: battle.participants.A.hp,
           maxHp: battle.participants.A.maxHp,
-          mp: battle.participants.A.mp,
-          maxMp: battle.participants.A.maxMp,
+          stats: battle.participants.A.stats,
           statusEffects: battle.participants.A.statusEffects,
-          connected: battle.participants.A.connected
+          connected: battle.participants.A.connected,
+          lastAction: battle.participants.A.lastAction
         },
         B: {
           name: battle.participants.B.name,
           image: battle.participants.B.image,
           hp: battle.participants.B.hp,
           maxHp: battle.participants.B.maxHp,
-          mp: battle.participants.B.mp,
-          maxMp: battle.participants.B.maxMp,
+          stats: battle.participants.B.stats,
           statusEffects: battle.participants.B.statusEffects,
-          connected: battle.participants.B.connected
+          connected: battle.participants.B.connected,
+          lastAction: battle.participants.B.lastAction
         }
       },
       currentTurn: battle.currentTurn,
@@ -893,47 +741,19 @@ class BattleEngine {
         const participant = battle.participants[participantKey];
         baseState.myRole = participantKey;
         baseState.myTurn = battle.currentTurn === participantKey;
-        baseState.participants[participantKey].stats = participant.stats;
         baseState.participants[participantKey].battleStats = {
           damageDealt: participant.damageDealt,
           damageTaken: participant.damageTaken,
           actionsUsed: participant.actionsUsed,
-          criticalHits: participant.criticalHits
+          criticalHits: participant.criticalHits,
+          missedAttacks: participant.missedAttacks,
+          dodgedAttacks: participant.dodgedAttacks,
+          defenseActions: participant.defenseActions
         };
       }
     }
 
     return baseState;
-  }
-
-  /**
-   * 전투 통계 계산
-   */
-  calculateBattleStats(battle) {
-    const stats = {
-      duration: battle.endedAt ? 
-        Math.floor((battle.endedAt - battle.createdAt) / 1000) : 
-        Math.floor((Date.now() - battle.createdAt) / 1000),
-      totalTurns: battle.turnCount,
-      totalDamage: Object.values(battle.participants).reduce((sum, p) => sum + p.damageDealt, 0),
-      totalActions: Object.values(battle.participants).reduce((sum, p) => sum + p.actionsUsed, 0),
-      participants: {}
-    };
-
-    Object.entries(battle.participants).forEach(([key, participant]) => {
-      stats.participants[key] = {
-        name: participant.name,
-        finalHp: participant.hp,
-        damageDealt: participant.damageDealt,
-        damageTaken: participant.damageTaken,
-        actionsUsed: participant.actionsUsed,
-        criticalHits: participant.criticalHits,
-        accuracy: participant.actionsUsed > 0 ? 
-          Math.round((participant.damageDealt / participant.actionsUsed) * 100) / 100 : 0
-      };
-    });
-
-    return stats;
   }
 
   /**
@@ -983,64 +803,13 @@ class BattleEngine {
       }
     });
   }
-
-  /**
-   * 강제 전투 종료 (관리자용)
-   */
-  forceBattleEnd(battleId, reason = 'admin') {
-    const battle = this.getBattle(battleId);
-    if (!battle) return { success: false, error: 'Battle not found' };
-
-    if (battle.status === BATTLE_STATUS.ENDED) {
-      return { success: false, error: 'Battle already ended' };
-    }
-
-    this.endBattle(battle, reason);
-    return { success: true };
-  }
-
-  /**
-   * 전투 설정 업데이트 (진행 중이 아닌 경우만)
-   */
-  updateBattleSettings(battleId, newSettings) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return { success: false, error: 'Battle not found' };
-
-    if (battle.status !== BATTLE_STATUS.WAITING) {
-      return { success: false, error: 'Cannot update settings of active battle' };
-    }
-
-    battle.settings = { ...battle.settings, ...newSettings };
-    return { success: true };
-  }
-
-  /**
-   * 참가자 재연결 처리
-   */
-  handleReconnect(battleId, participantId, socketId) {
-    const battle = this.getBattle(battleId);
-    if (!battle) return { success: false, error: 'Battle not found' };
-
-    const participantKey = this.findParticipantKey(battle, participantId);
-    if (!participantKey) return { success: false, error: 'Participant not found' };
-
-    const participant = battle.participants[participantKey];
-    participant.connected = true;
-    participant.socketId = socketId;
-
-    this.addLogEntry(battle, {
-      type: 'system',
-      message: `${participant.name}이 다시 연결되었습니다.`,
-      timestamp: new Date()
-    });
-
-    // 일시정지된 전투 재개
-    if (battle.status === BATTLE_STATUS.PAUSED && this.areAllParticipantsConnected(battle)) {
-      this.resumeBattle(battleId);
-    }
-
-    return { success: true, participantKey };
-  }
 }
 
-module.exports = BattleEngine;
+module.exports = BattleEngine;투 조회
+   */
+  getBattle(battleId) {
+    return this.battles.get(battleId);
+  }
+
+  /**
+   * 전
