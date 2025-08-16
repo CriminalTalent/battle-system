@@ -38,6 +38,9 @@ const useBattle = (apiUrl = 'http://localhost:3001') => {
   // 채팅 상태
   const [chatMessages, setChatMessages] = useState([]);
   
+  // 캐릭터 이미지 상태
+  const [availableCharacterImages, setAvailableCharacterImages] = useState([]);
+  
   // Socket.IO 참조
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
