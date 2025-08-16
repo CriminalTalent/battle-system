@@ -16,24 +16,28 @@ class BattleSocketHandler {
                 try {
                     const battle = this.battleEngine.createBattle({
                         mode: data.mode || '1v1',
-                        settings: data.settings || {}
+                        settings: {
+                            itemsEnabled: data.settings?.itemsEnabled !== false, // 기본값 true
+                            ...data.settings
+                        }
                     });
                     
                     socket.emit('battle_created', {
                         success: true,
                         battleId: battle.id,
                         mode: battle.mode,
+                        itemsEnabled: battle.settings.itemsEnabled,
                         battle: this.serializeBattle(battle)
                     });
                     
-                    console.log(`Battle created: ${battle.id} (${battle.mode})`);
+                    console.log(`Battle created: ${battle.id} (${battle.mode}) - Items: ${battle.settings.itemsEnabled}`);
                 } catch (error) {
                     console.error('Create battle error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
 
-            // 배틀 참가
+            // 배틀 참가 (아이템 포함)
             socket.on('join_battle', (data) => {
                 try {
                     const player = {
@@ -45,13 +49,17 @@ class BattleSocketHandler {
                         agility: data.player?.agility || data.agility || 50
                     };
 
-                    const result = this.battleEngine.joinBattle(data.battleId, player);
+                    // 팀 아이템 정보 (첫 번째 플레이어만)
+                    const teamItems = data.teamItems || {};
+
+                    const result = this.battleEngine.joinBattle(data.battleId, player, teamItems);
                     const battle = this.battleEngine.getBattle(data.battleId);
                     
                     socket.join(data.battleId);
                     socket.battleId = data.battleId;
                     socket.playerId = player.id;
                     socket.playerName = player.name;
+                    socket.playerTeam = result.team;
                     
                     // 참가한 플레이어에게 개별 응답
                     socket.emit('battle_joined', {
@@ -59,13 +67,11 @@ class BattleSocketHandler {
                         player: player,
                         team: result.team,
                         position: result.position,
-                        battle: this.serializeBattle(battle)
+                        battle: this.serializeBattleForTeam(battle, result.team)
                     });
                     
-                    // 모든 참가자에게 배틀 상태 업데이트
-                    this.io.to(data.battleId).emit('battle_updated', {
-                        battle: this.serializeBattle(battle)
-                    });
+                    // 모든 참가자에게 배틀 상태 업데이트 (팀별로 다른 정보)
+                    this.broadcastBattleUpdate(data.battleId, battle);
                     
                     // 시스템 메시지로 참가 알림
                     this.io.to(data.battleId).emit('system_message', {
@@ -78,14 +84,14 @@ class BattleSocketHandler {
                         this.startBattle(data.battleId);
                     }
                     
-                    console.log(`Player joined battle: ${player.name} -> ${data.battleId}`);
+                    console.log(`Player joined battle: ${player.name} -> ${data.battleId} (Team: ${result.team})`);
                 } catch (error) {
                     console.error('Join battle error:', error);
                     socket.emit('error', { message: error.message });
                 }
             });
 
-            // 액션 실행
+            // 액션 실행 (아이템 사용 포함)
             socket.on('execute_action', (data) => {
                 try {
                     const result = this.battleEngine.executeAction(
@@ -106,11 +112,8 @@ class BattleSocketHandler {
                         return;
                     }
                     
-                    // 액션 결과를 모든 참가자에게 전송
-                    this.io.to(socket.battleId).emit('action_result', {
-                        result,
-                        battleState: this.serializeBattle(battle)
-                    });
+                    // 액션 결과를 모든 참가자에게 전송 (팀별로 다른 정보)
+                    this.broadcastActionResult(socket.battleId, result, battle);
                     
                     // 배틀이 종료되었는지 확인
                     if (battle.status === 'finished') {
@@ -131,6 +134,55 @@ class BattleSocketHandler {
                 }
             });
 
+            // 사용 가능한 아이템 목록 요청
+            socket.on('get_usable_items', (data) => {
+                try {
+                    if (!socket.battleId) {
+                        socket.emit('error', { message: '배틀에 참가하지 않은 상태입니다.' });
+                        return;
+                    }
+
+                    const battle = this.battleEngine.getBattle(socket.battleId);
+                    const player = this.battleEngine.findPlayerById(battle, socket.id);
+                    
+                    if (!player) {
+                        socket.emit('error', { message: '플레이어를 찾을 수 없습니다.' });
+                        return;
+                    }
+
+                    const usableItems = this.battleEngine.getUsableItems(battle, player);
+                    
+                    socket.emit('usable_items', {
+                        items: usableItems
+                    });
+                    
+                } catch (error) {
+                    console.error('Get usable items error:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
+            // 팀 아이템 정보 요청 (같은 팀만)
+            socket.on('get_team_items', (data) => {
+                try {
+                    if (!socket.battleId || !socket.playerTeam) {
+                        socket.emit('error', { message: '배틀에 참가하지 않은 상태입니다.' });
+                        return;
+                    }
+
+                    const battle = this.battleEngine.getBattle(socket.battleId);
+                    const teamItems = this.battleEngine.getTeamItems(battle, socket.playerTeam);
+                    
+                    socket.emit('team_items', {
+                        items: teamItems
+                    });
+                    
+                } catch (error) {
+                    console.error('Get team items error:', error);
+                    socket.emit('error', { message: error.message });
+                }
+            });
+
             // 채팅 메시지 전송
             socket.on('chat_message', (data) => {
                 try {
@@ -143,7 +195,6 @@ class BattleSocketHandler {
                         return;
                     }
                     
-                    // 메시지 필터링 (기본적인 욕설 필터 등)
                     const filteredText = this.filterMessage(data.text.trim());
                     
                     const chatMessage = {
@@ -154,7 +205,6 @@ class BattleSocketHandler {
                         timestamp: Date.now()
                     };
                     
-                    // 배틀 참가자들에게 채팅 메시지 전송
                     this.io.to(socket.battleId).emit('chat_message', chatMessage);
                     
                     console.log(`Chat message from ${socket.playerName}: ${filteredText}`);
@@ -175,7 +225,7 @@ class BattleSocketHandler {
                     
                     const battle = this.battleEngine.getBattle(data.battleId);
                     socket.emit('battle_state', {
-                        battle: this.serializeBattle(battle)
+                        battle: this.serializeBattleForTeam(battle, socket.playerTeam)
                     });
                 } catch (error) {
                     socket.emit('error', { message: error.message });
@@ -187,13 +237,11 @@ class BattleSocketHandler {
                 console.log(`Socket disconnected: ${socket.id}`);
                 
                 if (socket.battleId && socket.playerName) {
-                    // 연결 해제 알림
                     this.io.to(socket.battleId).emit('system_message', {
                         message: `${socket.playerName}님이 연결을 해제했습니다.`,
                         timestamp: Date.now()
                     });
                     
-                    // 필요시 배틀에서 플레이어 제거 로직 추가
                     try {
                         this.battleEngine.handlePlayerDisconnect(socket.battleId, socket.id);
                     } catch (error) {
@@ -214,10 +262,8 @@ class BattleSocketHandler {
                 rolls: battle.initiativeRolls
             });
             
-            // 배틀 시작 알림
-            this.io.to(battleId).emit('battle_started', {
-                battle: this.serializeBattle(battle)
-            });
+            // 배틀 시작 알림 (팀별로 다른 정보)
+            this.broadcastBattleStarted(battleId, battle);
             
             this.io.to(battleId).emit('system_message', {
                 message: '배틀이 시작되었습니다!',
@@ -255,10 +301,55 @@ class BattleSocketHandler {
         }
     }
 
-    // 메시지 필터링 (기본적인 욕설 필터)
+    // 팀별로 다른 배틀 상태 브로드캐스트
+    broadcastBattleUpdate(battleId, battle) {
+        const room = this.io.sockets.adapter.rooms.get(battleId);
+        if (!room) return;
+
+        for (const socketId of room) {
+            const socket = this.io.sockets.sockets.get(socketId);
+            if (socket && socket.playerTeam) {
+                socket.emit('battle_updated', {
+                    battle: this.serializeBattleForTeam(battle, socket.playerTeam)
+                });
+            }
+        }
+    }
+
+    // 팀별로 다른 배틀 시작 정보 브로드캐스트
+    broadcastBattleStarted(battleId, battle) {
+        const room = this.io.sockets.adapter.rooms.get(battleId);
+        if (!room) return;
+
+        for (const socketId of room) {
+            const socket = this.io.sockets.sockets.get(socketId);
+            if (socket && socket.playerTeam) {
+                socket.emit('battle_started', {
+                    battle: this.serializeBattleForTeam(battle, socket.playerTeam)
+                });
+            }
+        }
+    }
+
+    // 팀별로 다른 액션 결과 브로드캐스트
+    broadcastActionResult(battleId, result, battle) {
+        const room = this.io.sockets.adapter.rooms.get(battleId);
+        if (!room) return;
+
+        for (const socketId of room) {
+            const socket = this.io.sockets.sockets.get(socketId);
+            if (socket && socket.playerTeam) {
+                socket.emit('action_result', {
+                    result,
+                    battleState: this.serializeBattleForTeam(battle, socket.playerTeam)
+                });
+            }
+        }
+    }
+
+    // 메시지 필터링
     filterMessage(message) {
-        // 기본적인 필터링 로직
-        const forbiddenWords = ['바보', '멍청이', '개새끼']; // 실제로는 더 포괄적인 필터 적용
+        const forbiddenWords = ['바보', '멍청이', '개새끼'];
         let filteredMessage = message;
         
         forbiddenWords.forEach(word => {
@@ -269,7 +360,12 @@ class BattleSocketHandler {
         return filteredMessage;
     }
 
-    // 배틀 상태 직렬화 (클라이언트 전송용)
+    // 팀별 배틀 상태 직렬화
+    serializeBattleForTeam(battle, team) {
+        return this.battleEngine.serializeBattleForTeam(battle, team);
+    }
+
+    // 일반 배틀 상태 직렬화 (아이템 정보 제외)
     serializeBattle(battle) {
         if (!battle) return null;
         
@@ -283,7 +379,7 @@ class BattleSocketHandler {
             currentPlayer: battle.turnOrder ? battle.turnOrder[battle.currentTurnIndex] : null,
             round: battle.round,
             initiativeRolls: battle.initiativeRolls,
-            battleLogs: battle.battleLogs ? battle.battleLogs.slice(-20) : [], // 최근 20개 로그만
+            battleLogs: battle.battleLogs ? battle.battleLogs.slice(-20) : [],
             winner: battle.winner,
             settings: battle.settings,
             createdAt: battle.createdAt
