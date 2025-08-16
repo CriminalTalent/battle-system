@@ -6,6 +6,7 @@ import useBattle from '../hooks/useBattle';
 import ChatPanel from './ChatPanel';
 import ItemSetup from './ItemSetup';
 import ItemPanel from './ItemPanel';
+import CharacterSelector from './CharacterSelector';
 
 export default function BattleField({ apiUrl }) {
   const {
@@ -51,6 +52,8 @@ export default function BattleField({ apiUrl }) {
     battleId: '',
     showJoinForm: false,
     itemsEnabled: true, // 아이템 활성화 여부
+    characterImagesEnabled: true, // 캐릭터 이미지 활성화 여부
+    selectedCharacterImage: null, // 선택된 캐릭터 이미지
     teamItems: {}, // 팀 아이템 설정
     playerStats: {
       attack: 50,
@@ -137,6 +140,26 @@ export default function BattleField({ apiUrl }) {
 
   const handleCreateBattle = () => {
     if (!gameSetup.playerName.trim()) {
+      alert('플레이어 이름을 입력하세요');
+      return;
+    }
+    createBattle(gameSetup.mode, {
+      itemsEnabled: gameSetup.itemsEnabled,
+      characterImagesEnabled: gameSetup.characterImagesEnabled
+    });
+  };
+
+  const handleJoinBattle = () => {
+    if (!gameSetup.playerName.trim() || !gameSetup.battleId.trim()) {
+      alert('플레이어 이름과 배틀 ID를 입력하세요');
+      return;
+    }
+    joinBattle(gameSetup.battleId, {
+      name: gameSetup.playerName,
+      characterImageId: gameSetup.selectedCharacterImage,
+      ...gameSetup.playerStats
+    }, gameSetup.teamItems);
+  };if (!gameSetup.playerName.trim()) {
       alert('플레이어 이름을 입력하세요');
       return;
     }
