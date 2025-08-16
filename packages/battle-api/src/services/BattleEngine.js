@@ -34,9 +34,95 @@ class BattleEngine {
                 usable: true
             }
         };
+
+        // 기본 캐릭터 이미지 (관리자가 설정 가능)
+        this.characterImages = {
+            warrior: {
+                id: 'warrior',
+                name: '전사',
+                imageUrl: '/images/characters/warrior.png',
+                description: '근접 전투의 달인'
+            },
+            mage: {
+                id: 'mage',
+                name: '마법사',
+                imageUrl: '/images/characters/mage.png',
+                description: '마법의 힘을 다루는 자'
+            },
+            archer: {
+                id: 'archer',
+                name: '궁수',
+                imageUrl: '/images/characters/archer.png',
+                description: '정확한 원거리 공격수'
+            },
+            rogue: {
+                id: 'rogue',
+                name: '도적',
+                imageUrl: '/images/characters/rogue.png',
+                description: '그림자 속의 암살자'
+            },
+            paladin: {
+                id: 'paladin',
+                name: '성기사',
+                imageUrl: '/images/characters/paladin.png',
+                description: '신성한 힘의 수호자'
+            },
+            berserker: {
+                id: 'berserker',
+                name: '광전사',
+                imageUrl: '/images/characters/berserker.png',
+                description: '분노로 싸우는 전사'
+            },
+            cleric: {
+                id: 'cleric',
+                name: '성직자',
+                imageUrl: '/images/characters/cleric.png',
+                description: '치유의 힘을 지닌 자'
+            },
+            assassin: {
+                id: 'assassin',
+                name: '암살자',
+                imageUrl: '/images/characters/assassin.png',
+                description: '치명적인 일격의 달인'
+            }
+        };
         
         // 정리 작업을 위한 타이머 (30분마다 실행)
         this.setupCleanupTimer();
+    }
+
+    // 관리자용 캐릭터 이미지 추가/수정
+    addCharacterImage(imageData) {
+        const { id, name, imageUrl, description } = imageData;
+        
+        if (!id || !name || !imageUrl) {
+            throw new Error('Character image requires id, name, and imageUrl');
+        }
+
+        this.characterImages[id] = {
+            id,
+            name,
+            imageUrl,
+            description: description || ''
+        };
+
+        console.log(`Character image added/updated: ${name} (${id})`);
+        return this.characterImages[id];
+    }
+
+    // 관리자용 캐릭터 이미지 삭제
+    removeCharacterImage(characterId) {
+        if (this.characterImages[characterId]) {
+            delete this.characterImages[characterId];
+            console.log(`Character image removed: ${characterId}`);
+            return true;
+        }
+        return false;
+    }
+
+    // 사용 가능한 캐릭터 이미지 목록 조회
+    getAvailableCharacterImages() {
+        return Object.values(this.characterImages);
     }
 
     // 배틀 생성
@@ -76,9 +162,10 @@ class BattleEngine {
             
             // 설정
             settings: {
-                turnTimeLimit: config.settings?.turnTimeLimit || 30000, // 30초
+                turnTimeLimit: config.settings?.turnTimeLimit || 300000, // 5분 (300초)
                 maxTurns: config.settings?.maxTurns || 50,
                 itemsEnabled: config.settings?.itemsEnabled !== false, // 기본값 true
+                characterImagesEnabled: config.settings?.characterImagesEnabled !== false, // 기본값 true
                 ...config.settings
             },
             
@@ -89,11 +176,11 @@ class BattleEngine {
         };
 
         this.battles.set(battleId, battle);
-        console.log(`Battle created: ${battleId} (${battle.mode})`);
+        console.log(`Battle created: ${battleId} (${battle.mode}) - Timer: ${battle.settings.turnTimeLimit}ms`);
         return battle;
     }
 
-    // 플레이어 참가 (아이템 포함)
+    // 플레이어 참가 (아이템 및 캐릭터 이미지 포함)
     joinBattle(battleId, player, teamItems = {}) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
@@ -113,6 +200,13 @@ class BattleEngine {
         if (battle.teams[targetTeam].length >= maxTeamSize) {
             throw new Error('Team is full');
         }
+
+        // 캐릭터 이미지 유효성 검증
+        if (player.characterImageId && battle.settings.characterImagesEnabled) {
+            if (!this.characterImages[player.characterImageId]) {
+                throw new Error('Invalid character image ID');
+            }
+        }
         
         // 플레이어 정보 설정
         player.team = targetTeam;
@@ -122,6 +216,11 @@ class BattleEngine {
         player.defendBuff = false;
         player.dodgeBuff = 0;
         player.activeItems = {}; // 활성화된 아이템 효과
+        
+        // 캐릭터 이미지 정보 추가
+        if (player.characterImageId && battle.settings.characterImagesEnabled) {
+            player.characterImage = this.characterImages[player.characterImageId];
+        }
         
         battle.teams[targetTeam].push(player);
         battle.lastActivityAt = Date.now();
@@ -419,7 +518,7 @@ class BattleEngine {
         this.startTurnTimer(battle);
     }
 
-    // 배틀 상태 직렬화 (팀별 아이템 정보 포함)
+    // 배틀 상태 직렬화 (팀별 아이템 정보 및 캐릭터 이미지 포함)
     serializeBattleForTeam(battle, team) {
         if (!battle) return null;
         
@@ -444,7 +543,30 @@ class BattleEngine {
             baseBattle.teamItems = this.getTeamItems(battle, team);
         }
 
+        // 사용 가능한 캐릭터 이미지 목록 추가
+        if (battle.settings.characterImagesEnabled) {
+            baseBattle.availableCharacterImages = this.getAvailableCharacterImages();
+        }
+
         return baseBattle;
+    }
+
+    // 턴 타이머 시작 (5분)
+    startTurnTimer(battle) {
+        this.clearTurnTimer(battle.id);
+        
+        const timer = setTimeout(() => {
+            const currentPlayer = this.getCurrentPlayer(battle);
+            if (currentPlayer && battle.status === 'in_progress') {
+                this.addLog(battle, `${currentPlayer.name}의 턴 시간(5분)이 초과되어 자동으로 방어합니다.`);
+                this.processAction(battle, currentPlayer, { type: 'defend' });
+                if (!this.checkWinCondition(battle)) {
+                    this.nextTurn(battle);
+                }
+            }
+        }, battle.settings.turnTimeLimit); // 5분 (300,000ms)
+        
+        this.turnTimers.set(battle.id, timer);
     }
 
     // 기존 메서드들은 그대로 유지...
@@ -569,7 +691,7 @@ class BattleEngine {
         this.addLog(battle, '배틀이 시작됩니다!');
         
         const firstPlayer = battle.turnOrder[0];
-        this.addLog(battle, `${firstPlayer.name}의 턴입니다!`);
+        this.addLog(battle, `${firstPlayer.name}의 턴입니다! (제한시간: 5분)`);
         
         this.startTurnTimer(battle);
     }
@@ -590,7 +712,8 @@ class BattleEngine {
                         id: player.id,
                         name: player.name,
                         hp: player.hp,
-                        maxHp: player.maxHp
+                        maxHp: player.maxHp,
+                        characterImage: player.characterImage || null
                     });
                 }
             });
@@ -766,23 +889,6 @@ class BattleEngine {
         }
     }
 
-    startTurnTimer(battle) {
-        this.clearTurnTimer(battle.id);
-        
-        const timer = setTimeout(() => {
-            const currentPlayer = this.getCurrentPlayer(battle);
-            if (currentPlayer && battle.status === 'in_progress') {
-                this.addLog(battle, `${currentPlayer.name}의 턴 시간이 초과되어 자동으로 방어합니다.`);
-                this.processAction(battle, currentPlayer, { type: 'defend' });
-                if (!this.checkWinCondition(battle)) {
-                    this.nextTurn(battle);
-                }
-            }
-        }, battle.settings.turnTimeLimit);
-        
-        this.turnTimers.set(battle.id, timer);
-    }
-
     clearTurnTimer(battleId) {
         const timer = this.turnTimers.get(battleId);
         if (timer) {
@@ -850,7 +956,8 @@ class BattleEngine {
             activeBattles,
             waitingBattles,
             finishedBattles,
-            activeTimers: this.turnTimers.size
+            activeTimers: this.turnTimers.size,
+            availableCharacterImages: Object.keys(this.characterImages).length
         };
     }
 }
