@@ -4,6 +4,9 @@ class BattleEngine {
     constructor() {
         this.battles = new Map();
         this.turnTimers = new Map();
+        
+        // 정리 작업을 위한 타이머 (30분마다 실행)
+        this.setupCleanupTimer();
     }
 
     // 배틀 생성
@@ -11,7 +14,7 @@ class BattleEngine {
         const battleId = uuidv4();
         const battle = {
             id: battleId,
-            status: 'waiting', // waiting, initiative, active, ended
+            status: 'waiting', // waiting, ready, initiative, in_progress, finished
             mode: config.mode || '1v1', // 1v1, 2v2, 3v3, 4v4
             
             // 팀전 구조
@@ -23,6 +26,7 @@ class BattleEngine {
             // 턴 관리
             turnOrder: [],           // 선후공 순서 배열
             currentTurnIndex: 0,     // 현재 턴 인덱스
+            round: 1,                // 라운드 번호
             
             // 선후공 정보
             initiativeRolls: {
@@ -30,11 +34,25 @@ class BattleEngine {
                 team2: { agility: 0, diceRoll: 0, total: 0 }
             },
             
+            // 로그 및 채팅
             battleLogs: [],
-            createdAt: Date.now()
+            chatMessages: [],
+            
+            // 설정
+            settings: {
+                turnTimeLimit: config.settings?.turnTimeLimit || 30000, // 30초
+                maxTurns: config.settings?.maxTurns || 50,
+                ...config.settings
+            },
+            
+            // 메타데이터
+            winner: null,
+            createdAt: Date.now(),
+            lastActivityAt: Date.now()
         };
 
         this.battles.set(battleId, battle);
+        console.log(`Battle created: ${battleId} (${battle.mode})`);
         return battle;
     }
 
@@ -42,29 +60,57 @@ class BattleEngine {
     joinBattle(battleId, player) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
-        if (battle.status !== 'waiting') throw new Error('Battle already started');
+        if (battle.status !== 'waiting') throw new Error('Battle already started or finished');
+
+        // 중복 참가 방지
+        const existingPlayer = this.findPlayerById(battle, player.id);
+        if (existingPlayer) throw new Error('Player already in battle');
 
         // 팀 배정 (균등하게)
         const team1Count = battle.teams.team1.length;
         const team2Count = battle.teams.team2.length;
         const targetTeam = team1Count <= team2Count ? 'team1' : 'team2';
         
+        // 팀 크기 제한 확인
+        const maxTeamSize = this.getMaxTeamSize(battle.mode);
+        if (battle.teams[targetTeam].length >= maxTeamSize) {
+            throw new Error('Team is full');
+        }
+        
         // 플레이어 정보 설정
         player.team = targetTeam;
         player.position = battle.teams[targetTeam].length;
         player.hp = player.maxHp || 100;
         player.status = 'alive';
+        player.defendBuff = false;
+        player.dodgeBuff = 0;
         
         battle.teams[targetTeam].push(player);
+        battle.lastActivityAt = Date.now();
         
         this.addLog(battle, `${player.name}이 ${targetTeam}에 참가했습니다.`);
 
         // 배틀 시작 가능한지 확인
         if (this.canStartBattle(battle)) {
-            this.startInitiativePhase(battle);
+            battle.status = 'ready';
         }
 
-        return battle;
+        return {
+            team: targetTeam,
+            position: player.position,
+            battle: battle
+        };
+    }
+
+    // 모드별 최대 팀 크기
+    getMaxTeamSize(mode) {
+        const teamSizes = {
+            '1v1': 1,
+            '2v2': 2,
+            '3v3': 3,
+            '4v4': 4
+        };
+        return teamSizes[mode] || 1;
     }
 
     // 배틀 시작 가능 여부 확인
@@ -85,20 +131,31 @@ class BattleEngine {
         return playerCounts[mode] || 2;
     }
 
+    // 배틀 시작 (외부에서 호출)
+    startBattle(battleId) {
+        const battle = this.battles.get(battleId);
+        if (!battle) throw new Error('Battle not found');
+        if (battle.status !== 'ready') throw new Error('Battle not ready');
+
+        this.startInitiativePhase(battle);
+        return battle;
+    }
+
     // 선후공 결정 페이즈 시작
     startInitiativePhase(battle) {
         battle.status = 'initiative';
+        battle.lastActivityAt = Date.now();
         this.addLog(battle, '선후공을 결정합니다!');
 
         // 각 팀의 총 민첩성 계산
         const team1Agility = this.calculateTeamAgility(battle.teams.team1);
         const team2Agility = this.calculateTeamAgility(battle.teams.team2);
 
-        // 주사위 굴리기 (1d20)
-        const team1Dice = this.rollDice(20);
-        const team2Dice = this.rollDice(20);
+        // 주사위 굴리기 (1d100)
+        const team1Dice = this.rollDice(100);
+        const team2Dice = this.rollDice(100);
 
-        // 총합 계산
+        // 이합 계산
         const team1Total = team1Agility + team1Dice;
         const team2Total = team2Agility + team2Dice;
 
@@ -132,14 +189,16 @@ class BattleEngine {
             // 동점일 경우 재굴림
             this.addLog(battle, '동점! 다시 굴립니다...');
             setTimeout(() => this.startInitiativePhase(battle), 2000);
-            return;
+            return battle;
         }
 
         // 턴 순서 생성
         this.createTurnOrder(battle, firstTeam, secondTeam);
         
-        // 3초 후 배틀 시작
-        setTimeout(() => this.startBattle(battle), 3000);
+        // 실제 배틀 시작
+        this.beginBattle(battle);
+        
+        return battle;
     }
 
     // 팀 총 민첩성 계산
@@ -175,19 +234,20 @@ class BattleEngine {
         battle.currentTurnIndex = 0;
         
         // 턴 순서 로그
-        const orderLog = battle.turnOrder.map((p, i) => `${i + 1}. ${p.name} (${p.team})`).join('\n');
-        this.addLog(battle, `턴 순서:\n${orderLog}`);
+        const orderLog = battle.turnOrder.map((p, i) => `${i + 1}. ${p.name} (${p.team})`).join(', ');
+        this.addLog(battle, `턴 순서: ${orderLog}`);
     }
 
-    // 배틀 시작
-    startBattle(battle) {
-        battle.status = 'active';
+    // 배틀 실제 시작
+    beginBattle(battle) {
+        battle.status = 'in_progress';
+        battle.lastActivityAt = Date.now();
         this.addLog(battle, '배틀이 시작됩니다!');
         
         const firstPlayer = battle.turnOrder[0];
         this.addLog(battle, `${firstPlayer.name}의 턴입니다!`);
         
-        // 턴 타이머 시작 (30초)
+        // 턴 타이머 시작
         this.startTurnTimer(battle);
     }
 
@@ -201,20 +261,57 @@ class BattleEngine {
     executeAction(battleId, playerId, action) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
-        if (battle.status !== 'active') throw new Error('Battle not active');
+        if (battle.status !== 'in_progress') throw new Error('Battle not in progress');
 
         const currentPlayer = this.getCurrentPlayer(battle);
         if (!currentPlayer || currentPlayer.id !== playerId) {
             throw new Error('Not your turn');
         }
 
+        battle.lastActivityAt = Date.now();
+
+        // 타겟이 필요한 액션인 경우 타겟 선택 요구
+        if (action.type === 'attack' && (!action.targets || action.targets.length === 0)) {
+            const availableTargets = this.getAvailableTargets(battle, currentPlayer, action.type);
+            return {
+                requiresTargetSelection: true,
+                availableTargets: availableTargets,
+                maxTargets: 1
+            };
+        }
+
         // 액션 처리
         const result = this.processAction(battle, currentPlayer, action);
         
-        // 턴 종료
-        this.nextTurn(battle);
+        // 승리 조건 확인
+        if (!this.checkWinCondition(battle)) {
+            // 턴 종료
+            this.nextTurn(battle);
+        }
         
         return result;
+    }
+
+    // 사용 가능한 타겟 목록 가져오기
+    getAvailableTargets(battle, attacker, actionType) {
+        const targets = [];
+        
+        if (actionType === 'attack') {
+            // 상대 팀의 살아있는 플레이어들
+            const enemyTeam = attacker.team === 'team1' ? 'team2' : 'team1';
+            battle.teams[enemyTeam].forEach(player => {
+                if (player.status === 'alive') {
+                    targets.push({
+                        id: player.id,
+                        name: player.name,
+                        hp: player.hp,
+                        maxHp: player.maxHp
+                    });
+                }
+            });
+        }
+        
+        return targets;
     }
 
     // 액션 처리 (공격/방어/회피)
@@ -224,6 +321,9 @@ class BattleEngine {
 
         switch (type) {
             case 'attack':
+                if (!targets || targets.length === 0) {
+                    throw new Error('Attack requires targets');
+                }
                 results = this.processAttack(battle, attacker, targets);
                 break;
             case 'defend':
@@ -262,7 +362,7 @@ class BattleEngine {
             }
             
             // 회피 확인 (대상의 민첩성 기반)
-            const dodgeChance = Math.min(target.agility || 50, 30); // 최대 30%
+            const dodgeChance = Math.min((target.agility || 50) / 10, 30); // 최대 30%
             const dodgeRoll = this.rollDice(100);
             
             if (dodgeRoll <= dodgeChance) {
@@ -333,18 +433,37 @@ class BattleEngine {
 
     // 다음 턴
     nextTurn(battle) {
-        // 승리 조건 확인
-        if (this.checkWinCondition(battle)) {
-            return;
-        }
-        
-        // 버프/디버프 처리
+        // 상태 효과 처리
         this.processStatusEffects(battle);
         
         // 살아있는 플레이어 중에서 다음 턴 찾기
+        let attempts = 0;
+        const maxAttempts = battle.turnOrder.length;
+        
         do {
             battle.currentTurnIndex = (battle.currentTurnIndex + 1) % battle.turnOrder.length;
+            attempts++;
+            
+            // 무한 루프 방지
+            if (attempts >= maxAttempts) {
+                console.error('Cannot find next alive player');
+                this.endBattle(battle, null);
+                return;
+            }
         } while (battle.turnOrder[battle.currentTurnIndex].status !== 'alive');
+        
+        // 라운드 체크 (모든 플레이어가 한 번씩 턴을 마쳤을 때)
+        if (battle.currentTurnIndex === 0) {
+            battle.round++;
+            this.addLog(battle, `라운드 ${battle.round} 시작!`);
+            
+            // 최대 턴 수 체크
+            if (battle.round > battle.settings.maxTurns) {
+                this.addLog(battle, '최대 턴 수에 도달했습니다. 배틀이 무승부로 종료됩니다.');
+                this.endBattle(battle, 'draw');
+                return;
+            }
+        }
         
         const nextPlayer = this.getCurrentPlayer(battle);
         this.addLog(battle, `${nextPlayer.name}의 턴입니다!`);
@@ -387,9 +506,42 @@ class BattleEngine {
 
     // 배틀 종료
     endBattle(battle, winner) {
-        battle.status = 'ended';
+        battle.status = 'finished';
+        battle.winner = winner;
+        battle.lastActivityAt = Date.now();
         this.clearTurnTimer(battle.id);
-        this.addLog(battle, `${winner}이 승리했습니다!`);
+        
+        if (winner === 'draw') {
+            this.addLog(battle, '배틀이 무승부로 종료되었습니다!');
+        } else if (winner) {
+            this.addLog(battle, `${winner}이 승리했습니다!`);
+        } else {
+            this.addLog(battle, '배틀이 종료되었습니다.');
+        }
+    }
+
+    // 플레이어 연결 해제 처리
+    handlePlayerDisconnect(battleId, playerId) {
+        const battle = this.battles.get(battleId);
+        if (!battle) return;
+        
+        const player = this.findPlayerById(battle, playerId);
+        if (!player) return;
+        
+        // 배틀이 진행 중이고 해당 플레이어의 턴이라면 자동으로 방어 처리
+        if (battle.status === 'in_progress') {
+            const currentPlayer = this.getCurrentPlayer(battle);
+            if (currentPlayer && currentPlayer.id === playerId) {
+                this.addLog(battle, `${player.name}이 연결이 끊어져 자동으로 방어합니다.`);
+                this.processAction(battle, currentPlayer, { type: 'defend' });
+                this.nextTurn(battle);
+            }
+        }
+        
+        // 대기 중인 배틀에서는 플레이어 제거 (구현 필요시)
+        // if (battle.status === 'waiting') {
+        //     // 플레이어 제거 로직
+        // }
     }
 
     // 턴 타이머 시작
@@ -397,10 +549,15 @@ class BattleEngine {
         this.clearTurnTimer(battle.id);
         
         const timer = setTimeout(() => {
-            this.addLog(battle, '턴 시간 초과! 자동으로 방어합니다.');
-            this.processAction(battle, this.getCurrentPlayer(battle), { type: 'defend' });
-            this.nextTurn(battle);
-        }, 30000); // 30초
+            const currentPlayer = this.getCurrentPlayer(battle);
+            if (currentPlayer && battle.status === 'in_progress') {
+                this.addLog(battle, `${currentPlayer.name}의 턴 시간이 초과되어 자동으로 방어합니다.`);
+                this.processAction(battle, currentPlayer, { type: 'defend' });
+                if (!this.checkWinCondition(battle)) {
+                    this.nextTurn(battle);
+                }
+            }
+        }, battle.settings.turnTimeLimit);
         
         this.turnTimers.set(battle.id, timer);
     }
@@ -414,17 +571,76 @@ class BattleEngine {
         }
     }
 
+    // 채팅 메시지 추가 (필요시 사용)
+    addChatMessage(battle, message) {
+        battle.chatMessages.push({
+            ...message,
+            timestamp: message.timestamp || Date.now()
+        });
+        
+        // 최대 100개 메시지 유지
+        if (battle.chatMessages.length > 100) {
+            battle.chatMessages.splice(0, battle.chatMessages.length - 100);
+        }
+    }
+
     // 로그 추가
     addLog(battle, message) {
         battle.battleLogs.push({
             timestamp: Date.now(),
             message
         });
+        
+        // 최대 50개 로그 유지
+        if (battle.battleLogs.length > 50) {
+            battle.battleLogs.splice(0, battle.battleLogs.length - 50);
+        }
     }
 
     // 배틀 조회
     getBattle(battleId) {
-        return this.battles.get(battleId);
+        const battle = this.battles.get(battleId);
+        if (battle) {
+            battle.lastActivityAt = Date.now();
+        }
+        return battle;
+    }
+
+    // 정리 작업 타이머 설정
+    setupCleanupTimer() {
+        // 30분마다 오래된 배틀 정리
+        setInterval(() => {
+            this.cleanupOldBattles();
+        }, 30 * 60 * 1000); // 30분
+    }
+
+    // 오래된 배틀 정리
+    cleanupOldBattles() {
+        const now = Date.now();
+        const maxAge = 2 * 60 * 60 * 1000; // 2시간
+        
+        for (const [battleId, battle] of this.battles) {
+            if (now - battle.lastActivityAt > maxAge) {
+                console.log(`Cleaning up old battle: ${battleId}`);
+                this.clearTurnTimer(battleId);
+                this.battles.delete(battleId);
+            }
+        }
+    }
+
+    // 통계 정보
+    getStats() {
+        const activeBattles = Array.from(this.battles.values()).filter(b => b.status === 'in_progress').length;
+        const waitingBattles = Array.from(this.battles.values()).filter(b => b.status === 'waiting').length;
+        const finishedBattles = Array.from(this.battles.values()).filter(b => b.status === 'finished').length;
+        
+        return {
+            totalBattles: this.battles.size,
+            activeBattles,
+            waitingBattles,
+            finishedBattles,
+            activeTimers: this.turnTimers.size
+        };
     }
 }
 
