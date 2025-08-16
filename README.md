@@ -1,30 +1,31 @@
 # 배틀 시스템
 
-민첩성 기반 선후공 시스템을 갖춘 실시간 팀전 배틀 게임
+민첩성 기반 선후공 시스템과 실시간 채팅을 갖춘 팀전 배틀 게임
 
-![Battle System](https://img.shields.io/badge/Version-2.0.0-blue.svg)
+![Battle System](https://img.shields.io/badge/Version-2.1.0-blue.svg)
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)
 ![React](https://img.shields.io/badge/React-18+-blue.svg)
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7+-red.svg)
 
 ## 목차
 
-- [주요 기능](#-주요-기능)
-- [게임 시스템](#-게임-시스템)
-- [기술 스택](#-기술-스택)
-- [빠른 시작](#-빠른-시작)
-- [프로젝트 구조](#-프로젝트-구조)
-- [API 문서](#-api-문서)
-- [배포 가이드](#-배포-가이드)
-- [개발 가이드](#-개발-가이드)
+- [주요 기능](#주요-기능)
+- [게임 시스템](#게임-시스템)
+- [기술 스택](#기술-스택)
+- [빠른 시작](#빠른-시작)
+- [프로젝트 구조](#프로젝트-구조)
+- [API 문서](#api-문서)
+- [배포 가이드](#배포-가이드)
+- [개발 가이드](#개발-가이드)
 
 ## 주요 기능
 
 ### 전투 시스템
 - **팀전 지원**: 1v1, 2v2, 3v3, 4v4 모드
-- **민첩성 기반 선후공**: 팀 민첩성 총합 + 1d20 주사위로 결정
+- **민첩성 기반 선후공**: 팀 민첩성 총합 + 1d100 주사위로 결정
 - **3가지 액션**: 공격, 방어, 회피
 - **고급 전투 계산**: 명중률, 회피율, 데미지 감소
+- **타겟 선택 시스템**: 직관적인 타겟 선택 UI
 
 ### 액션 시스템
 - **공격**: 명중률 80%, 상대의 민첩성 기반 회피 가능
@@ -33,15 +34,24 @@
 
 ### 실시간 기능
 - **Socket.IO**: 실시간 전투 동기화
-- **턴 타이머**: 5분 제한 시간
+- **실시간 채팅**: 배틀 중 대화 가능
+- **턴 타이머**: 30초 제한 시간 (설정 가능)
 - **자동 재연결**: 연결 끊김 시 자동 재연결
 - **실시간 로그**: 모든 액션 기록
 
+### 채팅 시스템
+- **실시간 메시지**: 배틀 참가자 간 실시간 대화
+- **시스템 메시지**: 게임 이벤트 자동 알림
+- **메시지 필터링**: 기본적인 욕설 필터
+- **채팅 히스토리**: 메시지 기록 유지
+- **최소화 기능**: 모바일에서 공간 절약
+
 ### 사용자 경험
 - **반응형 디자인**: 모바일/데스크톱 최적화
-- **키보드 단축키**: 1(공격), 2(방어), 3(회피)
+- **키보드 단축키**: 1(공격), 2(방어), 3(회피), Enter(채팅)
 - **대상 선택 UI**: 직관적인 클릭 인터페이스
 - **시각적 피드백**: 애니메이션 및 상태 표시
+- **글래스모피즘 디자인**: 모던한 UI/UX
 
 ## 게임 시스템
 
@@ -73,6 +83,11 @@
 회피상태: 민첩성 +20 (1턴 지속)
 ```
 
+### 배틀 플로우
+```
+배틀 생성 → 플레이어 참가 → 준비 완료 → 선후공 결정 → 배틀 시작 → 턴 진행 → 승부 결정
+```
+
 ## 기술 스택
 
 ### 백엔드
@@ -80,7 +95,6 @@
 - **Express.js**: 웹 프레임워크
 - **Socket.IO**: 실시간 통신
 - **UUID**: 고유 ID 생성
-- **Lodash**: 유틸리티 함수
 
 ### 프론트엔드
 - **React 18+**: UI 라이브러리
@@ -91,7 +105,6 @@
 ### 개발 도구
 - **Nodemon**: 개발 서버 자동 재시작
 - **ESLint**: 코드 품질 관리
-- **Jest**: 테스트 프레임워크
 
 ## 빠른 시작
 
@@ -109,7 +122,7 @@ cd battle-system
 ```bash
 # API 서버
 cd packages/battle-api
-npm run setup
+npm install
 
 # 웹 클라이언트
 cd ../battle-web
@@ -132,7 +145,7 @@ npm start
 - **API 서버**: http://localhost:3001
 - **헬스체크**: http://localhost:3001/api/health
 
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 battle-system/
@@ -144,44 +157,24 @@ battle-system/
 │   │   │   ├── socket/
 │   │   │   │   └── battleSocket.js     # Socket.IO 핸들러
 │   │   │   └── server.js               # 메인 서버
-│   │   ├── package.json
-│   │   └── ecosystem.config.js         # PM2 설정
+│   │   └── package.json
 │   └── battle-web/              # 프론트엔드
 │       ├── src/
 │       │   ├── components/
 │       │   │   ├── BattleField.js      # 메인 배틀 화면
+│       │   │   ├── ChatPanel.js        # 채팅 시스템
 │       │   │   └── BattleApp.js        # 앱 컴포넌트
 │       │   ├── hooks/
 │       │   │   └── useBattle.js        # 배틀 상태 관리
 │       │   └── styles/
 │       │       └── battle.css          # 스타일시트
 │       └── package.json
-├── docker-compose.yml           # Docker 컨테이너 설정
 └── README.md
 ```
 
-## 📡 API 문서
+## API 문서
 
 ### REST API
-
-#### 배틀 생성
-```http
-POST /api/battles
-Content-Type: application/json
-
-{
-  "mode": "2v2",
-  "settings": {
-    "turnTimeLimit": 30000,
-    "maxTurns": 50
-  }
-}
-```
-
-#### 배틀 조회
-```http
-GET /api/battles/:battleId
-```
 
 #### 서버 상태
 ```http
@@ -193,16 +186,24 @@ GET /api/health
 #### 클라이언트 → 서버
 ```javascript
 // 배틀 생성
-socket.emit('create_battle', { mode: '2v2' });
+socket.emit('create_battle', { 
+  mode: '2v2',
+  settings: {
+    turnTimeLimit: 30000,
+    maxTurns: 50
+  }
+});
 
 // 배틀 참가
 socket.emit('join_battle', {
   battleId: 'battle_123',
-  playerName: 'Player1',
-  attack: 60,
-  defense: 40,
-  agility: 70,
-  maxHp: 120
+  player: {
+    name: 'Player1',
+    attack: 60,
+    defense: 40,
+    agility: 70,
+    maxHp: 120
+  }
 });
 
 // 액션 실행
@@ -212,6 +213,17 @@ socket.emit('execute_action', {
     targets: ['player_id']
   }
 });
+
+// 채팅 메시지 전송
+socket.emit('chat_message', {
+  text: '안녕하세요!',
+  timestamp: Date.now()
+});
+
+// 배틀 상태 요청
+socket.emit('get_battle_state', {
+  battleId: 'battle_123'
+});
 ```
 
 #### 서버 → 클라이언트
@@ -219,6 +231,13 @@ socket.emit('execute_action', {
 // 배틀 생성 완료
 socket.on('battle_created', (data) => {
   console.log('배틀 ID:', data.battleId);
+  console.log('모드:', data.mode);
+});
+
+// 배틀 참가 완료
+socket.on('battle_joined', (data) => {
+  console.log('팀:', data.team);
+  console.log('포지션:', data.position);
 });
 
 // 배틀 상태 업데이트
@@ -226,35 +245,65 @@ socket.on('battle_updated', (data) => {
   console.log('배틀 상태:', data.battle);
 });
 
+// 선후공 결정
+socket.on('initiative_rolled', (data) => {
+  console.log('선후공 결과:', data.rolls);
+});
+
+// 배틀 시작
+socket.on('battle_started', (data) => {
+  console.log('배틀 시작!');
+});
+
+// 턴 시작
+socket.on('turn_started', (data) => {
+  console.log('현재 플레이어:', data.currentPlayer);
+  console.log('턴:', data.turn);
+});
+
+// 타겟 선택 요구
+socket.on('target_selection_required', (data) => {
+  console.log('타겟 선택 필요:', data.availableTargets);
+});
+
 // 액션 결과
 socket.on('action_result', (data) => {
   console.log('액션 결과:', data.result);
+});
+
+// 배틀 종료
+socket.on('battle_finished', (data) => {
+  console.log('승자:', data.winner);
+});
+
+// 채팅 메시지 수신
+socket.on('chat_message', (data) => {
+  console.log(`${data.playerName}: ${data.text}`);
+});
+
+// 시스템 메시지
+socket.on('system_message', (data) => {
+  console.log('시스템:', data.message);
+});
+
+// 에러
+socket.on('error', (error) => {
+  console.error('에러:', error.message);
 });
 ```
 
 ## 배포 가이드
 
-### Docker를 사용한 배포
+### 환경 변수 설정
 
-#### 1. Docker Compose로 전체 시스템 실행
+#### .env 파일 (packages/battle-api/.env)
 ```bash
-# 프로덕션 배포
-docker-compose up -d
-
-# 로그 확인
-docker-compose logs -f
-
-# 서비스 중단
-docker-compose down
-```
-
-#### 2. 개별 서비스 배포
-```bash
-# API 서버만 실행
-docker-compose up -d battle-api
-
-# 웹 클라이언트만 실행
-docker-compose up -d battle-web
+NODE_ENV=production
+PORT=3001
+CORS_ORIGIN=http://localhost:3000
+CLEANUP_INTERVAL=1800000
+TURN_TIME_LIMIT=30000
+MAX_TURNS=50
 ```
 
 ### PM2를 사용한 배포
@@ -267,7 +316,7 @@ npm install -g pm2
 #### 2. 프로덕션 실행
 ```bash
 cd packages/battle-api
-npm run pm2:start
+pm2 start src/server.js --name "battle-api"
 ```
 
 #### 3. 프로세스 관리
@@ -279,68 +328,44 @@ pm2 status
 pm2 logs battle-api
 
 # 재시작
-npm run pm2:restart
+pm2 restart battle-api
 
 # 중단
-npm run pm2:stop
-```
-
-### 환경 변수 설정
-
-#### .env 파일 (packages/battle-api/.env)
-```bash
-NODE_ENV=production
-PORT=3001
-CORS_ORIGIN=http://localhost:3000
-JWT_SECRET=your-super-secret-key
-CLEANUP_INTERVAL=1800000
+pm2 stop battle-api
 ```
 
 ## 개발 가이드
 
-### 개발 환경 설정
+### 채팅 시스템 커스터마이징
 
-#### 1. Git 훅 설정
-```bash
-# 커밋 전 린트 검사
-npm run lint
-
-# 테스트 실행
-npm test
-```
-
-#### 2. 코드 스타일
-```bash
-# ESLint 실행
-npm run lint
-
-# 자동 수정
-npm run lint:fix
-```
-
-### 테스트
-
-#### 1. 단위 테스트
-```bash
-cd packages/battle-api
-npm test
-```
-
-#### 2. 통합 테스트
-```bash
-npm run test:integration
-```
-
-#### 3. 커버리지 확인
-```bash
-npm run test:coverage
-```
-
-### 새로운 기능 추가
-
-#### 1. 새로운 액션 타입 추가
+#### 메시지 필터링 수정
 ```javascript
-// packages/battle-api/src/services/BattleEngine.js
+// packages/battle-api/src/socket/battleSocket.js
+filterMessage(message) {
+  const forbiddenWords = ['욕설1', '욕설2'];
+  let filteredMessage = message;
+  
+  forbiddenWords.forEach(word => {
+    const regex = new RegExp(word, 'gi');
+    filteredMessage = filteredMessage.replace(regex, '*'.repeat(word.length));
+  });
+  
+  return filteredMessage;
+}
+```
+
+#### 채팅 UI 커스터마이징
+```css
+/* packages/battle-web/src/styles/battle.css */
+.chat-panel {
+  /* 위치, 크기, 색상 등 수정 */
+}
+```
+
+### 새로운 액션 타입 추가
+
+#### 1. BattleEngine.js에 액션 로직 추가
+```javascript
 processAction(battle, attacker, action) {
   switch (action.type) {
     case 'attack':
@@ -349,15 +374,30 @@ processAction(battle, attacker, action) {
       return this.processDefend(battle, attacker);
     case 'dodge':
       return this.processDodge(battle, attacker);
-    case 'your_new_action': // 새 액션 추가
-      return this.processYourNewAction(battle, attacker, action.targets);
+    case 'heal': // 새 액션 추가
+      return this.processHeal(battle, attacker, action.targets);
     default:
       throw new Error('Invalid action type');
   }
 }
+
+processHeal(battle, healer, targets) {
+  // 힐 로직 구현
+}
 ```
 
-#### 2. 새로운 게임 모드 추가
+#### 2. 프론트엔드에 버튼 추가
+```javascript
+// packages/battle-web/src/components/BattleField.js
+<button
+  onClick={() => handleQuickAction('heal')}
+  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+>
+  힐 (4)
+</button>
+```
+
+### 새로운 게임 모드 추가
 ```javascript
 // packages/battle-api/src/services/BattleEngine.js
 getMinPlayers(mode) {
@@ -367,7 +407,7 @@ getMinPlayers(mode) {
     '3v3': 6,
     '4v4': 8,
     '5v5': 10, // 새 모드 추가
-    'custom': 12 // 커스텀 모드
+    'battle_royale': 8 // 배틀로얄 모드
   };
   return playerCounts[mode] || 2;
 }
@@ -375,42 +415,61 @@ getMinPlayers(mode) {
 
 ### 디버깅
 
-#### 1. 서버 로그
+#### 서버 로그 확인
 ```bash
-# 실시간 로그 확인
-tail -f packages/battle-api/logs/app.log
+# 실시간 로그
+pm2 logs battle-api
 
-# 에러 로그만 확인
-grep "ERROR" packages/battle-api/logs/app.log
+# 특정 에러만 확인
+pm2 logs battle-api | grep ERROR
 ```
 
-#### 2. 클라이언트 디버깅
+#### 클라이언트 디버깅
 ```javascript
 // 브라우저 콘솔에서 Socket 상태 확인
-window.socket = socket; // useBattle 훅에서 설정
-console.log('Socket 상태:', window.socket.connected);
+console.log('Socket 연결 상태:', socket.connected);
+console.log('배틀 상태:', battleState);
 ```
 
-### 커밋 컨벤션
+### 성능 모니터링
+
+#### 배틀 통계 확인
+```javascript
+// BattleEngine에서 통계 조회
+const stats = battleEngine.getStats();
+console.log('활성 배틀:', stats.activeBattles);
+console.log('대기 중 배틀:', stats.waitingBattles);
 ```
-feat: 새로운 기능 추가
-fix: 버그 수정
-docs: 문서 수정
-style: 코드 스타일 변경 (포맷팅 등)
-refactor: 코드 리팩토링
-test: 테스트 코드 추가/수정
-chore: 빌드 도구, 설정 파일 등의 변경
-```
+
+## 주요 변경사항 (v2.1.0)
+
+### 새로운 기능
+- ✅ 실시간 채팅 시스템
+- ✅ 타겟 선택 UI 개선
+- ✅ 글래스모피즘 디자인 적용
+- ✅ 모바일 반응형 지원
+- ✅ 키보드 단축키 확장 (Enter 키 채팅)
+
+### 개선사항
+- 🔧 배틀 상태 관리 개선 (ready 상태 추가)
+- 🔧 연결 해제 처리 강화
+- 🔧 메모리 관리 최적화 (자동 정리)
+- 🔧 에러 처리 및 안정성 향상
+
+### 버그 수정
+- 🐛 무한 루프 방지 로직 추가
+- 🐛 중복 참가 방지
+- 🐛 턴 타이머 정리 개선
 
 ## 로드맵
 
-### v2.1.0 (계획)
+### v2.2.0 (계획)
 - [ ] 스킬 시스템 추가
 - [ ] 상태 이상 효과 (독, 마비, 수면)
 - [ ] 아이템 시스템
-- [ ] 관전자 채팅
+- [ ] 관전자 모드
 
-### v2.2.0 (계획)
+### v2.3.0 (계획)
 - [ ] AI 봇 플레이어
 - [ ] 랭킹 시스템
 - [ ] 리플레이 기능
@@ -422,3 +481,18 @@ chore: 빌드 도구, 설정 파일 등의 변경
 - [ ] 모바일 앱
 - [ ] 3D 그래픽
 
+## 라이선스
+
+MIT License
+
+## 기여하기
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 지원
+
+문제가 발생하거나 질문이 있으시면 [Issues](https://github.com/CriminalTalent/battle-system/issues)에 올려주세요.
