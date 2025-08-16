@@ -1,362 +1,130 @@
-# 배틀 시스템
+Battle System
 
-민첩성 기반 선후공 시스템과 실시간 채팅, 전략적 아이템 시스템을 갖춘 팀전 배틀 게임
+Team-vs-Team turn-based battle game featuring agility-based initiative, real-time sync via Socket.IO, tactical items, and spectator-friendly UI/UX.
 
-![Battle System](https://img.shields.io/badge/Version-2.3.0-blue.svg)
-![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)
-![React](https://img.shields.io/badge/React-18+-blue.svg)
-![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7+-red.svg)
+Features
 
-## 목차
+Team modes: 1v1, 2v2, 3v3, 4v4
 
-- [주요 기능](#주요-기능)
-- [게임 시스템](#게임-시스템)
-- [아이템 시스템](#아이템-시스템)
-- [기술 스택](#기술-스택)
-- [빠른 시작](#빠른-시작)
-- [프로젝트 구조](#프로젝트-구조)
-- [API 문서](#api-문서)
-- [배포 가이드](#배포-가이드)
-- [개발 가이드](#개발-가이드)
+Agility-based initiative and turn order
 
-## 주요 기능
+Core actions: Attack, Guard, Evade
 
-### 전투 시스템
-- **팀전 지원**: 1v1, 2v2, 3v3, 4v4 모드
-- **민첩성 기반 선후공**: 팀 민첩성 총합 + 1d100 주사위로 결정
-- **3가지 기본 액션**: 공격, 방어, 회피
-- **전투 계산**: 명중률, 회피율, 데미지 감소
-- **타겟 선택 시스템**: 직관적인 타겟 선택 UI
+Hit chance, dodge, damage reduction calculations
 
-### 캐릭터 이미지 시스템 
-- **관리자 설정**: 관리자가 캐릭터 이미지 업로드 및 관리
-- **직관적 UI**: 캐릭터 이미지로 플레이어 식별 향상
-- **선택적 사용**: 캐릭터 이미지 시스템 활성화/비활성화 선택
-- **배틀 중 표시**: 배틀 화면에서 캐릭터 이미지와 상태 표시
-- **전략적 아이템**: 공격/방어 보정기, 회복 물약
-- **팀 전용 비밀**: 같은 팀원만 아이템 정보 공유
-- **운영진 설정**: 게임 생성 시 팀장이 아이템 구성 결정
-- **실시간 사용**: 배틀 중 턴에서 아이템 사용 가능
-- **효과 관리**: 지속 효과 및 남은 턴 수 표시
+Tactical item system with duration-based effects
 
-### 캐릭터 이미지 시스템
+Real-time battle state and chat via Socket.IO
 
-### **관리자 기능**
-```javascript
-// 커스텀 팀 이름 추가
-battleEngine.addCustomTeamName('team1', '불사조 기사단');
-battleEngine.addCustomTeam# 배틀 시스템
+Optional character images per player
 
-민첩성 기반 선후공 시스템과 실시간 채팅, 전략적 아이템 시스템을 갖춘 팀전 배틀 게임
+Spectator mode with sensitive info redaction
 
-![Battle System](https://img.shields.io/badge/Version-2.3.0-blue.svg)
-![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)
-![React](https://img.shields.io/badge/React-18+-blue.svg)
-![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7+-red.svg)
+Tech Stack
 
-## 목차
+Backend: Node.js, Express, Socket.IO
 
-- [주요 기능](#주요-기능)
-- [게임 시스템](#게임-시스템)
-- [아이템 시스템](#아이템-시스템)
-- [기술 스택](#기술-스택)
-- [빠른 시작](#빠른-시작)
-- [프로젝트 구조](#프로젝트-구조)
-- [API 문서](#api-문서)
-- [배포 가이드](#배포-가이드)
-- [개발 가이드](#개발-가이드)
+Frontend: React, Tailwind CSS, Framer Motion, Socket.IO Client
 
-## 주요 기능
+Tooling: ESLint, Nodemon
 
-### 전투 시스템
-- **팀전 지원**: 1v1, 2v2, 3v3, 4v4 모드
-- **민첩성 기반 선후공**: 팀 민첩성 총합 + 1d100 주사위로 결정
-- **3가지 기본 액션**: 공격, 방어, 회피
-- **고급 전투 계산**: 명중률, 회피율, 데미지 감소
-- **타겟 선택 시스템**: 직관적인 타겟 선택 UI
+Orchestration: docker-compose (and optional k8s/, nginx/ for deployment)
 
-### 캐릭터 이미지 시스템 🖼️
-- **관리자 설정**: 관리자가 캐릭터 이미지 업로드 및 관리
-- **직관적 UI**: 캐릭터 이미지로 플레이어 식별 향상
-- **다양한 캐릭터**: 전사, 마법사, 궁수, 도적 등 8가지 기본 캐릭터
-- **선택적 사용**: 캐릭터 이미지 시스템 활성화/비활성화 선택
-- **배틀 중 표시**: 배틀 화면에서 캐릭터 이미지와 상태 표시
-- **전략적 아이템**: 공격/방어 보정기, 회복 물약
-- **팀 전용 비밀**: 같은 팀원만 아이템 정보 공유
-- **운영진 설정**: 게임 생성 시 팀장이 아이템 구성 결정
-- **실시간 사용**: 배틀 중 턴에서 아이템 사용 가능
-- **효과 관리**: 지속 효과 및 남은 턴 수 표시
+Repository Structure
+battle-system/
+├─ backend/                 # Optional server infra or scripts (if used)
+├─ database/                # DB migrations/seed (if used)
+├─ docs/                    # Additional documentation
+├─ k8s/                     # Kubernetes manifests
+├─ nginx/                   # Nginx reverse-proxy configs
+├─ packages/
+│  ├─ battle-api/           # API server (Express + Socket.IO)
+│  │  └─ src/
+│  │     ├─ services/
+│  │     │  └─ BattleEngine.js
+│  │     ├─ socket/
+│  │     │  └─ battleSocket.js
+│  │     └─ server.js
+│  └─ battle-web/           # React web client
+│     └─ src/
+│        ├─ components/
+│        ├─ hooks/
+│        └─ styles/
+├─ scripts/                 # Repo-level scripts
+├─ .env.example
+├─ docker-compose.yml
+├─ package.json
+├─ LICENSE
+└─ README.md
 
-### 관리자 기능
 
-#### 캐릭터 이미지 추가
-```javascript
-// 새로운 캐릭터 이미지 추가
-battleEngine.addCharacterImage({
-  id: 'dragon_knight',
-  name: '드래곤 나이트',
-  imageUrl: '/images/characters/dragon_knight.png',
-  description: '드래곤의 힘을 빌린 기사'
-});
-```
+(위 구조는 현재 레포 README와 루트 디렉토리에서 확인되는 항목을 기준으로 요약했습니다.) 
+GitHub
 
-#### 캐릭터 이미지 삭제
-```javascript
-// 캐릭터 이미지 삭제
-battleEngine.removeCharacterImage('dragon_knight');
-```
+Getting Started
+Prerequisites
 
-#### 사용 가능한 캐릭터 목록 조회
-```javascript
-// 모든 캐릭터 이미지 목록
-const characters = battleEngine.getAvailableCharacterImages();
-```
+Node.js 18+
 
-### 캐릭터 설정 규칙
+npm 8+
 
-#### 선택 규칙
-- **선택적 사용**: 캐릭터 이미지 시스템 활성화 선택 가능
-- **개별 선택**: 각 플레이어가 원하는 캐릭터 이미지 선택
-- **기본 옵션**: 캐릭터 이미지를 선택하지 않아도 게임 참여 가능
-
-#### 표시 규칙
-- **배틀 화면**: 캐릭터 카드에 이미지와 상태 표시
-- **상태 오버레이**: 생존/사망 상태를 이미지 위에 표시
-- **효과 표시**: 활성화된 아이템 효과를 이미지 하단에 표시
-- **턴 표시**: 현재 턴인 플레이어의 이미지에 특별한 효과 
-- **공격**: 명중률 80%, 상대의 민첩성 기반 회피 가능
-- **방어**: 다음 받는 공격 데미지 50% 감소
-- **회피**: 민첩성 +20 증가 (1턴 지속)
-- **아이템 사용**: 보정기, 회복 물약 등 전략적 활용
-
-### 실시간 기능
-- **Socket.IO**: 실시간 전투 동기화
-- **실시간 채팅**: 배틀 중 팀원 간 소통
-- **턴 타이머**: 5분 제한 시간 (설정 가능)
-- **자동 재연결**: 연결 끊김 시 자동 재연결
-- **실시간 로그**: 모든 액션 및 아이템 사용 기록
-
-### 채팅 시스템 💬
-- **실시간 메시지**: 배틀 참가자 간 실시간 대화
-- **시스템 메시지**: 게임 이벤트 자동 알림
-- **메시지 필터링**: 기본적인 욕설 필터
-- **채팅 히스토리**: 메시지 기록 유지
-- **최소화 기능**: 모바일에서 공간 절약
-
-### 사용자 경험
-- **반응형 디자인**: 모바일/데스크톱 최적화
-- **키보드 단축키**: 1(공격), 2(방어), 3(회피), Enter(채팅)
-- **대상 선택 UI**: 직관적인 클릭 인터페이스
-- **시각적 피드백**: 애니메이션 및 상태 표시
-- **글래스모피즘 디자인**: 모던한 UI/UX
-
-## 게임 시스템
-
-### 선후공 결정
-```
-1. 각 팀의 모든 플레이어 민첩성 합계 계산
-2. 시스템이 두 민첩성합계를 기반으로 1D100 다이스를 굴림
-3. 다이스 점수가 높은쪽이 선공
-4. 동점 시 재굴림
-```
-
-### 턴 순서
-```
-선공팀 전체 행동 → 후공팀 전체 행동 → 반복
-```
-
-### 전투 계산
-```javascript
-// 공격 계산
-기본명중률: 80%
-회피율: min(대상 민첩성 / 10, 30%)
-기본데미지: 공격력 - 방어력
-데미지변동: 80% ~ 120%
-
-// 방어 효과
-방어상태: 다음 공격 데미지 50% 감소
-
-// 회피 효과  
-회피상태: 민첩성 +20 (1턴 지속)
-
-// 아이템 효과
-공격보정기: 공격력 +15 (3턴 지속)
-방어보정기: 방어력 +10 (3턴 지속)
-회복물약: HP +30 (즉시 효과)
-```
-
-### 배틀 플로우
-```
-배틀 생성 → 아이템 설정 → 플레이어 참가 → 준비 완료 → 선후공 결정 → 배틀 시작 → 턴 진행 → 승부 결정
-```
-
-## 아이템 시스템
-
-### 아이템 종류
-
-#### 공격 보정기
-- **효과**: 공격력 +15
-- **지속시간**: 3턴
-- **사용 제한**: 중복 사용 불가
-- **최대 개수**: 3개
-
-#### 방어 보정기
-- **효과**: 방어력 +10
-- **지속시간**: 3턴
-- **사용 제한**: 중복 사용 불가
-- **최대 개수**: 3개
-
-#### 회복 물약
-- **효과**: HP +30 즉시 회복
-- **지속시간**: 즉시
-- **사용 제한**: 없음
-- **최대 개수**: 3개
-
-### 아이템 규칙
-
-#### 설정 규칙
-- **팀장 권한**: 첫 번째 참가자가 팀 아이템 구성
-- **수량 제한**: 총 6개 아이템까지 설정 가능
-- **비밀 유지**: 상대팀에게 아이템 정보 비공개
-
-#### 사용 규칙
-- **턴 제한**: 자신의 턴에만 사용 가능
-- **턴 소모**: 아이템 사용도 하나의 액션으로 간주
-- **공유 사용**: 팀원 누구나 팀 아이템 사용 가능
-- **효과 중첩**: 보정기는 중복 사용 불가, 물약은 제한 없음
-
-#### 보안 기능
-- **팀별 격리**: 각 팀의 아이템 정보는 해당 팀만 접근
-- **서버 검증**: 모든 아이템 사용은 서버에서 유효성 검증
-- **상대방 차단**: 상대팀이나 관전자는 아이템 정보 확인 불가
-
-## 아이템 시스템
-
-### 백엔드
-- **Node.js 18+**: 서버 런타임
-- **Express.js**: 웹 프레임워크
-- **Socket.IO**: 실시간 통신
-- **UUID**: 고유 ID 생성
-
-### 프론트엔드
-- **React 18+**: UI 라이브러리
-- **Framer Motion**: 애니메이션
-- **Socket.IO Client**: 실시간 통신
-- **Tailwind CSS**: 스타일링
-
-### 개발 도구
-- **Nodemon**: 개발 서버 자동 재시작
-- **ESLint**: 코드 품질 관리
-
-## 빠른 시작
-
-### 사전 요구사항
-- Node.js 18.0.0 이상
-- npm 8.0.0 이상
-
-### 1. 레포지토리 클론
-```bash
+Clone
 git clone https://github.com/CriminalTalent/battle-system.git
 cd battle-system
-```
 
-### 2. 의존성 설치
-```bash
-# API 서버
+Install
+# API server
 cd packages/battle-api
 npm install
 
-# 웹 클라이언트
+# Web client
 cd ../battle-web
 npm install
-```
 
-### 3. 개발 서버 실행
-```bash
-# API 서버 (터미널 1)
+Run (Development)
+# Terminal 1 - API
 cd packages/battle-api
 npm run dev
 
-# 웹 클라이언트 (터미널 2)
+# Terminal 2 - Web
 cd packages/battle-web
 npm start
-```
 
-### 4. 접속
-- **웹 클라이언트**: http://localhost:3000
-- **API 서버**: http://localhost:3001
-- **헬스체크**: http://localhost:3001/api/health
+URLs
 
-## 프로젝트 구조
+Web: http://localhost:3000
 
-```
-battle-system/
-├── packages/
-│   ├── battle-api/              # 백엔드 서버
-│   │   ├── src/
-│   │   │   ├── services/
-│   │   │   │   └── BattleEngine.js     # 핵심 전투 엔진 + 아이템 시스템
-│   │   │   ├── socket/
-│   │   │   │   └── battleSocket.js     # Socket.IO 핸들러
-│   │   │   └── server.js               # 메인 서버
-│   │   └── package.json
-│   └── battle-web/              # 프론트엔드
-│       ├── src/
-│       │   ├── components/
-│       │   │   ├── BattleField.js      # 메인 배틀 화면
-│       │   │   ├── ChatPanel.js        # 채팅 시스템
-│       │   │   ├── ItemSetup.js        # 아이템 설정
-│       │   │   ├── ItemPanel.js        # 배틀 중 아이템 패널
-│       │   │   └── BattleApp.js        # 앱 컴포넌트
-│       │   ├── hooks/
-│       │   │   └── useBattle.js        # 배틀 상태 관리
-│       │   └── styles/
-│       │       └── battle.css          # 스타일시트
-│       └── package.json
-└── README.md
-```
+API: http://localhost:3001
 
-## API 문서
+Health: http://localhost:3001/api/health
+(위 주소는 현재 README에 기재된 값 기준입니다.) 
+GitHub
 
-### REST API
+Configuration
 
-#### 서버 상태
-```http
-GET /api/health
-```
+Copy .env.example to .env and fill required variables for both battle-api and battle-web as needed. Keep secrets out of version control.
 
-### Socket.IO 이벤트
+API Overview
 
-#### 클라이언트 → 서버
-```javascript
-// 배틀 생성 (캐릭터 이미지 시스템 포함)
-socket.emit('create_battle', { 
+GET /api/health: health check
+Additional endpoints and detailed payloads should be documented under docs/.
+
+Socket Events (Examples)
+
+Client → Server (examples):
+
+// create a battle
+socket.emit('create_battle', {
   mode: '2v2',
   settings: {
     itemsEnabled: true,
     characterImagesEnabled: true,
-    turnTimeLimit: 300000, // 5분
+    turnTimeLimit: 300000,
     maxTurns: 50
   }
 });
 
-// 배틀 참가 (캐릭터 이미지 포함)
-socket.emit('join_battle', {
-  battleId: 'battle_123',
-  player: {
-    name: 'Player1',
-    characterImageId: 'warrior', // 캐릭터 이미지 ID
-    attack: 60,
-    defense: 40,
-    agility: 70,
-    maxHp: 120
-  },
-  teamItems: {
-    attack_booster: 2,
-    defense_booster: 1,
-    health_potion: 3
-  }
-});
+// join a battle
 socket.emit('join_battle', {
   battleId: 'battle_123',
   player: {
@@ -364,7 +132,8 @@ socket.emit('join_battle', {
     attack: 60,
     defense: 40,
     agility: 70,
-    maxHp: 120
+    maxHp: 120,
+    // optional: characterImageId: 'warrior'
   },
   teamItems: {
     attack_booster: 2,
@@ -373,506 +142,61 @@ socket.emit('join_battle', {
   }
 });
 
-// 액션 실행
+// execute action
 socket.emit('execute_action', {
-  action: {
-    type: 'attack',
-    targets: ['player_id']
-  }
+  action: { type: 'attack', targets: ['player_id'] }
 });
 
-// 아이템 사용
+// use item
 socket.emit('execute_action', {
-  action: {
-    type: 'use_item',
-    itemId: 'attack_booster'
-  }
+  action: { type: 'use_item', itemId: 'attack_booster' }
 });
 
-// 사용 가능한 캐릭터 이미지 목록 요청
-socket.emit('get_character_images');
 
-// 관리자용 캐릭터 이미지 추가
-socket.emit('admin_add_character', {
-  id: 'dragon_knight',
-  name: '드래곤 나이트',
-  imageUrl: '/images/characters/dragon_knight.png',
-  description: '드래곤의 힘을 빌린 기사'
-});
+(샘플 이벤트 유형은 현재 README에 기재된 예시 기반입니다. 상세 스키마는 docs/에서 지속 관리 권장.) 
+GitHub
 
-// 관리자용 캐릭터 이미지 삭제
-socket.emit('admin_remove_character', {
-  characterId: 'dragon_knight'
-});
+Development Notes
 
-// 팀 아이템 정보 요청 (같은 팀만)
-socket.emit('get_team_items');
+Monorepo: if using npm workspaces, define "workspaces" in root package.json and add convenience scripts such as:
 
-// 채팅 메시지 전송
-socket.emit('chat_message', {
-  text: '좋은 전략이네요!',
-  timestamp: Date.now()
-});
-
-// 배틀 상태 요청
-socket.emit('get_battle_state', {
-  battleId: 'battle_123'
-});
-```
-
-#### 서버 → 클라이언트
-```javascript
-// 배틀 생성 완료
-socket.on('battle_created', (data) => {
-  console.log('배틀 ID:', data.battleId);
-  console.log('캐릭터 이미지 활성화:', data.characterImagesEnabled);
-  console.log('사용 가능한 캐릭터:', data.battle.availableCharacterImages);
-});
-
-// 배틀 참가 완료
-socket.on('battle_joined', (data) => {
-  console.log('팀:', data.team);
-  console.log('포지션:', data.position);
-  console.log('선택한 캐릭터:', data.player.characterImage);
-  console.log('팀 아이템:', data.battle.teamItems);
-});
-
-// 배틀 상태 업데이트 (팀별 다른 정보)
-socket.on('battle_updated', (data) => {
-  console.log('배틀 상태:', data.battle);
-  console.log('팀 아이템:', data.battle.teamItems); // 같은 팀만
-  console.log('캐릭터 목록:', data.battle.availableCharacterImages);
-});
-
-// 사용 가능한 캐릭터 이미지 목록
-socket.on('character_images', (data) => {
-  console.log('사용 가능한 캐릭터:', data.characters);
-});
-
-// 사용 가능한 아이템 목록
-socket.on('usable_items', (data) => {
-  console.log('사용 가능한 아이템:', data.items);
-});
-
-// 팀 아이템 정보
-socket.on('team_items', (data) => {
-  console.log('팀 아이템:', data.items);
-});
-
-// 선후공 결정
-socket.on('initiative_rolled', (data) => {
-  console.log('선후공 결과:', data.rolls);
-});
-
-// 배틀 시작
-socket.on('battle_started', (data) => {
-  console.log('배틀 시작!');
-  console.log('팀 아이템:', data.battle.teamItems); // 같은 팀만
-});
-
-// 턴 시작
-socket.on('turn_started', (data) => {
-  console.log('현재 플레이어:', data.currentPlayer);
-  console.log('턴:', data.turn);
-});
-
-// 타겟 선택 요구
-socket.on('target_selection_required', (data) => {
-  console.log('타겟 선택 필요:', data.availableTargets);
-});
-
-// 액션 결과 (아이템 사용 포함)
-socket.on('action_result', (data) => {
-  console.log('액션 결과:', data.result);
-  if (data.result.type === 'use_item') {
-    console.log('아이템 사용:', data.result.item);
-    console.log('효과:', data.result.result.effects);
-  }
-});
-
-// 배틀 종료
-socket.on('battle_finished', (data) => {
-  console.log('승자:', data.winner);
-});
-
-// 채팅 메시지 수신
-socket.on('chat_message', (data) => {
-  console.log(`${data.playerName}: ${data.text}`);
-});
-
-// 시스템 메시지
-socket.on('system_message', (data) => {
-  console.log('시스템:', data.message);
-});
-
-// 에러
-socket.on('error', (error) => {
-  console.error('에러:', error.message);
-});
-```
-
-## 배포 가이드
-
-### 환경 변수 설정
-
-#### .env 파일 (packages/battle-api/.env)
-```bash
-NODE_ENV=production
-PORT=3001
-CORS_ORIGIN=http://localhost:3000
-CLEANUP_INTERVAL=1800000
-TURN_TIME_LIMIT=30000
-MAX_TURNS=50
-ITEMS_ENABLED=true
-```
-
-### PM2를 사용한 배포
-
-#### 1. PM2 글로벌 설치
-```bash
-npm install -g pm2
-```
-
-#### 2. 프로덕션 실행
-```bash
-cd packages/battle-api
-pm2 start src/server.js --name "battle-api"
-```
-
-#### 3. 프로세스 관리
-```bash
-# 상태 확인
-pm2 status
-
-# 로그 확인
-pm2 logs battle-api
-
-# 재시작
-pm2 restart battle-api
-
-# 중단
-pm2 stop battle-api
-```
-
-## 개발 가이드
-
-### 캐릭터 이미지 시스템 커스터마이징
-
-#### 새로운 캐릭터 추가
-```javascript
-// packages/battle-api/src/services/BattleEngine.js
-// 서버 시작 시 또는 런타임에 추가
-battleEngine.addCharacterImage({
-  id: 'necromancer',
-  name: '네크로맨서',
-  imageUrl: '/images/characters/necromancer.png',
-  description: '죽음을 다루는 마법사'
-});
-```
-
-#### 캐릭터 이미지 파일 구조
-```
-public/
-└── images/
-    └── characters/
-        ├── warrior.png
-        ├── mage.png
-        ├── archer.png
-        ├── rogue.png
-        ├── paladin.png
-        ├── berserker.png
-        ├── cleric.png
-        ├── assassin.png
-        ├── default.png          # 기본 이미지
-        └── custom/              # 커스텀 캐릭터
-            └── dragon_knight.png
-```
-
-#### 캐릭터 선택 UI 커스터마이징
-```css
-/* packages/battle-web/src/styles/battle.css */
-.character-option-image {
-  /* 캐릭터 선택 이미지 스타일 수정 */
-  border-radius: 12px;
-  filter: brightness(0.9);
-}
-
-.character-battle-image {
-  /* 배틀 중 캐릭터 이미지 스타일 수정 */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-```
-
-### 아이템 시스템 커스터마이징
-
-#### 새로운 아이템 추가
-```javascript
-// packages/battle-api/src/services/BattleEngine.js
-this.itemDefinitions = {
-  // 기존 아이템들...
-  speed_booster: {
-    id: 'speed_booster',
-    name: '민첩 보정기',
-    description: '민첩성을 20 증가시킵니다',
-    type: 'booster',
-    effect: { agility: 20 },
-    duration: 2,
-    usable: true
-  }
-};
-```
-
-#### 아이템 효과 커스터마이징
-```javascript
-// packages/battle-api/src/services/BattleEngine.js
-applyItemEffect(battle, player, item) {
-  if (item.type === 'consumable') {
-    // 즉시 효과
-    if (item.effect.heal) {
-      const healAmount = Math.min(item.effect.heal, player.maxHp - player.hp);
-      player.hp += healAmount;
-    }
-  } else if (item.type === 'booster') {
-    // 지속 효과
-    player.activeItems[item.id] = {
-      ...item,
-      remainingTurns: item.duration
-    };
-    
-    // 스탯 적용
-    Object.entries(item.effect).forEach(([stat, value]) => {
-      player[stat] = (player[stat] || 0) + value;
-    });
-  }
-}
-```
-
-### 채팅 시스템 커스터마이징
-
-#### 메시지 필터링 수정
-```javascript
-// packages/battle-api/src/socket/battleSocket.js
-filterMessage(message) {
-  const forbiddenWords = ['욕설1', '욕설2'];
-  let filteredMessage = message;
-  
-  forbiddenWords.forEach(word => {
-    const regex = new RegExp(word, 'gi');
-    filteredMessage = filteredMessage.replace(regex, '*'.repeat(word.length));
-  });
-  
-  return filteredMessage;
-}
-```
-
-#### 채팅 UI 커스터마이징
-```css
-/* packages/battle-web/src/styles/battle.css */
-.chat-panel {
-  /* 위치, 크기, 색상 등 수정 */
-}
-
-.item-panel {
-  /* 아이템 패널 스타일 수정 */
-}
-```
-
-### 새로운 액션 타입 추가
-
-#### 1. BattleEngine.js에 액션 로직 추가
-```javascript
-processAction(battle, attacker, action) {
-  switch (action.type) {
-    case 'attack':
-      return this.processAttack(battle, attacker, action.targets);
-    case 'defend':
-      return this.processDefend(battle, attacker);
-    case 'dodge':
-      return this.processDodge(battle, attacker);
-    case 'use_item':
-      return this.useItem(battle, attacker, action.itemId);
-    case 'heal': // 새 액션 추가
-      return this.processHeal(battle, attacker, action.targets);
-    default:
-      throw new Error('Invalid action type');
+{
+  "scripts": {
+    "dev:api": "npm --workspace packages/battle-api run dev",
+    "dev:web": "npm --workspace packages/battle-web start",
+    "dev": "run-p dev:api dev:web"
   }
 }
 
-processHeal(battle, healer, targets) {
-  // 힐 로직 구현
-}
-```
 
-#### 2. 프론트엔드에 버튼 추가
-```javascript
-// packages/battle-web/src/components/BattleField.js
-<button
-  onClick={() => handleQuickAction('heal')}
-  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg"
->
-  힐 (4)
-</button>
-```
+(루트 package.json의 실제 설정 여부는 레포 본문 확인 필요) 
+GitHub
 
-### 새로운 게임 모드 추가
-```javascript
-// packages/battle-api/src/services/BattleEngine.js
-getMinPlayers(mode) {
-  const playerCounts = {
-    '1v1': 2,
-    '2v2': 4,
-    '3v3': 6,
-    '4v4': 8,
-    '5v5': 10, // 새 모드 추가
-    'battle_royale': 8 // 배틀로얄 모드
-  };
-  return playerCounts[mode] || 2;
-}
-```
+Lint/Format: add ESLint/Prettier with a shared config across packages.
 
-### 아이템 밸런스 조정
-```javascript
-// packages/battle-api/src/services/BattleEngine.js
-this.itemDefinitions = {
-  attack_booster: {
-    effect: { attack: 12 }, // 15에서 12로 너프
-    duration: 2 // 3턴에서 2턴으로 변경
-  },
-  health_potion: {
-    effect: { heal: 40 } // 30에서 40으로 버프
-  }
-};
-```
+Testing: recommend Jest + React Testing Library for battle-web, and Jest for battle-api services (e.g., BattleEngine).
 
-### 캐릭터 이미지 최적화
-```javascript
-// 이미지 압축 및 최적화 설정
-const imageOptimization = {
-  format: 'webp',           // 웹 최적화 포맷
-  quality: 80,              // 품질 (80%)
-  width: 200,               // 표준 너비
-  height: 200,              // 표준 높이
-  placeholder: 'blur'       // 로딩 중 블러 효과
-};
-```
+Docs: keep README concise; move extended API/socket docs to docs/ and link.
 
-### 디버깅
+Docker and Deployment
 
-#### 서버 로그 확인
-```bash
-# 실시간 로그
-pm2 logs battle-api
+Local: docker-compose.yml is present at the repo root. Ensure services are named predictably (e.g., api, web, nginx) and that .env is mounted securely in development only. 
+GitHub
 
-# 아이템 관련 로그만 확인
-pm2 logs battle-api | grep item
-```
+Kubernetes: manifests under k8s/. Consider templating with Helm or Kustomize.
 
-#### 클라이언트 디버깅
-```javascript
-// 브라우저 콘솔에서 상태 확인
-console.log('Socket 연결 상태:', socket.connected);
-console.log('배틀 상태:', battleState);
-console.log('사용 가능한 아이템:', usableItems);
-console.log('사용 가능한 캐릭터:', availableCharacterImages);
-console.log('선택된 캐릭터:', selectedCharacterImage);
-```
+Nginx: reverse-proxy configs under nginx/. Keep CORS and websocket upgrade headers aligned with Socket.IO.
 
-### 성능 모니터링
+Security
 
-#### 배틀 통계 확인
-```javascript
-// BattleEngine에서 통계 조회
-const stats = battleEngine.getStats();
-console.log('활성 배틀:', stats.activeBattles);
-console.log('대기 중 배틀:', stats.waitingBattles);
-console.log('아이템 사용 횟수:', stats.itemUsageCount);
-```
+Never expose team-private item info or internal logs to spectators.
 
-## 주요 변경사항 (v2.3.0)
+Validate all client actions server-side in battle-api.
 
-### 새로운 기능
-- ✅ **캐릭터 이미지 시스템**: 8가지 기본 캐릭터 이미지 제공
-- ✅ **관리자 캐릭터 관리**: 캐릭터 이미지 추가/삭제 기능
-- ✅ **직관적 UI 개선**: 캐릭터 이미지로 플레이어 식별 향상
-- ✅ **턴 타이머 연장**: 30초 → 5분으로 변경
-- ✅ **배틀 화면 개선**: 캐릭터 이미지와 효과 표시
+Keep secrets in environment variables, not in Git.
 
-### 개선사항
-- **시각적 향상**: 캐릭터 이미지로 게임 몰입도 증대
-- **사용자 경험**: 캐릭터 선택을 통한 개인화
-- **관리 기능**: 서버 관리자의 캐릭터 콘텐츠 관리
-- **성능 최적화**: 이미지 로딩 및 캐싱 개선
+Rate-limit socket connections and add basic auth on admin endpoints.
 
-### 이전 기능 (v2.2.0)
-- ✅ **전략적 아이템 시스템**: 공격/방어 보정기, 회복 물약
-- ✅ **팀 전용 비밀 아이템**: 상대팀에게 비공개
-- ✅ **아이템 설정 UI**: 게임 생성 시 직관적인 아이템 구성
-- ✅ **실시간 아이템 패널**: 배틀 중 아이템 사용 및 효과 표시
+License
 
-### 이전 기능 (v2.1.0)
-- ✅ 실시간 채팅 시스템
-- ✅ 타겟 선택 UI 개선
-- ✅ 글래스모피즘 디자인 적용
-- ✅ 모바일 반응형 지원
-
-## 로드맵
-
-### v2.4.0 (계획)
-- [ ] 스킬 시스템 추가 (궁극기 등)
-- [ ] 상태 이상 효과 (독, 마비, 수면)
-- [ ] 아이템 조합 시스템
-- [ ] 관전자 모드
-
-### v2.5.0 (계획)
-- [ ] AI 봇 플레이어
-- [ ] 랭킹 시스템
-- [ ] 리플레이 기능
-- [ ] 커스텀 룰셋
-
-### v3.0.0 (장기)
-- [ ] 길드 시스템
-- [ ] 토너먼트 모드
-- [ ] 모바일 앱
-- [ ] 3D 그래픽
-
-## 라이선스
-
-MIT License
-
-## 기여하기
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/ItemSystem`)
-3. Commit your Changes (`git commit -m 'Add Item System'`)
-4. Push to the Branch (`git push origin feature/ItemSystem`)
-5. Open a Pull Request
-
-## 지원
-
-문제가 발생하거나 질문이 있으시면 [Issues](https://github.com/CriminalTalent/battle-system/issues)에 올려주세요.
-
-### FAQ
-
-**Q: 캐릭터 이미지는 어떻게 선택하나요?**
-A: 게임 생성 시 "캐릭터 이미지 사용"을 체크하고 원하는 캐릭터를 선택할 수 있습니다. 8가지 기본 캐릭터가 제공됩니다.
-
-**Q: 관리자가 새로운 캐릭터를 추가할 수 있나요?**
-A: 네, 서버 관리자는 `battleEngine.addCharacterImage()` 메서드를 통해 새로운 캐릭터 이미지를 추가할 수 있습니다.
-
-**Q: 캐릭터 이미지가 게임플레이에 영향을 주나요?**
-A: 아니요, 캐릭터 이미지는 순수하게 시각적 요소이며 게임 밸런스나 능력치에는 영향을 주지 않습니다.
-
-**Q: 턴 시간이 5분으로 긴 이유는?**
-A: 전략적 사고와 팀원과의 상의 시간을 충분히 제공하기 위해 5분으로 설정되어 있습니다. 관리자가 설정을 통해 변경 가능합니다.
-
-**Q: 아이템은 어떻게 설정하나요?**
-A: 배틀 생성 시 첫 번째 참가자가 "아이템 시스템 사용"을 체크하고 원하는 아이템을 선택할 수 있습니다.
-
-**Q: 상대팀이 우리 아이템을 볼 수 있나요?**
-A: 아니요. 아이템 정보는 같은 팀원들만 볼 수 있으며, 상대팀이나 관전자에게는 완전히 비공개입니다.
-
-**Q: 아이템을 언제 사용할 수 있나요?**
-A: 자신의 턴에만 아이템을 사용할 수 있으며, 아이템 사용도 하나의 액션으로 간주됩니다.
-
-**Q: 보정기를 중복으로 사용할 수 있나요?**
-A: 같은 종류의 보정기는 중복 사용할 수 없습니다. 이미 효과가 활성화된 상태에서는 사용이 제한됩니다.
+See LICENSE at the repo root.
