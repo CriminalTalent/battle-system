@@ -1,9 +1,9 @@
 // packages/battle-web/src/components/battle/CharacterCard.js
-// Merged CharacterCard with Spectator Mode + backward-compat for previous props
-// - Supports both `player` (new battle UI) and `character` (legacy) prop shapes
-// - Adds spectator UI (isSpectatorMode), selection states, current turn indicator
-// - Keeps animationQueue/DamageNumber/Progress from legacy component
-// - Uses framer-motion and heroicons (outline + solid Heart)
+// CharacterCard with Spectator Mode + backward-compat (cleaned)
+// - Supports both `player` and legacy `character` props
+// - Spectator UI (isSpectatorMode), selection, current turn indicator
+// - Animation queue (DamageNumber), Progress bar
+// - Cleanup: removed unused imports, add class util, fix showDetailedStats logic, add timeout cleanup
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -13,40 +13,36 @@ import DamageNumber from './DamageNumber';
 
 import { 
   HeartIcon, 
-  ShieldCheckIcon, 
-  BoltIcon, 
   EyeIcon,
   ClockIcon,
   StarIcon
 } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
+
+// minimal classnames helper (avoids extra dependency)
+function cn(...args) {
+  return args.filter(Boolean).join(' ');
+}
 
 function normalizeInput({ player, character }) {
-  // Prefer new `player` shape; fall back to legacy `character`
   const src = player ?? character ?? {};
 
-  // Map common fields
   const name = src.name ?? 'Unknown';
   const hp = typeof src.hp === 'number' ? src.hp : 0;
   const maxHp = typeof src.maxHp === 'number' ? src.maxHp : Math.max(1, hp);
   const mp = typeof src.mp === 'number' ? src.mp : (src.maxMp ? src.maxMp : 0);
   const maxMp = typeof src.maxMp === 'number' ? src.maxMp : (mp || 0);
 
-  // Image mapping
   const characterImage = src.characterImage
     ? (src.characterImage.imageUrl || `/images/characters/${src.characterImage.id}.png`)
     : (src.image || '/images/characters/default.png');
   const characterImageName = src.characterImage?.name || src.imageName || src.name || 'Character';
 
-  // Stats mapping
   const attack = src.attack ?? src.stats?.attack ?? 0;
   const defense = src.defense ?? src.stats?.defense ?? 0;
   const agility = src.agility ?? src.stats?.speed ?? 0;
 
-  // Effects mapping (new: activeEffects object, legacy: statusEffects array)
   const activeEffectsObj = src.activeEffects || {};
   const statusEffectsArr = src.statusEffects || [];
-  // Normalize to array of chips for rendering
   const effects = Object.entries(activeEffectsObj).map(([id, e]) => ({
     id,
     type: e.type || 'unknown',
@@ -82,25 +78,26 @@ function normalizeInput({ player, character }) {
 
 export default function CharacterCard({
   player,
-  character,             // backward-compat
+  character,              // backward-compat
   isOpponent = false,
   isActive = false,
-  isCurrentPlayer = false, // new
-  isSpectatorMode = false, // new
-  onClick = null,          // new
-  isSelectable = false,    // new
-  isSelected = false,      // new
-  animationQueue = [],     // legacy
-  showStats = false,       // legacy (overridden by spectator mode)
-  size = 'normal'          // 'small', 'normal', 'large'
+  isCurrentPlayer = false,
+  isSpectatorMode = false,
+  onClick = null,
+  isSelectable = false,
+  isSelected = false,
+  animationQueue = [],
+  showStats = false,       // only used when NOT spectator
+  size = 'normal'          // 'small' | 'normal' | 'large'
 }) {
   const data = normalizeInput({ player, character });
-  const hpPercentage = Math.max(0, (data.hp / (data.maxHp || 1)) * 100);
+  const hpPercentage = Math.max(0, (data.maxHp ? (data.hp / data.maxHp) : 0) * 100);
   const isAlive = data.isAlive;
   const cardRef = useRef(null);
 
-  // local animation state (legacy support)
   const [currentAnimations, setCurrentAnimations] = useState([]);
+  const timeoutsRef = useRef([]);
+
   useEffect(() => {
     if (animationQueue.length > 0) {
       const newAnimations = animationQueue.filter(
@@ -109,13 +106,19 @@ export default function CharacterCard({
       if (newAnimations.length > 0) {
         setCurrentAnimations(prev => [...prev, ...newAnimations]);
         newAnimations.forEach(anim => {
-          setTimeout(() => {
+          const tid = setTimeout(() => {
             setCurrentAnimations(prev => prev.filter(curr => curr.id !== anim.id));
           }, 2000);
+          timeoutsRef.current.push(tid);
         });
       }
     }
-  }, [animationQueue, currentAnimations]);
+    return () => {
+      timeoutsRef.current.forEach(clearTimeout);
+      timeoutsRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animationQueue]);
 
   const getHpBarColor = () => {
     if (hpPercentage > 60) return 'from-green-500 to-green-400';
@@ -123,25 +126,15 @@ export default function CharacterCard({
     return 'from-red-500 to-red-400';
   };
 
-  const getHpSolidColor = () => {
-    if (hpPercentage > 60) return 'bg-green-500';
-    if (hpPercentage > 30) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
+  const showDetailedStats = !isSpectatorMode && !!showStats;
 
-  const showDetailedStats = !isSpectatorMode && (showStats || true); // show basic ATK/DEF/AGI by default in player mode
-
-  const getCardSize = () => {
+  const cardSize = (() => {
     switch (size) {
-      case 'small':
-        return { container: 'w-56', image: 'h-28', name: 'text-sm', hp: 'text-xs', padding: 'p-3' };
-      case 'large':
-        return { container: 'w-96', image: 'h-60', name: 'text-xl', hp: 'text-sm', padding: 'p-5' };
-      default:
-        return { container: 'w-72', image: 'h-40', name: 'text-lg', hp: 'text-sm', padding: 'p-4' };
+      case 'small': return { container: 'w-56', image: 'h-28', name: 'text-sm', hp: 'text-xs', padding: 'p-3' };
+      case 'large': return { container: 'w-96', image: 'h-60', name: 'text-xl', hp: 'text-sm', padding: 'p-5' };
+      default:      return { container: 'w-72', image: 'h-40', name: 'text-lg', hp: 'text-sm', padding: 'p-4' };
     }
-  };
-  const cardSize = getCardSize();
+  })();
 
   const cardVariants = {
     idle: { scale: 1, y: 0 },
@@ -158,19 +151,18 @@ export default function CharacterCard({
         initial="idle"
         animate={isActive ? 'active' : 'idle'}
         onClick={onClick}
-        className={`
-          ${cardSize.container}
-          relative rounded-xl overflow-hidden border transition-all duration-200 cursor-pointer
-          ${isSpectatorMode 
-            ? 'bg-white/5 border-white/10 hover:bg-white/10' 
-            : isSelectable
-              ? (isSelected ? 'bg-blue-500/20 border-blue-500/50 hover:bg-blue-500/30'
-                            : 'bg-white/10 border-white/20 hover:bg-white/20')
-              : 'bg-white/10 border-white/20 hover:bg-white/15'
-          }
-          ${isActive ? 'shadow-blue-400/30 shadow-lg' : ''}
-          ${!isAlive ? 'opacity-60' : ''}
-        `}
+        className={cn(
+          cardSize.container,
+          'relative rounded-xl overflow-hidden border transition-all duration-200 cursor-pointer',
+          isSpectatorMode
+            ? 'bg-white/5 border-white/10 hover:bg-white/10'
+            : (isSelectable
+                ? (isSelected ? 'bg-blue-500/20 border-blue-500/50 hover:bg-blue-500/30'
+                              : 'bg-white/10 border-white/20 hover:bg-white/20')
+                : 'bg-white/10 border-white/20 hover:bg-white/15'),
+          isActive && 'shadow-blue-400/30 shadow-lg',
+          !isAlive && 'opacity-60'
+        )}
       >
         {/* Spectator badge */}
         {isSpectatorMode && (
@@ -207,10 +199,9 @@ export default function CharacterCard({
           <img
             src={data.imageUrl}
             alt={data.imageName}
-            className={`${cardSize.image} w-full object-cover transition-all duration-300 ${!isAlive ? 'grayscale' : ''}`}
+            className={cn(cardSize.image, 'w-full object-cover transition-all duration-300', !isAlive && 'grayscale')}
             onError={(e) => { e.currentTarget.src = '/images/characters/default.png'; }}
           />
-          {/* Active glow */}
           {isActive && isAlive && (
             <motion.div
               className="absolute inset-0 bg-blue-400/10"
@@ -221,7 +212,7 @@ export default function CharacterCard({
         </div>
 
         {/* Content */}
-        <div className={`${cardSize.padding} space-y-3`}>
+        <div className={cn(cardSize.padding, 'space-y-3')}>
           {/* Header (name + optional position) */}
           <div className="flex items-center space-x-3">
             <div className="flex-1 min-w-0">
@@ -235,10 +226,9 @@ export default function CharacterCard({
                     {data.hp} / {data.maxHp}
                   </span>
                 </div>
-                {/* If Progress component exists, use it; also animate width bar for extra smoothness */}
                 <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
                   <motion.div
-                    className={`h-2 rounded-full bg-gradient-to-r ${getHpBarColor()}`}
+                    className={cn('h-2 rounded-full bg-gradient-to-r', getHpBarColor())}
                     initial={{ width: 0 }}
                     animate={{ width: `${hpPercentage}%` }}
                     transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -271,7 +261,7 @@ export default function CharacterCard({
           </div>
 
           {/* Stats */}
-          {(!isSpectatorMode) ? (
+          {showDetailedStats ? (
             <div className="grid grid-cols-3 gap-2 text-sm">
               <div className="bg-red-500/20 rounded-lg p-2 text-center">
                 <div className="text-red-300 text-xs mb-1">공격</div>
@@ -305,17 +295,18 @@ export default function CharacterCard({
                 {data.effects.map((effect) => (
                   <motion.div
                     key={effect.id}
-                    className={`px-2 py-1 rounded-full text-xs flex items-center space-x-1 ${
+                    className={cn(
+                      'px-2 py-1 rounded-full text-xs flex items-center space-x-1',
                       isSpectatorMode
                         ? 'bg-purple-500/20 text-purple-300'
-                        : effect.type === 'attack_boost'
-                          ? 'bg-red-500/20 text-red-300'
-                          : effect.type === 'defense_boost'
-                            ? 'bg-blue-500/20 text-blue-300'
-                            : effect.type === 'agility_boost'
-                              ? 'bg-green-500/20 text-green-300'
-                              : 'bg-purple-500/20 text-purple-300'
-                    }`}
+                        : (effect.type === 'attack_boost'
+                            ? 'bg-red-500/20 text-red-300'
+                            : effect.type === 'defense_boost'
+                              ? 'bg-blue-500/20 text-blue-300'
+                              : effect.type === 'agility_boost'
+                                ? 'bg-green-500/20 text-green-300'
+                                : 'bg-purple-500/20 text-purple-300')
+                    )}
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.3 }}
@@ -336,7 +327,7 @@ export default function CharacterCard({
           {/* Selectable prompt */}
           {isSelectable && (
             <div className="text-center">
-              <div className={`text-xs font-medium ${isSelected ? 'text-blue-300' : 'text-white/60'}`}>
+              <div className={cn('text-xs font-medium', isSelected ? 'text-blue-300' : 'text-white/60')}>
                 {isSelected ? '선택됨' : '클릭하여 선택'}
               </div>
             </div>
@@ -390,7 +381,6 @@ export default function CharacterCard({
   );
 }
 
-// Presets (backward-compat)
 export function SmallCharacterCard(props) { return <CharacterCard {...props} size="small" />; }
 export function LargeCharacterCard(props) { return <CharacterCard {...props} size="large" />; }
 export function SpectatorCharacterCard(props) { return <CharacterCard {...props} isSpectatorMode={true} showStats={true} />; }
