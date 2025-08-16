@@ -2,7 +2,7 @@
 
 민첩성 기반 선후공 시스템과 실시간 채팅, 전략적 아이템 시스템을 갖춘 팀전 배틀 게임
 
-![Battle System](https://img.shields.io/badge/Version-2.2.0-blue.svg)
+![Battle System](https://img.shields.io/badge/Version-2.3.0-blue.svg)
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)
 ![React](https://img.shields.io/badge/React-18+-blue.svg)
 ![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7+-red.svg)
@@ -28,14 +28,91 @@
 - **고급 전투 계산**: 명중률, 회피율, 데미지 감소
 - **타겟 선택 시스템**: 직관적인 타겟 선택 UI
 
-### 아이템 시스템 🎒
+### 캐릭터 이미지 시스템 🖼️
+- **관리자 설정**: 관리자가 캐릭터 이미지 업로드 및 관리
+- **직관적 UI**: 캐릭터 이미지로 플레이어 식별 향상
+- **다양한 캐릭터**: 전사, 마법사, 궁수, 도적 등 8가지 기본 캐릭터
+- **선택적 사용**: 캐릭터 이미지 시스템 활성화/비활성화 선택
+- **배틀 중 표시**: 배틀 화면에서 캐릭터 이미지와 상태 표시
 - **전략적 아이템**: 공격/방어 보정기, 회복 물약
 - **팀 전용 비밀**: 같은 팀원만 아이템 정보 공유
 - **운영진 설정**: 게임 생성 시 팀장이 아이템 구성 결정
 - **실시간 사용**: 배틀 중 턴에서 아이템 사용 가능
 - **효과 관리**: 지속 효과 및 남은 턴 수 표시
 
-### 액션 시스템
+### 캐릭터 이미지 시스템
+
+### 기본 제공 캐릭터
+
+#### ⚔️ 전사 (Warrior)
+- **특징**: 근접 전투의 달인
+- **이미지**: `/images/characters/warrior.png`
+
+#### 🧙‍♂️ 마법사 (Mage)
+- **특징**: 마법의 힘을 다루는 자
+- **이미지**: `/images/characters/mage.png`
+
+#### 🏹 궁수 (Archer)
+- **특징**: 정확한 원거리 공격수
+- **이미지**: `/images/characters/archer.png`
+
+#### 🗡️ 도적 (Rogue)
+- **특징**: 그림자 속의 암살자
+- **이미지**: `/images/characters/rogue.png`
+
+#### 🛡️ 성기사 (Paladin)
+- **특징**: 신성한 힘의 수호자
+- **이미지**: `/images/characters/paladin.png`
+
+#### ⚡ 광전사 (Berserker)
+- **특징**: 분노로 싸우는 전사
+- **이미지**: `/images/characters/berserker.png`
+
+#### ✨ 성직자 (Cleric)
+- **특징**: 치유의 힘을 지닌 자
+- **이미지**: `/images/characters/cleric.png`
+
+#### 🔪 암살자 (Assassin)
+- **특징**: 치명적인 일격의 달인
+- **이미지**: `/images/characters/assassin.png`
+
+### 관리자 기능
+
+#### 캐릭터 이미지 추가
+```javascript
+// 새로운 캐릭터 이미지 추가
+battleEngine.addCharacterImage({
+  id: 'dragon_knight',
+  name: '드래곤 나이트',
+  imageUrl: '/images/characters/dragon_knight.png',
+  description: '드래곤의 힘을 빌린 기사'
+});
+```
+
+#### 캐릭터 이미지 삭제
+```javascript
+// 캐릭터 이미지 삭제
+battleEngine.removeCharacterImage('dragon_knight');
+```
+
+#### 사용 가능한 캐릭터 목록 조회
+```javascript
+// 모든 캐릭터 이미지 목록
+const characters = battleEngine.getAvailableCharacterImages();
+```
+
+### 캐릭터 설정 규칙
+
+#### 선택 규칙
+- **선택적 사용**: 캐릭터 이미지 시스템 활성화 선택 가능
+- **개별 선택**: 각 플레이어가 원하는 캐릭터 이미지 선택
+- **기본 옵션**: 캐릭터 이미지를 선택하지 않아도 게임 참여 가능
+
+#### 표시 규칙
+- **배틀 화면**: 캐릭터 카드에 이미지와 상태 표시
+- **상태 오버레이**: 생존/사망 상태를 이미지 위에 표시
+- **효과 표시**: 활성화된 아이템 효과를 이미지 하단에 표시
+- **턴 표시**: 현재 턴인 플레이어의 이미지에 특별한 효과 
 - **공격**: 명중률 80%, 상대의 민첩성 기반 회피 가능
 - **방어**: 다음 받는 공격 데미지 50% 감소
 - **회피**: 민첩성 +20 증가 (1턴 지속)
@@ -44,7 +121,7 @@
 ### 실시간 기능
 - **Socket.IO**: 실시간 전투 동기화
 - **실시간 채팅**: 배틀 중 팀원 간 소통
-- **턴 타이머**: 30초 제한 시간 (설정 가능)
+- **턴 타이머**: 5분 제한 시간 (설정 가능)
 - **자동 재연결**: 연결 끊김 시 자동 재연결
 - **실시간 로그**: 모든 액션 및 아이템 사용 기록
 
@@ -106,19 +183,19 @@
 
 ### 아이템 종류
 
-#### 🗡️ 공격 보정기
+#### 공격 보정기
 - **효과**: 공격력 +15
 - **지속시간**: 3턴
 - **사용 제한**: 중복 사용 불가
 - **최대 개수**: 3개
 
-#### 🛡️ 방어 보정기
+#### 방어 보정기
 - **효과**: 방어력 +10
 - **지속시간**: 3턴
 - **사용 제한**: 중복 사용 불가
 - **최대 개수**: 3개
 
-#### 🧪 회복 물약
+#### 복 물약
 - **효과**: HP +30 즉시 회복
 - **지속시간**: 즉시
 - **사용 제한**: 없음
@@ -142,7 +219,7 @@
 - **서버 검증**: 모든 아이템 사용은 서버에서 유효성 검증
 - **상대방 차단**: 상대팀이나 관전자는 아이템 정보 확인 불가
 
-## 기술 스택
+## 아이템 시스템
 
 ### 백엔드
 - **Node.js 18+**: 서버 런타임
@@ -241,17 +318,34 @@ GET /api/health
 
 #### 클라이언트 → 서버
 ```javascript
-// 배틀 생성 (아이템 시스템 포함)
+// 배틀 생성 (캐릭터 이미지 시스템 포함)
 socket.emit('create_battle', { 
   mode: '2v2',
   settings: {
     itemsEnabled: true,
-    turnTimeLimit: 30000,
+    characterImagesEnabled: true,
+    turnTimeLimit: 300000, // 5분
     maxTurns: 50
   }
 });
 
-// 배틀 참가 (팀 아이템 포함)
+// 배틀 참가 (캐릭터 이미지 포함)
+socket.emit('join_battle', {
+  battleId: 'battle_123',
+  player: {
+    name: 'Player1',
+    characterImageId: 'warrior', // 캐릭터 이미지 ID
+    attack: 60,
+    defense: 40,
+    agility: 70,
+    maxHp: 120
+  },
+  teamItems: {
+    attack_booster: 2,
+    defense_booster: 1,
+    health_potion: 3
+  }
+});
 socket.emit('join_battle', {
   battleId: 'battle_123',
   player: {
@@ -284,8 +378,21 @@ socket.emit('execute_action', {
   }
 });
 
-// 사용 가능한 아이템 목록 요청
-socket.emit('get_usable_items');
+// 사용 가능한 캐릭터 이미지 목록 요청
+socket.emit('get_character_images');
+
+// 관리자용 캐릭터 이미지 추가
+socket.emit('admin_add_character', {
+  id: 'dragon_knight',
+  name: '드래곤 나이트',
+  imageUrl: '/images/characters/dragon_knight.png',
+  description: '드래곤의 힘을 빌린 기사'
+});
+
+// 관리자용 캐릭터 이미지 삭제
+socket.emit('admin_remove_character', {
+  characterId: 'dragon_knight'
+});
 
 // 팀 아이템 정보 요청 (같은 팀만)
 socket.emit('get_team_items');
@@ -307,13 +414,15 @@ socket.emit('get_battle_state', {
 // 배틀 생성 완료
 socket.on('battle_created', (data) => {
   console.log('배틀 ID:', data.battleId);
-  console.log('아이템 활성화:', data.itemsEnabled);
+  console.log('캐릭터 이미지 활성화:', data.characterImagesEnabled);
+  console.log('사용 가능한 캐릭터:', data.battle.availableCharacterImages);
 });
 
 // 배틀 참가 완료
 socket.on('battle_joined', (data) => {
   console.log('팀:', data.team);
   console.log('포지션:', data.position);
+  console.log('선택한 캐릭터:', data.player.characterImage);
   console.log('팀 아이템:', data.battle.teamItems);
 });
 
@@ -321,6 +430,12 @@ socket.on('battle_joined', (data) => {
 socket.on('battle_updated', (data) => {
   console.log('배틀 상태:', data.battle);
   console.log('팀 아이템:', data.battle.teamItems); // 같은 팀만
+  console.log('캐릭터 목록:', data.battle.availableCharacterImages);
+});
+
+// 사용 가능한 캐릭터 이미지 목록
+socket.on('character_images', (data) => {
+  console.log('사용 가능한 캐릭터:', data.characters);
 });
 
 // 사용 가능한 아이템 목록
@@ -429,6 +544,53 @@ pm2 stop battle-api
 ```
 
 ## 개발 가이드
+
+### 캐릭터 이미지 시스템 커스터마이징
+
+#### 새로운 캐릭터 추가
+```javascript
+// packages/battle-api/src/services/BattleEngine.js
+// 서버 시작 시 또는 런타임에 추가
+battleEngine.addCharacterImage({
+  id: 'necromancer',
+  name: '네크로맨서',
+  imageUrl: '/images/characters/necromancer.png',
+  description: '죽음을 다루는 마법사'
+});
+```
+
+#### 캐릭터 이미지 파일 구조
+```
+public/
+└── images/
+    └── characters/
+        ├── warrior.png
+        ├── mage.png
+        ├── archer.png
+        ├── rogue.png
+        ├── paladin.png
+        ├── berserker.png
+        ├── cleric.png
+        ├── assassin.png
+        ├── default.png          # 기본 이미지
+        └── custom/              # 커스텀 캐릭터
+            └── dragon_knight.png
+```
+
+#### 캐릭터 선택 UI 커스터마이징
+```css
+/* packages/battle-web/src/styles/battle.css */
+.character-option-image {
+  /* 캐릭터 선택 이미지 스타일 수정 */
+  border-radius: 12px;
+  filter: brightness(0.9);
+}
+
+.character-battle-image {
+  /* 배틀 중 캐릭터 이미지 스타일 수정 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+```
 
 ### 아이템 시스템 커스터마이징
 
@@ -571,6 +733,18 @@ this.itemDefinitions = {
 };
 ```
 
+### 캐릭터 이미지 최적화
+```javascript
+// 이미지 압축 및 최적화 설정
+const imageOptimization = {
+  format: 'webp',           // 웹 최적화 포맷
+  quality: 80,              // 품질 (80%)
+  width: 200,               // 표준 너비
+  height: 200,              // 표준 높이
+  placeholder: 'blur'       // 로딩 중 블러 효과
+};
+```
+
 ### 디버깅
 
 #### 서버 로그 확인
@@ -588,7 +762,8 @@ pm2 logs battle-api | grep item
 console.log('Socket 연결 상태:', socket.connected);
 console.log('배틀 상태:', battleState);
 console.log('사용 가능한 아이템:', usableItems);
-console.log('팀 아이템:', teamItems);
+console.log('사용 가능한 캐릭터:', availableCharacterImages);
+console.log('선택된 캐릭터:', selectedCharacterImage);
 ```
 
 ### 성능 모니터링
@@ -602,37 +777,42 @@ console.log('대기 중 배틀:', stats.waitingBattles);
 console.log('아이템 사용 횟수:', stats.itemUsageCount);
 ```
 
-## 주요 변경사항 (v2.2.0)
+## 주요 변경사항 (v2.3.0)
 
 ### 새로운 기능
+- ✅ **캐릭터 이미지 시스템**: 8가지 기본 캐릭터 이미지 제공
+- ✅ **관리자 캐릭터 관리**: 캐릭터 이미지 추가/삭제 기능
+- ✅ **직관적 UI 개선**: 캐릭터 이미지로 플레이어 식별 향상
+- ✅ **턴 타이머 연장**: 30초 → 5분으로 변경
+- ✅ **배틀 화면 개선**: 캐릭터 이미지와 효과 표시
+
+### 개선사항
+- **시각적 향상**: 캐릭터 이미지로 게임 몰입도 증대
+- **사용자 경험**: 캐릭터 선택을 통한 개인화
+- **관리 기능**: 서버 관리자의 캐릭터 콘텐츠 관리
+- **성능 최적화**: 이미지 로딩 및 캐싱 개선
+
+### 이전 기능 (v2.2.0)
 - ✅ **전략적 아이템 시스템**: 공격/방어 보정기, 회복 물약
 - ✅ **팀 전용 비밀 아이템**: 상대팀에게 비공개
 - ✅ **아이템 설정 UI**: 게임 생성 시 직관적인 아이템 구성
 - ✅ **실시간 아이템 패널**: 배틀 중 아이템 사용 및 효과 표시
-- ✅ **아이템 효과 관리**: 지속 효과 및 남은 턴 수 표시
-
-### 개선사항
-- 🔧 **팀별 데이터 격리**: 서버에서 팀별로 다른 정보 전송
-- 🔧 **아이템 유효성 검증**: 서버에서 모든 아이템 사용 검증
-- 🔧 **UI/UX 개선**: 아이템 패널 및 설정 화면 추가
-- 🔧 **게임 밸런스**: 아이템 수량 제한 및 효과 조정
 
 ### 이전 기능 (v2.1.0)
 - ✅ 실시간 채팅 시스템
 - ✅ 타겟 선택 UI 개선
 - ✅ 글래스모피즘 디자인 적용
 - ✅ 모바일 반응형 지원
-- ✅ 키보드 단축키 확장
 
 ## 로드맵
 
-### v2.3.0 (계획)
+### v2.4.0 (계획)
 - [ ] 스킬 시스템 추가 (궁극기 등)
 - [ ] 상태 이상 효과 (독, 마비, 수면)
 - [ ] 아이템 조합 시스템
 - [ ] 관전자 모드
 
-### v2.4.0 (계획)
+### v2.5.0 (계획)
 - [ ] AI 봇 플레이어
 - [ ] 랭킹 시스템
 - [ ] 리플레이 기능
@@ -661,6 +841,18 @@ MIT License
 문제가 발생하거나 질문이 있으시면 [Issues](https://github.com/CriminalTalent/battle-system/issues)에 올려주세요.
 
 ### FAQ
+
+**Q: 캐릭터 이미지는 어떻게 선택하나요?**
+A: 게임 생성 시 "캐릭터 이미지 사용"을 체크하고 원하는 캐릭터를 선택할 수 있습니다. 8가지 기본 캐릭터가 제공됩니다.
+
+**Q: 관리자가 새로운 캐릭터를 추가할 수 있나요?**
+A: 네, 서버 관리자는 `battleEngine.addCharacterImage()` 메서드를 통해 새로운 캐릭터 이미지를 추가할 수 있습니다.
+
+**Q: 캐릭터 이미지가 게임플레이에 영향을 주나요?**
+A: 아니요, 캐릭터 이미지는 순수하게 시각적 요소이며 게임 밸런스나 능력치에는 영향을 주지 않습니다.
+
+**Q: 턴 시간이 5분으로 긴 이유는?**
+A: 전략적 사고와 팀원과의 상의 시간을 충분히 제공하기 위해 5분으로 설정되어 있습니다. 관리자가 설정을 통해 변경 가능합니다.
 
 **Q: 아이템은 어떻게 설정하나요?**
 A: 배틀 생성 시 첫 번째 참가자가 "아이템 시스템 사용"을 체크하고 원하는 아이템을 선택할 수 있습니다.
