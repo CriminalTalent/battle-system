@@ -369,4 +369,139 @@ const SpectatorView = ({ battleId, initialSpectatorInfo }) => {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center">
                   <UserGroupIcon className="w-5 h-5 mr-2" />
-                  관전자 ({spectator
+                  관전자 ({spectatorCount})
+                </h3>
+                <button
+                  onClick={() => setShowSpectatorList(false)}
+                  className="p-1 hover:bg-white/10 rounded transition-colors"
+                >
+                  <MinusIcon className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 space-y-2 overflow-y-auto h-full">
+              {spectators.map((spectator) => (
+                <div
+                  key={spectator.id}
+                  className="flex items-center space-x-3 p-2 bg-white/5 rounded-lg"
+                >
+                  <div className="w-8 h-8 bg-purple-600/20 rounded-full flex items-center justify-center">
+                    <EyeIcon className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">{spectator.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(spectator.joinedAt).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {spectators.length === 0 && (
+                <div className="text-center py-8">
+                  <EyeIcon className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+                  <p className="text-gray-400">다른 관전자가 없습니다</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 관전자 채팅 사이드바 */}
+      <AnimatePresence>
+        {showChat && (
+          <motion.div
+            className="fixed bottom-0 right-0 w-80 h-96 bg-black/50 backdrop-blur-xl border-t border-l border-white/10 z-50 rounded-tl-xl"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 20 }}
+          >
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                  <ChatBubbleLeftIcon className="w-5 h-5 mr-2" />
+                  관전자 채팅
+                </h3>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="p-1 hover:bg-white/10 rounded transition-colors"
+                >
+                  <MinusIcon className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            </div>
+            
+            {/* 채팅 메시지 영역 */}
+            <div className="flex-1 p-4 overflow-y-auto h-60 space-y-2">
+              {chatMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className="bg-white/5 rounded-lg p-3"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-green-300">
+                      {message.spectatorName}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-white">{message.text}</p>
+                </div>
+              ))}
+              {chatMessages.length === 0 && (
+                <div className="text-center py-8">
+                  <ChatBubbleLeftIcon className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+                  <p className="text-gray-400">아직 채팅 메시지가 없습니다</p>
+                </div>
+              )}
+            </div>
+
+            {/* 채팅 입력 영역 */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="관전자들과 채팅하세요..."
+                  className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-green-500"
+                  maxLength={200}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={!chatInput.trim() || !connected}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                >
+                  전송
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 연결 상태 표시 */}
+      <div className="fixed bottom-4 left-4 z-40">
+        <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
+          connected 
+            ? 'bg-green-600/20 border border-green-500/30' 
+            : 'bg-red-600/20 border border-red-500/30'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            connected ? 'bg-green-400' : 'bg-red-400'
+          } ${connected ? 'animate-pulse' : ''}`} />
+          <span className={`text-sm ${
+            connected ? 'text-green-200' : 'text-red-200'
+          }`}>
+            {connected ? '관전 중' : '연결 끊김'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SpectatorView;
