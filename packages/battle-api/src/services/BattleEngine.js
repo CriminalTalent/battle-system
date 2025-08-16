@@ -5,6 +5,36 @@ class BattleEngine {
         this.battles = new Map();
         this.turnTimers = new Map();
         
+        // 아이템 정의
+        this.itemDefinitions = {
+            attack_booster: {
+                id: 'attack_booster',
+                name: '공격 보정기',
+                description: '공격력을 15 증가시킵니다',
+                type: 'booster',
+                effect: { attack: 15 },
+                duration: 3, // 3턴 지속
+                usable: true
+            },
+            defense_booster: {
+                id: 'defense_booster',
+                name: '방어 보정기',
+                description: '방어력을 10 증가시킵니다',
+                type: 'booster',
+                effect: { defense: 10 },
+                duration: 3, // 3턴 지속
+                usable: true
+            },
+            health_potion: {
+                id: 'health_potion',
+                name: '회복 물약',
+                description: 'HP를 30 회복합니다',
+                type: 'consumable',
+                effect: { heal: 30 },
+                usable: true
+            }
+        };
+        
         // 정리 작업을 위한 타이머 (30분마다 실행)
         this.setupCleanupTimer();
     }
@@ -21,6 +51,12 @@ class BattleEngine {
             teams: {
                 team1: [],
                 team2: []
+            },
+            
+            // 팀별 아이템 인벤토리 (비밀)
+            teamInventories: {
+                team1: {},
+                team2: {}
             },
             
             // 턴 관리
@@ -42,6 +78,7 @@ class BattleEngine {
             settings: {
                 turnTimeLimit: config.settings?.turnTimeLimit || 30000, // 30초
                 maxTurns: config.settings?.maxTurns || 50,
+                itemsEnabled: config.settings?.itemsEnabled !== false, // 기본값 true
                 ...config.settings
             },
             
@@ -56,8 +93,8 @@ class BattleEngine {
         return battle;
     }
 
-    // 플레이어 참가
-    joinBattle(battleId, player) {
+    // 플레이어 참가 (아이템 포함)
+    joinBattle(battleId, player, teamItems = {}) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
         if (battle.status !== 'waiting') throw new Error('Battle already started or finished');
@@ -84,9 +121,15 @@ class BattleEngine {
         player.status = 'alive';
         player.defendBuff = false;
         player.dodgeBuff = 0;
+        player.activeItems = {}; // 활성화된 아이템 효과
         
         battle.teams[targetTeam].push(player);
         battle.lastActivityAt = Date.now();
+        
+        // 팀 아이템 설정 (첫 번째 플레이어가 참가할 때)
+        if (battle.teams[targetTeam].length === 1 && battle.settings.itemsEnabled) {
+            this.setTeamItems(battle, targetTeam, teamItems);
+        }
         
         this.addLog(battle, `${player.name}이 ${targetTeam}에 참가했습니다.`);
 
@@ -102,162 +145,32 @@ class BattleEngine {
         };
     }
 
-    // 모드별 최대 팀 크기
-    getMaxTeamSize(mode) {
-        const teamSizes = {
-            '1v1': 1,
-            '2v2': 2,
-            '3v3': 3,
-            '4v4': 4
-        };
-        return teamSizes[mode] || 1;
-    }
-
-    // 배틀 시작 가능 여부 확인
-    canStartBattle(battle) {
-        const minPlayers = this.getMinPlayers(battle.mode);
-        const totalPlayers = battle.teams.team1.length + battle.teams.team2.length;
-        return totalPlayers >= minPlayers;
-    }
-
-    // 모드별 최소 플레이어 수
-    getMinPlayers(mode) {
-        const playerCounts = {
-            '1v1': 2,
-            '2v2': 4,
-            '3v3': 6,
-            '4v4': 8
-        };
-        return playerCounts[mode] || 2;
-    }
-
-    // 배틀 시작 (외부에서 호출)
-    startBattle(battleId) {
-        const battle = this.battles.get(battleId);
-        if (!battle) throw new Error('Battle not found');
-        if (battle.status !== 'ready') throw new Error('Battle not ready');
-
-        this.startInitiativePhase(battle);
-        return battle;
-    }
-
-    // 선후공 결정 페이즈 시작
-    startInitiativePhase(battle) {
-        battle.status = 'initiative';
-        battle.lastActivityAt = Date.now();
-        this.addLog(battle, '선후공을 결정합니다!');
-
-        // 각 팀의 총 민첩성 계산
-        const team1Agility = this.calculateTeamAgility(battle.teams.team1);
-        const team2Agility = this.calculateTeamAgility(battle.teams.team2);
-
-        // 주사위 굴리기 (1d100)
-        const team1Dice = this.rollDice(100);
-        const team2Dice = this.rollDice(100);
-
-        // 이합 계산
-        const team1Total = team1Agility + team1Dice;
-        const team2Total = team2Agility + team2Dice;
-
-        // 결과 저장
-        battle.initiativeRolls.team1 = {
-            agility: team1Agility,
-            diceRoll: team1Dice,
-            total: team1Total
-        };
-        battle.initiativeRolls.team2 = {
-            agility: team2Agility,
-            diceRoll: team2Dice,
-            total: team2Total
-        };
-
-        // 로그 기록
-        this.addLog(battle, `Team 1: 민첩성(${team1Agility}) + 주사위(${team1Dice}) = ${team1Total}`);
-        this.addLog(battle, `Team 2: 민첩성(${team2Agility}) + 주사위(${team2Dice}) = ${team2Total}`);
-
-        // 승부 결정
-        let firstTeam, secondTeam;
-        if (team1Total > team2Total) {
-            firstTeam = 'team1';
-            secondTeam = 'team2';
-            this.addLog(battle, 'Team 1이 선공을 가져갑니다!');
-        } else if (team2Total > team1Total) {
-            firstTeam = 'team2';
-            secondTeam = 'team1';
-            this.addLog(battle, 'Team 2가 선공을 가져갑니다!');
-        } else {
-            // 동점일 경우 재굴림
-            this.addLog(battle, '동점! 다시 굴립니다...');
-            setTimeout(() => this.startInitiativePhase(battle), 2000);
-            return battle;
+    // 팀 아이템 설정
+    setTeamItems(battle, team, items) {
+        const inventory = {};
+        
+        // 유효한 아이템만 추가
+        for (const [itemId, quantity] of Object.entries(items)) {
+            if (this.itemDefinitions[itemId] && quantity > 0) {
+                inventory[itemId] = {
+                    ...this.itemDefinitions[itemId],
+                    quantity: Math.min(quantity, 3) // 최대 3개까지
+                };
+            }
         }
-
-        // 턴 순서 생성
-        this.createTurnOrder(battle, firstTeam, secondTeam);
         
-        // 실제 배틀 시작
-        this.beginBattle(battle);
+        battle.teamInventories[team] = inventory;
         
-        return battle;
+        const itemList = Object.values(inventory)
+            .map(item => `${item.name} x${item.quantity}`)
+            .join(', ');
+            
+        if (itemList) {
+            this.addLog(battle, `${team} 아이템이 설정되었습니다: ${itemList}`);
+        }
     }
 
-    // 팀 총 민첩성 계산
-    calculateTeamAgility(team) {
-        return team.reduce((total, player) => {
-            return total + (player.agility || 50); // 기본 민첩성 50
-        }, 0);
-    }
-
-    // 주사위 굴리기
-    rollDice(sides) {
-        return Math.floor(Math.random() * sides) + 1;
-    }
-
-    // 턴 순서 생성
-    createTurnOrder(battle, firstTeam, secondTeam) {
-        const turnOrder = [];
-        
-        // 선공팀이 먼저 턴을 가져감
-        const firstTeamPlayers = battle.teams[firstTeam];
-        const secondTeamPlayers = battle.teams[secondTeam];
-        
-        // 선공팀 전체가 먼저, 후공팀 전체가 나중에
-        firstTeamPlayers.forEach(player => {
-            turnOrder.push({...player, team: firstTeam});
-        });
-        
-        secondTeamPlayers.forEach(player => {
-            turnOrder.push({...player, team: secondTeam});
-        });
-        
-        battle.turnOrder = turnOrder;
-        battle.currentTurnIndex = 0;
-        
-        // 턴 순서 로그
-        const orderLog = battle.turnOrder.map((p, i) => `${i + 1}. ${p.name} (${p.team})`).join(', ');
-        this.addLog(battle, `턴 순서: ${orderLog}`);
-    }
-
-    // 배틀 실제 시작
-    beginBattle(battle) {
-        battle.status = 'in_progress';
-        battle.lastActivityAt = Date.now();
-        this.addLog(battle, '배틀이 시작됩니다!');
-        
-        const firstPlayer = battle.turnOrder[0];
-        this.addLog(battle, `${firstPlayer.name}의 턴입니다!`);
-        
-        // 턴 타이머 시작
-        this.startTurnTimer(battle);
-    }
-
-    // 현재 턴 플레이어 가져오기
-    getCurrentPlayer(battle) {
-        if (!battle.turnOrder || battle.turnOrder.length === 0) return null;
-        return battle.turnOrder[battle.currentTurnIndex];
-    }
-
-    // 액션 실행
+    // 액션 실행 (아이템 사용 포함)
     executeAction(battleId, playerId, action) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
@@ -270,6 +183,15 @@ class BattleEngine {
 
         battle.lastActivityAt = Date.now();
 
+        // 아이템 사용 액션
+        if (action.type === 'use_item') {
+            const result = this.useItem(battle, currentPlayer, action.itemId);
+            if (!this.checkWinCondition(battle)) {
+                this.nextTurn(battle);
+            }
+            return result;
+        }
+
         // 타겟이 필요한 액션인 경우 타겟 선택 요구
         if (action.type === 'attack' && (!action.targets || action.targets.length === 0)) {
             const availableTargets = this.getAvailableTargets(battle, currentPlayer, action.type);
@@ -280,7 +202,7 @@ class BattleEngine {
             };
         }
 
-        // 액션 처리
+        // 기본 액션 처리
         const result = this.processAction(battle, currentPlayer, action);
         
         // 승리 조건 확인
@@ -292,149 +214,175 @@ class BattleEngine {
         return result;
     }
 
-    // 사용 가능한 타겟 목록 가져오기
-    getAvailableTargets(battle, attacker, actionType) {
-        const targets = [];
+    // 아이템 사용
+    useItem(battle, player, itemId) {
+        if (!battle.settings.itemsEnabled) {
+            throw new Error('Items are disabled in this battle');
+        }
+
+        const teamInventory = battle.teamInventories[player.team];
+        const item = teamInventory[itemId];
         
-        if (actionType === 'attack') {
-            // 상대 팀의 살아있는 플레이어들
-            const enemyTeam = attacker.team === 'team1' ? 'team2' : 'team1';
-            battle.teams[enemyTeam].forEach(player => {
-                if (player.status === 'alive') {
-                    targets.push({
-                        id: player.id,
-                        name: player.name,
-                        hp: player.hp,
-                        maxHp: player.maxHp
+        if (!item || item.quantity <= 0) {
+            throw new Error('Item not available');
+        }
+
+        const itemDef = this.itemDefinitions[itemId];
+        if (!itemDef.usable) {
+            throw new Error('Item is not usable');
+        }
+
+        // 아이템 효과 적용
+        const result = this.applyItemEffect(battle, player, itemDef);
+        
+        // 아이템 소모
+        item.quantity--;
+        if (item.quantity <= 0) {
+            delete teamInventory[itemId];
+        }
+
+        this.addLog(battle, `${player.name}이 ${itemDef.name}을(를) 사용했습니다!`);
+        
+        return {
+            type: 'use_item',
+            user: player.name,
+            item: itemDef.name,
+            result: result
+        };
+    }
+
+    // 아이템 효과 적용
+    applyItemEffect(battle, player, item) {
+        const result = { effects: [] };
+
+        if (item.type === 'consumable') {
+            // 소모품 (즉시 효과)
+            if (item.effect.heal) {
+                const healAmount = Math.min(item.effect.heal, player.maxHp - player.hp);
+                player.hp += healAmount;
+                result.effects.push({
+                    type: 'heal',
+                    amount: healAmount,
+                    newHp: player.hp
+                });
+                this.addLog(battle, `${player.name}이 ${healAmount} HP를 회복했습니다! (${player.hp}/${player.maxHp})`);
+            }
+        } else if (item.type === 'booster') {
+            // 보정기 (지속 효과)
+            if (!player.activeItems[item.id]) {
+                player.activeItems[item.id] = {
+                    ...item,
+                    remainingTurns: item.duration
+                };
+
+                // 스탯 적용
+                if (item.effect.attack) {
+                    player.attack = (player.attack || 50) + item.effect.attack;
+                    result.effects.push({
+                        type: 'stat_boost',
+                        stat: 'attack',
+                        amount: item.effect.attack,
+                        duration: item.duration
                     });
                 }
-            });
-        }
-        
-        return targets;
-    }
 
-    // 액션 처리 (공격/방어/회피)
-    processAction(battle, attacker, action) {
-        const { type, targets } = action;
-        let results = [];
-
-        switch (type) {
-            case 'attack':
-                if (!targets || targets.length === 0) {
-                    throw new Error('Attack requires targets');
+                if (item.effect.defense) {
+                    player.defense = (player.defense || 30) + item.effect.defense;
+                    result.effects.push({
+                        type: 'stat_boost',
+                        stat: 'defense',
+                        amount: item.effect.defense,
+                        duration: item.duration
+                    });
                 }
-                results = this.processAttack(battle, attacker, targets);
-                break;
-            case 'defend':
-                results = this.processDefend(battle, attacker);
-                break;
-            case 'dodge':
-                results = this.processDodge(battle, attacker);
-                break;
-            default:
-                throw new Error('Invalid action type');
+
+                this.addLog(battle, `${player.name}에게 ${item.name} 효과가 적용되었습니다! (${item.duration}턴 지속)`);
+            } else {
+                throw new Error('Item effect already active');
+            }
         }
 
-        return { type, attacker: attacker.name, results };
+        return result;
     }
 
-    // 공격 처리
-    processAttack(battle, attacker, targets) {
-        const results = [];
-        
-        for (const targetId of targets) {
-            const target = this.findPlayerById(battle, targetId);
-            if (!target || target.status !== 'alive') continue;
-            
-            // 명중률 계산 (기본 80%)
-            const hitChance = 80;
-            const hitRoll = this.rollDice(100);
-            
-            if (hitRoll > hitChance) {
-                results.push({
-                    targetName: target.name,
-                    missed: true,
-                    message: '공격이 빗나갔습니다!'
-                });
-                this.addLog(battle, `${attacker.name}의 공격이 ${target.name}에게 빗나갔습니다!`);
-                continue;
-            }
-            
-            // 회피 확인 (대상의 민첩성 기반)
-            const dodgeChance = Math.min((target.agility || 50) / 10, 30); // 최대 30%
-            const dodgeRoll = this.rollDice(100);
-            
-            if (dodgeRoll <= dodgeChance) {
-                results.push({
-                    targetName: target.name,
-                    dodged: true,
-                    message: '공격을 회피했습니다!'
-                });
-                this.addLog(battle, `${target.name}이 ${attacker.name}의 공격을 회피했습니다!`);
-                continue;
-            }
-            
-            // 데미지 계산
-            let damage = Math.max(1, (attacker.attack || 50) - (target.defense || 30));
-            
-            // 방어 상태라면 데미지 50% 감소
-            if (target.defendBuff) {
-                damage = Math.floor(damage * 0.5);
-                target.defendBuff = false; // 방어 버프 소모
-                this.addLog(battle, `${target.name}이 방어로 데미지를 감소시켰습니다!`);
-            }
-            
-            const actualDamage = Math.floor(damage * (0.8 + Math.random() * 0.4)); // 80-120%
-            target.hp = Math.max(0, target.hp - actualDamage);
-            
-            if (target.hp <= 0) {
-                target.status = 'dead';
-                this.addLog(battle, `${target.name}이 쓰러졌습니다!`);
-            }
-            
-            results.push({
-                targetName: target.name,
-                damage: actualDamage,
-                remainingHp: target.hp,
-                defeated: target.status === 'dead'
-            });
-            
-            this.addLog(battle, `${attacker.name}이 ${target.name}에게 ${actualDamage} 데미지!`);
-        }
-        
-        return results;
-    }
-
-    // 방어 처리
-    processDefend(battle, defender) {
-        // 다음 공격에 대해 50% 데미지 감소
-        defender.defendBuff = true;
-        this.addLog(battle, `${defender.name}이 방어 태세를 취했습니다! 다음 공격 데미지가 50% 감소합니다.`);
-        return [{ message: '방어 태세', defenseBonus: 50 }];
-    }
-
-    // 회피 처리
-    processDodge(battle, dodger) {
-        // 민첩성을 일시적으로 증가시켜 회피율 상승
-        const originalAgility = dodger.agility || 50;
-        dodger.agility = originalAgility + 20; // 20 증가
-        dodger.dodgeBuff = 1; // 1턴 동안 지속
-        
-        this.addLog(battle, `${dodger.name}이 회피에 집중합니다! 민첩성이 일시적으로 증가했습니다.`);
-        return [{ message: '회피 집중', agilityBonus: 20 }];
-    }
-
-    // 플레이어 ID로 찾기
-    findPlayerById(battle, playerId) {
+    // 아이템 효과 처리 (턴 종료 시)
+    processItemEffects(battle) {
         const allPlayers = [...battle.teams.team1, ...battle.teams.team2];
-        return allPlayers.find(p => p.id === playerId);
+        
+        allPlayers.forEach(player => {
+            const expiredItems = [];
+            
+            for (const [itemId, itemEffect] of Object.entries(player.activeItems)) {
+                itemEffect.remainingTurns--;
+                
+                if (itemEffect.remainingTurns <= 0) {
+                    expiredItems.push(itemId);
+                    
+                    // 스탯 보정 제거
+                    if (itemEffect.effect.attack) {
+                        player.attack = (player.attack || 50) - itemEffect.effect.attack;
+                    }
+                    if (itemEffect.effect.defense) {
+                        player.defense = (player.defense || 30) - itemEffect.effect.defense;
+                    }
+                    
+                    this.addLog(battle, `${player.name}의 ${itemEffect.name} 효과가 만료되었습니다.`);
+                }
+            }
+            
+            // 만료된 아이템 제거
+            expiredItems.forEach(itemId => {
+                delete player.activeItems[itemId];
+            });
+        });
     }
 
-    // 다음 턴
+    // 팀 아이템 정보 가져오기 (해당 팀만)
+    getTeamItems(battle, team) {
+        if (!battle.settings.itemsEnabled) {
+            return {};
+        }
+        return battle.teamInventories[team] || {};
+    }
+
+    // 플레이어의 사용 가능한 아이템 목록
+    getUsableItems(battle, player) {
+        if (!battle.settings.itemsEnabled) {
+            return [];
+        }
+
+        const teamInventory = battle.teamInventories[player.team] || {};
+        const usableItems = [];
+
+        for (const [itemId, item] of Object.entries(teamInventory)) {
+            if (item.quantity > 0 && item.usable) {
+                // 보정기는 이미 사용 중이면 사용 불가
+                if (item.type === 'booster' && player.activeItems[itemId]) {
+                    continue;
+                }
+                
+                usableItems.push({
+                    id: itemId,
+                    name: item.name,
+                    description: item.description,
+                    quantity: item.quantity,
+                    type: item.type
+                });
+            }
+        }
+
+        return usableItems;
+    }
+
+    // 다음 턴 (아이템 효과 처리 포함)
     nextTurn(battle) {
         // 상태 효과 처리
         this.processStatusEffects(battle);
+        
+        // 아이템 효과 처리
+        if (battle.settings.itemsEnabled) {
+            this.processItemEffects(battle);
+        }
         
         // 살아있는 플레이어 중에서 다음 턴 찾기
         let attempts = 0;
@@ -471,16 +419,299 @@ class BattleEngine {
         this.startTurnTimer(battle);
     }
 
-    // 상태 효과 처리 (버프/디버프 지속시간 감소)
+    // 배틀 상태 직렬화 (팀별 아이템 정보 포함)
+    serializeBattleForTeam(battle, team) {
+        if (!battle) return null;
+        
+        const baseBattle = {
+            id: battle.id,
+            status: battle.status,
+            mode: battle.mode,
+            teams: battle.teams,
+            turnOrder: battle.turnOrder,
+            currentTurnIndex: battle.currentTurnIndex,
+            currentPlayer: battle.turnOrder ? battle.turnOrder[battle.currentTurnIndex] : null,
+            round: battle.round,
+            initiativeRolls: battle.initiativeRolls,
+            battleLogs: battle.battleLogs ? battle.battleLogs.slice(-20) : [], // 최근 20개 로그만
+            winner: battle.winner,
+            settings: battle.settings,
+            createdAt: battle.createdAt
+        };
+
+        // 팀별 아이템 정보 추가 (해당 팀만)
+        if (battle.settings.itemsEnabled && team) {
+            baseBattle.teamItems = this.getTeamItems(battle, team);
+        }
+
+        return baseBattle;
+    }
+
+    // 기존 메서드들은 그대로 유지...
+    getMaxTeamSize(mode) {
+        const teamSizes = {
+            '1v1': 1,
+            '2v2': 2,
+            '3v3': 3,
+            '4v4': 4
+        };
+        return teamSizes[mode] || 1;
+    }
+
+    canStartBattle(battle) {
+        const minPlayers = this.getMinPlayers(battle.mode);
+        const totalPlayers = battle.teams.team1.length + battle.teams.team2.length;
+        return totalPlayers >= minPlayers;
+    }
+
+    getMinPlayers(mode) {
+        const playerCounts = {
+            '1v1': 2,
+            '2v2': 4,
+            '3v3': 6,
+            '4v4': 8
+        };
+        return playerCounts[mode] || 2;
+    }
+
+    startBattle(battleId) {
+        const battle = this.battles.get(battleId);
+        if (!battle) throw new Error('Battle not found');
+        if (battle.status !== 'ready') throw new Error('Battle not ready');
+
+        this.startInitiativePhase(battle);
+        return battle;
+    }
+
+    startInitiativePhase(battle) {
+        battle.status = 'initiative';
+        battle.lastActivityAt = Date.now();
+        this.addLog(battle, '선후공을 결정합니다!');
+
+        const team1Agility = this.calculateTeamAgility(battle.teams.team1);
+        const team2Agility = this.calculateTeamAgility(battle.teams.team2);
+
+        const team1Dice = this.rollDice(100);
+        const team2Dice = this.rollDice(100);
+
+        const team1Total = team1Agility + team1Dice;
+        const team2Total = team2Agility + team2Dice;
+
+        battle.initiativeRolls.team1 = {
+            agility: team1Agility,
+            diceRoll: team1Dice,
+            total: team1Total
+        };
+        battle.initiativeRolls.team2 = {
+            agility: team2Agility,
+            diceRoll: team2Dice,
+            total: team2Total
+        };
+
+        this.addLog(battle, `Team 1: 민첩성(${team1Agility}) + 주사위(${team1Dice}) = ${team1Total}`);
+        this.addLog(battle, `Team 2: 민첩성(${team2Agility}) + 주사위(${team2Dice}) = ${team2Total}`);
+
+        let firstTeam, secondTeam;
+        if (team1Total > team2Total) {
+            firstTeam = 'team1';
+            secondTeam = 'team2';
+            this.addLog(battle, 'Team 1이 선공을 가져갑니다!');
+        } else if (team2Total > team1Total) {
+            firstTeam = 'team2';
+            secondTeam = 'team1';
+            this.addLog(battle, 'Team 2가 선공을 가져갑니다!');
+        } else {
+            this.addLog(battle, '동점! 다시 굴립니다...');
+            setTimeout(() => this.startInitiativePhase(battle), 2000);
+            return battle;
+        }
+
+        this.createTurnOrder(battle, firstTeam, secondTeam);
+        this.beginBattle(battle);
+        
+        return battle;
+    }
+
+    calculateTeamAgility(team) {
+        return team.reduce((total, player) => {
+            return total + (player.agility || 50);
+        }, 0);
+    }
+
+    rollDice(sides) {
+        return Math.floor(Math.random() * sides) + 1;
+    }
+
+    createTurnOrder(battle, firstTeam, secondTeam) {
+        const turnOrder = [];
+        
+        const firstTeamPlayers = battle.teams[firstTeam];
+        const secondTeamPlayers = battle.teams[secondTeam];
+        
+        firstTeamPlayers.forEach(player => {
+            turnOrder.push({...player, team: firstTeam});
+        });
+        
+        secondTeamPlayers.forEach(player => {
+            turnOrder.push({...player, team: secondTeam});
+        });
+        
+        battle.turnOrder = turnOrder;
+        battle.currentTurnIndex = 0;
+        
+        const orderLog = battle.turnOrder.map((p, i) => `${i + 1}. ${p.name} (${p.team})`).join(', ');
+        this.addLog(battle, `턴 순서: ${orderLog}`);
+    }
+
+    beginBattle(battle) {
+        battle.status = 'in_progress';
+        battle.lastActivityAt = Date.now();
+        this.addLog(battle, '배틀이 시작됩니다!');
+        
+        const firstPlayer = battle.turnOrder[0];
+        this.addLog(battle, `${firstPlayer.name}의 턴입니다!`);
+        
+        this.startTurnTimer(battle);
+    }
+
+    getCurrentPlayer(battle) {
+        if (!battle.turnOrder || battle.turnOrder.length === 0) return null;
+        return battle.turnOrder[battle.currentTurnIndex];
+    }
+
+    getAvailableTargets(battle, attacker, actionType) {
+        const targets = [];
+        
+        if (actionType === 'attack') {
+            const enemyTeam = attacker.team === 'team1' ? 'team2' : 'team1';
+            battle.teams[enemyTeam].forEach(player => {
+                if (player.status === 'alive') {
+                    targets.push({
+                        id: player.id,
+                        name: player.name,
+                        hp: player.hp,
+                        maxHp: player.maxHp
+                    });
+                }
+            });
+        }
+        
+        return targets;
+    }
+
+    processAction(battle, attacker, action) {
+        const { type, targets } = action;
+        let results = [];
+
+        switch (type) {
+            case 'attack':
+                if (!targets || targets.length === 0) {
+                    throw new Error('Attack requires targets');
+                }
+                results = this.processAttack(battle, attacker, targets);
+                break;
+            case 'defend':
+                results = this.processDefend(battle, attacker);
+                break;
+            case 'dodge':
+                results = this.processDodge(battle, attacker);
+                break;
+            default:
+                throw new Error('Invalid action type');
+        }
+
+        return { type, attacker: attacker.name, results };
+    }
+
+    processAttack(battle, attacker, targets) {
+        const results = [];
+        
+        for (const targetId of targets) {
+            const target = this.findPlayerById(battle, targetId);
+            if (!target || target.status !== 'alive') continue;
+            
+            const hitChance = 80;
+            const hitRoll = this.rollDice(100);
+            
+            if (hitRoll > hitChance) {
+                results.push({
+                    targetName: target.name,
+                    missed: true,
+                    message: '공격이 빗나갔습니다!'
+                });
+                this.addLog(battle, `${attacker.name}의 공격이 ${target.name}에게 빗나갔습니다!`);
+                continue;
+            }
+            
+            const dodgeChance = Math.min((target.agility || 50) / 10, 30);
+            const dodgeRoll = this.rollDice(100);
+            
+            if (dodgeRoll <= dodgeChance) {
+                results.push({
+                    targetName: target.name,
+                    dodged: true,
+                    message: '공격을 회피했습니다!'
+                });
+                this.addLog(battle, `${target.name}이 ${attacker.name}의 공격을 회피했습니다!`);
+                continue;
+            }
+            
+            let damage = Math.max(1, (attacker.attack || 50) - (target.defense || 30));
+            
+            if (target.defendBuff) {
+                damage = Math.floor(damage * 0.5);
+                target.defendBuff = false;
+                this.addLog(battle, `${target.name}이 방어로 데미지를 감소시켰습니다!`);
+            }
+            
+            const actualDamage = Math.floor(damage * (0.8 + Math.random() * 0.4));
+            target.hp = Math.max(0, target.hp - actualDamage);
+            
+            if (target.hp <= 0) {
+                target.status = 'dead';
+                this.addLog(battle, `${target.name}이 쓰러졌습니다!`);
+            }
+            
+            results.push({
+                targetName: target.name,
+                damage: actualDamage,
+                remainingHp: target.hp,
+                defeated: target.status === 'dead'
+            });
+            
+            this.addLog(battle, `${attacker.name}이 ${target.name}에게 ${actualDamage} 데미지!`);
+        }
+        
+        return results;
+    }
+
+    processDefend(battle, defender) {
+        defender.defendBuff = true;
+        this.addLog(battle, `${defender.name}이 방어 태세를 취했습니다! 다음 공격 데미지가 50% 감소합니다.`);
+        return [{ message: '방어 태세', defenseBonus: 50 }];
+    }
+
+    processDodge(battle, dodger) {
+        const originalAgility = dodger.agility || 50;
+        dodger.agility = originalAgility + 20;
+        dodger.dodgeBuff = 1;
+        
+        this.addLog(battle, `${dodger.name}이 회피에 집중합니다! 민첩성이 일시적으로 증가했습니다.`);
+        return [{ message: '회피 집중', agilityBonus: 20 }];
+    }
+
+    findPlayerById(battle, playerId) {
+        const allPlayers = [...battle.teams.team1, ...battle.teams.team2];
+        return allPlayers.find(p => p.id === playerId);
+    }
+
     processStatusEffects(battle) {
         const allPlayers = [...battle.teams.team1, ...battle.teams.team2];
         
         allPlayers.forEach(player => {
-            // 회피 버프 감소
             if (player.dodgeBuff && player.dodgeBuff > 0) {
                 player.dodgeBuff--;
                 if (player.dodgeBuff === 0) {
-                    // 원래 민첩성으로 복구
                     player.agility = (player.agility || 50) - 20;
                     this.addLog(battle, `${player.name}의 회피 집중 효과가 사라졌습니다.`);
                 }
@@ -488,7 +719,6 @@ class BattleEngine {
         });
     }
 
-    // 승리 조건 확인
     checkWinCondition(battle) {
         const team1Alive = battle.teams.team1.filter(p => p.status === 'alive').length;
         const team2Alive = battle.teams.team2.filter(p => p.status === 'alive').length;
@@ -504,7 +734,6 @@ class BattleEngine {
         return false;
     }
 
-    // 배틀 종료
     endBattle(battle, winner) {
         battle.status = 'finished';
         battle.winner = winner;
@@ -520,7 +749,6 @@ class BattleEngine {
         }
     }
 
-    // 플레이어 연결 해제 처리
     handlePlayerDisconnect(battleId, playerId) {
         const battle = this.battles.get(battleId);
         if (!battle) return;
@@ -528,7 +756,6 @@ class BattleEngine {
         const player = this.findPlayerById(battle, playerId);
         if (!player) return;
         
-        // 배틀이 진행 중이고 해당 플레이어의 턴이라면 자동으로 방어 처리
         if (battle.status === 'in_progress') {
             const currentPlayer = this.getCurrentPlayer(battle);
             if (currentPlayer && currentPlayer.id === playerId) {
@@ -537,14 +764,8 @@ class BattleEngine {
                 this.nextTurn(battle);
             }
         }
-        
-        // 대기 중인 배틀에서는 플레이어 제거 (구현 필요시)
-        // if (battle.status === 'waiting') {
-        //     // 플레이어 제거 로직
-        // }
     }
 
-    // 턴 타이머 시작
     startTurnTimer(battle) {
         this.clearTurnTimer(battle.id);
         
@@ -562,7 +783,6 @@ class BattleEngine {
         this.turnTimers.set(battle.id, timer);
     }
 
-    // 턴 타이머 제거
     clearTurnTimer(battleId) {
         const timer = this.turnTimers.get(battleId);
         if (timer) {
@@ -571,33 +791,28 @@ class BattleEngine {
         }
     }
 
-    // 채팅 메시지 추가 (필요시 사용)
     addChatMessage(battle, message) {
         battle.chatMessages.push({
             ...message,
             timestamp: message.timestamp || Date.now()
         });
         
-        // 최대 100개 메시지 유지
         if (battle.chatMessages.length > 100) {
             battle.chatMessages.splice(0, battle.chatMessages.length - 100);
         }
     }
 
-    // 로그 추가
     addLog(battle, message) {
         battle.battleLogs.push({
             timestamp: Date.now(),
             message
         });
         
-        // 최대 50개 로그 유지
         if (battle.battleLogs.length > 50) {
             battle.battleLogs.splice(0, battle.battleLogs.length - 50);
         }
     }
 
-    // 배틀 조회
     getBattle(battleId) {
         const battle = this.battles.get(battleId);
         if (battle) {
@@ -606,18 +821,15 @@ class BattleEngine {
         return battle;
     }
 
-    // 정리 작업 타이머 설정
     setupCleanupTimer() {
-        // 30분마다 오래된 배틀 정리
         setInterval(() => {
             this.cleanupOldBattles();
-        }, 30 * 60 * 1000); // 30분
+        }, 30 * 60 * 1000);
     }
 
-    // 오래된 배틀 정리
     cleanupOldBattles() {
         const now = Date.now();
-        const maxAge = 2 * 60 * 60 * 1000; // 2시간
+        const maxAge = 2 * 60 * 60 * 1000;
         
         for (const [battleId, battle] of this.battles) {
             if (now - battle.lastActivityAt > maxAge) {
@@ -628,7 +840,6 @@ class BattleEngine {
         }
     }
 
-    // 통계 정보
     getStats() {
         const activeBattles = Array.from(this.battles.values()).filter(b => b.status === 'in_progress').length;
         const waitingBattles = Array.from(this.battles.values()).filter(b => b.status === 'waiting').length;
