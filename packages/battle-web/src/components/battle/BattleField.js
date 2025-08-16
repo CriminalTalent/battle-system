@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useBattle from '../hooks/useBattle';
 import ChatPanel from './ChatPanel';
 import ItemSetup from './ItemSetup';
+import ItemPanel from './ItemPanel';
 
 export default function BattleField({ apiUrl }) {
   const {
@@ -491,6 +492,33 @@ export default function BattleField({ apiUrl }) {
               </select>
             </div>
 
+            {/* 아이템 시스템 활성화 체크박스 */}
+            <div className="mb-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={gameSetup.itemsEnabled}
+                  onChange={(e) => setGameSetup(prev => ({
+                    ...prev,
+                    itemsEnabled: e.target.checked,
+                    teamItems: e.target.checked ? prev.teamItems : {}
+                  }))}
+                  className="mr-2"
+                />
+                <span className="text-gray-700 text-sm font-bold">
+                  아이템 시스템 사용
+                </span>
+              </label>
+            </div>
+
+            {/* 아이템 설정 */}
+            {gameSetup.itemsEnabled && (
+              <ItemSetup 
+                onItemsChange={handleItemsChange}
+                disabled={false}
+              />
+            )}
+
             <div className="flex gap-4 mb-4">
               <button 
                 onClick={handleCreateBattle}
@@ -725,6 +753,18 @@ export default function BattleField({ apiUrl }) {
           ))}
         </div>
       </div>
+
+      {/* 아이템 패널 */}
+      {isInBattle && battleState.settings?.itemsEnabled && (
+        <ItemPanel
+          items={usableItems}
+          activeEffects={currentPlayer?.activeItems || {}}
+          onUseItem={handleUseItem}
+          onToggleMinimize={handleToggleItemPanel}
+          isMinimized={isItemPanelMinimized}
+          canUseItems={canAct}
+        />
+      )}
 
       {/* 채팅 패널 */}
       {isInBattle && (
