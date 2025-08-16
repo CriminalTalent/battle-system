@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useBattle from '../hooks/useBattle';
+import ChatPanel from './ChatPanel';
 
 export default function BattleField({ apiUrl }) {
   const {
@@ -25,12 +26,19 @@ export default function BattleField({ apiUrl }) {
     toggleTarget,
     canAct,
     teamMates,
-    enemies
+    enemies,
+    // 채팅 관련 추가
+    chatMessages,
+    sendChatMessage,
+    currentPlayer
   } = useBattle(apiUrl);
 
   const [selectedAction, setSelectedAction] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMobileControls, setShowMobileControls] = useState(false);
+  // 채팅 상태 추가
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
+  
   const [gameSetup, setGameSetup] = useState({
     mode: '1v1',
     playerName: '',
@@ -50,6 +58,10 @@ export default function BattleField({ apiUrl }) {
   useEffect(() => {
     const checkMobile = () => {
       setShowMobileControls(window.innerWidth < 768);
+      // 모바일에서는 채팅을 기본으로 최소화
+      if (window.innerWidth < 768) {
+        setIsChatMinimized(true);
+      }
     };
 
     checkMobile();
@@ -80,12 +92,20 @@ export default function BattleField({ apiUrl }) {
             cancelTargetSelection();
           }
           break;
+        case 'Enter':
+          // Enter 키로 채팅 포커스 (채팅이 열려있을 때만)
+          if (!isChatMinimized && e.target.tagName !== 'INPUT') {
+            e.preventDefault();
+            const chatInput = document.querySelector('.chat-input');
+            if (chatInput) chatInput.focus();
+          }
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [canAct, targetSelection.isSelecting, cancelTargetSelection]);
+  }, [canAct, targetSelection.isSelecting, cancelTargetSelection, isChatMinimized]);
 
   const handleQuickAction = async (actionType) => {
     if (!canAct) return;
@@ -130,6 +150,18 @@ export default function BattleField({ apiUrl }) {
     if (targetSelection.isSelecting) {
       toggleTarget(targetId);
     }
+  };
+
+  // 채팅 메시지 전송 핸들러
+  const handleSendChatMessage = (messageData) => {
+    if (sendChatMessage) {
+      sendChatMessage(messageData.text);
+    }
+  };
+
+  // 채팅 토글 핸들러
+  const handleToggleChat = () => {
+    setIsChatMinimized(!isChatMinimized);
   };
 
   const playSound = (type) => {
@@ -510,7 +542,7 @@ export default function BattleField({ apiUrl }) {
                 <h3 className="text-lg font-semibold mb-2">Team 1</h3>
                 <p>민첩성: {battleState.initiativeRolls.team1.agility}</p>
                 <p>주사위: {battleState.initiativeRolls.team1.diceRoll}</p>
-                <p className="font-bold">총합: {battleState.initiativeRolls.team1.total}</p>
+                <p className="font-bold">이합: {battleState.initiativeRolls.team1.total}</p>
               </div>
               
               <div className="text-center text-2xl font-bold">VS</div>
@@ -519,7 +551,7 @@ export default function BattleField({ apiUrl }) {
                 <h3 className="text-lg font-semibold mb-2">Team 2</h3>
                 <p>민첩성: {battleState.initiativeRolls.team2.agility}</p>
                 <p>주사위: {battleState.initiativeRolls.team2.diceRoll}</p>
-                <p className="font-bold">총합: {battleState.initiativeRolls.team2.total}</p>
+                <p className="font-bold">이합: {battleState.initiativeRolls.team2.total}</p>
               </div>
             </div>
 
@@ -647,6 +679,18 @@ export default function BattleField({ apiUrl }) {
         </div>
       </div>
 
+      {/* 채팅 패널 */}
+      {isInBattle && (
+        <ChatPanel
+          messages={chatMessages || []}
+          onSendMessage={handleSendChatMessage}
+          currentPlayer={currentPlayer}
+          isMinimized={isChatMinimized}
+          onToggleMinimize={handleToggleChat}
+          battleStatus={battleState.status}
+        />
+      )}
+
       {/* 연결 상태 표시 */}
       {!isConnected && (
         <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg">
@@ -658,7 +702,7 @@ export default function BattleField({ apiUrl }) {
       <div className="fixed top-20 right-4 bg-black/50 backdrop-blur-sm text-white p-3 rounded-lg text-sm">
         <p className="mb-1">단축키:</p>
         <p>1: 공격 | 2: 방어 | 3: 회피</p>
-        <p>ESC: 취소</p>
+        <p>Enter: 채팅 | ESC: 취소</p>
       </div>
     </div>
   );
