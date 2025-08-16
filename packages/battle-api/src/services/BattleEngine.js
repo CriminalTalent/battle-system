@@ -35,109 +35,139 @@ class BattleEngine {
             }
         };
 
-        // 기본 캐릭터 이미지 (관리자가 설정 가능)
-        this.characterImages = {
-            warrior: {
-                id: 'warrior',
-                name: '전사',
-                imageUrl: '/images/characters/warrior.png',
-                description: '근접 전투의 달인'
+        // 기본 팀 이름 템플릿 (관리자가 설정 가능)
+        this.teamNameTemplates = {
+            default: {
+                team1Names: ['레드팀', '블루팀', '알파팀', '드래곤팀', '피닉스팀', '타이탄팀'],
+                team2Names: ['옐로우팀', '그린팀', '베타팀', '울프팀', '이글팀', '라이온팀']
             },
-            mage: {
-                id: 'mage',
-                name: '마법사',
-                imageUrl: '/images/characters/mage.png',
-                description: '마법의 힘을 다루는 자'
+            fantasy: {
+                team1Names: ['그리폰 연합', '드래곤 클랜', '피닉스 길드', '유니콘 기사단', '펠린 워리어즈', '엘프 레인저스'],
+                team2Names: ['오크 호드', '다크 로드', '쉐도우 어쌔신', '고블린 트라이브', '언데드 리전', '데몬 컬트']
             },
-            archer: {
-                id: 'archer',
-                name: '궁수',
-                imageUrl: '/images/characters/archer.png',
-                description: '정확한 원거리 공격수'
+            modern: {
+                team1Names: ['사이버 네오', '퓨처 포스', '테크 타이탄', '디지털 워리어', '로봇 레이더', 'AI 얼라이언스'],
+                team2Names: ['네온 나이츠', '바이러스 헌터', '해커 크루', '글리치 길드', '픽셀 파이터', '코드 브레이커']
             },
-            rogue: {
-                id: 'rogue',
-                name: '도적',
-                imageUrl: '/images/characters/rogue.png',
-                description: '그림자 속의 암살자'
-            },
-            paladin: {
-                id: 'paladin',
-                name: '성기사',
-                imageUrl: '/images/characters/paladin.png',
-                description: '신성한 힘의 수호자'
-            },
-            berserker: {
-                id: 'berserker',
-                name: '광전사',
-                imageUrl: '/images/characters/berserker.png',
-                description: '분노로 싸우는 전사'
-            },
-            cleric: {
-                id: 'cleric',
-                name: '성직자',
-                imageUrl: '/images/characters/cleric.png',
-                description: '치유의 힘을 지닌 자'
-            },
-            assassin: {
-                id: 'assassin',
-                name: '암살자',
-                imageUrl: '/images/characters/assassin.png',
-                description: '치명적인 일격의 달인'
+            sports: {
+                team1Names: ['파이어 이글스', '선더 볼츠', '아이언 타이거', '스카이 호크스', '골든 라이온', '실버 울브스'],
+                team2Names: ['블랙 팬더', '와일드 비어', '스톰 샤크', '플레임 폭스', '아이스 울프', '윈드 팔콘']
             }
+        };
+
+        // 커스텀 팀 이름 (관리자가 추가 가능)
+        this.customTeamNames = {
+            team1: [],
+            team2: []
         };
         
         // 정리 작업을 위한 타이머 (30분마다 실행)
         this.setupCleanupTimer();
     }
 
-    // 관리자용 캐릭터 이미지 추가/수정
-    addCharacterImage(imageData) {
-        const { id, name, imageUrl, description } = imageData;
+    // 관리자용 팀 이름 템플릿 추가/수정
+    addTeamNameTemplate(templateId, templateData) {
+        const { team1Names, team2Names } = templateData;
         
-        if (!id || !name || !imageUrl) {
-            throw new Error('Character image requires id, name, and imageUrl');
+        if (!templateId || !Array.isArray(team1Names) || !Array.isArray(team2Names)) {
+            throw new Error('Template requires id, team1Names array, and team2Names array');
         }
 
-        this.characterImages[id] = {
-            id,
-            name,
-            imageUrl,
-            description: description || ''
+        this.teamNameTemplates[templateId] = {
+            team1Names: [...team1Names],
+            team2Names: [...team2Names]
         };
 
-        console.log(`Character image added/updated: ${name} (${id})`);
-        return this.characterImages[id];
+        console.log(`Team name template added/updated: ${templateId}`);
+        return this.teamNameTemplates[templateId];
     }
 
-    // 관리자용 캐릭터 이미지 삭제
-    removeCharacterImage(characterId) {
-        if (this.characterImages[characterId]) {
-            delete this.characterImages[characterId];
-            console.log(`Character image removed: ${characterId}`);
+    // 관리자용 커스텀 팀 이름 추가
+    addCustomTeamName(team, teamName) {
+        if (team !== 'team1' && team !== 'team2') {
+            throw new Error('Team must be either team1 or team2');
+        }
+        
+        if (!teamName || teamName.trim().length === 0) {
+            throw new Error('Team name cannot be empty');
+        }
+
+        const trimmedName = teamName.trim();
+        if (!this.customTeamNames[team].includes(trimmedName)) {
+            this.customTeamNames[team].push(trimmedName);
+            console.log(`Custom team name added: ${trimmedName} to ${team}`);
+        }
+
+        return this.customTeamNames[team];
+    }
+
+    // 관리자용 커스텀 팀 이름 삭제
+    removeCustomTeamName(team, teamName) {
+        if (team !== 'team1' && team !== 'team2') {
+            throw new Error('Team must be either team1 or team2');
+        }
+
+        const index = this.customTeamNames[team].indexOf(teamName);
+        if (index !== -1) {
+            this.customTeamNames[team].splice(index, 1);
+            console.log(`Custom team name removed: ${teamName} from ${team}`);
             return true;
         }
         return false;
     }
 
-    // 사용 가능한 캐릭터 이미지 목록 조회
-    getAvailableCharacterImages() {
-        return Object.values(this.characterImages);
+    // 팀 이름 자동 생성
+    generateTeamNames(templateId = 'default') {
+        const template = this.teamNameTemplates[templateId] || this.teamNameTemplates.default;
+        
+        // 커스텀 팀 이름과 템플릿 팀 이름 결합
+        const team1Pool = [...this.customTeamNames.team1, ...template.team1Names];
+        const team2Pool = [...this.customTeamNames.team2, ...template.team2Names];
+        
+        const team1Name = team1Pool[Math.floor(Math.random() * team1Pool.length)];
+        const team2Name = team2Pool[Math.floor(Math.random() * team2Pool.length)];
+        
+        return {
+            team1: team1Name,
+            team2: team2Name
+        };
+    }
+
+    // 사용 가능한 팀 이름 템플릿 목록 조회
+    getAvailableTeamNameTemplates() {
+        return Object.keys(this.teamNameTemplates).map(templateId => ({
+            id: templateId,
+            team1Names: this.teamNameTemplates[templateId].team1Names,
+            team2Names: this.teamNameTemplates[templateId].team2Names
+        }));
+    }
+
+    // 커스텀 팀 이름 목록 조회
+    getCustomTeamNames() {
+        return {
+            team1: [...this.customTeamNames.team1],
+            team2: [...this.customTeamNames.team2]
+        };
     }
 
     // 배틀 생성
     createBattle(config) {
         const battleId = uuidv4();
+        
+        // 팀 이름 생성
+        const teamNames = this.generateTeamNames(config.teamNameTemplate);
+        
         const battle = {
             id: battleId,
             status: 'waiting', // waiting, ready, initiative, in_progress, finished
             mode: config.mode || '1v1', // 1v1, 2v2, 3v3, 4v4
             
-            // 팀전 구조
+            // 팀전 구조 (팀 이름 포함)
             teams: {
                 team1: [],
                 team2: []
             },
+            teamNames: teamNames, // 생성된 팀 이름
             
             // 팀별 아이템 인벤토리 (비밀)
             teamInventories: {
@@ -165,7 +195,7 @@ class BattleEngine {
                 turnTimeLimit: config.settings?.turnTimeLimit || 300000, // 5분 (300초)
                 maxTurns: config.settings?.maxTurns || 50,
                 itemsEnabled: config.settings?.itemsEnabled !== false, // 기본값 true
-                characterImagesEnabled: config.settings?.characterImagesEnabled !== false, // 기본값 true
+                teamNameTemplate: config.teamNameTemplate || 'default',
                 ...config.settings
             },
             
@@ -176,11 +206,11 @@ class BattleEngine {
         };
 
         this.battles.set(battleId, battle);
-        console.log(`Battle created: ${battleId} (${battle.mode}) - Timer: ${battle.settings.turnTimeLimit}ms`);
+        console.log(`Battle created: ${battleId} (${battle.mode}) - Teams: ${teamNames.team1} vs ${teamNames.team2}`);
         return battle;
     }
 
-    // 플레이어 참가 (아이템 및 캐릭터 이미지 포함)
+    // 플레이어 참가 (아이템 포함)
     joinBattle(battleId, player, teamItems = {}) {
         const battle = this.battles.get(battleId);
         if (!battle) throw new Error('Battle not found');
@@ -200,27 +230,16 @@ class BattleEngine {
         if (battle.teams[targetTeam].length >= maxTeamSize) {
             throw new Error('Team is full');
         }
-
-        // 캐릭터 이미지 유효성 검증
-        if (player.characterImageId && battle.settings.characterImagesEnabled) {
-            if (!this.characterImages[player.characterImageId]) {
-                throw new Error('Invalid character image ID');
-            }
-        }
         
         // 플레이어 정보 설정
         player.team = targetTeam;
+        player.teamName = battle.teamNames[targetTeam]; // 팀 이름 추가
         player.position = battle.teams[targetTeam].length;
         player.hp = player.maxHp || 100;
         player.status = 'alive';
         player.defendBuff = false;
         player.dodgeBuff = 0;
         player.activeItems = {}; // 활성화된 아이템 효과
-        
-        // 캐릭터 이미지 정보 추가
-        if (player.characterImageId && battle.settings.characterImagesEnabled) {
-            player.characterImage = this.characterImages[player.characterImageId];
-        }
         
         battle.teams[targetTeam].push(player);
         battle.lastActivityAt = Date.now();
@@ -230,7 +249,7 @@ class BattleEngine {
             this.setTeamItems(battle, targetTeam, teamItems);
         }
         
-        this.addLog(battle, `${player.name}이 ${targetTeam}에 참가했습니다.`);
+        this.addLog(battle, `${player.name}이 ${battle.teamNames[targetTeam]}에 참가했습니다.`);
 
         // 배틀 시작 가능한지 확인
         if (this.canStartBattle(battle)) {
@@ -239,6 +258,7 @@ class BattleEngine {
 
         return {
             team: targetTeam,
+            teamName: battle.teamNames[targetTeam],
             position: player.position,
             battle: battle
         };
