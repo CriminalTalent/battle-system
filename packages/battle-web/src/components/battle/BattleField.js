@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useBattle from '../hooks/useBattle';
 import ChatPanel from './ChatPanel';
+import ItemSetup from './ItemSetup';
 
 export default function BattleField({ apiUrl }) {
   const {
@@ -36,6 +37,10 @@ export default function BattleField({ apiUrl }) {
   const [selectedAction, setSelectedAction] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMobileControls, setShowMobileControls] = useState(false);
+  // 아이템 관련 상태 추가
+  const [isItemPanelMinimized, setIsItemPanelMinimized] = useState(false);
+  const [usableItems, setUsableItems] = useState([]);
+  
   // 채팅 상태 추가
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   
@@ -44,6 +49,8 @@ export default function BattleField({ apiUrl }) {
     playerName: '',
     battleId: '',
     showJoinForm: false,
+    itemsEnabled: true, // 아이템 활성화 여부
+    teamItems: {}, // 팀 아이템 설정
     playerStats: {
       attack: 50,
       defense: 30,
@@ -132,7 +139,9 @@ export default function BattleField({ apiUrl }) {
       alert('플레이어 이름을 입력하세요');
       return;
     }
-    createBattle(gameSetup.mode);
+    createBattle(gameSetup.mode, {
+      itemsEnabled: gameSetup.itemsEnabled
+    });
   };
 
   const handleJoinBattle = () => {
@@ -143,7 +152,7 @@ export default function BattleField({ apiUrl }) {
     joinBattle(gameSetup.battleId, {
       name: gameSetup.playerName,
       ...gameSetup.playerStats
-    });
+    }, gameSetup.teamItems);
   };
 
   const handleTargetClick = (targetId) => {
@@ -151,6 +160,44 @@ export default function BattleField({ apiUrl }) {
       toggleTarget(targetId);
     }
   };
+
+  // 아이템 관련 함수
+  const handleItemsChange = (items) => {
+    setGameSetup(prev => ({
+      ...prev,
+      teamItems: items
+    }));
+  };
+
+  const handleToggleItemPanel = () => {
+    setIsItemPanelMinimized(!isItemPanelMinimized);
+  };
+
+  const handleUseItem = (itemId) => {
+    if (socketRef.current) {
+      socketRef.current.emit('execute_action', {
+        action: {
+          type: 'use_item',
+          itemId: itemId
+        }
+      });
+    }
+  };
+
+  // 사용 가능한 아이템 목록 업데이트
+  useEffect(() => {
+    if (isInBattle && socketRef.current) {
+      socketRef.current.emit('get_usable_items');
+      
+      socketRef.current.on('usable_items', (data) => {
+        setUsableItems(data.items || []);
+      });
+
+      return () => {
+        socketRef.current.off('usable_items');
+      };
+    }
+  }, [isInBattle, battleState.currentPlayer]);
 
   // 채팅 메시지 전송 핸들러
   const handleSendChatMessage = (messageData) => {
