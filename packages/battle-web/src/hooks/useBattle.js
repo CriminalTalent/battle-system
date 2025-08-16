@@ -226,13 +226,14 @@ const useBattle = (apiUrl = 'http://localhost:3001') => {
   }, []);
 
   // 배틀 참가
-  const joinBattle = useCallback((battleId, playerData) => {
+  const joinBattle = useCallback((battleId, playerData, teamItems = {}) => {
     if (!socketRef.current) return;
     
-    console.log('배틀 참가 요청:', { battleId, playerData });
+    console.log('배틀 참가 요청:', { battleId, playerData, teamItems });
     socketRef.current.emit('join_battle', {
       battleId,
-      player: playerData
+      player: playerData,
+      teamItems: teamItems
     });
   }, []);
 
