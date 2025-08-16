@@ -610,25 +610,419 @@
   }
 }
 
-/* 접근성 개선 */
-.chat-panel:focus-within,
-.item-panel:focus-within {
-  box-shadow: 0 8px 32px rgba(33, 150, 243, 0.2);
+/* =========================== */
+/* 캐릭터 선택 시스템 스타일 */
+/* =========================== */
+
+/* 캐릭터 선택기 */
+.character-selector {
+  margin-bottom: 20px;
 }
 
-/* 애니메이션 비활성화 옵션 */
-@media (prefers-reduced-motion: reduce) {
-  .chat-message,
-  .chat-panel,
-  .item-panel,
-  .chat-input-container,
-  .chat-send-btn,
-  .chat-status-indicator,
-  .item-card,
-  .quantity-btn,
-  .item-use-btn {
-    animation: none !important;
-    transition: none !important;
+.character-selected {
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.character-selected:not(.disabled):hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.character-selected.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.character-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.character-preview-image {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid #e5e7eb;
+}
+
+.character-preview-info {
+  flex: 1;
+}
+
+.character-preview-name {
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.character-preview-description {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.character-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.character-placeholder-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  border: 2px dashed #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #9ca3af;
+}
+
+.character-placeholder-text {
+  flex: 1;
+}
+
+.character-placeholder-text span {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.character-selector-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* 캐릭터 그리드 */
+.character-grid {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  overflow: hidden;
+}
+
+.character-grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1px;
+  background: #e5e7eb;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.character-option {
+  background: white;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.character-option:hover {
+  background: #f8fafc;
+}
+
+.character-option.selected {
+  background: #eff6ff;
+  border: 2px solid #3b82f6;
+}
+
+.character-option-image-container {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.character-option-image {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.character-option-default {
+  width: 100%;
+  height: 80px;
+  background: #f3f4f6;
+  border: 2px dashed #d1d5db;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #9ca3af;
+}
+
+.character-option-selected-overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.character-option-info {
+  text-align: center;
+}
+
+.character-option-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.character-option-description {
+  font-size: 11px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.character-selector-empty {
+  margin-top: 8px;
+  text-align: center;
+  padding: 20px;
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+}
+
+/* 배틀 중 캐릭터 이미지 표시 */
+.character-battle-image {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 2px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.character-battle-image.current-turn {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3);
+}
+
+.character-battle-image.defeated {
+  opacity: 0.3;
+  filter: grayscale(100%);
+}
+
+.character-battle-image.selectable {
+  border-color: #22c55e;
+  cursor: pointer;
+}
+
+.character-battle-image.selectable:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+}
+
+.character-battle-image.selected {
+  border-color: #fbbf24;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}
+
+/* 캐릭터 없을 때 기본 표시 */
+.character-default-avatar {
+  width: 100%;
+  height: 120px;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+/* 캐릭터 카드 내 이미지 컨테이너 */
+.character-image-container {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.character-status-overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.character-status-overlay.alive {
+  background: rgba(34, 197, 94, 0.8);
+}
+
+.character-status-overlay.dead {
+  background: rgba(239, 68, 68, 0.8);
+}
+
+/* 관리자 캐릭터 관리 UI */
+.admin-character-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.admin-character-panel h3 {
+  color: #1e293b;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.character-upload-area {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  background: white;
+  margin-bottom: 16px;
+  transition: border-color 0.2s ease;
+}
+
+.character-upload-area:hover {
+  border-color: #3b82f6;
+}
+
+.character-upload-area.drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.character-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.character-form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.character-form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.character-list-admin {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.character-admin-item {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.character-admin-item img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+}
+
+.character-admin-item-info {
+  padding: 12px;
+}
+
+.character-admin-item-actions {
+  padding: 8px 12px;
+  background: #f8fafc;
+  display: flex;
+  gap: 8px;
+}
+
+.character-admin-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.character-admin-btn.edit {
+  background: #3b82f6;
+  color: white;
+}
+
+.character-admin-btn.delete {
+  background: #ef4444;
+  color: white;
+}
+
+.character-admin-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .character-grid-container {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  
+  .character-option-image,
+  .character-option-default {
+    height: 60px;
+  }
+  
+  .character-battle-image {
+    height: 80px;
+  }
+  
+  .character-default-avatar {
+    height: 80px;
+    font-size: 32px;
+  }
+  
+  .character-form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .character-list-admin {
+    grid-template-columns: 1fr;
   }
 }/* packages/battle-web/src/styles/battle.css - 채팅 시스템 스타일 추가 */
 
