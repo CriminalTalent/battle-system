@@ -185,6 +185,14 @@ export default function BattleField({ apiUrl }) {
     }
   };
 
+  // 캐릭터 선택 핸들러
+  const handleCharacterSelect = (character) => {
+    setGameSetup(prev => ({
+      ...prev,
+      selectedCharacterImage: character ? character.id : null
+    }));
+  };
+
   // 아이템 관련 함수
   const handleItemsChange = (items) => {
     setGameSetup(prev => ({
@@ -366,6 +374,35 @@ export default function BattleField({ apiUrl }) {
         ${isSelected ? 'border-yellow-400 bg-yellow-200' : ''}
         ${compact ? 'text-sm' : ''}
       `}>
+        {/* 캐릭터 이미지 */}
+        {battleState.settings?.characterImagesEnabled && character.characterImage ? (
+          <div className="character-image-container">
+            <img 
+              src={character.characterImage.imageUrl}
+              alt={character.characterImage.name}
+              className={`character-battle-image ${
+                isCurrentTurn ? 'current-turn' : ''
+              } ${isDead ? 'defeated' : ''} ${
+                isSelectable ? 'selectable' : ''
+              } ${isSelected ? 'selected' : ''}`}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            <div className="character-default-avatar" style={{ display: 'none' }}>
+              👤
+            </div>
+            <div className={`character-status-overlay ${character.status}`}>
+              {character.status === 'alive' ? '생존' : '사망'}
+            </div>
+          </div>
+        ) : (
+          <div className="character-default-avatar">
+            👤
+          </div>
+        )}
+
         {/* 캐릭터 이름 */}
         <div className="font-bold text-center mb-2">
           {character.name}
@@ -405,6 +442,21 @@ export default function BattleField({ apiUrl }) {
         {character.dodgeBuff && (
           <div className="absolute top-1 right-1 bg-green-500 text-white px-1 py-0.5 rounded text-xs">
             회피
+          </div>
+        )}
+
+        {/* 활성화된 아이템 효과 표시 */}
+        {character.activeItems && Object.keys(character.activeItems).length > 0 && (
+          <div className="absolute bottom-1 left-1 flex gap-1">
+            {Object.values(character.activeItems).map((item, index) => (
+              <div 
+                key={index}
+                className="bg-purple-500 text-white px-1 py-0.5 rounded text-xs"
+                title={`${item.name} (${item.remainingTurns}턴 남음)`}
+              >
+                {item.remainingTurns}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -514,6 +566,37 @@ export default function BattleField({ apiUrl }) {
                 <option value="4v4">4 vs 4</option>
               </select>
             </div>
+
+            {/* 캐릭터 이미지 시스템 활성화 체크박스 */}
+            <div className="mb-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={gameSetup.characterImagesEnabled}
+                  onChange={(e) => setGameSetup(prev => ({
+                    ...prev,
+                    characterImagesEnabled: e.target.checked,
+                    selectedCharacterImage: e.target.checked ? prev.selectedCharacterImage : null
+                  }))}
+                  className="mr-2"
+                />
+                <span className="text-gray-700 text-sm font-bold">
+                  캐릭터 이미지 사용
+                </span>
+              </label>
+            </div>
+
+            {/* 캐릭터 선택 */}
+            {gameSetup.characterImagesEnabled && (
+              <div className="mb-6">
+                <CharacterSelector
+                  characters={availableCharacterImages || []}
+                  selectedCharacter={gameSetup.selectedCharacterImage}
+                  onCharacterSelect={handleCharacterSelect}
+                  disabled={false}
+                />
+              </div>
+            )}
 
             {/* 아이템 시스템 활성화 체크박스 */}
             <div className="mb-6">
@@ -813,6 +896,7 @@ export default function BattleField({ apiUrl }) {
         <p className="mb-1">단축키:</p>
         <p>1: 공격 | 2: 방어 | 3: 회피</p>
         <p>Enter: 채팅 | ESC: 취소</p>
+        <p className="text-xs text-yellow-300 mt-1">턴 제한: 5분</p>
       </div>
     </div>
   );
