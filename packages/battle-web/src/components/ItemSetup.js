@@ -15,21 +15,21 @@ const ItemSetup = ({ onItemsChange, disabled = false }) => {
       name: '공격 보정기',
       description: '공격력을 15 증가시킵니다 (3턴 지속)',
       maxQuantity: 3,
-      icon: '⚔️'
+      icon: '공격 보정기'
     },
     defense_booster: {
       id: 'defense_booster',
       name: '방어 보정기',
       description: '방어력을 10 증가시킵니다 (3턴 지속)',
       maxQuantity: 3,
-      icon: '🛡️'
+      icon: '방어 보정기'
     },
     health_potion: {
       id: 'health_potion',
       name: '회복 물약',
       description: 'HP를 30 회복합니다',
       maxQuantity: 3,
-      icon: '🧪'
+      icon: '회복 물약'
     }
   };
 
