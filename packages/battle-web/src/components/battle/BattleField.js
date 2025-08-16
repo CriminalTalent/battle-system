@@ -6,7 +6,7 @@ import useBattle from '../hooks/useBattle';
 import ChatPanel from './ChatPanel';
 import ItemSetup from './ItemSetup';
 import ItemPanel from './ItemPanel';
-import CharacterSelector from './CharacterSelector';
+import TeamNameSelector from './TeamNameSelector';
 
 export default function BattleField({ apiUrl }) {
   const {
@@ -52,8 +52,7 @@ export default function BattleField({ apiUrl }) {
     battleId: '',
     showJoinForm: false,
     itemsEnabled: true, // 아이템 활성화 여부
-    characterImagesEnabled: true, // 캐릭터 이미지 활성화 여부
-    selectedCharacterImage: null, // 선택된 캐릭터 이미지
+    selectedTeamNameTemplate: 'default', // 선택된 팀 이름 템플릿
     teamItems: {}, // 팀 아이템 설정
     playerStats: {
       attack: 50,
@@ -145,7 +144,7 @@ export default function BattleField({ apiUrl }) {
     }
     createBattle(gameSetup.mode, {
       itemsEnabled: gameSetup.itemsEnabled,
-      characterImagesEnabled: gameSetup.characterImagesEnabled
+      teamNameTemplate: gameSetup.selectedTeamNameTemplate
     });
   };
 
@@ -156,7 +155,6 @@ export default function BattleField({ apiUrl }) {
     }
     joinBattle(gameSetup.battleId, {
       name: gameSetup.playerName,
-      characterImageId: gameSetup.selectedCharacterImage,
       ...gameSetup.playerStats
     }, gameSetup.teamItems);
   };if (!gameSetup.playerName.trim()) {
@@ -185,11 +183,11 @@ export default function BattleField({ apiUrl }) {
     }
   };
 
-  // 캐릭터 선택 핸들러
-  const handleCharacterSelect = (character) => {
+  // 팀 이름 템플릿 선택 핸들러
+  const handleTeamNameTemplateSelect = (template) => {
     setGameSetup(prev => ({
       ...prev,
-      selectedCharacterImage: character ? character.id : null
+      selectedTeamNameTemplate: template ? template.id : 'default'
     }));
   };
 
@@ -374,35 +372,6 @@ export default function BattleField({ apiUrl }) {
         ${isSelected ? 'border-yellow-400 bg-yellow-200' : ''}
         ${compact ? 'text-sm' : ''}
       `}>
-        {/* 캐릭터 이미지 */}
-        {battleState.settings?.characterImagesEnabled && character.characterImage ? (
-          <div className="character-image-container">
-            <img 
-              src={character.characterImage.imageUrl}
-              alt={character.characterImage.name}
-              className={`character-battle-image ${
-                isCurrentTurn ? 'current-turn' : ''
-              } ${isDead ? 'defeated' : ''} ${
-                isSelectable ? 'selectable' : ''
-              } ${isSelected ? 'selected' : ''}`}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-            <div className="character-default-avatar" style={{ display: 'none' }}>
-              👤
-            </div>
-            <div className={`character-status-overlay ${character.status}`}>
-              {character.status === 'alive' ? '생존' : '사망'}
-            </div>
-          </div>
-        ) : (
-          <div className="character-default-avatar">
-            👤
-          </div>
-        )}
-
         {/* 캐릭터 이름 */}
         <div className="font-bold text-center mb-2">
           {character.name}
@@ -567,36 +536,15 @@ export default function BattleField({ apiUrl }) {
               </select>
             </div>
 
-            {/* 캐릭터 이미지 시스템 활성화 체크박스 */}
+            {/* 팀 이름 템플릿 선택 */}
             <div className="mb-6">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={gameSetup.characterImagesEnabled}
-                  onChange={(e) => setGameSetup(prev => ({
-                    ...prev,
-                    characterImagesEnabled: e.target.checked,
-                    selectedCharacterImage: e.target.checked ? prev.selectedCharacterImage : null
-                  }))}
-                  className="mr-2"
-                />
-                <span className="text-gray-700 text-sm font-bold">
-                  캐릭터 이미지 사용
-                </span>
-              </label>
+              <TeamNameSelector
+                templates={availableTeamNameTemplates || []}
+                selectedTemplate={gameSetup.selectedTeamNameTemplate}
+                onTemplateSelect={handleTeamNameTemplateSelect}
+                disabled={false}
+              />
             </div>
-
-            {/* 캐릭터 선택 */}
-            {gameSetup.characterImagesEnabled && (
-              <div className="mb-6">
-                <CharacterSelector
-                  characters={availableCharacterImages || []}
-                  selectedCharacter={gameSetup.selectedCharacterImage}
-                  onCharacterSelect={handleCharacterSelect}
-                  disabled={false}
-                />
-              </div>
-            )}
 
             {/* 아이템 시스템 활성화 체크박스 */}
             <div className="mb-6">
@@ -755,11 +703,11 @@ export default function BattleField({ apiUrl }) {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-lg">
             <div className="text-center mb-4">
-              <h3 className={`text-xl font-bold ${
-                myTeam === 'team1' ? 'text-blue-300' : 'text-blue-400'
+              <div className={`team-name-display team1 ${
+                myTeam === 'team1' ? 'my-team' : ''
               }`}>
-                Team 1 {myTeam === 'team1' && '(내 팀)'}
-              </h3>
+                {battleState.teamNames?.team1 || 'Team 1'} {myTeam === 'team1' && '(내 팀)'}
+              </div>
             </div>
             {renderTeamMembers(battleState.teams?.team1, 'team1', true)}
           </div>
@@ -781,11 +729,11 @@ export default function BattleField({ apiUrl }) {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-lg">
             <div className="text-center mb-4">
-              <h3 className={`text-xl font-bold ${
-                myTeam === 'team2' ? 'text-red-300' : 'text-red-400'
+              <div className={`team-name-display team2 ${
+                myTeam === 'team2' ? 'my-team' : ''
               }`}>
-                Team 2 {myTeam === 'team2' && '(내 팀)'}
-              </h3>
+                {battleState.teamNames?.team2 || 'Team 2'} {myTeam === 'team2' && '(내 팀)'}
+              </div>
             </div>
             {renderTeamMembers(battleState.teams?.team2, 'team2', false)}
           </div>
