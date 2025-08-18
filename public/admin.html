@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>관리자 | Pyxis Battle</title>
+<style>
+:root{--navy:#012C4E;--beige:#EAD292;--ink:#0b1c2b;--line:rgba(234,210,146,.35);}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--navy);color:var(--beige);font-family:"EB Garamond","Nanum Myeongjo",serif;line-height:1.5}
+.container{max-width:1100px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);padding:14px 18px}
+h1{margin:0;font-size:28px;letter-spacing:.06em}
+.card{border:1px solid var(--line);background:rgba(1,44,78,.35);padding:16px;border-radius:10px}
+.grid{display:grid;gap:12px}
+.cols-2{grid-template-columns:1fr 1fr}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+label{display:block;margin:6px 0 4px 0}
+input[type=text], select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:rgba(1,44,78,.5);color:var(--beige)}
+button{border:1px solid var(--beige);background:transparent;color:var(--beige);padding:10px 14px;border-radius:8px;cursor:pointer}
+button:hover{background:rgba(234,210,146,.12)}
+.btn-primary{background:var(--beige);color:var(--navy);border-color:var(--beige)}
+kbd{border:1px solid var(--line);padding:2px 6px;border-radius:6px;background:rgba(234,210,146,.1)}
+.small{font-size:12px;opacity:.9}
+pre{white-space:pre-wrap;word-break:break-word;margin:0}
+hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.code{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+.copy{cursor:pointer;border-bottom:1px dashed var(--beige)}
+.log{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
+.state{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Pyxis Battle Admin</h1>
+    <div class="small">팔레트: Deep Navy / Golden Beige</div>
+  </header>
+
+  <section class="card">
+    <div class="grid cols-2">
+      <div>
+        <label>전투 모드</label>
+        <select id="mode">
+          <option>1v1</option>
+          <option>2v2</option>
+          <option>3v3</option>
+          <option>4v4</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button id="create" class="btn-primary">새 전투 생성</button>
+        <button id="genLinks" disabled>전투자/관전자 링크 생성</button>
+      </div>
+    </div>
+    <hr>
+    <div class="grid cols-2">
+      <div>
+        <label>Battle ID</label>
+        <div id="battleId" class="code">-</div>
+      </div>
+      <div class="small">링크는 매번 새로 생성됩니다. 생성 시 이전 OTP도 초기화됩니다.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 8px 0">링크</h3>
+    <div class="grid cols-2">
+      <div>
+        <div>관리자 링크 토큰</div>
+        <div id="token-admin" class="code">-</div>
+      </div>
+      <div>
+        <div>전투자 링크 토큰</div>
+        <div id="token-player" class="code">-</div>
+      </div>
+      <div>
+        <div>관전자 링크 토큰</div>
+        <div id="token-spectator" class="code">-</div>
+      </div>
+    </div>
+    <hr>
+    <div class="grid cols-2">
+      <div>
+        <div>관리자 링크</div>
+        <div id="url-admin" class="copy"></div>
+      </div>
+      <div>
+        <div>전투자 링크</div>
+        <div id="url-player" class="copy"></div>
+      </div>
+      <div>
+        <div>관전자 링크</div>
+        <div id="url-spectator" class="copy"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 8px 0">OTP 발급</h3>
+    <div class="grid cols-2">
+      <div>
+        <label>관리자 OTP</label>
+        <div class="controls">
+          <button id="issue-admin">발급</button>
+          <div id="otp-admin" class="code"></div>
+        </div>
+      </div>
+      <div>
+        <label>관전자 OTP</label>
+        <div class="controls">
+          <button id="issue-spectator">발급</button>
+          <div id="otp-spectator" class="code"></div>
+        </div>
+      </div>
+      <div>
+        <label>전투자 OTP (캐릭터 이름)</label>
+        <div class="controls" style="gap:6px">
+          <input type="text" id="playerName" placeholder="예: Alice">
+          <button id="issue-player">발급</button>
+        </div>
+        <div id="otp-player" class="code"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 8px 0">전투 컨트롤</h3>
+    <div class="controls">
+      <button id="start" disabled>전투 시작</button>
+      <button id="forceEnd" disabled>강제 전투 종료</button>
+      <button id="refresh" disabled>상태 새로고침</button>
+    </div>
+    <div class="grid cols-2" style="margin-top:10px">
+      <div>
+        <div class="small">상태</div>
+        <pre id="state" class="state"></pre>
+      </div>
+      <div>
+        <div class="small">로그</div>
+        <pre id="log" class="log"></pre>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = (s)=>document.querySelector(s);
+const api = (p, opt)=>fetch(p, opt).then(r=>r.json());
+const originBase = window.location.origin;
+
+let battleId = null;
+let tokens = null;
+
+function fillState(s){
+  $('#state').textContent = JSON.stringify(s, null, 2);
+  const logs = (s.battleLog||[]).slice(-50).map(x=>JSON.stringify(x)).join("\n");
+  $('#log').textContent = logs;
+}
+
+$('#create').onclick = async ()=>{
+  const mode = $('#mode').value;
+  const r = await api('/api/battles', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+  if(r.battleId){
+    battleId = r.battleId;
+    $('#battleId').textContent = battleId;
+    $('#genLinks').disabled = false;
+    $('#start').disabled = false;
+    $('#forceEnd').disabled = false;
+    $('#refresh').disabled = false;
+    fillState(r.state);
+  } else alert(r.error||'생성 실패');
+};
+
+$('#genLinks').onclick = async ()=>{
+  if(!battleId) return;
+  const r = await api(`/api/admin/battles/${battleId}/links`, {method:'POST'});
+  if(r.tokens){
+    tokens = r.tokens;
+    $('#token-admin').textContent = tokens.admin;
+    $('#token-player').textContent = tokens.player;
+    $('#token-spectator').textContent = tokens.spectator;
+    $('#url-admin').textContent = `${originBase}/admin.html?token=${tokens.admin}&battle=${battleId}`;
+    $('#url-player').textContent = `${originBase}/play.html?token=${tokens.player}&battle=${battleId}`;
+    $('#url-spectator').textContent = `${originBase}/watch.html?token=${tokens.spectator}&battle=${battleId}`;
+  } else alert('링크 생성 실패');
+};
+
+$('#issue-admin').onclick = async ()=>{
+  if(!battleId) return;
+  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'admin'})});
+  $('#otp-admin').textContent = r.otp || '';
+};
+
+$('#issue-spectator').onclick = async ()=>{
+  if(!battleId) return;
+  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'spectator'})});
+  $('#otp-spectator').textContent = r.otp || '';
+};
+
+$('#issue-player').onclick = async ()=>{
+  if(!battleId) return;
+  const name = $('#playerName').value.trim();
+  if(!name) return alert('이름을 입력하세요');
+  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'player',name})});
+  $('#otp-player').textContent = r.otp ? `${name} → ${r.otp}` : '';
+};
+
+$('#start').onclick = async ()=>{
+  if(!battleId) return;
+  const r = await api(`/api/battles/${battleId}/start`, {method:'POST'});
+  if(!r.success) alert(r.error||'시작 실패');
+  const s = await api(`/api/battles/${battleId}`);
+  fillState(s);
+};
+
+$('#forceEnd').onclick = async ()=>{
+  if(!battleId) return;
+  const r = await api(`/api/admin/battles/${battleId}/force-end`, {method:'POST'});
+  if(!r.ok) alert('종료 실패');
+  fillState(r.state);
+};
+
+$('#refresh').onclick = async ()=>{
+  if(!battleId) return;
+  const s = await api(`/api/battles/${battleId}`);
+  fillState(s);
+};
+
+// 복사
+for(const id of ['url-admin','url-player','url-spectator']){
+  document.addEventListener('click',(e)=>{
+    if(e.target.id===id && e.target.textContent){
+      navigator.clipboard.writeText(e.target.textContent);
+      e.target.style.textDecoration='underline';
+      setTimeout(()=>e.target.style.textDecoration='none',600);
+    }
+  });
+}
+</script>
+</body>
+</html>
