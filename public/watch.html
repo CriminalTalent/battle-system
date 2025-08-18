@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>관전자 | Pyxis Battle</title>
+<style>
+:root{--navy:#012C4E;--beige:#EAD292;--line:rgba(234,210,146,.35)}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--navy);color:var(--beige);font-family:"EB Garamond","Nanum Myeongjo",serif}
+.container{max-width:1100px;margin:0 auto;padding:22px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);padding:12px 16px;border-radius:10px}
+h1{margin:0;font-size:26px}
+.card{border:1px solid var(--line);background:rgba(1,44,78,.35);padding:14px;border-radius:10px}
+.grid{display:grid;gap:12px}
+.cols-2{grid-template-columns:1fr 1fr}
+label{display:block;margin:6px 0 4px 0}
+input[type=text]{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:rgba(1,44,78,.5);color:var(--beige)}
+pre{white-space:pre-wrap;word-break:break-word;margin:0}
+.list{border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15);height:200px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Pyxis Battle Spectator</h1>
+    <div class="small">링크의 token, battle + OTP로 로그인합니다.</div>
+  </header>
+
+  <section id="login" class="card">
+    <div class="grid cols-2">
+      <div>
+        <label>Battle ID</label>
+        <input id="battle" type="text">
+      </div>
+      <div>
+        <label>OTP</label>
+        <input id="otp" type="text">
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:10px">
+      <div>
+        <label>링크 토큰</label>
+        <input id="token" type="text">
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end">
+        <button id="doLogin">로그인</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="view" class="card" style="display:none">
+    <div class="grid cols-2">
+      <div>
+        <div>team1</div>
+        <pre id="team1" class="list"></pre>
+      </div>
+      <div>
+        <div>team2</div>
+        <pre id="team2" class="list"></pre>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <div>상태</div>
+      <pre id="state" class="list" style="height:160px"></pre>
+    </div>
+    <div style="margin-top:10px">
+      <div>로그</div>
+      <pre id="log" class="list" style="height:160px"></pre>
+    </div>
+  </section>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const api=(p,opt)=>fetch(p,opt).then(r=>r.json());
+const qs=new URLSearchParams(location.search);
+$('#battle').value=qs.get('battle')||'';
+$('#token').value=qs.get('token')||'';
+
+let battleId=null, token=null, socket=null, state=null;
+
+function render(){
+  if(!state) return;
+  $('#team1').textContent = (state.teams.team1||[]).map(p=>`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}`).join("\n");
+  $('#team2').textContent = (state.teams.team2||[]).map(p=>`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}`).join("\n");
+  $('#state').textContent = JSON.stringify({phase:state.phase,currentTeam:state.currentTeam,winner:state.winner},null,2);
+  $('#log').textContent = (state.battleLog||[]).slice(-80).map(x=>JSON.stringify(x)).join("\n");
+  const log=$('#log'); log.scrollTop=log.scrollHeight;
+}
+
+async function refresh(){
+  state = await api(`/api/battles/${battleId}`);
+  render();
+}
+
+$('#doLogin').onclick = async ()=>{
+  battleId = $('#battle').value.trim();
+  token = $('#token').value.trim();
+  const otp = $('#otp').value.trim();
+  if(!battleId||!token||!otp) return alert('모두 입력하세요');
+
+  const r = await api('/api/auth/login',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({battleId,role:'spectator',otp,token})
+  });
+  if(!r.ok){ alert(r.error||'로그인 실패'); return; }
+
+  $('#login').style.display='none';
+  $('#view').style.display='';
+  await refresh();
+
+  socket = io({path:'/socket.io'});
+  socket.on('connect', ()=> socket.emit('join-battle',{battleId}));
+  socket.on('battle-state', async ()=>{ await refresh(); });
+  socket.on('player-joined', async ()=>{ await refresh(); });
+  socket.on('action-executed', async ()=>{ await refresh(); });
+  socket.on('battle-started', async ()=>{ await refresh(); });
+  socket.on('battle-ended', async ()=>{ await refresh(); });
+};
+</script>
+</body>
+</html>
