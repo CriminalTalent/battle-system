@@ -18,16 +18,6 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-// ---------------- HTML no-cache (중요: express.static 이전) ----------------
-app.use((req, res, next) => {
-  if (req.method === 'GET' && req.path.endsWith('.html')) {
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
-  }
-  next();
-});
-
 // ---------------- 업로드 설정 ----------------
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
@@ -43,12 +33,24 @@ const storage = multer.diskStorage({
 });
 const fileFilter = (_, file, cb) => {
   const ok = ['image/png','image/jpeg','image/webp','image/gif'].includes(file.mimetype);
-  cb(ok ? null : new Error('이미지 형식만 허용됩니다.'), ok);
+  if (ok) cb(null, true);
+  else cb(new Error('이미지 형식만 허용됩니다.'));
 };
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-// ---------------- 정적 파일 서빙 ----------------
-app.use(express.static(path.join(__dirname, '../battle-web/public')));
+// ---------------- 정적 파일 서빙 (HTML은 캐시 금지) ----------------
+app.use(express.static(path.join(__dirname, '../battle-web/public'), {
+  // express의 기본 Cache-Control 설정을 비활성화하고,
+  // HTML에만 no-cache 헤더를 직접 설정
+  cacheControl: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 app.use('/uploads', express.static(UPLOAD_DIR, { fallthrough: true }));
 
 // ---------------- 저장소/상수 ----------------
