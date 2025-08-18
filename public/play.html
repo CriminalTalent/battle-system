@@ -32,6 +32,8 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
 .thumb{width:100%;height:220px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#06192a}
 .badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-top:6px}
 #preview{width:100%;max-width:240px;height:320px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#06192a;display:none}
+input[type=file]{display:none}
+.upload-bar{display:flex;gap:8px;align-items:center}
 </style>
 </head>
 <body>
@@ -105,9 +107,15 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
         </select>
       </div>
       <div>
-        <label>캐릭터 이미지 URL</label>
-        <input id="imgUrl" type="text" placeholder="https:// 예) 전신/반신 이미지 링크">
+        <label>캐릭터 이미지</label>
+        <div class="upload-bar">
+          <input id="imgUrl" type="text" placeholder="https:// 이미지 링크 또는 아래 업로드 사용">
+          <label for="file" class="btn-primary" style="padding:8px 10px;cursor:pointer">파일 선택</label>
+          <input id="file" type="file" accept="image/*">
+          <button id="uploadBtn">업로드</button>
+        </div>
         <img id="preview" alt="미리보기">
+        <div class="small">허용: PNG/JPEG/WEBP/GIF, 최대 5MB</div>
       </div>
       <div class="center">
         <button id="doJoin" class="btn-primary">참가</button>
@@ -174,6 +182,20 @@ $('#imgUrl').addEventListener('input',()=>{
   const v=$('#imgUrl').value.trim();
   if(v){ preview.src=v; preview.style.display='block'; preview.onerror=()=>{preview.style.display='none'}; }
   else preview.style.display='none';
+});
+
+// 파일 업로드
+let selectedFile=null;
+$('#file').addEventListener('change', (e)=>{ selectedFile = e.target.files?.[0] || null; });
+$('#uploadBtn').addEventListener('click', async ()=>{
+  if(!selectedFile) { alert('파일을 먼저 선택하세요'); return; }
+  const fd = new FormData(); fd.append('image', selectedFile);
+  const res = await fetch('/api/upload', { method:'POST', body: fd });
+  const data = await res.json();
+  if(!data.ok){ alert(data.error||'업로드 실패'); return; }
+  $('#imgUrl').value = data.url;
+  preview.src = data.url; preview.style.display='block';
+  alert('업로드 완료');
 });
 
 let battleId=null, token=null, name=null, playerId=null, joined=false, socket=null, state=null, myImageUrl=null;
@@ -284,7 +306,7 @@ $('#doJoin').onclick = async ()=>{
   await refresh();
 };
 
-function action(type,payload={}){
+function action(type,payload={}) {
   if(!joined) return alert('먼저 참가하세요');
   return api(`/api/battles/${battleId}/action`,{
     method:'POST',headers:{'Content-Type':'application/json'},
