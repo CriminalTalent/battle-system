@@ -17,7 +17,12 @@ h1{margin:0;font-size:26px}
 label{display:block;margin:6px 0 4px 0}
 input[type=text]{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:rgba(1,44,78,.5);color:var(--beige)}
 pre{white-space:pre-wrap;word-break:break-word;margin:0}
-.list{border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15);height:200px;overflow:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.card-mini{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.12)}
+.thumb{width:100%;height:220px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#06192a}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-top:6px}
+.list{border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15);height:160px;overflow:auto}
+.small{font-size:12px;opacity:.9}
 </style>
 </head>
 <body>
@@ -53,20 +58,20 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0}
     <div class="grid cols-2">
       <div>
         <div>team1</div>
-        <pre id="team1" class="list"></pre>
+        <div id="cards1" class="cards"></div>
       </div>
       <div>
         <div>team2</div>
-        <pre id="team2" class="list"></pre>
+        <div id="cards2" class="cards"></div>
       </div>
     </div>
     <div style="margin-top:10px">
       <div>상태</div>
-      <pre id="state" class="list" style="height:160px"></pre>
+      <pre id="state" class="list"></pre>
     </div>
     <div style="margin-top:10px">
       <div>로그</div>
-      <pre id="log" class="list" style="height:160px"></pre>
+      <pre id="log" class="list"></pre>
     </div>
   </section>
 </div>
@@ -81,10 +86,24 @@ $('#token').value=qs.get('token')||'';
 
 let battleId=null, token=null, socket=null, state=null;
 
+function renderCards(arr, mount){
+  mount.innerHTML='';
+  (arr||[]).forEach(p=>{
+    const div=document.createElement('div');
+    div.className='card-mini';
+    div.innerHTML=`
+      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'">
+      <div style="margin-top:6px;font-weight:600">${p.name}</div>
+      <div class="badge">HP ${p.hp}${p.alive?'':' / 사망'}</div>
+    `;
+    mount.appendChild(div);
+  });
+}
+
 function render(){
   if(!state) return;
-  $('#team1').textContent = (state.teams.team1||[]).map(p=>`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}`).join("\n");
-  $('#team2').textContent = (state.teams.team2||[]).map(p=>`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}`).join("\n");
+  renderCards(state.teams.team1, $('#cards1'));
+  renderCards(state.teams.team2, $('#cards2'));
   $('#state').textContent = JSON.stringify({phase:state.phase,currentTeam:state.currentTeam,winner:state.winner},null,2);
   $('#log').textContent = (state.battleLog||[]).slice(-80).map(x=>JSON.stringify(x)).join("\n");
   const log=$('#log'); log.scrollTop=log.scrollHeight;
