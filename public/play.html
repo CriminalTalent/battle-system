@@ -24,10 +24,14 @@ button:hover{background:rgba(234,210,146,.12)}
 .btn-primary{background:var(--beige);color:var(--navy);border-color:var(--beige)}
 .small{font-size:12px;opacity:.9}
 pre{white-space:pre-wrap;word-break:break-word;margin:0}
-.list{border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15);height:200px;overflow:auto}
 .team{border:1px solid var(--line);padding:10px;border-radius:10px}
 .center{display:flex;justify-content:center;align-items:center}
 hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.card-mini{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.12)}
+.thumb{width:100%;height:220px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#06192a}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-top:6px}
+#preview{width:100%;max-width:240px;height:320px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#06192a;display:none}
 </style>
 </head>
 <body>
@@ -67,17 +71,13 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
     <div class="grid cols-2">
       <div class="team">
         <div class="small">왼쪽 팀(team1)</div>
-        <div id="team1" class="list"></div>
-        <div style="margin-top:8px">
-          <button id="join1">team1 참가</button>
-        </div>
+        <div id="team1" class="cards"></div>
+        <div style="margin-top:8px"><button id="join1">team1 참가</button></div>
       </div>
       <div class="team">
         <div class="small">오른쪽 팀(team2)</div>
-        <div id="team2" class="list"></div>
-        <div style="margin-top:8px">
-          <button id="join2">team2 참가</button>
-        </div>
+        <div id="team2" class="cards"></div>
+        <div style="margin-top:8px"><button id="join2">team2 참가</button></div>
       </div>
     </div>
     <hr>
@@ -101,10 +101,13 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
       <div>
         <label>아이템</label>
         <select id="items" multiple size="3">
-          <option>공격 보정기</option>
-          <option>방어 보정기</option>
-          <option>디터니</option>
+          <option>공격 보정기</option><option>방어 보정기</option><option>디터니</option>
         </select>
+      </div>
+      <div>
+        <label>캐릭터 이미지 URL</label>
+        <input id="imgUrl" type="text" placeholder="https:// 예) 전신/반신 이미지 링크">
+        <img id="preview" alt="미리보기">
       </div>
       <div class="center">
         <button id="doJoin" class="btn-primary">참가</button>
@@ -144,6 +147,14 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
         <pre id="log" style="height:180px;overflow:auto"></pre>
       </div>
     </div>
+    <hr>
+    <div>
+      <div class="small">팀 보기</div>
+      <div class="grid cols-2">
+        <div id="cards1" class="cards"></div>
+        <div id="cards2" class="cards"></div>
+      </div>
+    </div>
   </section>
 </div>
 
@@ -158,14 +169,27 @@ $('#token').value=qs.get('token')||'';
 function onRange(id, out){ $(id).addEventListener('input', e=>$(out).textContent=e.target.value); }
 onRange('#atk','#atkVal'); onRange('#def','#defVal'); onRange('#agi','#agiVal'); onRange('#luk','#lukVal');
 
-let battleId=null, token=null, name=null, playerId=null, joined=false, socket=null, state=null;
+const preview=$('#preview');
+$('#imgUrl').addEventListener('input',()=>{
+  const v=$('#imgUrl').value.trim();
+  if(v){ preview.src=v; preview.style.display='block'; preview.onerror=()=>{preview.style.display='none'}; }
+  else preview.style.display='none';
+});
 
-function renderTeams(){
-  const t1=$('#team1'), t2=$('#team2');
-  t1.innerHTML=''; t2.innerHTML='';
-  if(!state) return;
-  for(const p of state.teams.team1) t1.innerHTML+=`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}\n`;
-  for(const p of state.teams.team2) t2.innerHTML+=`${p.name} HP:${p.hp}${p.alive?'':' (사망)'}\n`;
+let battleId=null, token=null, name=null, playerId=null, joined=false, socket=null, state=null, myImageUrl=null;
+
+function renderTeamCards(arr, mount){
+  mount.innerHTML='';
+  (arr||[]).forEach(p=>{
+    const div=document.createElement('div');
+    div.className='card-mini';
+    div.innerHTML=`
+      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'">
+      <div style="margin-top:6px;font-weight:600">${p.name}</div>
+      <div class="badge">HP ${p.hp}${p.alive?'':' / 사망'}</div>
+    `;
+    mount.appendChild(div);
+  });
 }
 
 function renderTargets(){
@@ -198,14 +222,21 @@ function renderMine(){
 function renderLog(){
   const log=$('#log');
   const rows=(state?.battleLog||[]).slice(-50).map(x=>JSON.stringify(x)).join("\n");
-  log.textContent=rows;
-  log.scrollTop=log.scrollHeight;
+  log.textContent=rows; log.scrollTop=log.scrollHeight;
+}
+
+function renderAll(){
+  renderTargets(); renderMine(); renderLog();
+  renderTeamCards(state.teams.team1, $('#team1'));
+  renderTeamCards(state.teams.team2, $('#team2'));
+  renderTeamCards(state.teams.team1, $('#cards1'));
+  renderTeamCards(state.teams.team2, $('#cards2'));
 }
 
 async function refresh(){
   if(!battleId) return;
   state = await api(`/api/battles/${battleId}`);
-  renderTeams(); renderTargets(); renderMine(); renderLog();
+  if(state) renderAll();
 }
 
 $('#doLogin').onclick = async ()=>{
@@ -243,9 +274,10 @@ $('#doJoin').onclick = async ()=>{
   if(!team) return alert('팀을 선택하세요');
   const items=[...$('#items').selectedOptions].map(o=>o.value);
   const stats={공격력:+$('#atk').value,방어:+$('#def').value,민첩:+$('#agi').value,행운:+$('#luk').value};
+  myImageUrl = $('#imgUrl').value.trim() || null;
   const r = await api(`/api/battles/${battleId}/join`,{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({playerId:name,playerName:name,teamId:team,stats,items})
+    body:JSON.stringify({playerId:name,playerName:name,teamId:team,stats,items,imageUrl:myImageUrl})
   });
   if(!r.success){ alert(r.error||'참가 실패'); return; }
   joined=true;
