@@ -40,8 +40,6 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTE
 
 // ---------------- 정적 파일 서빙 (HTML은 캐시 금지) ----------------
 app.use(express.static(path.join(__dirname, '../battle-web/public'), {
-  // express의 기본 Cache-Control 설정을 비활성화하고,
-  // HTML에만 no-cache 헤더를 직접 설정
   cacheControl: false,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -375,6 +373,29 @@ class Battle {
     return this.winner;
   }
 
+  // -------- 관리자 강제 종료 --------
+  forceEnd(winner = null) {
+    if (this.phase === 'ended') return { success: false, error: '이미 종료된 전투입니다.' };
+
+    this.phase = 'ended';
+    this.endTime = Date.now();
+
+    if (winner && ['team1','team2','draw'].includes(winner)) {
+      this.winner = winner;
+    } else {
+      // 미지정 시 현재 HP 기준 산정
+      const team1HP = this.teams.team1.reduce((s,p)=>s+(p.alive?p.hp:0),0);
+      const team2HP = this.teams.team2.reduce((s,p)=>s+(p.alive?p.hp:0),0);
+      if (team1HP > team2HP) this.winner = 'team1';
+      else if (team2HP > team1HP) this.winner = 'team2';
+      else this.winner = 'draw';
+    }
+
+    this.battleLog.push({ type: 'force_end', timestamp: Date.now(), winner: this.winner });
+    io.to(this.id).emit('battle-ended', { winner: this.winner, state: this.getState() });
+    return { success: true, winner: this.winner };
+  }
+
   findPlayer(playerId) {
     const all = [...this.teams.team1, ...this.teams.team2];
     return all.find(p => p.id === playerId);
@@ -408,6 +429,7 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
   res.json({ ok: true, url: publicUrl, filename: req.file.filename });
 });
 
+// 배틀 생성/조회/목록
 app.post('/api/battles', (req, res) => {
   const { mode = '1v1' } = req.body || {};
   if (!BATTLE_MODES[mode]) return res.status(400).json({ error: '잘못된 전투 모드입니다. (1v1|2v2|3v3|4v4)' });
@@ -417,12 +439,21 @@ app.post('/api/battles', (req, res) => {
   res.json({ battleId, mode, state: battle.getState() });
 });
 
+app.get('/api/battles', (_req, res) => {
+  const list = Array.from(battles.values()).map(b => ({
+    id: b.id, mode: b.mode, phase: b.phase, winner: b.winner,
+    team1: b.teams.team1.length, team2: b.teams.team2.length
+  }));
+  res.json({ battles: list });
+});
+
 app.get('/api/battles/:id', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
   res.json(battle.getState());
 });
 
+// 참가/시작/행동
 app.post('/api/battles/:id/join', (req, res) => {
   const { playerId, playerName, teamId, stats, imageUrl, items } = req.body || {};
   const battle = battles.get(req.params.id);
@@ -515,6 +546,28 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   res.json({ ok:true, role, name: name || undefined });
+});
+
+// -------- 관리자: 상태/강제종료/삭제 --------
+app.get('/api/admin/battles/:id/state', (req, res) => {
+  const battle = battles.get(req.params.id);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  res.json(battle.getState());
+});
+
+app.post('/api/admin/battles/:id/force-end', (req, res) => {
+  const battle = battles.get(req.params.id);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  const { winner } = req.body || {};
+  const r = battle.forceEnd(winner);
+  res.status(r.success ? 200 : 400).json(r);
+});
+
+app.delete('/api/admin/battles/:id', (req, res) => {
+  const battle = battles.get(req.params.id);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  battles.delete(req.params.id);
+  res.json({ ok: true });
 });
 
 // ---------------- Socket.IO ----------------
