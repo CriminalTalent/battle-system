@@ -28,6 +28,10 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
 .copy{cursor:pointer;border-bottom:1px dashed var(--beige)}
 .log{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
 .state{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
+.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.card-mini{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.12)}
+.thumb{width:100%;height:200px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#06192a}
+.pill{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -42,10 +46,7 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
       <div>
         <label>전투 모드</label>
         <select id="mode">
-          <option>1v1</option>
-          <option>2v2</option>
-          <option>3v3</option>
-          <option>4v4</option>
+          <option>1v1</option><option>2v2</option><option>3v3</option><option>4v4</option>
         </select>
       </div>
       <div style="display:flex;align-items:flex-end;gap:8px">
@@ -59,40 +60,22 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
         <label>Battle ID</label>
         <div id="battleId" class="code">-</div>
       </div>
-      <div class="small">링크는 매번 새로 생성됩니다. 생성 시 이전 OTP도 초기화됩니다.</div>
+      <div class="small">링크는 생성할 때마다 갱신됩니다. 이전 OTP는 초기화됩니다.</div>
     </div>
   </section>
 
   <section class="card">
     <h3 style="margin:0 0 8px 0">링크</h3>
     <div class="grid cols-2">
-      <div>
-        <div>관리자 링크 토큰</div>
-        <div id="token-admin" class="code">-</div>
-      </div>
-      <div>
-        <div>전투자 링크 토큰</div>
-        <div id="token-player" class="code">-</div>
-      </div>
-      <div>
-        <div>관전자 링크 토큰</div>
-        <div id="token-spectator" class="code">-</div>
-      </div>
+      <div><div>관리자 링크 토큰</div><div id="token-admin" class="code">-</div></div>
+      <div><div>전투자 링크 토큰</div><div id="token-player" class="code">-</div></div>
+      <div><div>관전자 링크 토큰</div><div id="token-spectator" class="code">-</div></div>
     </div>
     <hr>
     <div class="grid cols-2">
-      <div>
-        <div>관리자 링크</div>
-        <div id="url-admin" class="copy"></div>
-      </div>
-      <div>
-        <div>전투자 링크</div>
-        <div id="url-player" class="copy"></div>
-      </div>
-      <div>
-        <div>관전자 링크</div>
-        <div id="url-spectator" class="copy"></div>
-      </div>
+      <div><div>관리자 링크</div><div id="url-admin" class="copy"></div></div>
+      <div><div>전투자 링크</div><div id="url-player" class="copy"></div></div>
+      <div><div>관전자 링크</div><div id="url-spectator" class="copy"></div></div>
     </div>
   </section>
 
@@ -142,6 +125,11 @@ hr{border:0;border-top:1px solid var(--line);margin:12px 0}
       </div>
     </div>
   </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 8px 0">플레이어 갤러리</h3>
+    <div id="roster" class="roster"></div>
+  </section>
 </div>
 
 <script>
@@ -151,11 +139,33 @@ const originBase = window.location.origin;
 
 let battleId = null;
 let tokens = null;
+let state = null;
 
 function fillState(s){
+  state = s;
   $('#state').textContent = JSON.stringify(s, null, 2);
   const logs = (s.battleLog||[]).slice(-50).map(x=>JSON.stringify(x)).join("\n");
   $('#log').textContent = logs;
+  renderRoster();
+}
+
+function renderRoster(){
+  const wrap = $('#roster');
+  wrap.innerHTML = '';
+  if(!state) return;
+  const add = (p, team)=>{
+    const div = document.createElement('div');
+    div.className='card-mini';
+    div.innerHTML = `
+      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'">
+      <div style="margin-top:8px;font-weight:600">${p.name}</div>
+      <div class="pill">${team}</div>
+      <div class="small">HP ${p.hp} / ${p.alive?'생존':'사망'}</div>
+    `;
+    wrap.appendChild(div);
+  };
+  (state.teams.team1||[]).forEach(p=>add(p,'team1'));
+  (state.teams.team2||[]).forEach(p=>add(p,'team2'));
 }
 
 $('#create').onclick = async ()=>{
@@ -227,7 +237,7 @@ $('#refresh').onclick = async ()=>{
   fillState(s);
 };
 
-// 복사
+// 링크 텍스트 클릭 복사
 for(const id of ['url-admin','url-player','url-spectator']){
   document.addEventListener('click',(e)=>{
     if(e.target.id===id && e.target.textContent){
