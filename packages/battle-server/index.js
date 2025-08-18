@@ -18,7 +18,17 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-// 업로드 설정
+// ---------------- HTML no-cache (중요: express.static 이전) ----------------
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.path.endsWith('.html')) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
+// ---------------- 업로드 설정 ----------------
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -37,16 +47,14 @@ const fileFilter = (_, file, cb) => {
 };
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-// 정적 파일(프런트)
+// ---------------- 정적 파일 서빙 ----------------
 app.use(express.static(path.join(__dirname, '../battle-web/public')));
-// 업로드 파일 정적 제공
 app.use('/uploads', express.static(UPLOAD_DIR, { fallthrough: true }));
 
-// 저장소
+// ---------------- 저장소/상수 ----------------
 const battles = new Map();
 const playerSockets = new Map();
 
-// 상수
 const BATTLE_DURATION = 60 * 60 * 1000; // 1시간
 const TURN_TIMEOUT   = 5  * 60 * 1000;  // 5분
 const BASE_HP  = 100;
@@ -60,7 +68,6 @@ const BATTLE_MODES = {
   '4v4': { teamsCount: 2, playersPerTeam: 4 }
 };
 
-// 메시지
 const MSG = {
   battle_already_started: '이미 전투가 시작되었습니다.',
   invalid_team: '잘못된 팀입니다.',
@@ -83,14 +90,13 @@ const MSG = {
   dodge_fail: (a,b)=>`${b}의 회피가 실패했습니다. 공격이 적중합니다.`
 };
 
-// 아이템
 const ITEMS = {
   '공격 보정기': { code: 'ATK_MOD', desc: '다음 공격 피해 +2' },
   '방어 보정기': { code: 'DEF_MOD', desc: '다음으로 받는 공격 피해 -2' },
   '디터니':     { code: 'DESTINY', desc: '다음 공격 적중 시 치명타 확정' }
 };
 
-// 주사위
+// ---------------- 주사위/스탯 유틸 ----------------
 function rollD20() { return Math.floor(Math.random() * 20) + 1; }
 function rollDamage(attack) { return (Math.floor(Math.random() * 6) + 1) + attack; }
 function calculateInitiative(agility) { return rollD20() + agility; }
@@ -101,7 +107,6 @@ function checkHit(attackerLuck, defenderAgility) {
 }
 function checkCritical(luck) { return rollD20() >= (20 - Math.floor(luck / 2)); }
 
-// 스탯 정규화
 function normalizeStats(stats) {
   const s = stats || {};
   const map = { 공격력:'attack', 방어:'defense', 민첩:'agility', 행운:'luck',
@@ -115,7 +120,6 @@ function normalizeStats(stats) {
   return out;
 }
 
-// 캐릭터
 function createCharacter(playerId, name, stats, teamId, imageUrl = null, items = []) {
   return {
     id: playerId,
@@ -132,11 +136,10 @@ function createCharacter(playerId, name, stats, teamId, imageUrl = null, items =
   };
 }
 
-// 유틸
 function genToken(prefix){ return `${prefix}_${crypto.randomBytes(8).toString('hex')}`; }
 function genOTP(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
-// 전투
+// ---------------- Battle 클래스 ----------------
 class Battle {
   constructor(id, mode = '1v1') {
     this.id = id;
@@ -392,21 +395,17 @@ class Battle {
   }
 }
 
-// -------------------- REST API --------------------
-
-// 상태
+// ---------------- REST API ----------------
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', battles: battles.size, connections: io.engine.clientsCount });
 });
 
-// 이미지 업로드
 app.post('/api/upload', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
   const publicUrl = `/uploads/${req.file.filename}`;
   res.json({ ok: true, url: publicUrl, filename: req.file.filename });
 });
 
-// 배틀 생성
 app.post('/api/battles', (req, res) => {
   const { mode = '1v1' } = req.body || {};
   if (!BATTLE_MODES[mode]) return res.status(400).json({ error: '잘못된 전투 모드입니다. (1v1|2v2|3v3|4v4)' });
@@ -416,14 +415,12 @@ app.post('/api/battles', (req, res) => {
   res.json({ battleId, mode, state: battle.getState() });
 });
 
-// 조회
 app.get('/api/battles/:id', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
   res.json(battle.getState());
 });
 
-// 팀 참가
 app.post('/api/battles/:id/join', (req, res) => {
   const { playerId, playerName, teamId, stats, imageUrl, items } = req.body || {};
   const battle = battles.get(req.params.id);
@@ -436,7 +433,6 @@ app.post('/api/battles/:id/join', (req, res) => {
   res.json(result);
 });
 
-// 전투 시작
 app.post('/api/battles/:id/start', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
@@ -445,7 +441,6 @@ app.post('/api/battles/:id/start', (req, res) => {
   res.json(result);
 });
 
-// 액션
 app.post('/api/battles/:id/action', (req, res) => {
   const { playerId, action } = req.body || {};
   const battle = battles.get(req.params.id);
@@ -459,7 +454,7 @@ app.post('/api/battles/:id/action', (req, res) => {
   res.json(result);
 });
 
-// ---------- 링크/로그인(OTP) ----------
+// -------- 링크/로그인(OTP) --------
 app.post('/api/admin/battles/:id/links', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
@@ -520,8 +515,9 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ ok:true, role, name: name || undefined });
 });
 
-// -------------------- Socket.IO --------------------
+// ---------------- Socket.IO ----------------
 io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
   socket.on('join-battle', (data = {}) => {
     const { battleId, playerId } = data;
     if (!battleId) return;
@@ -530,7 +526,9 @@ io.on('connection', (socket) => {
     const battle = battles.get(battleId);
     if (battle) socket.emit('battle-state', battle.getState());
   });
-  socket.on('disconnect', () => {});
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
 });
 
 const PORT = process.env.PORT || 3002;
