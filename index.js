@@ -4,7 +4,9 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
+const multer = require('multer');
 
 const app = express();
 const httpServer = createServer(app);
@@ -16,8 +18,29 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-// 정적 파일(프런트) 서빙이 필요하면 유지
+// 업로드 설정
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_, __, cb) => cb(null, UPLOAD_DIR),
+  filename: (_, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const base = crypto.randomBytes(8).toString('hex');
+    cb(null, `${Date.now()}_${base}${ext}`);
+  }
+});
+const fileFilter = (_, file, cb) => {
+  const ok = ['image/png','image/jpeg','image/webp','image/gif'].includes(file.mimetype);
+  cb(ok ? null : new Error('이미지 형식만 허용됩니다.'), ok);
+};
+const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
+
+// 정적 파일(프런트)
 app.use(express.static(path.join(__dirname, '../battle-web/public')));
+// 업로드 파일 정적 제공
+app.use('/uploads', express.static(UPLOAD_DIR, { fallthrough: true }));
 
 // 저장소
 const battles = new Map();
@@ -69,28 +92,20 @@ const ITEMS = {
 
 // 주사위
 function rollD20() { return Math.floor(Math.random() * 20) + 1; }
-function rollDamage(attack) {
-  const base = Math.floor(Math.random() * 6) + 1; // 1d6
-  return base + attack;
-}
+function rollDamage(attack) { return (Math.floor(Math.random() * 6) + 1) + attack; }
 function calculateInitiative(agility) { return rollD20() + agility; }
 function checkHit(attackerLuck, defenderAgility) {
   const attackRoll = rollD20() + attackerLuck;
   const dodgeTarget = 10 + defenderAgility;
   return attackRoll >= dodgeTarget;
 }
-function checkCritical(luck) {
-  const critRoll = rollD20();
-  return critRoll >= (20 - Math.floor(luck / 2));
-}
+function checkCritical(luck) { return rollD20() >= (20 - Math.floor(luck / 2)); }
 
-// 스탯 정규화(한글/영문)
+// 스탯 정규화
 function normalizeStats(stats) {
   const s = stats || {};
-  const map = {
-    공격력: 'attack', 방어: 'defense', 민첩: 'agility', 행운: 'luck',
-    attack: 'attack', defense: 'defense', agility: 'agility', luck: 'luck'
-  };
+  const map = { 공격력:'attack', 방어:'defense', 민첩:'agility', 행운:'luck',
+                attack:'attack', defense:'defense', agility:'agility', luck:'luck' };
   const out = { attack: 1, defense: 1, agility: 1, luck: 1 };
   Object.keys(s).forEach(k => { const key = map[k]; if (key) out[key] = s[k]; });
   out.attack = Math.min(Math.max(out.attack ?? 1, STAT_MIN), STAT_MAX);
@@ -119,7 +134,7 @@ function createCharacter(playerId, name, stats, teamId, imageUrl = null, items =
 
 // 유틸
 function genToken(prefix){ return `${prefix}_${crypto.randomBytes(8).toString('hex')}`; }
-function genOTP(){ return Math.random().toString(36).slice(2,8).toUpperCase(); } // 6자
+function genOTP(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
 // 전투
 class Battle {
@@ -127,7 +142,7 @@ class Battle {
     this.id = id;
     this.mode = mode;
     this.config = BATTLE_MODES[mode];
-    this.phase = 'lobby'; // lobby, battle, paused, ended
+    this.phase = 'lobby';
     this.teams = { team1: [], team2: [] };
     this.currentTeam = 'team1';
     this.turnOrder = [];
@@ -139,18 +154,9 @@ class Battle {
     this.battleLog = [];
     this.winner = null;
 
-    // 링크/로그인 상태
     this.tokens = { admin: null, player: null, spectator: null };
-    this.otps = { // 1회용 비밀번호
-      admin: null,                 // 문자열
-      players: new Map(),          // name -> otp
-      spectators: new Set()        // otp 모음
-    };
-    this.logged = {                // 간단 로그인 확인용
-      admin: false,
-      players: new Set(),          // playerId(name)
-      spectators: 0
-    };
+    this.otps = { admin: null, players: new Map(), spectators: new Set() };
+    this.logged = { admin: false, players: new Set(), spectators: 0 };
   }
 
   addPlayer(playerId, name, teamId, stats, imageUrl, items) {
@@ -198,14 +204,12 @@ class Battle {
     const current = this.teams[this.currentTeam];
     current.forEach(p => { if (p.alive) p.hasActed = false; });
     this.turnStartTime = Date.now();
-
     const timeoutId = setTimeout(() => { this.autoEndTurn(); }, TURN_TIMEOUT);
     this.turnTimeouts.set(this.currentTeam, timeoutId);
   }
 
   executeAction(playerId, action) {
     if (this.phase !== 'battle') return { success: false, error: '현재 전투 진행 단계가 아닙니다.' };
-
     const player = this.findPlayer(playerId);
     if (!player) return { success: false, error: '플레이어를 찾을 수 없습니다.' };
     if (player.teamId !== this.currentTeam) return { success: false, error: MSG.not_your_teams_turn };
@@ -224,15 +228,8 @@ class Battle {
 
     if (result.success) {
       player.hasActed = true;
-
-      this.battleLog.push({
-        type: action.type,
-        timestamp: Date.now(),
-        actor: player.name,
-        target: action.targetId,
-        result: result.description,
-        damage: result.damage
-      });
+      this.battleLog.push({ type: action.type, timestamp: Date.now(), actor: player.name,
+        target: action.targetId, result: result.description, damage: result.damage });
 
       if (this.checkBattleEnd()) return { ...result, battleEnded: true, winner: this.winner };
       if (this.checkTeamTurnComplete()) this.endTeamTurn();
@@ -267,7 +264,6 @@ class Battle {
 
     let damage = rollDamage(attacker.stats.attack);
     if (attacker.buffs.attackBonus) damage += attacker.buffs.attackBonus;
-
     let isCritical = attacker.buffs.forceCrit ? true : checkCritical(attacker.stats.luck);
     if (isCritical) damage *= 2;
 
@@ -403,6 +399,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', battles: battles.size, connections: io.engine.clientsCount });
 });
 
+// 이미지 업로드
+app.post('/api/upload', upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+  const publicUrl = `/uploads/${req.file.filename}`;
+  res.json({ ok: true, url: publicUrl, filename: req.file.filename });
+});
+
 // 배틀 생성
 app.post('/api/battles', (req, res) => {
   const { mode = '1v1' } = req.body || {};
@@ -457,8 +460,6 @@ app.post('/api/battles/:id/action', (req, res) => {
 });
 
 // ---------- 링크/로그인(OTP) ----------
-
-// 링크 생성(매번 변동)
 app.post('/api/admin/battles/:id/links', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
@@ -466,8 +467,6 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   battle.tokens.admin     = genToken('adm');
   battle.tokens.player    = genToken('ply');
   battle.tokens.spectator = genToken('spc');
-
-  // 기존 발급 OTP 초기화
   battle.otps.admin = null;
   battle.otps.players = new Map();
   battle.otps.spectators = new Set();
@@ -481,7 +480,6 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   });
 });
 
-// OTP 발급
 app.post('/api/admin/battles/:id/issue-otp', (req, res) => {
   const { role, name } = req.body || {};
   const battle = battles.get(req.params.id);
@@ -489,58 +487,37 @@ app.post('/api/admin/battles/:id/issue-otp', (req, res) => {
   if (!['admin','player','spectator'].includes(role)) return res.status(400).json({ error:'role은 admin|player|spectator' });
 
   const otp = genOTP();
-  if (role === 'admin') {
-    battle.otps.admin = otp;
-  } else if (role === 'player') {
+  if (role === 'admin') battle.otps.admin = otp;
+  else if (role === 'player') {
     if (!name) return res.status(400).json({ error:'player OTP는 name이 필요합니다.' });
     battle.otps.players.set(name, otp);
-  } else {
-    battle.otps.spectators.add(otp);
-  }
+  } else battle.otps.spectators.add(otp);
 
   res.json({ ok:true, role, name: name || undefined, otp });
 });
 
-// 로그인(이름+OTP+링크토큰)
 app.post('/api/auth/login', (req, res) => {
   const { battleId, role, name, otp, token } = req.body || {};
   const battle = battles.get(battleId);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
   if (!['admin','player','spectator'].includes(role)) return res.status(400).json({ error:'role은 admin|player|spectator' });
 
-  // 토큰 확인(링크 유효성)
   const want = battle.tokens[role];
   if (!want || token !== want) return res.status(401).json({ error:'링크 토큰이 유효하지 않습니다.' });
 
-  // OTP 확인(1회용)
   if (role === 'admin') {
     if (!battle.otps.admin || otp !== battle.otps.admin) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.admin = null;
-    battle.logged.admin = true;
+    battle.otps.admin = null; battle.logged.admin = true;
   } else if (role === 'player') {
     const v = battle.otps.players.get(name);
     if (!v || v !== otp) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.players.delete(name);
-    battle.logged.players.add(name); // playerId는 이름과 동일하게 쓰는 것을 권장
+    battle.otps.players.delete(name); battle.logged.players.add(name);
   } else {
     if (!battle.otps.spectators.has(otp)) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.spectators.delete(otp);
-    battle.logged.spectators += 1;
+    battle.otps.spectators.delete(otp); battle.logged.spectators += 1;
   }
 
   res.json({ ok:true, role, name: name || undefined });
-});
-
-// 강제 종료
-app.post('/api/admin/battles/:id/force-end', (req, res) => {
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error:'Battle not found' });
-  battle.phase = 'ended';
-  battle.winner = 'force_ended';
-  battle.endTime = Date.now();
-  battle.battleLog.push({ type:'force_end', timestamp:Date.now(), reason:'admin' });
-  io.to(battle.id).emit('battle-ended', { winner:battle.winner, state:battle.getState() });
-  res.json({ ok:true, state:battle.getState() });
 });
 
 // -------------------- Socket.IO --------------------
@@ -553,8 +530,7 @@ io.on('connection', (socket) => {
     const battle = battles.get(battleId);
     if (battle) socket.emit('battle-state', battle.getState());
   });
-
-  socket.on('disconnect', () => { /* 필요 시 정리 */ });
+  socket.on('disconnect', () => {});
 });
 
 const PORT = process.env.PORT || 3002;
