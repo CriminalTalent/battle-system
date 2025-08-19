@@ -21,6 +21,7 @@ input[type=text], select{width:100%;padding:9px;border:1px solid var(--line);bor
 .range input{width:140px}
 button{border:1px solid var(--beige);background:transparent;color:var(--beige);padding:9px 12px;border-radius:8px;cursor:pointer}
 button:hover{background:rgba(234,210,146,.12)}
+button:disabled{opacity:0.5;cursor:not-allowed}
 .btn-primary{background:var(--beige);color:var(--navy);border-color:var(--beige)}
 .small{font-size:12px;opacity:.9}
 pre{white-space:pre-wrap;word-break:break-word;margin:0}
@@ -34,6 +35,9 @@ hr{border:0;border-top:1px solid var(--line);margin:10px 0}
 #preview{width:100%;max-width:240px;height:320px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#06192a;display:none}
 input[type=file]{display:none}
 .upload-bar{display:flex;gap:8px;align-items:center}
+.error{color:#ef4444;background:rgba(239,68,68,.1);padding:8px;border-radius:6px;margin:4px 0}
+.success{color:#22c55e;background:rgba(34,197,94,.1);padding:8px;border-radius:6px;margin:4px 0}
+.loading{opacity:0.7;pointer-events:none}
 </style>
 </head>
 <body>
@@ -46,44 +50,9 @@ input[type=file]{display:none}
   <section id="login" class="card">
     <div class="grid cols-3">
       <div>
-        <label>Battle ID</label>
-        <input id="battle" type="text" placeholder="예: ABC123">
+        <label>체력</label>
+        <div class="range"><input id="hp" type="range" min="1" max="100" value="100"><span id="hpVal">100</span></div>
       </div>
-      <div>
-        <label>이름</label>
-        <input id="name" type="text" placeholder="캐릭터 이름">
-      </div>
-      <div>
-        <label>OTP</label>
-        <input id="otp" type="text" placeholder="1회용 비밀번호">
-      </div>
-    </div>
-    <div class="grid cols-2" style="margin-top:10px">
-      <div>
-        <label>링크 토큰</label>
-        <input id="token" type="text" placeholder="자동 입력됨">
-      </div>
-      <div class="center">
-        <button id="doLogin" class="btn-primary">로그인</button>
-      </div>
-    </div>
-  </section>
-
-  <section id="join" class="card" style="display:none">
-    <div class="grid cols-2">
-      <div class="team">
-        <div class="small">왼쪽 팀(team1)</div>
-        <div id="team1" class="cards"></div>
-        <div style="margin-top:8px"><button id="join1">team1 참가</button></div>
-      </div>
-      <div class="team">
-        <div class="small">오른쪽 팀(team2)</div>
-        <div id="team2" class="cards"></div>
-        <div style="margin-top:8px"><button id="join2">team2 참가</button></div>
-      </div>
-    </div>
-    <hr>
-    <div class="grid cols-3">
       <div>
         <label>공격력</label>
         <div class="range"><input id="atk" type="range" min="1" max="5" value="3"><span id="atkVal">3</span></div>
@@ -117,10 +86,11 @@ input[type=file]{display:none}
         <img id="preview" alt="미리보기">
         <div class="small">허용: PNG/JPEG/WEBP/GIF, 최대 5MB</div>
       </div>
-      <div class="center">
-        <button id="doJoin" class="btn-primary">참가</button>
-      </div>
     </div>
+    <div class="center" style="margin-top:10px">
+      <button id="doJoin" class="btn-primary" disabled>팀을 선택하고 참가</button>
+    </div>
+    <div id="joinStatus"></div>
   </section>
 
   <section id="battleUI" class="card" style="display:none">
@@ -128,19 +98,21 @@ input[type=file]{display:none}
       <div>
         <label>현재 팀</label>
         <div id="currentTeam" class="small">-</div>
+        <label>내 턴 여부</label>
+        <div id="myTurn" class="small">-</div>
       </div>
       <div>
         <label>내 상태</label>
-        <pre id="me" style="height:88px;overflow:auto"></pre>
+        <pre id="me" style="height:120px;overflow:auto;font-size:11px"></pre>
       </div>
       <div>
         <label>행동</label>
         <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:8px">
-          <button id="btnAttack">공격</button>
-          <button id="btnDefend">방어</button>
-          <button id="btnItem">아이템</button>
-          <button id="btnDodge">회피</button>
-          <button id="btnPass">패스</button>
+          <button id="btnAttack" disabled>공격</button>
+          <button id="btnDefend" disabled>방어</button>
+          <button id="btnItem" disabled>아이템</button>
+          <button id="btnDodge" disabled>회피</button>
+          <button id="btnPass" disabled>패스</button>
         </div>
       </div>
     </div>
@@ -152,103 +124,206 @@ input[type=file]{display:none}
       </div>
       <div>
         <label>로그</label>
-        <pre id="log" style="height:180px;overflow:auto"></pre>
+        <pre id="log" style="height:180px;overflow:auto;font-size:11px"></pre>
       </div>
     </div>
     <hr>
     <div>
       <div class="small">팀 보기</div>
       <div class="grid cols-2">
-        <div id="cards1" class="cards"></div>
-        <div id="cards2" class="cards"></div>
+        <div>
+          <h4>불사조 기사단 (team1)</h4>
+          <div id="cards1" class="cards"></div>
+        </div>
+        <div>
+          <h4>죽음을 먹는 자들 (team2)</h4>
+          <div id="cards2" class="cards"></div>
+        </div>
       </div>
     </div>
   </section>
+
+  <div id="notifications" style="position:fixed;bottom:10px;right:10px;max-width:400px;z-index:1000"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-const api=(p,opt)=>fetch(p,opt).then(r=>r.json());
+const api=(p,opt)=>fetch(p,opt).then(r=>r.json().catch(()=>r.text()));
 const qs=new URLSearchParams(location.search);
 $('#battle').value=qs.get('battle')||'';
 $('#token').value=qs.get('token')||'';
 
-function onRange(id, out){ $(id).addEventListener('input', e=>$(out).textContent=e.target.value); }
-onRange('#atk','#atkVal'); onRange('#def','#defVal'); onRange('#agi','#agiVal'); onRange('#luk','#lukVal');
+// 알림 시스템
+function showNotification(msg, type='info') {
+  const div = document.createElement('div');
+  div.className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'card';
+  div.textContent = msg;
+  div.style.cssText = 'margin-bottom:8px;animation:slideIn 0.3s ease';
+  $('#notifications').appendChild(div);
+  setTimeout(() => div.remove(), 5000);
+}
+
+// 로딩 상태 관리
+function setLoading(element, loading) {
+  if (loading) {
+    element.classList.add('loading');
+    element.disabled = true;
+  } else {
+    element.classList.remove('loading');
+    element.disabled = false;
+  }
+}
+
+function onRange(id, out){ 
+  $(id).addEventListener('input', e => {
+    $(out).textContent = e.target.value;
+  }); 
+}
+onRange('#hp','#hpVal');
+onRange('#atk','#atkVal'); 
+onRange('#def','#defVal'); 
+onRange('#agi','#agiVal'); 
+onRange('#luk','#lukVal');
 
 const preview=$('#preview');
 $('#imgUrl').addEventListener('input',()=>{
   const v=$('#imgUrl').value.trim();
-  if(v){ preview.src=v; preview.style.display='block'; preview.onerror=()=>{preview.style.display='none'}; }
+  if(v){ 
+    preview.src=v; 
+    preview.style.display='block'; 
+    preview.onerror=()=>{preview.style.display='none'}; 
+  }
   else preview.style.display='none';
 });
 
 // 파일 업로드
 let selectedFile=null;
-$('#file').addEventListener('change', (e)=>{ selectedFile = e.target.files?.[0] || null; });
-$('#uploadBtn').addEventListener('click', async ()=>{
-  if(!selectedFile) { alert('파일을 먼저 선택하세요'); return; }
-  const fd = new FormData(); fd.append('image', selectedFile);
-  const res = await fetch('/api/upload', { method:'POST', body: fd });
-  const data = await res.json();
-  if(!data.ok){ alert(data.error||'업로드 실패'); return; }
-  $('#imgUrl').value = data.url;
-  preview.src = data.url; preview.style.display='block';
-  alert('업로드 완료');
+$('#file').addEventListener('change', (e)=>{ 
+  selectedFile = e.target.files?.[0] || null; 
+  if (selectedFile) {
+    showNotification(`파일 선택됨: ${selectedFile.name}`);
+  }
 });
 
-let battleId=null, token=null, name=null, playerId=null, joined=false, socket=null, state=null, myImageUrl=null;
+$('#uploadBtn').addEventListener('click', async ()=>{
+  if(!selectedFile) { 
+    showNotification('파일을 먼저 선택하세요', 'error'); 
+    return; 
+  }
+  
+  const btn = $('#uploadBtn');
+  setLoading(btn, true);
+  
+  try {
+    const fd = new FormData(); 
+    fd.append('image', selectedFile);
+    const res = await fetch('/api/upload', { method:'POST', body: fd });
+    const data = await res.json();
+    
+    if(!data.ok){ 
+      throw new Error(data.error || '업로드 실패');
+    }
+    
+    $('#imgUrl').value = data.url;
+    preview.src = data.url; 
+    preview.style.display='block';
+    showNotification('업로드 완료!', 'success');
+  } catch(err) {
+    showNotification(`업로드 실패: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+let battleId=null, token=null, name=null, playerId=null, joined=false, socket=null, state=null, myImageUrl=null, selectedTeam=null;
 
 function renderTeamCards(arr, mount){
   mount.innerHTML='';
   (arr||[]).forEach(p=>{
     const div=document.createElement('div');
     div.className='card-mini';
+    const hpPercent = p.maxHp ? Math.round((p.hp/p.maxHp)*100) : 0;
     div.innerHTML=`
-      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'">
+      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'" alt="${p.name}">
       <div style="margin-top:6px;font-weight:600">${p.name}</div>
-      <div class="badge">HP ${p.hp}${p.alive?'':' / 사망'}</div>
+      <div class="badge">HP ${p.hp}/${p.maxHp} (${hpPercent}%)</div>
+      <div class="badge ${p.alive ? '' : 'error'}">${p.alive ? '생존' : '사망'}</div>
+      <div style="font-size:10px;opacity:.8;margin-top:4px">
+        공격${p.stats?.attack} 방어${p.stats?.defense} 민첩${p.stats?.agility} 행운${p.stats?.luck}
+      </div>
     `;
     mount.appendChild(div);
   });
 }
 
 function renderTargets(){
-  const sel=$('#targets'); sel.innerHTML='';
+  const sel=$('#targets'); 
+  sel.innerHTML='';
   if(!state) return;
-  const enemies = playerTeam()==='team1' ? state.teams.team2 : state.teams.team1;
+  
+  const myTeam = playerTeam();
+  const enemies = myTeam === 'team1' ? state.teams.team2 : state.teams.team1;
+  
   enemies.forEach(p=>{
-    const o=document.createElement('option');
-    o.value=p.id; o.textContent=`${p.name} (HP:${p.hp})`;
-    sel.appendChild(o);
+    if (p.alive) {
+      const o=document.createElement('option');
+      o.value=p.id; 
+      o.textContent=`${p.name} (HP:${p.hp}/${p.maxHp})`;
+      sel.appendChild(o);
+    }
   });
 }
 
 function playerTeam(){
-  if(!state) return null;
+  if(!state || !playerId) return null;
   for(const p of state.teams.team1) if(p.id===playerId) return 'team1';
   for(const p of state.teams.team2) if(p.id===playerId) return 'team2';
   return null;
 }
 
+function findMyPlayer() {
+  if(!state || !playerId) return null;
+  const all = [...state.teams.team1, ...state.teams.team2];
+  return all.find(p => p.id === playerId);
+}
+
 function renderMine(){
   if(!state) return;
-  let meObj=null;
-  for(const p of state.teams.team1) if(p.id===playerId) meObj=p;
-  for(const p of state.teams.team2) if(p.id===playerId) meObj=p;
-  $('#me').textContent = meObj ? JSON.stringify(meObj,null,2) : '-';
-  $('#currentTeam').textContent = state.currentTeam||'-';
+  const meObj = findMyPlayer();
+  $('#me').textContent = meObj ? JSON.stringify(meObj, null, 2) : '플레이어를 찾을 수 없음';
+  $('#currentTeam').textContent = state.currentTeam || '-';
+  
+  const myTeam = playerTeam();
+  const isMyTurn = myTeam === state.currentTeam;
+  const myPlayer = findMyPlayer();
+  const canAct = isMyTurn && myPlayer && myPlayer.alive && !myPlayer.hasActed;
+  
+  $('#myTurn').textContent = canAct ? '내 턴!' : isMyTurn ? '팀 턴 (행동완료)' : '상대 턴';
+  $('#myTurn').className = canAct ? 'success' : 'small';
+  
+  // 버튼 활성화/비활성화
+  const actionButtons = ['#btnAttack', '#btnDefend', '#btnItem', '#btnDodge', '#btnPass'];
+  actionButtons.forEach(btn => {
+    $(btn).disabled = !canAct;
+  });
 }
 
 function renderLog(){
   const log=$('#log');
-  const rows=(state?.battleLog||[]).slice(-50).map(x=>JSON.stringify(x)).join("\n");
-  log.textContent=rows; log.scrollTop=log.scrollHeight;
+  const rows=(state?.battleLog||[]).slice(-20).map(x=>{
+    const time = new Date(x.timestamp).toLocaleTimeString();
+    return `[${time}] ${x.type}: ${x.result || x.actor || ''}`;
+  }).join("\n");
+  log.textContent=rows; 
+  log.scrollTop=log.scrollHeight;
 }
 
 function renderAll(){
-  renderTargets(); renderMine(); renderLog();
+  if (!state) return;
+  renderTargets(); 
+  renderMine(); 
+  renderLog();
   renderTeamCards(state.teams.team1, $('#team1'));
   renderTeamCards(state.teams.team2, $('#team2'));
   renderTeamCards(state.teams.team1, $('#cards1'));
@@ -257,79 +332,300 @@ function renderAll(){
 
 async function refresh(){
   if(!battleId) return;
-  state = await api(`/api/battles/${battleId}`);
-  if(state) renderAll();
+  try {
+    state = await api(`/api/battles/${battleId}`);
+    if(state && !state.error) {
+      renderAll();
+    } else {
+      showNotification('상태 조회 실패', 'error');
+    }
+  } catch(err) {
+    showNotification(`새로고침 오류: ${err.message}`, 'error');
+  }
 }
 
+// 로그인 처리
 $('#doLogin').onclick = async ()=>{
   battleId = $('#battle').value.trim();
   token = $('#token').value.trim();
   name = $('#name').value.trim();
   const otp = $('#otp').value.trim();
-  if(!battleId||!token||!name||!otp) return alert('모두 입력하세요');
+  
+  if(!battleId||!token||!name||!otp) {
+    showNotification('모든 필드를 입력해주세요', 'error');
+    return;
+  }
 
-  const r = await api('/api/auth/login',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({battleId,role:'player',name,otp,token})
-  });
-  if(!r.ok){ alert(r.error||'로그인 실패'); return; }
+  const btn = $('#doLogin');
+  setLoading(btn, true);
 
-  playerId = name;
-  $('#login').style.display='none';
-  $('#join').style.display='';
-  await refresh();
+  try {
+    const r = await api('/api/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({battleId,role:'player',name,otp,token})
+    });
+    
+    if(!r.ok){ 
+      throw new Error(r.error || '로그인 실패');
+    }
 
-  socket = io({path:'/socket.io'});
-  socket.on('connect', ()=> socket.emit('join-battle',{battleId,playerId}));
-  socket.on('battle-state', async ()=>{ await refresh(); });
-  socket.on('player-joined', async ()=>{ await refresh(); });
-  socket.on('action-executed', async ()=>{ await refresh(); });
-  socket.on('battle-started', async ()=>{ await refresh(); $('#join').style.display='none'; $('#battleUI').style.display=''; });
-  socket.on('battle-ended', async ()=>{ await refresh(); });
+    playerId = name;
+    $('#login').style.display='none';
+    $('#join').style.display='';
+    
+    showNotification('로그인 성공!', 'success');
+    await refresh();
+
+    // Socket 연결
+    socket = io({path:'/socket.io'});
+    socket.on('connect', ()=> {
+      console.log('Socket connected');
+      socket.emit('join-battle',{battleId,playerId});
+    });
+    socket.on('disconnect', () => {
+      showNotification('실시간 연결이 끊어졌습니다', 'error');
+    });
+    socket.on('battle-state', async ()=>{ await refresh(); });
+    socket.on('player-joined', async ()=>{ await refresh(); });
+    socket.on('action-executed', async ()=>{ await refresh(); });
+    socket.on('battle-started', async ()=>{ 
+      await refresh(); 
+      $('#join').style.display='none'; 
+      $('#battleUI').style.display=''; 
+      showNotification('전투가 시작되었습니다!', 'success');
+    });
+    socket.on('battle-ended', async ()=>{ 
+      await refresh(); 
+      showNotification('전투가 종료되었습니다!', 'success');
+    });
+  } catch(err) {
+    showNotification(`로그인 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
 };
 
-$('#join1').onclick = ()=> $('#join2').dataset.sel=''; $('#join1').dataset.sel='team1';
-$('#join2').onclick = ()=> $('#join1').dataset.sel=''; $('#join2').dataset.sel='team2';
+// 팀 선택
+$('#join1').onclick = () => {
+  selectedTeam = 'team1';
+  $('#join1').style.background = 'rgba(34,197,94,.3)';
+  $('#join2').style.background = '';
+  $('#doJoin').disabled = false;
+  $('#doJoin').textContent = '불사조 기사단에 참가';
+};
+
+$('#join2').onclick = () => {
+  selectedTeam = 'team2';
+  $('#join2').style.background = 'rgba(34,197,94,.3)';
+  $('#join1').style.background = '';
+  $('#doJoin').disabled = false;
+  $('#doJoin').textContent = '죽음을 먹는 자들에 참가';
+};
 
 $('#doJoin').onclick = async ()=>{
-  const team = $('#join1').dataset.sel==='team1' ? 'team1' : $('#join2').dataset.sel==='team2' ? 'team2' : null;
-  if(!team) return alert('팀을 선택하세요');
-  const items=[...$('#items').selectedOptions].map(o=>o.value);
-  const stats={공격력:+$('#atk').value,방어:+$('#def').value,민첩:+$('#agi').value,행운:+$('#luk').value};
-  myImageUrl = $('#imgUrl').value.trim() || null;
-  const r = await api(`/api/battles/${battleId}/join`,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({playerId:name,playerName:name,teamId:team,stats,items,imageUrl:myImageUrl})
-  });
-  if(!r.success){ alert(r.error||'참가 실패'); return; }
-  joined=true;
-  await refresh();
+  if(!selectedTeam) {
+    showNotification('팀을 선택해주세요', 'error');
+    return;
+  }
+
+  const btn = $('#doJoin');
+  setLoading(btn, true);
+
+  try {
+    const items=[...$('#items').selectedOptions].map(o=>o.value);
+    const stats={
+      attack: +$('#atk').value,
+      defense: +$('#def').value,
+      agility: +$('#agi').value,
+      luck: +$('#luk').value
+    };
+    const customHp = +$('#hp').value || 100;
+    myImageUrl = $('#imgUrl').value.trim() || null;
+    
+    const r = await api(`/api/battles/${battleId}/join`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        playerId: name,
+        playerName: name,
+        teamId: selectedTeam,
+        stats,
+        items,
+        imageUrl: myImageUrl,
+        customHp
+      })
+    });
+    
+    if(!r.success){ 
+      throw new Error(r.error || '참가 실패');
+    }
+    
+    joined = true;
+    showNotification('팀 참가 완료!', 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`참가 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
 };
 
-function action(type,payload={}) {
-  if(!joined) return alert('먼저 참가하세요');
+// 액션 함수들
+function action(type, payload={}) {
+  if(!joined) {
+    showNotification('먼저 팀에 참가해주세요', 'error');
+    return Promise.reject(new Error('Not joined'));
+  }
+  
   return api(`/api/battles/${battleId}/action`,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({playerId,name,action:{type,...payload}})
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({playerId: name, action:{type,...payload}})
   });
 }
 
 $('#btnAttack').onclick = async ()=>{
   const t = $('#targets').value;
-  if(!t) return alert('대상을 선택하세요');
-  const r = await action('attack',{targetId:t});
-  if(!r.success) alert(r.error||'실패'); await refresh();
+  if(!t) {
+    showNotification('공격할 대상을 선택해주세요', 'error');
+    return;
+  }
+  
+  const btn = $('#btnAttack');
+  setLoading(btn, true);
+  
+  try {
+    const r = await action('attack',{targetId:t});
+    if(!r.success) {
+      throw new Error(r.error || '공격 실패');
+    }
+    showNotification('공격 완료!', 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`공격 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
 };
-$('#btnDefend').onclick = async ()=>{ const r=await action('defend'); if(!r.success) alert(r.error||'실패'); await refresh(); };
-$('#btnDodge').onclick  = async ()=>{ const r=await action('dodge');  if(!r.success) alert(r.error||'실패'); await refresh(); };
-$('#btnItem').onclick   = async ()=>{
-  const item = prompt('사용할 아이템명을 입력: 공격 보정기 / 방어 보정기 / 디터니');
-  if(!item) return;
-  const r=await action('use_item',{itemName:item});
-  if(!r.success) alert(r.error||'실패'); await refresh();
-};
-$('#btnPass').onclick   = async ()=>{ const r=await action('pass');   if(!r.success) alert(r.error||'실패'); await refresh(); };
 
+$('#btnDefend').onclick = async ()=>{ 
+  const btn = $('#btnDefend');
+  setLoading(btn, true);
+  try {
+    const r = await action('defend'); 
+    if(!r.success) throw new Error(r.error || '방어 실패');
+    showNotification('방어 태세!', 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`방어 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+};
+
+$('#btnDodge').onclick = async ()=>{ 
+  const btn = $('#btnDodge');
+  setLoading(btn, true);
+  try {
+    const r = await action('dodge');  
+    if(!r.success) throw new Error(r.error || '회피 실패');
+    showNotification('회피 준비!', 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`회피 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+};
+
+$('#btnItem').onclick = async ()=>{
+  const item = prompt('사용할 아이템명을 입력하세요:\n- 공격 보정기\n- 방어 보정기\n- 디터니');
+  if(!item) return;
+  
+  const btn = $('#btnItem');
+  setLoading(btn, true);
+  
+  try {
+    const r = await action('use_item',{itemName:item});
+    if(!r.success) throw new Error(r.error || '아이템 사용 실패');
+    showNotification(`${item} 사용 완료!`, 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`아이템 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+};
+
+$('#btnPass').onclick = async ()=>{ 
+  const btn = $('#btnPass');
+  setLoading(btn, true);
+  try {
+    const r = await action('pass');   
+    if(!r.success) throw new Error(r.error || '패스 실패');
+    showNotification('턴 패스', 'success');
+    await refresh();
+  } catch(err) {
+    showNotification(`패스 오류: ${err.message}`, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+};
+
+// 초기화
+if ($('#battle').value && $('#token').value) {
+  // URL에서 자동으로 값이 들어온 경우
+  battleId = $('#battle').value;
+  token = $('#token').value;
+}
 </script>
+
+<style>
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+</style>
 </body>
-</html>
+</html>3">
+      <div>
+        <label>Battle ID</label>
+        <input id="battle" type="text" placeholder="예: ABC123">
+      </div>
+      <div>
+        <label>이름</label>
+        <input id="name" type="text" placeholder="캐릭터 이름">
+      </div>
+      <div>
+        <label>OTP</label>
+        <input id="otp" type="text" placeholder="1회용 비밀번호">
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:10px">
+      <div>
+        <label>링크 토큰</label>
+        <input id="token" type="text" placeholder="자동 입력됨" readonly>
+      </div>
+      <div class="center">
+        <button id="doLogin" class="btn-primary">로그인</button>
+      </div>
+    </div>
+    <div id="loginStatus"></div>
+  </section>
+
+  <section id="join" class="card" style="display:none">
+    <div class="grid cols-2">
+      <div class="team">
+        <div class="small">왼쪽 팀(team1)</div>
+        <div id="team1" class="cards"></div>
+        <div style="margin-top:8px"><button id="join1" data-team="team1">team1 참가</button></div>
+      </div>
+      <div class="team">
+        <div class="small">오른쪽 팀(team2)</div>
+        <div id="team2" class="cards"></div>
+        <div style="margin-top:8px"><button id="join2" data-team="team2">team2 참가</button></div>
+      </div>
+    </div>
+    <hr>
+    <div class="grid cols-
