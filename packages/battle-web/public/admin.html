@@ -1,252 +1,382 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>관리자 | Pyxis Battle</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pyxis · 관리자</title>
 <style>
-:root{--navy:#012C4E;--beige:#EAD292;--ink:#0b1c2b;--line:rgba(234,210,146,.35);}
-*{box-sizing:border-box}html,body{height:100%}
-body{margin:0;background:var(--navy);color:var(--beige);font-family:"EB Garamond","Nanum Myeongjo",serif;line-height:1.5}
-.container{max-width:1100px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
-header{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);padding:14px 18px}
-h1{margin:0;font-size:28px;letter-spacing:.06em}
-.card{border:1px solid var(--line);background:rgba(1,44,78,.35);padding:16px;border-radius:10px}
-.grid{display:grid;gap:12px}
-.cols-2{grid-template-columns:1fr 1fr}
-.controls{display:flex;gap:8px;flex-wrap:wrap}
-label{display:block;margin:6px 0 4px 0}
-input[type=text], select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:rgba(1,44,78,.5);color:var(--beige)}
-button{border:1px solid var(--beige);background:transparent;color:var(--beige);padding:10px 14px;border-radius:8px;cursor:pointer}
-button:hover{background:rgba(234,210,146,.12)}
-.btn-primary{background:var(--beige);color:var(--navy);border-color:var(--beige)}
-kbd{border:1px solid var(--line);padding:2px 6px;border-radius:6px;background:rgba(234,210,146,.1)}
-.small{font-size:12px;opacity:.9}
-pre{white-space:pre-wrap;word-break:break-word;margin:0}
-hr{border:0;border-top:1px solid var(--line);margin:12px 0}
-.code{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
-.copy{cursor:pointer;border-bottom:1px dashed var(--beige)}
-.log{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
-.state{height:220px;overflow:auto;border:1px solid var(--line);padding:10px;border-radius:8px;background:rgba(0,0,0,.15)}
-.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.card-mini{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(0,0,0,.12)}
-.thumb{width:100%;height:200px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#06192a}
-.pill{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;margin-top:6px}
+body{margin:0;background:#0b1e33;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto}
+main{max-width:1200px;margin:18px auto;padding:0 14px}
+.card{background:rgba(1,27,50,.72);border:1px solid rgba(234,210,146,.18);border-radius:12px;padding:12px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,button{background:#0e2238;color:#e5e7eb;border:1px solid rgba(234,210,146,.18);border-radius:10px;padding:8px 10px}
+button{cursor:pointer}.primary{background:#EAD292;color:#1b2640;border-color:#EAD292}
+.pill{padding:6px 10px;border:1px solid rgba(234,210,146,.18);border-radius:999px;background:rgba(1,23,42,.6)}
+.teamlist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.player{border:1px solid rgba(234,210,146,.18);border-radius:10px;padding:8px;background:rgba(4,14,26,.5)}
+.hp{height:8px;background:#1b2b40;border-radius:6px;overflow:hidden}.hp>b{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
+h4{margin:6px 0 10px 0}
+code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px}
+.copy{cursor:pointer;text-decoration:underline}
+.error{color:#ef4444;background:rgba(239,68,68,.1);padding:8px;border-radius:6px;margin:4px 0}
 </style>
+<script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-<div class="container">
-  <header>
-    <h1>Pyxis Battle Admin</h1>
-    <div class="small">팔레트: Deep Navy / Golden Beige</div>
-  </header>
+<main>
 
-  <section class="card">
-    <div class="grid cols-2">
-      <div>
-        <label>전투 모드</label>
-        <select id="mode">
-          <option>1v1</option><option>2v2</option><option>3v3</option><option>4v4</option>
-        </select>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:8px">
-        <button id="create" class="btn-primary">새 전투 생성</button>
-        <button id="genLinks" disabled>전투자/관전자 링크 생성</button>
-      </div>
-    </div>
-    <hr>
-    <div class="grid cols-2">
-      <div>
-        <label>Battle ID</label>
-        <div id="battleId" class="code">-</div>
-      </div>
-      <div class="small">링크는 생성할 때마다 갱신됩니다. 이전 OTP는 초기화됩니다.</div>
-    </div>
-  </section>
+<section class="card">
+  <div class="row">
+    <label>배틀 ID</label><input id="battleId" style="min-width:220px">
+    <label>모드</label><select id="mode"><option>1v1</option><option>2v2</option><option>3v3</option><option>4v4</option></select>
+    <button class="primary" id="btnCreate">새 전투 생성</button>
+    <button id="btnLinks">링크 생성</button>
+    <button id="btnFetch">상태 새로고침</button>
+  </div>
+  <div style="margin-top:8px">
+    <div><b>관리자 URL</b> <code id="adminUrl" class="copy"></code></div>
+    <div><b>플레이어 URL</b> <code id="playerUrl" class="copy"></code></div>
+    <div><b>관전자 URL</b> <code id="spectUrl" class="copy"></code></div>
+  </div>
+</section>
 
-  <section class="card">
-    <h3 style="margin:0 0 8px 0">링크</h3>
-    <div class="grid cols-2">
-      <div><div>관리자 링크 토큰</div><div id="token-admin" class="code">-</div></div>
-      <div><div>전투자 링크 토큰</div><div id="token-player" class="code">-</div></div>
-      <div><div>관전자 링크 토큰</div><div id="token-spectator" class="code">-</div></div>
-    </div>
-    <hr>
-    <div class="grid cols-2">
-      <div><div>관리자 링크</div><div id="url-admin" class="copy"></div></div>
-      <div><div>전투자 링크</div><div id="url-player" class="copy"></div></div>
-      <div><div>관전자 링크</div><div id="url-spectator" class="copy"></div></div>
-    </div>
-  </section>
+<section class="card">
+  <h3>OTP/로그인</h3>
+  <div class="row" style="margin-bottom:8px">
+    <button id="btnIssueAdmin">관리자 OTP</button><span class="pill" id="adminOtp">-</span>
+    <input id="adminOtpInput" placeholder="관리자 OTP"><button class="primary" id="btnAdminLogin">관리자 로그인</button>
+    <span id="adminLoginState" class="pill">미로그인</span>
+  </div>
+  <div class="row">
+    <input id="playerNameForOtp" placeholder="플레이어 이름">
+    <button id="btnIssuePlayer">플레이어 OTP</button><span class="pill" id="playerOtp">-</span>
+    <button id="btnIssueSpect">관전자 OTP</button><span class="pill" id="spectOtp">-</span>
+  </div>
+</section>
 
-  <section class="card">
-    <h3 style="margin:0 0 8px 0">OTP 발급</h3>
-    <div class="grid cols-2">
-      <div>
-        <label>관리자 OTP</label>
-        <div class="controls">
-          <button id="issue-admin">발급</button>
-          <div id="otp-admin" class="code"></div>
-        </div>
-      </div>
-      <div>
-        <label>관전자 OTP</label>
-        <div class="controls">
-          <button id="issue-spectator">발급</button>
-          <div id="otp-spectator" class="code"></div>
-        </div>
-      </div>
-      <div>
-        <label>전투자 OTP (캐릭터 이름)</label>
-        <div class="controls" style="gap:6px">
-          <input type="text" id="playerName" placeholder="예: Alice">
-          <button id="issue-player">발급</button>
-        </div>
-        <div id="otp-player" class="code"></div>
-      </div>
-    </div>
-  </section>
+<section class="card">
+  <h3>전투 제어</h3>
+  <div class="row">
+    <button class="primary" id="btnStart">전투 시작</button>
+    <select id="winnerSel">
+      <option value="">승자 미지정(HP 합산)</option>
+      <option value="team1">불사조 기사단 승리</option>
+      <option value="team2">죽음을 먹는 자들 승리</option>
+      <option value="draw">무승부</option>
+    </select>
+    <button id="btnForceEnd">강제 종료</button>
+    <button id="btnDelete">전투 삭제</button>
+  </div>
+</section>
 
-  <section class="card">
-    <h3 style="margin:0 0 8px 0">전투 컨트롤</h3>
-    <div class="controls">
-      <button id="start" disabled>전투 시작</button>
-      <button id="forceEnd" disabled>강제 전투 종료</button>
-      <button id="refresh" disabled>상태 새로고침</button>
-    </div>
-    <div class="grid cols-2" style="margin-top:10px">
-      <div>
-        <div class="small">상태</div>
-        <pre id="state" class="state"></pre>
+<section class="card">
+  <h3>팀 구성</h3>
+  <div class="row pill">팀 A: 불사조 기사단 / 팀 B: 죽음을 먹는 자들</div>
+  <div class="row" style="margin-top:10px;gap:14px;align-items:flex-start">
+    <div style="flex:1" class="card">
+      <h4>불사조 기사단</h4>
+      <div class="row">
+        <input id="t1_name" placeholder="이름"><input type="file" id="t1_img" accept="image/*">
+        <input type="number" id="t1_hp" min="1" max="100" value="100" placeholder="체력">
+        <input type="number" id="t1_atk" min="1" max="5" value="3" placeholder="공격">
+        <input type="number" id="t1_def" min="1" max="5" value="3" placeholder="방어">
+        <input type="number" id="t1_agi" min="1" max="5" value="3" placeholder="민첩">
+        <input type="number" id="t1_luk" min="1" max="5" value="3" placeholder="행운">
+        <input id="t1_items" placeholder="아이템(쉼표 구분)">
+        <button id="btnAddT1">팀에 추가</button>
       </div>
-      <div>
-        <div class="small">로그</div>
-        <pre id="log" class="log"></pre>
-      </div>
+      <div id="t1_list" class="teamlist"></div>
     </div>
-  </section>
+    <div style="flex:1" class="card">
+      <h4>죽음을 먹는 자들</h4>
+      <div class="row">
+        <input id="t2_name" placeholder="이름"><input type="file" id="t2_img" accept="image/*">
+        <input type="number" id="t2_hp" min="1" max="100" value="100" placeholder="체력">
+        <input type="number" id="t2_atk" min="1" max="5" value="3" placeholder="공격">
+        <input type="number" id="t2_def" min="1" max="5" value="3" placeholder="방어">
+        <input type="number" id="t2_agi" min="1" max="5" value="3" placeholder="민첩">
+        <input type="number" id="t2_luk" min="1" max="5" value="3" placeholder="행운">
+        <input id="t2_items" placeholder="아이템(쉼표 구분)">
+        <button id="btnAddT2">팀에 추가</button>
+      </div>
+      <div id="t2_list" class="teamlist"></div>
+    </div>
+  </div>
+</section>
 
-  <section class="card">
-    <h3 style="margin:0 0 8px 0">플레이어 갤러리</h3>
-    <div id="roster" class="roster"></div>
-  </section>
-</div>
+<section class="card">
+  <h3>상태/로그</h3>
+  <div id="state" class="row"></div>
+  <div id="log" class="card" style="max-height:220px;overflow:auto"></div>
+</section>
 
+<div id="errorLog" style="position:fixed;bottom:10px;right:10px;max-width:400px;z-index:1000"></div>
+
+</main>
 <script>
-const $ = (s)=>document.querySelector(s);
-const api = (p, opt)=>fetch(p, opt).then(r=>r.json());
-const originBase = window.location.origin;
+window.addEventListener('DOMContentLoaded',()=>{
+  const $=s=>document.querySelector(s);
+  const on=(sel,ev,fn)=>{const el=$(sel); if(el) el.addEventListener(ev,fn);};
+  const qs=new URLSearchParams(location.search);
+  const ioSock=io({path:'/socket.io'});
 
-let battleId = null;
-let tokens = null;
-let state = null;
+  let BATTLE=qs.get('battle')||''; $('#battleId').value=BATTLE;
+  let TOK={admin:qs.get('token')||''}; // 쿼리의 관리자 토큰
 
-function fillState(s){
-  state = s;
-  $('#state').textContent = JSON.stringify(s, null, 2);
-  const logs = (s.battleLog||[]).slice(-50).map(x=>JSON.stringify(x)).join("\n");
-  $('#log').textContent = logs;
-  renderRoster();
-}
+  // 에러 표시 함수
+  function showError(msg) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error';
+    errorDiv.textContent = msg;
+    $('#errorLog').appendChild(errorDiv);
+    setTimeout(() => errorDiv.remove(), 5000);
+    console.error('Error:', msg);
+  }
 
-function renderRoster(){
-  const wrap = $('#roster');
-  wrap.innerHTML = '';
-  if(!state) return;
-  const add = (p, team)=>{
-    const div = document.createElement('div');
-    div.className='card-mini';
-    div.innerHTML = `
-      <img class="thumb" src="${p.imageUrl||''}" onerror="this.style.display='none'">
-      <div style="margin-top:8px;font-weight:600">${p.name}</div>
-      <div class="pill">${team}</div>
-      <div class="small">HP ${p.hp} / ${p.alive?'생존':'사망'}</div>
-    `;
-    wrap.appendChild(div);
+  // 공통 fetch: /api/admin/* 는 자동으로 x-admin-token 헤더 추가
+  async function api(url,{method='GET',json,body}={}) {
+    try {
+      const headers={};
+      if (url.startsWith('/api/admin') && TOK.admin) headers['x-admin-token']=TOK.admin;
+      if (json) headers['Content-Type']='application/json';
+      const r=await fetch(url,{method,headers,body});
+      const txt=await r.text();
+      if (!r.ok) { 
+        throw new Error(`${r.status}: ${txt}`); 
+      }
+      try { return JSON.parse(txt); } catch { return txt; }
+    } catch(err) {
+      showError(`API 오류: ${err.message}`);
+      throw err;
+    }
+  }
+
+  const renderTeam=(list,el)=>{el.innerHTML='';(list||[]).forEach(p=>{
+    const d=document.createElement('div'); d.className='player';
+    d.innerHTML=`<div><b>${p.name}</b> <span class="pill">${p.alive?'생존':'사망'}</span></div>
+    <div class="hp"><b style="width:${p.maxHp?Math.round((p.hp/p.maxHp)*100):0}%"></b></div>
+    <div style="font-size:12px;opacity:.8">공격 ${p.stats?.attack??'-'} / 방어 ${p.stats?.defense??'-'} / 민첩 ${p.stats?.agility??'-'} / 행운 ${p.stats?.luck??'-'}</div>`;
+    el.appendChild(d);
+  });};
+  
+  const renderLog=(log,el)=>{el.innerHTML=(log||[]).slice().reverse().map(e=>`<div style="padding:4px 0;border-bottom:1px dashed rgba(234,210,146,.2)">
+    ${e.type} - ${e.result||''}</div>`).join('');};
+    
+  const draw=(s)=>{
+    $('#state').innerHTML=
+      `<span class="pill">ID:${s.id}</span><span class="pill">모드:${s.mode}</span><span class="pill">단계:${s.phase}</span><span class="pill">현재 팀:${s.currentTeam}</span><span class="pill">승자:${s.winner||'-'}</span>`;
+    renderTeam(s.teams.team1,$('#t1_list')); 
+    renderTeam(s.teams.team2,$('#t2_list')); 
+    renderLog(s.battleLog,$('#log'));
   };
-  (state.teams.team1||[]).forEach(p=>add(p,'team1'));
-  (state.teams.team2||[]).forEach(p=>add(p,'team2'));
-}
 
-$('#create').onclick = async ()=>{
-  const mode = $('#mode').value;
-  const r = await api('/api/battles', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-  if(r.battleId){
-    battleId = r.battleId;
-    $('#battleId').textContent = battleId;
-    $('#genLinks').disabled = false;
-    $('#start').disabled = false;
-    $('#forceEnd').disabled = false;
-    $('#refresh').disabled = false;
-    fillState(r.state);
-  } else alert(r.error||'생성 실패');
-};
+  const refresh=async()=>{ 
+    if(!BATTLE) return; 
+    try {
+      const state = await api(`/api/battles/${BATTLE}`);
+      draw(state);
+    } catch(err) {
+      // 에러는 이미 showError에서 처리됨
+    }
+  };
 
-$('#genLinks').onclick = async ()=>{
-  if(!battleId) return;
-  const r = await api(`/api/admin/battles/${battleId}/links`, {method:'POST'});
-  if(r.tokens){
-    tokens = r.tokens;
-    $('#token-admin').textContent = tokens.admin;
-    $('#token-player').textContent = tokens.player;
-    $('#token-spectator').textContent = tokens.spectator;
-    $('#url-admin').textContent = `${originBase}/admin.html?token=${tokens.admin}&battle=${battleId}`;
-    $('#url-player').textContent = `${originBase}/play.html?token=${tokens.player}&battle=${battleId}`;
-    $('#url-spectator').textContent = `${originBase}/watch.html?token=${tokens.spectator}&battle=${battleId}`;
-  } else alert('링크 생성 실패');
-};
+  // Socket.IO 이벤트
+  ioSock.on('connect',()=>{ 
+    console.log('Socket connected');
+    if(BATTLE) ioSock.emit('join-battle',{battleId:BATTLE}); 
+  });
+  ioSock.on('disconnect', () => {
+    console.log('Socket disconnected');
+    showError('실시간 연결이 끊어졌습니다.');
+  });
+  ['battle-state','player-joined','battle-started','action-executed','battle-ended']
+    .forEach(ev=>ioSock.on(ev,({state})=>{
+      if(state) draw(state);
+    }));
 
-$('#issue-admin').onclick = async ()=>{
-  if(!battleId) return;
-  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'admin'})});
-  $('#otp-admin').textContent = r.otp || '';
-};
-
-$('#issue-spectator').onclick = async ()=>{
-  if(!battleId) return;
-  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'spectator'})});
-  $('#otp-spectator').textContent = r.otp || '';
-};
-
-$('#issue-player').onclick = async ()=>{
-  if(!battleId) return;
-  const name = $('#playerName').value.trim();
-  if(!name) return alert('이름을 입력하세요');
-  const r = await api(`/api/admin/battles/${battleId}/issue-otp`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'player',name})});
-  $('#otp-player').textContent = r.otp ? `${name} → ${r.otp}` : '';
-};
-
-$('#start').onclick = async ()=>{
-  if(!battleId) return;
-  const r = await api(`/api/battles/${battleId}/start`, {method:'POST'});
-  if(!r.success) alert(r.error||'시작 실패');
-  const s = await api(`/api/battles/${battleId}`);
-  fillState(s);
-};
-
-$('#forceEnd').onclick = async ()=>{
-  if(!battleId) return;
-  const r = await api(`/api/admin/battles/${battleId}/force-end`, {method:'POST'});
-  if(!r.ok) alert('종료 실패');
-  fillState(r.state);
-};
-
-$('#refresh').onclick = async ()=>{
-  if(!battleId) return;
-  const s = await api(`/api/battles/${battleId}`);
-  fillState(s);
-};
-
-// 링크 텍스트 클릭 복사
-for(const id of ['url-admin','url-player','url-spectator']){
-  document.addEventListener('click',(e)=>{
-    if(e.target.id===id && e.target.textContent){
-      navigator.clipboard.writeText(e.target.textContent);
-      e.target.style.textDecoration='underline';
-      setTimeout(()=>e.target.style.textDecoration='none',600);
+  // 버튼 이벤트들
+  on('#btnCreate','click',async()=>{
+    try {
+      const j=await api('/api/battles',{method:'POST',json:true,body:JSON.stringify({mode:$('#mode').value})});
+      BATTLE=j.battleId; 
+      $('#battleId').value=BATTLE; 
+      history.replaceState(null,'',`/admin?token=${TOK.admin||''}&battle=${BATTLE}`);
+      await refresh();
+    } catch(err) {
+      // 에러는 이미 처리됨
     }
   });
-}
+
+  on('#btnLinks','click',async()=>{
+    if(!BATTLE) return showError('배틀 ID가 없습니다');
+    try {
+      const j=await api(`/api/admin/battles/${BATTLE}/links`,{method:'POST'});
+      TOK=j.tokens||TOK;
+      $('#adminUrl').textContent=location.origin+`/admin?token=${TOK.admin}&battle=${BATTLE}`;
+      $('#playerUrl').textContent=location.origin+`/play?token=${TOK.player}&battle=${BATTLE}`;
+      $('#spectUrl').textContent =location.origin+`/watch?token=${TOK.spectator}&battle=${BATTLE}`;
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnFetch','click',refresh);
+
+  on('#btnIssueAdmin','click',async()=>{
+    if(!BATTLE) return showError('배틀 ID가 없습니다');
+    try {
+      const j=await api(`/api/admin/battles/${BATTLE}/issue-otp`,{method:'POST',json:true,body:JSON.stringify({role:'admin'})});
+      $('#adminOtp').textContent=j.otp||'-';
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnAdminLogin','click',async()=>{
+    const otp=$('#adminOtpInput').value.trim(); 
+    if(!otp||!BATTLE) return showError('OTP와 배틀 ID가 필요합니다');
+    try {
+      await api('/api/auth/login',{method:'POST',json:true,body:JSON.stringify({battleId:BATTLE,role:'admin',otp,token:TOK.admin||''})});
+      $('#adminLoginState').textContent='로그인됨';
+      $('#adminLoginState').style.background='rgba(34,197,94,.2)';
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnIssuePlayer','click',async()=>{
+    const name=$('#playerNameForOtp').value.trim(); 
+    if(!name||!BATTLE) return showError('이름과 배틀 ID가 필요합니다');
+    try {
+      const j=await api(`/api/admin/battles/${BATTLE}/issue-otp`,{method:'POST',json:true,body:JSON.stringify({role:'player',name})});
+      $('#playerOtp').textContent=j.otp||'-';
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnIssueSpect','click',async()=>{
+    if(!BATTLE) return showError('배틀 ID가 없습니다');
+    try {
+      const j=await api(`/api/admin/battles/${BATTLE}/issue-otp`,{method:'POST',json:true,body:JSON.stringify({role:'spectator'})});
+      $('#spectOtp').textContent=j.otp||'-';
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  // 파일 업로드 함수
+  const upload=async(el)=>{
+    const f=el.files?.[0];
+    if(!f) return null;
+    if(f.size>10*1024*1024) throw new Error('이미지 최대 10MB');
+    const fd=new FormData();
+    fd.append('image',f);
+    const r=await fetch('/api/upload',{method:'POST',body:fd}); 
+    if(!r.ok) throw new Error(await r.text()); 
+    return (await r.json()).url;
+  };
+
+  async function add(team){
+    if(!BATTLE) return showError('배틀 ID가 없습니다');
+    try {
+      const pre=team==='team1'?'#t1_':'#t2_';
+      const name=$(pre+'name').value.trim(); 
+      if(!name) return showError('이름이 필요합니다');
+      
+      const stats={
+        attack:+$(pre+'atk').value,
+        defense:+$(pre+'def').value,
+        agility:+$(pre+'agi').value,
+        luck:+$(pre+'luk').value
+      };
+      const items=$(pre+'items').value.split(',').map(s=>s.trim()).filter(Boolean);
+      
+      let imageUrl=null; 
+      try{ 
+        imageUrl=await upload($(pre+'img')); 
+      } catch(e) { 
+        if(e && e.message) showError(`이미지 업로드 실패: ${e.message}`); 
+      }
+      
+      const body={
+        playerId:'p_'+Math.random().toString(36).slice(2,8),
+        playerName:name,
+        teamId:team,
+        stats,
+        imageUrl,
+        items
+      };
+      
+      const r=await api(`/api/admin/battles/${BATTLE}/join`,{method:'POST',json:true,body:JSON.stringify(body)});
+      if(!r.success) return showError(r.error||'추가 실패'); 
+      
+      // 입력 필드 초기화
+      $(pre+'name').value = '';
+      $(pre+'img').value = '';
+      $(pre+'hp').value = '100';
+      $(pre+'items').value = '';
+      
+      await refresh();
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  }
+
+  on('#btnAddT1','click',()=>add('team1')); 
+  on('#btnAddT2','click',()=>add('team2'));
+
+  on('#btnStart','click',async()=>{ 
+    if(!BATTLE) return showError('배틀 ID가 없습니다'); 
+    try {
+      const r=await api(`/api/battles/${BATTLE}/start`,{method:'POST',json:true,body:'{}'}); 
+      if(!r.success) showError(r.error||'시작 실패');
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnForceEnd','click',async()=>{ 
+    if(!BATTLE) return showError('배틀 ID가 없습니다'); 
+    try {
+      const w=$('#winnerSel').value||undefined; 
+      await api(`/api/admin/battles/${BATTLE}/force-end`,{method:'POST',json:true,body:JSON.stringify({winner:w})});
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  on('#btnDelete','click',async()=>{ 
+    if(!BATTLE) return showError('배틀 ID가 없습니다'); 
+    if(!confirm('정말로 이 전투를 삭제하시겠습니까?')) return;
+    try {
+      await api(`/api/admin/battles/${BATTLE}`,{method:'DELETE'}); 
+      location.href='/admin';
+    } catch(err) {
+      // 에러는 이미 처리됨
+    }
+  });
+
+  // URL 복사 기능
+  ['adminUrl','playerUrl','spectUrl'].forEach(id => {
+    on(`#${id}`, 'click', async () => {
+      const text = $(`#${id}`).textContent;
+      if(text && text !== '-') {
+        try {
+          await navigator.clipboard.writeText(text);
+          const el = $(`#${id}`);
+          el.style.background = 'rgba(34,197,94,.3)';
+          setTimeout(() => el.style.background = '', 1000);
+        } catch(err) {
+          showError('클립보드 복사 실패');
+        }
+      }
+    });
+  });
+
+  // 초기 로드
+  if(BATTLE) refresh();
+});
 </script>
 </body>
 </html>
