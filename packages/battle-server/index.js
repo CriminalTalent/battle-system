@@ -39,7 +39,21 @@ const fileFilter = (_, file, cb) => {
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 // ---------------- 정적 파일 서빙 (HTML은 캐시 금지) ----------------
-app.use(express.static(path.join(__dirname, '../battle-web/public'), {
+const publicPath = path.join(__dirname, '../battle-web/public');
+console.log(`[PYXIS] Looking for static files in: ${publicPath}`);
+
+// HTML 파일이 존재하는지 확인
+const checkFiles = ['admin.html', 'play.html', 'watch.html'];
+checkFiles.forEach(file => {
+  const filePath = path.join(publicPath, file);
+  if (fs.existsSync(filePath)) {
+    console.log(`[PYXIS] ✓ Found: ${file}`);
+  } else {
+    console.log(`[PYXIS] ✗ Missing: ${file} at ${filePath}`);
+  }
+});
+
+app.use(express.static(publicPath, {
   cacheControl: false,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -49,6 +63,23 @@ app.use(express.static(path.join(__dirname, '../battle-web/public'), {
     }
   }
 }));
+
+// 루트 경로 리다이렉트
+app.get('/', (req, res) => {
+  res.redirect('/admin.html');
+});
+
+// HTML 파일 직접 라우팅 (확장자 없이도 접근 가능)
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(publicPath, 'admin.html'));
+});
+app.get('/play', (req, res) => {
+  res.sendFile(path.join(publicPath, 'play.html'));
+});
+app.get('/watch', (req, res) => {
+  res.sendFile(path.join(publicPath, 'watch.html'));
+});
+
 app.use('/uploads', express.static(UPLOAD_DIR, { fallthrough: true }));
 
 // ---------------- 저장소/상수 ----------------
