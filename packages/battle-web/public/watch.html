@@ -95,12 +95,21 @@ pre{white-space:pre-wrap;word-break:break-word;margin:0}
     <div class="grid cols-2" style="margin-top:16px">
       <div>
         <label>전투 상태</label>
-        <pre id="state" class="list" style="height:200px;font-size:11px"></pre>
+        <pre id="state" class="list" style="height:160px;font-size:11px"></pre>
       </div>
       <div>
-        <label>실시간 로그</label>
-        <pre id="log" class="list" style="height:200px;font-size:11px"></pre>
-        <button id="refreshBtn" style="margin-top:4px;width:100%">수동 새로고침</button>
+        <label>전투 로그</label>
+        <pre id="log" class="list" style="height:160px;font-size:11px"></pre>
+      </div>
+    </div>
+    
+    <div style="margin-top:16px">
+      <label>실시간 채팅</label>
+      <div id="chatLog" class="list" style="height:120px;font-size:11px;margin-bottom:6px"></div>
+      <div style="display:flex;gap:6px">
+        <input id="chatInput" type="text" placeholder="채팅 메시지..." maxlength="200" style="flex:1">
+        <button id="chatSend">전송</button>
+        <button id="refreshBtn">새로고침</button>
       </div>
     </div>
   </section>
@@ -191,12 +200,29 @@ function updateBattleInfo() {
   $('#team2Status').textContent = `플레이어: ${team2Count}명 (생존: ${team2Alive}명)`;
 }
 
+function renderChat(){
+  const chat=$('#chatLog');
+  const messages = (state?.chatLog||[]).slice(-30).map(x=>{
+    const time = new Date(x.timestamp).toLocaleTimeString();
+    const senderColor = x.senderType === 'system' ? '#fbbf24' : 
+                       x.senderType === 'admin' ? '#ef4444' : 
+                       x.senderType === 'spectator' ? '#a78bfa' : '#22c55e';
+    return `<div style="margin-bottom:3px;padding:2px 0">
+      <span style="color:${senderColor};font-weight:600">[${time}] ${x.sender}:</span>
+      <span style="color:#e5e7eb">${x.message}</span>
+    </div>`;
+  }).join('');
+  chat.innerHTML = messages;
+  chat.scrollTop = chat.scrollHeight;
+}
+
 function render(){
   if(!state) return;
   
   updateBattleInfo();
   renderCards(state.teams?.team1, $('#cards1'));
   renderCards(state.teams?.team2, $('#cards2'));
+  renderChat();
   
   // 상태 정보 (간소화)
   const stateInfo = {
@@ -205,13 +231,14 @@ function render(){
     mode: state.mode,
     currentTeam: state.currentTeam,
     winner: state.winner,
+    remainingTurnTime: state.remainingTurnTime ? `${Math.floor(state.remainingTurnTime/60000)}:${Math.floor((state.remainingTurnTime%60000)/1000).toString().padStart(2,'0')}` : null,
     startTime: state.startTime ? new Date(state.startTime).toLocaleString() : null,
     endTime: state.endTime ? new Date(state.endTime).toLocaleString() : null
   };
   $('#state').textContent = JSON.stringify(stateInfo, null, 2);
   
-  // 로그 (최근 30개만)
-  const logs = (state.battleLog||[]).slice(-30).map(e => {
+  // 로그 (최근 20개만)
+  const logs = (state.battleLog||[]).slice(-20).map(e => {
     const time = new Date(e.timestamp).toLocaleTimeString();
     return `[${time}] ${e.type}: ${e.result || e.actor || JSON.stringify(e)}`;
   }).join('\n');
@@ -272,7 +299,7 @@ $('#doLogin').onclick = async ()=>{
     socket = io({path:'/socket.io'});
     socket.on('connect', ()=> {
       console.log('Socket connected');
-      socket.emit('join-battle',{battleId});
+      socket.emit('join-battle',{battleId, role:'spectator'});
     });
     
     socket.on('disconnect', () => {
@@ -309,6 +336,13 @@ $('#doLogin').onclick = async ()=>{
                         data.winner === 'draw' ? '무승부' : '알 수 없음';
       showNotification(`🏆 전투 종료! 승자: ${winnerText}`, 'success');
     });
+    
+    socket.on('chat-message', ({message}) => {
+      if(state && state.chatLog) {
+        state.chatLog.push(message);
+        renderChat();
+      }
+    });
 
     // 자동 새로고침 (30초마다)
     setInterval(refresh, 30000);
@@ -319,6 +353,28 @@ $('#doLogin').onclick = async ()=>{
     setLoading(btn, false);
   }
 };
+
+// 채팅 전송
+$('#chatSend').onclick = () => {
+  const message = $('#chatInput').value.trim();
+  if(!message || !socket || !battleId) return;
+  
+  socket.emit('send-chat', {
+    battleId: battleId,
+    sender: '관전자',
+    message: message,
+    senderType: 'spectator'
+  });
+  
+  $('#chatInput').value = '';
+};
+
+// 엔터키로 채팅 전송
+$('#chatInput').addEventListener('keypress', (e) => {
+  if(e.key === 'Enter') {
+    $('#chatSend').click();
+  }
+});
 
 // 수동 새로고침
 $('#refreshBtn').onclick = async () => {
