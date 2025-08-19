@@ -174,6 +174,7 @@ class Battle {
     this.turnStartTime = null;
     this.turnTimeouts = new Map();
     this.battleLog = [];
+    this.chatLog = []; // 채팅 로그 추가
     this.winner = null;
 
     this.tokens = { admin: null, player: null, spectator: null };
@@ -238,8 +239,13 @@ class Battle {
     const current = this.teams[this.currentTeam];
     current.forEach(p => { if (p.alive) p.hasActed = false; });
     this.turnStartTime = Date.now();
+    this.turnEndTime = this.turnStartTime + TURN_TIMEOUT; // 턴 종료 시간 저장
+    
     const timeoutId = setTimeout(() => { this.autoEndTurn(); }, TURN_TIMEOUT);
     this.turnTimeouts.set(this.currentTeam, timeoutId);
+    
+    // 턴 시작 알림
+    this.addChatMessage('시스템', `${this.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}의 턴이 시작되었습니다. (5분)`);
   }
 
   executeAction(playerId, action) {
@@ -362,7 +368,33 @@ class Battle {
     this.startTeamTurn();
   }
 
-  autoEndTurn() {
+  // 채팅 기능 추가
+  addChatMessage(sender, message, senderType = 'system') {
+    const chatEntry = {
+      id: crypto.randomBytes(8).toString('hex'),
+      sender,
+      message,
+      senderType, // 'player', 'admin', 'spectator', 'system'
+      timestamp: Date.now()
+    };
+    this.chatLog.push(chatEntry);
+    
+    // 최근 100개 메시지만 유지
+    if (this.chatLog.length > 100) {
+      this.chatLog = this.chatLog.slice(-100);
+    }
+    
+    // 실시간으로 모든 클라이언트에게 전송
+    io.to(this.id).emit('chat-message', { battleId: this.id, message: chatEntry });
+    
+    return chatEntry;
+  }
+
+  getRemainingTurnTime() {
+    if (!this.turnStartTime || this.phase !== 'battle') return 0;
+    const elapsed = Date.now() - this.turnStartTime;
+    return Math.max(0, TURN_TIMEOUT - elapsed);
+  }
     const current = this.teams[this.currentTeam];
     current.forEach(p => {
       if (p.alive && !p.hasActed) {
@@ -442,8 +474,12 @@ class Battle {
       turnOrder: this.turnOrder.map(p => ({ id: p.id, name: p.name })),
       startTime: this.startTime,
       endTime: this.endTime,
+      turnStartTime: this.turnStartTime,
+      turnEndTime: this.turnEndTime,
+      remainingTurnTime: this.getRemainingTurnTime(),
       winner: this.winner,
       battleLog: this.battleLog,
+      chatLog: this.chatLog,
       tokens: this.tokens ? { ...this.tokens } : undefined
     };
   }
@@ -503,6 +539,19 @@ app.post('/api/battles/:id/start', (req, res) => {
   const result = battle.start();
   if (result.success) io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
   res.json(result);
+});
+
+// 채팅 메시지 전송
+app.post('/api/battles/:id/chat', (req, res) => {
+  const { sender, message, senderType } = req.body || {};
+  const battle = battles.get(req.params.id);
+  
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  if (!sender || !message) return res.status(400).json({ error: 'sender와 message가 필요합니다' });
+  if (message.length > 200) return res.status(400).json({ error: '메시지는 200자 이하여야 합니다' });
+  
+  const chatEntry = battle.addChatMessage(sender, message, senderType || 'player');
+  res.json({ success: true, message: chatEntry });
 });
 
 app.post('/api/battles/:id/action', (req, res) => {
@@ -582,14 +631,24 @@ app.delete('/api/admin/battles/:id', verifyAdminToken, (req, res) => {
 // ---------------- Socket.IO ----------------
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
+  
   socket.on('join-battle', (data = {}) => {
-    const { battleId, playerId } = data;
+    const { battleId, playerId, role } = data;
     if (!battleId) return;
     socket.join(battleId);
     if (playerId) playerSockets.set(playerId, socket.id);
     const battle = battles.get(battleId);
     if (battle) socket.emit('battle-state', battle.getState());
   });
+  
+  socket.on('send-chat', (data = {}) => {
+    const { battleId, sender, message, senderType } = data;
+    const battle = battles.get(battleId);
+    if (battle && sender && message && message.length <= 200) {
+      battle.addChatMessage(sender, message, senderType || 'player');
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
