@@ -100,6 +100,8 @@ input[type=file]{display:none}
         <div id="currentTeam" class="small">-</div>
         <label>내 턴 여부</label>
         <div id="myTurn" class="small">-</div>
+        <label>남은 시간</label>
+        <div id="turnTimer" class="small">-</div>
       </div>
       <div>
         <label>내 상태</label>
@@ -117,14 +119,22 @@ input[type=file]{display:none}
       </div>
     </div>
     <hr>
-    <div class="grid cols-2">
+    <div class="grid cols-3">
       <div>
         <label>대상 선택</label>
         <select id="targets" size="6" style="width:100%"></select>
       </div>
       <div>
-        <label>로그</label>
+        <label>전투 로그</label>
         <pre id="log" style="height:180px;overflow:auto;font-size:11px"></pre>
+      </div>
+      <div>
+        <label>실시간 채팅</label>
+        <div id="chatLog" style="height:140px;overflow:auto;font-size:11px;border:1px solid var(--line);padding:8px;border-radius:8px;background:rgba(0,0,0,.15);margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px">
+          <input id="chatInput" type="text" placeholder="채팅 메시지..." maxlength="200" style="flex:1">
+          <button id="chatSend">전송</button>
+        </div>
       </div>
     </div>
     <hr>
@@ -302,6 +312,17 @@ function renderMine(){
   $('#myTurn').textContent = canAct ? '내 턴!' : isMyTurn ? '팀 턴 (행동완료)' : '상대 턴';
   $('#myTurn').className = canAct ? 'success' : 'small';
   
+  // 타이머 표시
+  if (state.remainingTurnTime && state.phase === 'battle') {
+    const minutes = Math.floor(state.remainingTurnTime / 60000);
+    const seconds = Math.floor((state.remainingTurnTime % 60000) / 1000);
+    $('#turnTimer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    $('#turnTimer').className = state.remainingTurnTime < 60000 ? 'error' : 'small';
+  } else {
+    $('#turnTimer').textContent = '-';
+    $('#turnTimer').className = 'small';
+  }
+  
   // 버튼 활성화/비활성화
   const actionButtons = ['#btnAttack', '#btnDefend', '#btnItem', '#btnDodge', '#btnPass'];
   actionButtons.forEach(btn => {
@@ -319,9 +340,33 @@ function renderLog(){
   log.scrollTop=log.scrollHeight;
 }
 
+function renderChat(){
+  const chat=$('#chatLog');
+  const messages = (state?.chatLog||[]).slice(-30).map(x=>{
+    const time = new Date(x.timestamp).toLocaleTimeString();
+    const senderColor = x.senderType === 'system' ? '#fbbf24' : 
+                       x.senderType === 'admin' ? '#ef4444' : 
+                       x.senderType === 'spectator' ? '#a78bfa' : '#22c55e';
+    return `<div style="margin-bottom:4px;padding:2px 0;border-bottom:1px dashed rgba(234,210,146,.1)">
+      <span style="color:${senderColor};font-weight:600">[${time}] ${x.sender}:</span>
+      <span style="color:#e5e7eb">${x.message}</span>
+    </div>`;
+  }).join('');
+  chat.innerHTML = messages;
+  chat.scrollTop = chat.scrollHeight;
+}
+
 function renderAll(){
   if (!state) return;
   renderTargets(); 
+  renderMine(); 
+  renderLog();
+  renderChat();
+  renderTeamCards(state.teams.team1, $('#team1'));
+  renderTeamCards(state.teams.team2, $('#team2'));
+  renderTeamCards(state.teams.team1, $('#cards1'));
+  renderTeamCards(state.teams.team2, $('#cards2'));
+}(); 
   renderMine(); 
   renderLog();
   renderTeamCards(state.teams.team1, $('#team1'));
