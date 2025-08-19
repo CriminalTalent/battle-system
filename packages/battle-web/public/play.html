@@ -426,7 +426,7 @@ $('#doLogin').onclick = async ()=>{
     socket = io({path:'/socket.io'});
     socket.on('connect', ()=> {
       console.log('Socket connected');
-      socket.emit('join-battle',{battleId,playerId});
+      socket.emit('join-battle',{battleId,playerId, role:'player'});
     });
     socket.on('disconnect', () => {
       showNotification('실시간 연결이 끊어졌습니다', 'error');
@@ -443,6 +443,12 @@ $('#doLogin').onclick = async ()=>{
     socket.on('battle-ended', async ()=>{ 
       await refresh(); 
       showNotification('전투가 종료되었습니다!', 'success');
+    });
+    socket.on('chat-message', ({message}) => {
+      if(state && state.chatLog) {
+        state.chatLog.push(message);
+        renderChat();
+      }
     });
   } catch(err) {
     showNotification(`로그인 오류: ${err.message}`, 'error');
@@ -617,6 +623,41 @@ $('#btnPass').onclick = async ()=>{
     setLoading(btn, false);
   }
 };
+
+// 채팅 전송
+$('#chatSend').onclick = () => {
+  const message = $('#chatInput').value.trim();
+  if(!message || !socket || !battleId) return;
+  
+  socket.emit('send-chat', {
+    battleId: battleId,
+    sender: name || '플레이어',
+    message: message,
+    senderType: 'player'
+  });
+  
+  $('#chatInput').value = '';
+};
+
+// 엔터키로 채팅 전송
+$('#chatInput').addEventListener('keypress', (e) => {
+  if(e.key === 'Enter') {
+    $('#chatSend').click();
+  }
+});
+
+// 타이머 업데이트 (1초마다)
+setInterval(() => {
+  if (state && state.remainingTurnTime && state.phase === 'battle') {
+    const remaining = state.remainingTurnTime - (Date.now() - (state.turnStartTime || 0));
+    if (remaining > 0) {
+      const minutes = Math.floor(remaining / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      $('#turnTimer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      $('#turnTimer').className = remaining < 60000 ? 'error' : 'small';
+    }
+  }
+}, 1000);
 
 // 초기화
 if ($('#battle').value && $('#token').value) {
