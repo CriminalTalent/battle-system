@@ -107,7 +107,20 @@ code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-family:mon
 <section class="card">
   <h3>상태/로그</h3>
   <div id="state" class="row"></div>
-  <div id="log" class="card" style="max-height:220px;overflow:auto"></div>
+  <div class="grid cols-2">
+    <div>
+      <label>전투 로그</label>
+      <div id="log" class="card" style="max-height:180px;overflow:auto;font-size:11px"></div>
+    </div>
+    <div>
+      <label>실시간 채팅</label>
+      <div id="chatLog" class="card" style="max-height:140px;overflow:auto;font-size:11px;margin-bottom:6px"></div>
+      <div class="row">
+        <input id="chatInput" placeholder="채팅 메시지 (최대 200자)" maxlength="200" style="flex:1">
+        <button id="chatSend">전송</button>
+      </div>
+    </div>
+  </div>
 </section>
 
 <div id="errorLog" style="position:fixed;bottom:10px;right:10px;max-width:400px;z-index:1000"></div>
@@ -162,12 +175,20 @@ window.addEventListener('DOMContentLoaded',()=>{
   const renderLog=(log,el)=>{el.innerHTML=(log||[]).slice().reverse().map(e=>`<div style="padding:4px 0;border-bottom:1px dashed rgba(234,210,146,.2)">
     ${e.type} - ${e.result||''}</div>`).join('');};
     
+  const renderChat=(chat,el)=>{el.innerHTML=(chat||[]).slice().reverse().map(e=>{
+    const time = new Date(e.timestamp).toLocaleTimeString();
+    const senderColor = e.senderType === 'system' ? '#fbbf24' : e.senderType === 'admin' ? '#ef4444' : '#22c55e';
+    return `<div style="padding:2px 0;border-bottom:1px dashed rgba(234,210,146,.1)">
+      <span style="color:${senderColor};font-weight:600">[${time}] ${e.sender}:</span> ${e.message}</div>`;
+  }).join('');el.scrollTop=el.scrollHeight;};
+    
   const draw=(s)=>{
     $('#state').innerHTML=
       `<span class="pill">ID:${s.id}</span><span class="pill">모드:${s.mode}</span><span class="pill">단계:${s.phase}</span><span class="pill">현재 팀:${s.currentTeam}</span><span class="pill">승자:${s.winner||'-'}</span>`;
     renderTeam(s.teams.team1,$('#t1_list')); 
     renderTeam(s.teams.team2,$('#t2_list')); 
     renderLog(s.battleLog,$('#log'));
+    renderChat(s.chatLog,$('#chatLog'));
   };
 
   const refresh=async()=>{ 
@@ -183,7 +204,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   // Socket.IO 이벤트
   ioSock.on('connect',()=>{ 
     console.log('Socket connected');
-    if(BATTLE) ioSock.emit('join-battle',{battleId:BATTLE}); 
+    if(BATTLE) ioSock.emit('join-battle',{battleId:BATTLE, role:'admin'}); 
   });
   ioSock.on('disconnect', () => {
     console.log('Socket disconnected');
@@ -193,6 +214,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     .forEach(ev=>ioSock.on(ev,({state})=>{
       if(state) draw(state);
     }));
+    
+  // 채팅 메시지 수신
+  ioSock.on('chat-message', ({message}) => {
+    if(state && state.chatLog) {
+      state.chatLog.push(message);
+      renderChat(state.chatLog, $('#chatLog'));
+    }
+  });
 
   // 버튼 이벤트들
   on('#btnCreate','click',async()=>{
@@ -372,6 +401,28 @@ window.addEventListener('DOMContentLoaded',()=>{
         }
       }
     });
+  });
+
+  // 채팅 전송
+  on('#chatSend', 'click', () => {
+    const message = $('#chatInput').value.trim();
+    if(!message || !BATTLE) return;
+    
+    ioSock.emit('send-chat', {
+      battleId: BATTLE,
+      sender: '관리자',
+      message: message,
+      senderType: 'admin'
+    });
+    
+    $('#chatInput').value = '';
+  });
+  
+  // 엔터키로 채팅 전송
+  on('#chatInput', 'keypress', (e) => {
+    if(e.key === 'Enter') {
+      $('#chatSend').click();
+    }
   });
 
   // 초기 로드
