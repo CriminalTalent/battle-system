@@ -120,13 +120,14 @@ function normalizeStats(stats) {
   return out;
 }
 
-function createCharacter(playerId, name, stats, teamId, imageUrl = null, items = []) {
+function createCharacter(playerId, name, stats, teamId, imageUrl = null, items = [], customHp = null) {
+  const maxHp = customHp ? Math.min(Math.max(customHp, 1), 100) : BASE_HP;
   return {
     id: playerId,
     name,
     teamId,
-    hp: BASE_HP,
-    maxHp: BASE_HP,
+    hp: maxHp,
+    maxHp: maxHp,
     stats: normalizeStats(stats),
     alive: true,
     hasActed: false,
@@ -138,6 +139,24 @@ function createCharacter(playerId, name, stats, teamId, imageUrl = null, items =
 
 function genToken(prefix){ return `${prefix}_${crypto.randomBytes(8).toString('hex')}`; }
 function genOTP(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
+
+// ---------------- 관리자 토큰 검증 미들웨어 ----------------
+function verifyAdminToken(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  const battleId = req.params.id;
+  const battle = battles.get(battleId);
+  
+  if (!battle) {
+    return res.status(404).json({ error: 'Battle not found' });
+  }
+  
+  if (!token || token !== battle.tokens?.admin) {
+    return res.status(401).json({ error: 'Invalid admin token' });
+  }
+  
+  req.battle = battle;
+  next();
+}
 
 // ---------------- Battle 클래스 ----------------
 class Battle {
@@ -160,14 +179,26 @@ class Battle {
     this.tokens = { admin: null, player: null, spectator: null };
     this.otps = { admin: null, players: new Map(), spectators: new Set() };
     this.logged = { admin: false, players: new Set(), spectators: 0 };
+    
+    // 자동 정리 스케줄링
+    this.scheduleCleanup();
   }
 
-  addPlayer(playerId, name, teamId, stats, imageUrl, items) {
+  scheduleCleanup() {
+    setTimeout(() => {
+      if (battles.has(this.id)) {
+        battles.delete(this.id);
+        console.log(`Battle ${this.id} auto-cleaned up`);
+      }
+    }, 2 * 60 * 60 * 1000); // 2시간 후 삭제
+  }
+
+  addPlayer(playerId, name, teamId, stats, imageUrl, items, customHp) {
     if (this.phase !== 'lobby') return { success: false, error: MSG.battle_already_started };
     const team = this.teams[teamId];
     if (!team) return { success: false, error: MSG.invalid_team };
     if (team.length >= this.config.playersPerTeam) return { success: false, error: MSG.team_full };
-    const character = createCharacter(playerId, name, stats, teamId, imageUrl, items);
+    const character = createCharacter(playerId, name, stats, teamId, imageUrl, items, customHp);
     team.push(character);
     return { success: true, character };
   }
@@ -455,11 +486,11 @@ app.get('/api/battles/:id', (req, res) => {
 
 // 참가/시작/행동
 app.post('/api/battles/:id/join', (req, res) => {
-  const { playerId, playerName, teamId, stats, imageUrl, items } = req.body || {};
+  const { playerId, playerName, teamId, stats, imageUrl, items, customHp } = req.body || {};
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
 
-  const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items);
+  const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
     io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
   }
@@ -508,34 +539,18 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   });
 });
 
-app.post('/api/admin/battles/:id/issue-otp', (req, res) => {
+app.post('/api/admin/battles/:id/issue-otp', verifyAdminToken, (req, res) => {
   const { role, name } = req.body || {};
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
-  if (!['admin','player','spectator'].includes(role)) return res.status(400).json({ error:'role은 admin|player|spectator' });
+  const battle = req.battle;
+  
+  if (!['admin','player','spectator'].includes(role)) {
+    return res.status(400).json({ error: 'role은 admin|player|spectator' });
+  }
 
   const otp = genOTP();
-  if (role === 'admin') battle.otps.admin = otp;
-  else if (role === 'player') {
-    if (!name) return res.status(400).json({ error:'player OTP는 name이 필요합니다.' });
-    battle.otps.players.set(name, otp);
-  } else battle.otps.spectators.add(otp);
-
-  res.json({ ok:true, role, name: name || undefined, otp });
-});
-
-app.post('/api/auth/login', (req, res) => {
-  const { battleId, role, name, otp, token } = req.body || {};
-  const battle = battles.get(battleId);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
-  if (!['admin','player','spectator'].includes(role)) return res.status(400).json({ error:'role은 admin|player|spectator' });
-
-  const want = battle.tokens[role];
-  if (!want || token !== want) return res.status(401).json({ error:'링크 토큰이 유효하지 않습니다.' });
-
+  
   if (role === 'admin') {
-    if (!battle.otps.admin || otp !== battle.otps.admin) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.admin = null; battle.logged.admin = true;
+    battle.otps.admin = otp;
   } else if (role === 'player') {
     const v = battle.otps.players.get(name);
     if (!v || v !== otp) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
@@ -549,23 +564,17 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // -------- 관리자: 상태/강제종료/삭제 --------
-app.get('/api/admin/battles/:id/state', (req, res) => {
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
-  res.json(battle.getState());
+app.get('/api/admin/battles/:id/state', verifyAdminToken, (req, res) => {
+  res.json(req.battle.getState());
 });
 
-app.post('/api/admin/battles/:id/force-end', (req, res) => {
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+app.post('/api/admin/battles/:id/force-end', verifyAdminToken, (req, res) => {
   const { winner } = req.body || {};
-  const r = battle.forceEnd(winner);
-  res.status(r.success ? 200 : 400).json(r);
+  const result = req.battle.forceEnd(winner);
+  res.status(result.success ? 200 : 400).json(result);
 });
 
-app.delete('/api/admin/battles/:id', (req, res) => {
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+app.delete('/api/admin/battles/:id', verifyAdminToken, (req, res) => {
   battles.delete(req.params.id);
   res.json({ ok: true });
 });
@@ -586,9 +595,60 @@ io.on('connection', (socket) => {
   });
 });
 
+// ---------------- 에러 처리 ----------------
+app.use((err, req, res, next) => {
+  console.error('API Error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  });
+});
+
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
 const PORT = process.env.PORT || 3002;
 const HOST = process.env.HOST || '0.0.0.0';
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server running on port ${PORT}`);
   console.log(`Open http://localhost:${PORT} in your browser`);
+});player') {
+    if (!name) return res.status(400).json({ error: 'player OTP는 name이 필요합니다.' });
+    battle.otps.players.set(name, otp);
+  } else {
+    battle.otps.spectators.add(otp);
+  }
+
+  res.json({ ok: true, role, name: name || undefined, otp });
 });
+
+// 관리자용 전투 참가 (새로 추가)
+app.post('/api/admin/battles/:id/join', verifyAdminToken, (req, res) => {
+  const { playerId, playerName, teamId, stats, imageUrl, items, customHp } = req.body || {};
+  const battle = req.battle;
+  
+  const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
+  if (result.success) {
+    io.to(req.params.id).emit('player-joined', { 
+      battleId: req.params.id, 
+      player: result.character, 
+      state: battle.getState() 
+    });
+  }
+  res.json(result);
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { battleId, role, name, otp, token } = req.body || {};
+  const battle = battles.get(battleId);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  if (!['admin','player','spectator'].includes(role)) return res.status(400).json({ error:'role은 admin|player|spectator' });
+
+  const want = battle.tokens[role];
+  if (!want || token !== want) return res.status(401).json({ error:'링크 토큰이 유효하지 않습니다.' });
+
+  if (role === 'admin') {
+    if (!battle.otps.admin || otp !== battle.otps.admin) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
+    battle.otps.admin = null; battle.logged.admin = true;
+  } else if (role === '
