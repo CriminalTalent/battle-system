@@ -172,9 +172,10 @@ class Battle {
     this.startTime = null;
     this.endTime = null;
     this.turnStartTime = null;
+    this.turnEndTime = null;
     this.turnTimeouts = new Map();
     this.battleLog = [];
-    this.chatLog = []; // 채팅 로그 추가
+    this.chatLog = [];
     this.winner = null;
 
     this.tokens = { admin: null, player: null, spectator: null };
@@ -189,7 +190,7 @@ class Battle {
     setTimeout(() => {
       if (battles.has(this.id)) {
         battles.delete(this.id);
-        console.log(`Battle ${this.id} auto-cleaned up`);
+        console.log(`[PYXIS] Battle ${this.id} auto-cleaned up`);
       }
     }, 2 * 60 * 60 * 1000); // 2시간 후 삭제
   }
@@ -239,13 +240,14 @@ class Battle {
     const current = this.teams[this.currentTeam];
     current.forEach(p => { if (p.alive) p.hasActed = false; });
     this.turnStartTime = Date.now();
-    this.turnEndTime = this.turnStartTime + TURN_TIMEOUT; // 턴 종료 시간 저장
+    this.turnEndTime = this.turnStartTime + TURN_TIMEOUT;
     
     const timeoutId = setTimeout(() => { this.autoEndTurn(); }, TURN_TIMEOUT);
     this.turnTimeouts.set(this.currentTeam, timeoutId);
     
     // 턴 시작 알림
-    this.addChatMessage('시스템', `${this.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}의 턴이 시작되었습니다. (5분)`);
+    const teamName = this.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들';
+    this.addChatMessage('전투 시스템', `${teamName} 턴 시작 (5분)`, 'system');
   }
 
   executeAction(playerId, action) {
@@ -368,7 +370,7 @@ class Battle {
     this.startTeamTurn();
   }
 
-  // 채팅 기능 추가
+  // 채팅 기능
   addChatMessage(sender, message, senderType = 'system') {
     const chatEntry = {
       id: crypto.randomBytes(8).toString('hex'),
@@ -395,6 +397,8 @@ class Battle {
     const elapsed = Date.now() - this.turnStartTime;
     return Math.max(0, TURN_TIMEOUT - elapsed);
   }
+
+  autoEndTurn() {
     const current = this.teams[this.currentTeam];
     current.forEach(p => {
       if (p.alive && !p.hasActed) {
@@ -414,6 +418,11 @@ class Battle {
       this.winner = team1Alive ? 'team1' : team2Alive ? 'team2' : 'draw';
       this.endTime = Date.now();
       this.battleLog.push({ type: 'ended_by_elimination', timestamp: Date.now(), winner: this.winner });
+      
+      const winnerName = this.winner === 'team1' ? '불사조 기사단' : 
+                        this.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
+      this.addChatMessage('전투 시스템', `전투 종료! 승자: ${winnerName}`, 'system');
+      
       io.to(this.id).emit('battle-ended', { winner: this.winner, state: this.getState() });
       return true;
     }
@@ -432,11 +441,16 @@ class Battle {
     else this.winner = 'draw';
 
     this.battleLog.push({ type: 'battle_timeout', timestamp: Date.now(), team1HP, team2HP, winner: this.winner });
+    
+    const winnerName = this.winner === 'team1' ? '불사조 기사단' : 
+                      this.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
+    this.addChatMessage('전투 시스템', `시간 초과! HP로 승부 결정: ${winnerName}`, 'system');
+    
     io.to(this.id).emit('battle-ended', { winner: this.winner, state: this.getState() });
     return this.winner;
   }
 
-  // -------- 관리자 강제 종료 --------
+  // 관리자 강제 종료
   forceEnd(winner = null) {
     if (this.phase === 'ended') return { success: false, error: '이미 종료된 전투입니다.' };
 
@@ -455,6 +469,11 @@ class Battle {
     }
 
     this.battleLog.push({ type: 'force_end', timestamp: Date.now(), winner: this.winner });
+    
+    const winnerName = this.winner === 'team1' ? '불사조 기사단' : 
+                      this.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
+    this.addChatMessage('전투 시스템', `관리자에 의해 전투가 강제 종료되었습니다. 승자: ${winnerName}`, 'system');
+    
     io.to(this.id).emit('battle-ended', { winner: this.winner, state: this.getState() });
     return { success: true, winner: this.winner };
   }
@@ -487,12 +506,19 @@ class Battle {
 
 // ---------------- REST API ----------------
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', battles: battles.size, connections: io.engine.clientsCount });
+  res.json({ 
+    status: 'Pyxis 전투 서버 가동 중', 
+    battles: battles.size, 
+    connections: io.engine.clientsCount,
+    uptime: process.uptime(),
+    version: '1.0.0'
+  });
 });
 
 app.post('/api/upload', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
   const publicUrl = `/uploads/${req.file.filename}`;
+      console.log(`[PYXIS] Image uploaded: ${req.file.filename}`);
   res.json({ ok: true, url: publicUrl, filename: req.file.filename });
 });
 
@@ -503,13 +529,15 @@ app.post('/api/battles', (req, res) => {
   const battleId = Math.random().toString(36).substring(7).toUpperCase();
   const battle = new Battle(battleId, mode);
   battles.set(battleId, battle);
+  console.log(`[PYXIS] Battle created: ${battleId} (${mode})`);
   res.json({ battleId, mode, state: battle.getState() });
 });
 
 app.get('/api/battles', (_req, res) => {
   const list = Array.from(battles.values()).map(b => ({
     id: b.id, mode: b.mode, phase: b.phase, winner: b.winner,
-    team1: b.teams.team1.length, team2: b.teams.team2.length
+    team1: b.teams.team1.length, team2: b.teams.team2.length,
+    created: b.startTime || Date.now()
   }));
   res.json({ battles: list });
 });
@@ -528,6 +556,8 @@ app.post('/api/battles/:id/join', (req, res) => {
 
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
+    console.log(`[PYXIS] Player joined: ${playerName} -> ${teamId} (${req.params.id})`);
+    battle.addChatMessage('전투 시스템', `${playerName}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 참가했습니다`, 'system');
     io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
   }
   res.json(result);
@@ -537,7 +567,11 @@ app.post('/api/battles/:id/start', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
   const result = battle.start();
-  if (result.success) io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
+  if (result.success) {
+    console.log(`[PYXIS] Battle started: ${req.params.id}`);
+    battle.addChatMessage('전투 시스템', '전투가 시작되었습니다! 전사들이여, 전투에 임하라!', 'system');
+    io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
+  }
   res.json(result);
 });
 
@@ -561,13 +595,17 @@ app.post('/api/battles/:id/action', (req, res) => {
 
   const result = battle.executeAction(playerId, action);
   if (result.success) {
+    console.log(`[PYXIS] Action executed: ${action.type} by ${playerId} (${req.params.id})`);
     io.to(req.params.id).emit('action-executed', { battleId: req.params.id, action, result, state: battle.getState() });
-    if (result.battleEnded) io.to(req.params.id).emit('battle-ended', { battleId: req.params.id, winner: result.winner, state: battle.getState() });
+    if (result.battleEnded) {
+      console.log(`[PYXIS] Battle ended: ${req.params.id}, winner: ${result.winner}`);
+      io.to(req.params.id).emit('battle-ended', { battleId: req.params.id, winner: result.winner, state: battle.getState() });
+    }
   }
   res.json(result);
 });
 
-// -------- 링크/로그인(OTP) --------
+// 링크/로그인(OTP)
 app.post('/api/admin/battles/:id/links', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
@@ -578,6 +616,8 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   battle.otps.admin = null;
   battle.otps.players = new Map();
   battle.otps.spectators = new Set();
+
+  console.log(`[PYXIS] Links generated for battle: ${req.params.id}`);
 
   res.json({
     battleId: battle.id,
@@ -601,94 +641,25 @@ app.post('/api/admin/battles/:id/issue-otp', verifyAdminToken, (req, res) => {
   if (role === 'admin') {
     battle.otps.admin = otp;
   } else if (role === 'player') {
-    const v = battle.otps.players.get(name);
-    if (!v || v !== otp) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.players.delete(name); battle.logged.players.add(name);
-  } else {
-    if (!battle.otps.spectators.has(otp)) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.spectators.delete(otp); battle.logged.spectators += 1;
-  }
-
-  res.json({ ok:true, role, name: name || undefined });
-});
-
-// -------- 관리자: 상태/강제종료/삭제 --------
-app.get('/api/admin/battles/:id/state', verifyAdminToken, (req, res) => {
-  res.json(req.battle.getState());
-});
-
-app.post('/api/admin/battles/:id/force-end', verifyAdminToken, (req, res) => {
-  const { winner } = req.body || {};
-  const result = req.battle.forceEnd(winner);
-  res.status(result.success ? 200 : 400).json(result);
-});
-
-app.delete('/api/admin/battles/:id', verifyAdminToken, (req, res) => {
-  battles.delete(req.params.id);
-  res.json({ ok: true });
-});
-
-// ---------------- Socket.IO ----------------
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-  
-  socket.on('join-battle', (data = {}) => {
-    const { battleId, playerId, role } = data;
-    if (!battleId) return;
-    socket.join(battleId);
-    if (playerId) playerSockets.set(playerId, socket.id);
-    const battle = battles.get(battleId);
-    if (battle) socket.emit('battle-state', battle.getState());
-  });
-  
-  socket.on('send-chat', (data = {}) => {
-    const { battleId, sender, message, senderType } = data;
-    const battle = battles.get(battleId);
-    if (battle && sender && message && message.length <= 200) {
-      battle.addChatMessage(sender, message, senderType || 'player');
-    }
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
-
-// ---------------- 에러 처리 ----------------
-app.use((err, req, res, next) => {
-  console.error('API Error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-  });
-});
-
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-const PORT = process.env.PORT || 3002;
-const HOST = process.env.HOST || '0.0.0.0';
-httpServer.listen(PORT, HOST, () => {
-  console.log(`Battle server running on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT} in your browser`);
-});player') {
     if (!name) return res.status(400).json({ error: 'player OTP는 name이 필요합니다.' });
     battle.otps.players.set(name, otp);
   } else {
     battle.otps.spectators.add(otp);
   }
 
+  console.log(`[PYXIS] OTP issued: ${role} (${name || 'N/A'}) for battle ${battle.id}`);
   res.json({ ok: true, role, name: name || undefined, otp });
 });
 
-// 관리자용 전투 참가 (새로 추가)
+// 관리자용 전투 참가
 app.post('/api/admin/battles/:id/join', verifyAdminToken, (req, res) => {
   const { playerId, playerName, teamId, stats, imageUrl, items, customHp } = req.body || {};
   const battle = req.battle;
   
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
+    console.log(`[PYXIS] Admin added player: ${playerName} -> ${teamId} (${battle.id})`);
+    battle.addChatMessage('전투 시스템', `${playerName}이 관리자에 의해 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 추가되었습니다`, 'system');
     io.to(req.params.id).emit('player-joined', { 
       battleId: req.params.id, 
       player: result.character, 
@@ -709,5 +680,97 @@ app.post('/api/auth/login', (req, res) => {
 
   if (role === 'admin') {
     if (!battle.otps.admin || otp !== battle.otps.admin) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.admin = null; battle.logged.admin = true;
-  } else if (role === '
+    battle.otps.admin = null; 
+    battle.logged.admin = true;
+    console.log(`[PYXIS] Admin logged in: ${battleId}`);
+  } else if (role === 'player') {
+    if (!name) return res.status(400).json({ error: 'player 로그인은 name이 필요합니다.' });
+    const v = battle.otps.players.get(name);
+    if (!v || v !== otp) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
+    battle.otps.players.delete(name); 
+    battle.logged.players.add(name);
+    console.log(`[PYXIS] Player logged in: ${name} (${battleId})`);
+  } else {
+    if (!battle.otps.spectators.has(otp)) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
+    battle.otps.spectators.delete(otp); 
+    battle.logged.spectators += 1;
+    console.log(`[PYXIS] Spectator logged in: ${battleId}`);
+  }
+
+  res.json({ ok:true, role, name: name || undefined });
+});
+
+// 관리자: 상태/강제종료/삭제
+app.get('/api/admin/battles/:id/state', verifyAdminToken, (req, res) => {
+  res.json(req.battle.getState());
+});
+
+app.post('/api/admin/battles/:id/force-end', verifyAdminToken, (req, res) => {
+  const { winner } = req.body || {};
+  const result = req.battle.forceEnd(winner);
+  console.log(`[PYXIS] Battle force-ended: ${req.params.id}, winner: ${result.winner}`);
+  res.status(result.success ? 200 : 400).json(result);
+});
+
+app.delete('/api/admin/battles/:id', verifyAdminToken, (req, res) => {
+  console.log(`[PYXIS] Battle deleted: ${req.params.id}`);
+  battles.delete(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------------- Socket.IO ----------------
+io.on('connection', (socket) => {
+  console.log(`[PYXIS] Client connected: ${socket.id}`);
+  
+  socket.on('join-battle', (data = {}) => {
+    const { battleId, playerId, role } = data;
+    if (!battleId) return;
+    socket.join(battleId);
+    if (playerId) playerSockets.set(playerId, socket.id);
+    const battle = battles.get(battleId);
+    if (battle) {
+      socket.emit('battle-state', battle.getState());
+      console.log(`[PYXIS] ${role || 'Client'} joined battle room: ${battleId}`);
+    }
+  });
+  
+  socket.on('send-chat', (data = {}) => {
+    const { battleId, sender, message, senderType } = data;
+    const battle = battles.get(battleId);
+    if (battle && sender && message && message.length <= 200) {
+      battle.addChatMessage(sender, message, senderType || 'player');
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    console.log(`[PYXIS] Client disconnected: ${socket.id}`);
+  });
+});
+
+// ---------------- 에러 처리 ----------------
+app.use((err, req, res, next) => {
+  console.error('[PYXIS] API Error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  });
+});
+
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// ---------------- 서버 시작 ----------------
+const PORT = process.env.PORT || 3002;
+const HOST = process.env.HOST || '0.0.0.0';
+
+httpServer.listen(PORT, HOST, () => {
+  console.log('=====================================');
+  console.log('      PYXIS 전투 서버 가동 중        ');
+  console.log('=====================================');
+  console.log(`서버: http://localhost:${PORT}`);
+  console.log(`관리자: http://localhost:${PORT}/admin.html`);
+  console.log(`플레이어: http://localhost:${PORT}/play.html`);
+  console.log(`관전자: http://localhost:${PORT}/watch.html`);
+  console.log('=====================================');
+});
