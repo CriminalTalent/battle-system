@@ -1003,7 +1003,7 @@ window.addEventListener('DOMContentLoaded', () => {
       teamId: state.team,
       stats: { attack: 3, defense: 3, agility: 3, luck: 3 },
       imageUrl: state.avatar,
-      items: [],
+      items: {},
       customHp: 100
     };
 
@@ -1044,28 +1044,46 @@ window.addEventListener('DOMContentLoaded', () => {
       $('#connStatus').className = 'connection-status disconnected';
     });
 
+    ioSock.on('reconnect', () => {
+      showNotification('연결이 복구되었습니다!');
+      if (state.battleId) {
+        ioSock.emit('join-battle', {
+          battleId: state.battleId,
+          playerId: state.playerId,
+          role: 'player',
+          team: state.team
+        });
+      }
+    });
+
     ioSock.on('battle-state', d => {
+      console.log('Battle state received:', d);
       state.data = d;
       render(true);
     });
 
     ioSock.on('player-joined', d => {
+      console.log('Player joined:', d);
       state.data = d.state;
       render(true);
+      showNotification('새 플레이어가 참가했습니다');
     });
 
     ioSock.on('battle-started', d => {
+      console.log('Battle started:', d);
       state.data = d.state;
       render(true);
       showNotification('전투가 시작되었습니다!');
     });
 
     ioSock.on('action-executed', d => {
+      console.log('Action executed:', d);
       state.data = d.state;
       render(true);
     });
 
     ioSock.on('battle-ended', d => {
+      console.log('Battle ended:', d);
       state.data = d.state;
       render(true);
       const winnerText = d.winner === 'team1' ? '불사조 기사단' : 
@@ -1074,7 +1092,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     ioSock.on('chat-message', ({ message }) => {
-      if (!state.data) state.data = {};
+      console.log('Chat message received:', message);
+      if (!state.data) state.data = { chatLog: [] };
       if (!state.data.chatLog) state.data.chatLog = [];
       state.data.chatLog.push(message);
       renderChat();
@@ -1142,6 +1161,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const d = state.data;
     if (!d) return;
 
+    console.log('Rendering data:', d);
+
     const phaseText = {
       'lobby': '대기실',
       'battle': '전투 중',
@@ -1200,6 +1221,16 @@ window.addEventListener('DOMContentLoaded', () => {
     box.innerHTML = '';
     list.forEach(p => {
       const hp = p.maxHp ? Math.max(0, Math.round((p.hp / p.maxHp) * 100)) : 0;
+      
+      // 아이템 개수 계산
+      const itemCounts = {};
+      (p.inventory || []).forEach(item => {
+        itemCounts[item] = (itemCounts[item] || 0) + 1;
+      });
+      const itemText = Object.entries(itemCounts)
+        .map(([item, count]) => `${item}: ${count}`)
+        .join(', ') || '없음';
+      
       const div = document.createElement('div');
       div.className = 'player-card';
       div.innerHTML = `
@@ -1216,6 +1247,9 @@ window.addEventListener('DOMContentLoaded', () => {
             <div class="stat-item">민첩 ${p.stats?.agility ?? '-'}</div>
             <div class="stat-item">행운 ${p.stats?.luck ?? '-'}</div>
           </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
+            아이템: ${itemText}
+          </div>
         </div>
         <div style="text-align: center; color: var(--gold); font-weight: 700;">${hp}%</div>
       `;
@@ -1230,15 +1264,15 @@ window.addEventListener('DOMContentLoaded', () => {
                    me()?.alive && 
                    !me()?.hasActed;
 
-    const html = `
+    const html = canAct ? `
       <div class="action-panel">
         <div class="action-title">전투 행동</div>
         <div class="action-grid">
-          <button id="attackBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>공격</button>
-          <button id="defendBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>방어</button>
-          <button id="dodgeBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>회피</button>
-          <button id="itemBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>아이템</button>
-          <button id="passBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>패스</button>
+          <button id="attackBtn" class="action-btn">공격</button>
+          <button id="defendBtn" class="action-btn">방어</button>
+          <button id="dodgeBtn" class="action-btn">회피</button>
+          <button id="itemBtn" class="action-btn">아이템</button>
+          <button id="passBtn" class="action-btn">패스</button>
         </div>
         <div class="target-selection">
           <div class="selection-label">대상 선택</div>
@@ -1252,12 +1286,12 @@ window.addEventListener('DOMContentLoaded', () => {
             <select id="itemSelect" class="item-select" size="3"></select>
             <div class="item-controls">
               <input id="itemQty" class="item-qty" type="number" min="1" value="1">
-              <button id="itemUseBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>사용</button>
+              <button id="itemUseBtn" class="action-btn">사용</button>
             </div>
           </div>
         </div>
       </div>
-    `;
+    ` : '';
 
     // 내 팀에만 액션 박스 표시
     if (t === 'team1') {
@@ -1273,33 +1307,35 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // 이벤트 리스너 재등록
     if (canAct) {
-      const attackBtn = $('#attackBtn');
-      const defendBtn = $('#defendBtn');
-      const dodgeBtn = $('#dodgeBtn');
-      const passBtn = $('#passBtn');
-      const itemUseBtn = $('#itemUseBtn');
+      setTimeout(() => {
+        const attackBtn = $('#attackBtn');
+        const defendBtn = $('#defendBtn');
+        const dodgeBtn = $('#dodgeBtn');
+        const passBtn = $('#passBtn');
+        const itemUseBtn = $('#itemUseBtn');
 
-      if (attackBtn) attackBtn.onclick = () => {
-        const tgt = $('#targetSelect').value;
-        if (!tgt) {
-          showNotification('공격 대상을 선택하세요', 'error');
-          return;
-        }
-        doAction('attack', { targetId: tgt });
-      };
+        if (attackBtn) attackBtn.onclick = () => {
+          const tgt = $('#targetSelect').value;
+          if (!tgt) {
+            showNotification('공격 대상을 선택하세요', 'error');
+            return;
+          }
+          doAction('attack', { targetId: tgt });
+        };
 
-      if (defendBtn) defendBtn.onclick = () => doAction('defend');
-      if (dodgeBtn) dodgeBtn.onclick = () => doAction('dodge');
-      if (passBtn) passBtn.onclick = () => doAction('pass');
-      
-      if (itemUseBtn) itemUseBtn.onclick = () => {
-        const opt = $('#itemSelect')?.selectedOptions?.[0];
-        if (!opt) {
-          showNotification('아이템을 선택하세요', 'error');
-          return;
-        }
-        doAction('use_item', { itemName: opt.value });
-      };
+        if (defendBtn) defendBtn.onclick = () => doAction('defend');
+        if (dodgeBtn) dodgeBtn.onclick = () => doAction('dodge');
+        if (passBtn) passBtn.onclick = () => doAction('pass');
+        
+        if (itemUseBtn) itemUseBtn.onclick = () => {
+          const opt = $('#itemSelect')?.selectedOptions?.[0];
+          if (!opt) {
+            showNotification('아이템을 선택하세요', 'error');
+            return;
+          }
+          doAction('use_item', { itemName: opt.value });
+        };
+      }, 100);
     }
   }
 
@@ -1389,7 +1425,6 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       
       showNotification('행동이 성공적으로 실행되었습니다!');
-      // 실시간 업데이트를 위해 수동 새로고침은 제거
     } catch (e) {
       showNotification(e.message || '행동 실행 실패', 'error');
     }
