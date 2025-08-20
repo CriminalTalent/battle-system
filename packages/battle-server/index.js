@@ -153,8 +153,27 @@ function normalizeStats(stats) {
   return out;
 }
 
-function createCharacter(playerId, name, stats, teamId, imageUrl = null, items = [], customHp = null) {
+function createCharacter(playerId, name, stats, teamId, imageUrl = null, items = {}, customHp = null) {
   const maxHp = customHp ? Math.min(Math.max(customHp, 1), 100) : BASE_HP;
+  
+  // 아이템을 개수 형태로 처리
+  const inventory = [];
+  if (items['공격 보정기'] > 0) {
+    for (let i = 0; i < items['공격 보정기']; i++) {
+      inventory.push('공격 보정기');
+    }
+  }
+  if (items['방어 보정기'] > 0) {
+    for (let i = 0; i < items['방어 보정기']; i++) {
+      inventory.push('방어 보정기');
+    }
+  }
+  if (items['디터니'] > 0) {
+    for (let i = 0; i < items['디터니']; i++) {
+      inventory.push('디터니');
+    }
+  }
+  
   return {
     id: playerId,
     name,
@@ -165,7 +184,7 @@ function createCharacter(playerId, name, stats, teamId, imageUrl = null, items =
     alive: true,
     hasActed: false,
     imageUrl: imageUrl || null,
-    inventory: Array.isArray(items) ? items.slice() : [],
+    inventory: inventory,
     buffs: { attackBonus: 0, defendBonus: 0, forceCrit: false, dodge: false }
   };
 }
@@ -237,6 +256,27 @@ class Battle {
     return { success: true, character };
   }
 
+  // 기존 캐릭터를 찾아서 플레이어 ID 매칭
+  findAndAssignCharacter(playerId, playerName, teamId) {
+    const team = this.teams[teamId];
+    if (!team) return { success: false, error: MSG.invalid_team };
+    
+    // 같은 이름의 캐릭터 찾기
+    const existingChar = team.find(char => char.name === playerName);
+    if (existingChar) {
+      // 이미 다른 플레이어가 사용 중인지 확인
+      if (existingChar.id !== playerId && existingChar.id.startsWith('p_')) {
+        return { success: false, error: '해당 캐릭터는 이미 다른 플레이어가 사용 중입니다.' };
+      }
+      
+      // 플레이어 ID 할당
+      existingChar.id = playerId;
+      return { success: true, character: existingChar, existing: true };
+    }
+    
+    return { success: false, error: '해당 이름의 캐릭터를 찾을 수 없습니다.' };
+  }
+
   canStart() {
     return this.teams.team1.length === this.config.playersPerTeam &&
            this.teams.team2.length === this.config.playersPerTeam;
@@ -253,10 +293,23 @@ class Battle {
                            .sort((a,b)=>b.initiative - a.initiative);
     this.turnOrder = initiatives.map(i => i.player);
 
+    // 각 팀의 민첩성 총합 + 주사위로 선공 결정
+    const team1Agility = this.teams.team1.reduce((sum, p) => sum + p.stats.agility, 0);
+    const team2Agility = this.teams.team2.reduce((sum, p) => sum + p.stats.agility, 0);
+    
+    const team1Roll = rollD20() + team1Agility;
+    const team2Roll = rollD20() + team2Agility;
+    
+    // 주사위 + 민첩성이 높은 팀이 선공, 같으면 team1이 선공
+    this.currentTeam = team1Roll >= team2Roll ? 'team1' : 'team2';
+
     this.battleLog.push({
       type: 'battle_start',
       timestamp: Date.now(),
-      initiatives: initiatives.map(i => ({ player: i.player.name, roll: i.initiative }))
+      initiatives: initiatives.map(i => ({ player: i.player.name, roll: i.initiative })),
+      firstTeam: this.currentTeam,
+      teamAgility: { team1: team1Agility, team2: team2Agility },
+      initiativeRolls: { team1: team1Roll, team2: team2Roll }
     });
 
     this.startTeamTurn();
@@ -414,6 +467,7 @@ class Battle {
       this.chatLog = this.chatLog.slice(-100);
     }
     
+    // 모든 클라이언트에게 채팅 메시지 전송
     io.to(this.id).emit('chat-message', { battleId: this.id, message: chatEntry });
     
     return chatEntry;
@@ -585,9 +639,20 @@ app.post('/api/battles/:id/join', (req, res) => {
   const battle = battles.get(req.params.id);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
 
+  // 먼저 기존 캐릭터를 찾아서 매칭 시도
+  const existingResult = battle.findAndAssignCharacter(playerId, playerName, teamId);
+  
+  if (existingResult.success) {
+    console.log(`[전투서버] 기존 캐릭터 매칭: ${playerName} -> ${teamId} (${req.params.id})`);
+    battle.addChatMessage('전투 시스템', `${playerName}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 복귀했습니다`, 'system');
+    io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: existingResult.character, state: battle.getState() });
+    return res.json(existingResult);
+  }
+
+  // 기존 캐릭터가 없으면 새로 생성 (관리자가 미리 생성한 경우가 아니라면)
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
-    console.log(`[전투서버] 플레이어 참가: ${playerName} -> ${teamId} (${req.params.id})`);
+    console.log(`[전투서버] 새 플레이어 참가: ${playerName} -> ${teamId} (${req.params.id})`);
     battle.addChatMessage('전투 시스템', `${playerName}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 참가했습니다`, 'system');
     io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
   }
@@ -687,7 +752,18 @@ app.post('/api/admin/battles/:id/join', verifyAdminToken, (req, res) => {
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
     console.log(`[전투서버] 관리자 플레이어 추가: ${playerName} -> ${teamId} (${battle.id})`);
-    battle.addChatMessage('전투 시스템', `${playerName}이 관리자에 의해 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 추가되었습니다`, 'system');
+    
+    // 아이템 정보 포함한 메시지 생성
+    let itemText = '';
+    if (items && Object.keys(items).length > 0) {
+      const itemList = Object.entries(items)
+        .filter(([name, count]) => count > 0)
+        .map(([name, count]) => `${name} ${count}개`)
+        .join(', ');
+      if (itemList) itemText = ` (아이템: ${itemList})`;
+    }
+    
+    battle.addChatMessage('전투 시스템', `${playerName}이 관리자에 의해 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 추가되었습니다${itemText}`, 'system');
     io.to(req.params.id).emit('player-joined', { 
       battleId: req.params.id, 
       player: result.character, 
@@ -769,23 +845,7 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('send-chat', (data = {}) => {
-    const { battleId, sender, message, senderType } = data;
-    const battle = battles.get(battleId);
-    if (battle && sender && message && message.length <= 200) {
-      battle.addChatMessage(sender, message, senderType || 'player');
-    }
-  });
-  
   socket.on('chat-message', (data = {}) => {
-    const { battleId, sender, message, senderType } = data;
-    const battle = battles.get(battleId);
-    if (battle && sender && message && message.length <= 200) {
-      battle.addChatMessage(sender, message, senderType || 'player');
-    }
-  });
-  
-  socket.on('send-chat', (data = {}) => {
     const { battleId, sender, message, senderType } = data;
     const battle = battles.get(battleId);
     if (battle && sender && message && message.length <= 200) {
