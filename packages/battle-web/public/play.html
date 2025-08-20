@@ -65,6 +65,12 @@ body{
 
 .log{background:rgba(10,15,26,.80); border:1px solid var(--b2); border-radius:10px; padding:12px; min-height:160px; max-height:320px; overflow:auto; line-height:1.5}
 
+.item-panel{background:var(--glass2); border:1px solid var(--b1); border-radius:12px; padding:12px; margin-top:12px}
+.item-row{display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center}
+.item-select{width:100%; background:rgba(10,15,26,.85); color:var(--text); border:1px solid var(--b1); border-radius:8px; padding:10px}
+.item-qty{width:92px; background:rgba(10,15,26,.85); color:var(--text); border:1px solid var(--b1); border-radius:8px; padding:10px; text-align:center}
+.item-hint{color:var(--muted); font-size:.85rem; margin-top:6px}
+
 .note{position:fixed; right:16px; bottom:16px; display:grid; gap:8px; z-index:50}
 .toast{background:var(--glass); border:1px solid var(--b1); border-radius:10px; padding:10px 12px}
 </style>
@@ -86,21 +92,31 @@ body{
     <!-- 좌측: 팀1 + 액션 -->
     <div class="panel">
       <div class="panel-title">불사조 기사단</div>
-      <div id="team1List" class="team-list"></div>
+      <div id="team1List"></div>
 
       <div class="action-box">
         <div class="actions">
-          <button id="attackBtn" class="act" disabled>공격</button>
-          <button id="defendBtn" class="act" disabled>방어</button>
-          <button id="dodgeBtn"  class="act" disabled>회피</button>
-          <button id="itemBtn"   class="act" disabled>아이템</button>
-          <button id="passBtn"   class="act" disabled>패스</button>
+          <button id="attackBtn" class="act">공격</button>
+          <button id="defendBtn" class="act">방어</button>
+          <button id="dodgeBtn"  class="act">회피</button>
+          <button id="itemBtn"   class="act">아이템</button>
+          <button id="passBtn"   class="act">패스</button>
         </div>
         <div class="sel-wrap">
           <div class="sel-label">대상 선택</div>
           <select id="targetSelect" class="select" size="5">
             <option disabled selected>대상은 선택할 수 없음</option>
           </select>
+        </div>
+
+        <div class="item-panel" id="itemPanel">
+          <div class="sel-label">아이템 사용</div>
+          <div class="item-row">
+            <select id="itemSelect" class="item-select"></select>
+            <input id="itemQty" class="item-qty" type="number" min="1" value="1">
+            <button id="itemUseBtn" class="act" style="min-height:46px;padding:10px 12px">사용</button>
+          </div>
+          <div id="itemHint" class="item-hint"></div>
         </div>
       </div>
     </div>
@@ -136,11 +152,11 @@ body{
       </div>
     </div>
 
-    <!-- 우측: 팀2 + 미러 액션(표시만) -->
+    <!-- 우측: 팀2 -->
     <div class="panel">
       <div class="panel-title">죽음을 먹는 자들</div>
-      <div id="team2List" class="team-list"></div>
-
+      <div id="team2List"></div>
+      <!-- 관전자는 숨기지만 플레이어 화면에서는 우측 패널은 표시만 -->
       <div class="action-box" aria-hidden="true">
         <div class="actions">
           <button class="act" disabled>공격</button>
@@ -159,33 +175,198 @@ body{
     </div>
   </div>
 
-  <!-- 로그인 오버레이 -->
+  <!-- 로그인 -->
   <div id="login" class="panel" style="max-width:560px;margin:40px auto">
     <div class="panel-title">전투 참가</div>
     <div class="grid2" style="grid-template-columns:1fr 1fr">
-      <div class="card">
-        <div class="title">플레이어 이름</div>
-        <input id="playerName" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)">
-      </div>
-      <div class="card">
-        <div class="title">아바타 URL</div>
-        <input id="avatarUrl" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)">
-      </div>
-      <div class="card">
-        <div class="title">전투 ID</div>
-        <input id="battleId" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)">
-      </div>
-      <div class="card">
-        <div class="title">토큰</div>
-        <input id="tokenInput" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)">
-      </div>
-      <div class="card">
-        <div class="title">참가 코드</div>
-        <input id="otp" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)">
-      </div>
+      <div class="card"><div class="title">플레이어 이름</div><input id="playerName" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)"></div>
+      <div class="card"><div class="title">아바타 URL</div><input id="avatarUrl" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)"></div>
+      <div class="card"><div class="title">전투 ID</div><input id="battleId" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)"></div>
+      <div class="card"><div class="title">토큰</div><input id="tokenInput" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)"></div>
+      <div class="card"><div class="title">참가 코드</div><input id="otp" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)"></div>
       <div class="card">
         <div class="title">팀 선택</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <button id="joinTeam1" class="btn sec">불사조 기사단</button>
           <button id="joinTeam2" class="btn sec">죽음을 먹는 자들</button>
         </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end"><button id="loginBtn" class="btn">참가</button></div>
+  </div>
+</div>
+
+<div id="notes" class="note"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+function toast(m){const w=$('#notes');const d=document.createElement('div');d.className='toast';d.textContent=m;w.appendChild(d);setTimeout(()=>{d.style.opacity='0';setTimeout(()=>w.removeChild(d),250)},2000);}
+
+const qs=new URLSearchParams(location.search);
+$('#battleId').value=qs.get('battle')||'';
+$('#tokenInput').value=qs.get('token')||'';
+
+const state={socket:null,battleId:null,playerId:null,token:null,name:null,avatar:null,team:null,data:null};
+
+$('#joinTeam1').onclick=()=>state.team='team1';
+$('#joinTeam2').onclick=()=>state.team='team2';
+$('#loginBtn').onclick=async()=>{
+  try{
+    const body={
+      battleId:$('#battleId').value.trim(),
+      role:'player',
+      name:$('#playerName').value.trim()||'플레이어',
+      otp:$('#otp').value.trim(),
+      token:$('#tokenInput').value.trim()
+    };
+    if(!body.battleId||!body.otp||!body.token){toast('필수 항목을 입력하세요');return;}
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('인증 실패');
+    const j=await r.json();
+    state.battleId=body.battleId; state.playerId=j.playerId; state.token=body.token;
+    state.name=body.name; state.avatar=$('#avatarUrl').value.trim()||'';
+    $('#login').style.display='none'; $('#summaryBar').style.display='grid'; $('#main').style.display='grid';
+    connect();
+  }catch(e){toast(e.message||'로그인 실패');}
+};
+
+function connect(){
+  const s=io({path:'/socket.io',transports:['websocket']});
+  state.socket=s;
+  s.on('connect',()=>{ $('#connBadge').textContent='연결됨';
+    s.emit('join-battle',{battleId:state.battleId,playerId:state.playerId,role:'player'});
+    setTimeout(refresh,200);
+  });
+  s.on('disconnect',()=>$('#connBadge').textContent='연결 끊김');
+  s.on('state',d=>{state.data=d; render();});
+  s.on('player-joined',d=>{state.data=d.state; render();});
+  s.on('action-result',d=>{state.data=d.state; render();});
+  s.on('chat-message',({message})=>{
+    if(state.data?.chatLog){state.data.chatLog.push(message); renderChat();}
+  });
+}
+
+function myTeam(){
+  const id=state.playerId, t1=state.data?.teams?.team1||[], t2=state.data?.teams?.team2||[];
+  if(t1.find(p=>p.id===id)) return 'team1'; if(t2.find(p=>p.id===id)) return 'team2'; return state.team||null;
+}
+function me(){
+  const t=myTeam(); return t?(state.data?.teams?.[t]||[]).find(p=>p.id===state.playerId)||null:null;
+}
+
+function render(){
+  const d=state.data; if(!d) return;
+  $('#battlePhase').textContent=d.phase||'-';
+  $('#turnSide').textContent=d.currentTeam==='team1'?'불사조 기사단 턴':'죽음을 먹는 자들 턴';
+  if(d.remainingTurnTime && d.phase==='battle'){
+    const r=Math.max(0,d.remainingTurnTime), m=Math.floor(r/60000), s=Math.floor((r%60000)/1000);
+    const el=$('#turnTimer'); el.textContent=`${m}:${s.toString().padStart(2,'0')}`;
+    el.className='value timer'+(r<30000?' critical':r<60000?' warning':'');
+  }
+  renderTeam('team1','#team1List'); renderTeam('team2','#team2List');
+
+  $('#phaseDetail').textContent=d.phase||'-';
+  $('#turnRemain').textContent=d.turnTime||'-';
+  $('#startAt').textContent=d.startAt||'-';
+  $('#duration').textContent=d.duration||'-';
+  $('#battleLog').innerHTML=(d.log||[]).map(x=>`<div>${x}</div>`).join('');
+
+  renderTargets();
+  renderItems();
+  renderChat();
+  updateActionButtons(); // 상태 수신 후에만 토글
+}
+
+function renderTeam(key,sel){
+  const box=$(sel), list=(state.data?.teams?.[key]||[]);
+  if(!list.length){ box.textContent='참가 대기'; return; }
+  box.innerHTML='';
+  list.forEach(p=>{
+    const hp=p.maxHp?Math.max(0,Math.round((p.hp/p.maxHp)*100)):0;
+    const div=document.createElement('div');
+    div.className='player-card';
+    div.innerHTML=`<div class="avatar" style="background-image:url('${p.avatar||''}');background-size:cover;background-position:center"></div>
+      <div><div class="pname">${p.name}</div><div class="psub">${p.hp}/${p.maxHp} HP · ${p.alive?'생존':'전사'} · ${p.hasActed?'행동완료':'대기'}</div></div>
+      <div class="psub">${hp}%</div>`;
+    box.appendChild(div);
+  });
+}
+
+function renderTargets(){
+  const sel=$('#targetSelect'); sel.innerHTML='';
+  const t=myTeam(); if(!t||!state.data?.teams){ sel.innerHTML='<option disabled selected>대상을 선택할 수 없음</option>'; return; }
+  const enemies=t==='team1'?(state.data.teams.team2||[]):(state.data.teams.team1||[]);
+  const alive=enemies.filter(p=>p.alive);
+  if(!alive.length) sel.innerHTML='<option disabled selected>공격 가능한 적이 없습니다</option>';
+  else{
+    sel.innerHTML='<option value="" selected>적을 선택하세요</option>';
+    alive.forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=`${p.name} (HP ${p.hp}/${p.maxHp})`; sel.appendChild(o); });
+  }
+}
+
+function renderItems(){
+  const m=me(); const list=(m?.inventory||[]).map(it=>({id:it.id,name:it.name||it.id,qty:(typeof it.qty==='number'?it.qty:it.quantity??1)}));
+  const sel=$('#itemSelect'), qty=$('#itemQty'), hint=$('#itemHint');
+  sel.innerHTML = list.length? list.map(it=>`<option value="${it.id}" data-qty="${it.qty}">${it.name} × ${it.qty}</option>`).join('') : '<option disabled>아이템 없음</option>';
+  const apply=()=>{ const opt=sel.selectedOptions[0]; const max=opt?parseInt(opt.dataset.qty||'1',10):1; qty.min=1; qty.max=Math.max(1,max); if(parseInt(qty.value||'1',10)>max) qty.value=max; hint.textContent=`사용 가능 수량: ${max}`; updateActionButtons(); };
+  sel.onchange=apply; qty.oninput=apply; apply();
+}
+
+/* 채팅 */
+function renderChat(){
+  const log=$('#chatMessages'), arr=(state.data?.chatLog||[]).slice(-50);
+  if(!arr.length){ log.innerHTML='<div style="color:var(--gold);text-align:center">채팅이 없습니다.</div>'; return; }
+  log.innerHTML=arr.map(m=>{ const t=new Date(m.timestamp||Date.now()).toLocaleTimeString(); return `<div>[${t}] ${m.name||'system'}: ${m.text||''}</div>`; }).join('');
+  log.scrollTop=log.scrollHeight;
+}
+$('#chatSendBtn').onclick=sendChat;
+$('#chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendChat(); });
+$('#refreshBtn').onclick=refresh;
+function sendChat(){
+  const v=$('#chatInput').value.trim(); if(!v||!state.socket) return;
+  state.socket.emit('chat-message',{battleId:state.battleId,playerId:state.playerId,text:v}); $('#chatInput').value='';
+}
+
+/* 버튼 활성 규칙: 상태가 없으면(로그인 직후) 손대지 않음 → 초깃값 활성 유지 */
+function canBaseAct(){
+  const d=state.data; if(!d) return false;
+  const turnMine = myTeam() && d.currentTeam===myTeam();
+  const m=me();
+  return Boolean(turnMine && m && m.alive && !m.hasActed && d.phase==='battle');
+}
+function updateActionButtons(){
+  if(!state.data) return; // 로그인 직후: 그대로 활성 유지
+  const base=canBaseAct();
+  const hasTarget=!!$('#targetSelect').value;
+  const m=me(); const opt=$('#itemSelect')?.selectedOptions?.[0]; const max=opt?parseInt(opt.dataset.qty||'0',10):0; const q=parseInt($('#itemQty').value||'1',10);
+  const itemOk = (m?.inventory?.length>0) && max>0 && q>=1;
+
+  $('#defendBtn').disabled=!base;
+  $('#dodgeBtn').disabled=!base;
+  $('#passBtn').disabled=!base;
+  $('#attackBtn').disabled=!(base && hasTarget);
+  $('#itemUseBtn').disabled=!(base && itemOk);
+}
+$('#targetSelect').addEventListener('change',updateActionButtons);
+$('#itemSelect').addEventListener('change',updateActionButtons);
+$('#itemQty').addEventListener('input',updateActionButtons);
+
+/* 액션 */
+async function doAction(type,payload={}){
+  if(!canBaseAct()){ toast('현재 행동할 수 없습니다'); return; }
+  const r=await fetch(`/api/battles/${state.battleId}/action`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({battleId:state.battleId,playerId:state.playerId,action:{type,...payload}})});
+  if(!r.ok){toast('액션 실패');return;} const j=await r.json(); if(!j.success){toast(j.error||'실패');return;} refresh();
+}
+$('#attackBtn').onclick=()=>{ const t=$('#targetSelect').value; if(!t){toast('공격 대상을 선택하세요'); return;} doAction('attack',{targetId:t}); };
+$('#defendBtn').onclick=()=>doAction('defend');
+$('#dodgeBtn').onclick =()=>doAction('dodge');
+$('#passBtn').onclick  =()=>doAction('pass');
+$('#itemBtn').onclick  =()=>{ $('#itemSelect').focus(); };
+$('#itemUseBtn').onclick=()=>{ const opt=$('#itemSelect').selectedOptions[0]; if(!opt){toast('아이템을 선택하세요'); return;} const qty=Math.max(1,Math.min(parseInt(opt.dataset.qty||'1',10), parseInt($('#itemQty').value||'1',10))); doAction('use_item',{itemId:opt.value, qty}); };
+
+/* 새로고침 */
+async function refresh(){ try{ const r=await fetch(`/api/battles/${state.battleId}/state`); if(!r.ok) throw 0; state.data=await r.json(); render(); }catch(e){ toast('새로고침 실패'); } }
+</script>
+</body>
+</html>
