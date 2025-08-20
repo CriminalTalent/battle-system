@@ -967,6 +967,8 @@ window.addEventListener('DOMContentLoaded', () => {
         token: $('#tokenInput').value.trim()
       };
 
+      console.log('Attempting login with:', body);
+
       const r = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -976,6 +978,8 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!r.ok) throw new Error('인증 실패');
 
       const j = await r.json();
+      console.log('Login successful:', j);
+      
       state.battleId = body.battleId;
       state.playerId = 'p_' + Math.random().toString(36).slice(2, 8);
       state.token = body.token;
@@ -989,9 +993,13 @@ window.addEventListener('DOMContentLoaded', () => {
       $('#battleStatus').style.display = 'grid';
       $('#battlefield').style.display = 'grid';
       
+      // 소켓 연결 및 초기 데이터 로딩
       connect();
+      await refresh(); // 초기 상태 로딩
+      
       showNotification('전투에 성공적으로 참가했습니다!');
     } catch (e) {
+      console.error('Login error:', e);
       showNotification(e.message || '로그인 실패', 'error');
     }
   }
@@ -1028,6 +1036,7 @@ window.addEventListener('DOMContentLoaded', () => {
     state.socket = ioSock;
     
     ioSock.on('connect', () => {
+      console.log('Socket connected');
       $('#connStatus').textContent = '연결됨';
       $('#connStatus').className = 'connection-status connected';
       ioSock.emit('join-battle', {
@@ -1036,15 +1045,17 @@ window.addEventListener('DOMContentLoaded', () => {
         role: 'player',
         team: state.team
       });
-      setTimeout(refresh, 200);
+      setTimeout(refresh, 500);
     });
 
     ioSock.on('disconnect', () => {
+      console.log('Socket disconnected');
       $('#connStatus').textContent = '연결 끊김';
       $('#connStatus').className = 'connection-status disconnected';
     });
 
     ioSock.on('reconnect', () => {
+      console.log('Socket reconnected');
       showNotification('연결이 복구되었습니다!');
       if (state.battleId) {
         ioSock.emit('join-battle', {
@@ -1053,50 +1064,84 @@ window.addEventListener('DOMContentLoaded', () => {
           role: 'player',
           team: state.team
         });
+        setTimeout(refresh, 300);
       }
     });
 
     ioSock.on('battle-state', d => {
       console.log('Battle state received:', d);
-      state.data = d;
-      render(true);
+      if (d && d.id === state.battleId) {
+        state.data = d;
+        render(true);
+      }
     });
 
     ioSock.on('player-joined', d => {
-      console.log('Player joined:', d);
-      state.data = d.state;
-      render(true);
-      showNotification('새 플레이어가 참가했습니다');
+      console.log('Player joined event:', d);
+      if (d && d.state && d.battleId === state.battleId) {
+        state.data = d.state;
+        render(true);
+        showNotification('새 플레이어가 참가했습니다');
+      }
     });
 
     ioSock.on('battle-started', d => {
-      console.log('Battle started:', d);
-      state.data = d.state;
-      render(true);
-      showNotification('전투가 시작되었습니다!');
+      console.log('Battle started event:', d);
+      if (d && d.state && d.battleId === state.battleId) {
+        state.data = d.state;
+        render(true);
+        showNotification('전투가 시작되었습니다!');
+      }
     });
 
     ioSock.on('action-executed', d => {
-      console.log('Action executed:', d);
-      state.data = d.state;
-      render(true);
+      console.log('Action executed event:', d);
+      if (d && d.state && d.battleId === state.battleId) {
+        state.data = d.state;
+        render(true);
+      }
     });
 
     ioSock.on('battle-ended', d => {
-      console.log('Battle ended:', d);
-      state.data = d.state;
-      render(true);
-      const winnerText = d.winner === 'team1' ? '불사조 기사단' : 
-                        d.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
-      showNotification(`전투 종료! 승자: ${winnerText}`);
+      console.log('Battle ended event:', d);
+      if (d && d.state && d.battleId === state.battleId) {
+        state.data = d.state;
+        render(true);
+        const winnerText = d.winner === 'team1' ? '불사조 기사단' : 
+                          d.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
+        showNotification(`전투 종료! 승자: ${winnerText}`);
+      }
     });
 
-    ioSock.on('chat-message', ({ message }) => {
-      console.log('Chat message received:', message);
-      if (!state.data) state.data = { chatLog: [] };
-      if (!state.data.chatLog) state.data.chatLog = [];
-      state.data.chatLog.push(message);
-      renderChat();
+    ioSock.on('chat-message', ({ battleId, message }) => {
+      console.log('Chat message received:', { battleId, message });
+      if (battleId === state.battleId && message) {
+        if (!state.data) state.data = { chatLog: [] };
+        if (!state.data.chatLog) state.data.chatLog = [];
+        
+        // 중복 메시지 방지
+        const isDuplicate = state.data.chatLog.some(existing => 
+          existing.id === message.id || 
+          (existing.timestamp === message.timestamp && existing.message === message.message && existing.sender === message.sender)
+        );
+        
+        if (!isDuplicate) {
+          state.data.chatLog.push(message);
+          // 최대 100개 메시지 유지
+          if (state.data.chatLog.length > 100) {
+            state.data.chatLog = state.data.chatLog.slice(-100);
+          }
+        }
+        
+        renderChat();
+      }
+    });
+
+    // 연결 실패 시 재시도
+    ioSock.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      $('#connStatus').textContent = '연결 실패';
+      $('#connStatus').className = 'connection-status disconnected';
     });
   }
 
@@ -1413,18 +1458,25 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!el) return;
     
     const messages = (state.data?.chatLog || []).slice(-30);
-    el.innerHTML = messages.map(e => {
-      const time = new Date(e.timestamp).toLocaleTimeString();
-      const senderColor = e.senderType === 'system' ? '#E5C88A' : 
-                         e.senderType === 'admin' ? '#C8A882' : 
-                         e.senderType === 'spectator' ? '#F5E6B8' : '#D4C39A';
-      return `
-        <div style="padding: 6px 0; border-bottom: 1px dashed rgba(229, 200, 138, 0.1); line-height: 1.4;">
-          <span style="color: ${senderColor}; font-weight: 600; font-size: 0.85rem;">[${time}] ${e.sender}:</span>
-          <span style="color: #F5E6B8; margin-left: 8px; font-size: 0.9rem;">${e.message}</span>
-        </div>
-      `;
-    }).join('') || '<div style="color: var(--gold); text-align: center;">채팅이 없습니다</div>';
+    console.log('Rendering chat messages:', messages.length);
+    
+    if (messages.length === 0) {
+      el.innerHTML = '<div style="color: var(--gold); text-align: center; padding: 20px; font-style: italic;">채팅이 없습니다</div>';
+    } else {
+      el.innerHTML = messages.map(e => {
+        const time = new Date(e.timestamp).toLocaleTimeString();
+        const senderColor = e.senderType === 'system' ? '#E5C88A' : 
+                           e.senderType === 'admin' ? '#C8A882' : 
+                           e.senderType === 'spectator' ? '#F5E6B8' : '#D4C39A';
+        return `
+          <div style="padding: 6px 0; border-bottom: 1px dashed rgba(229, 200, 138, 0.1); line-height: 1.4;">
+            <span style="color: ${senderColor}; font-weight: 600; font-size: 0.85rem;">[${time}] ${e.sender}:</span>
+            <span style="color: #F5E6B8; margin-left: 8px; font-size: 0.9rem;">${e.message}</span>
+          </div>
+        `;
+      }).join('');
+    }
+    
     el.scrollTop = el.scrollHeight;
   }
 
@@ -1482,22 +1534,37 @@ window.addEventListener('DOMContentLoaded', () => {
   $('#refreshBtn').onclick = refresh;
 
   async function refresh() {
+    if (!state.battleId) return;
     try {
+      console.log('Refreshing battle state for:', state.battleId);
       const r = await fetch(`/api/battles/${state.battleId}/state`);
       if (!r.ok) throw new Error('새로고침 실패');
-      state.data = await r.json();
+      const newData = await r.json();
+      console.log('Received battle data:', newData);
+      state.data = newData;
       render(true);
     } catch (e) {
+      console.error('Refresh failed:', e);
       showNotification('새로고침 실패', 'error');
     }
   }
 
+  // 주기적 새로고침 설정
+  setInterval(() => {
+    if (state.battleId && !ioSock.connected) {
+      console.log('Socket disconnected, manual refresh...');
+      refresh();
+    }
+  }, 10000);
+
   // 초기 설정
   if (BATTLE) {
     $('#battleId').value = BATTLE;
+    console.log('Initial battle ID set:', BATTLE);
   }
   if (TOKEN) {
     $('#tokenInput').value = TOKEN;
+    console.log('Initial token set:', TOKEN);
   }
 });
 </script>
