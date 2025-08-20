@@ -374,19 +374,18 @@ body::before {
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
-  min-height: 300px;
+  min-height: 350px; /* 높이 조정 */
 }
 
 .battle-log {
-  flex: 1;
+  width: 100%;
   background: rgba(10, 15, 26, 0.8);
   border-radius: 12px;
   padding: 15px;
   overflow-y: auto;
   font-size: 0.85rem;
   line-height: 1.6;
-  margin-bottom: 15px;
-  min-height: 250px; /* 높이 증가 */
+  min-height: 350px; /* 높이 증가 - 내 상태가 제거되었으므로 */
   position: relative;
 }
 
@@ -591,8 +590,19 @@ body::before {
 }
 
 .action-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  background: rgba(100, 100, 100, 0.1) !important;
+  border-color: rgba(100, 100, 100, 0.3) !important;
+  color: rgba(100, 100, 100, 0.5) !important;
+}
+
+.action-btn:not(:disabled) {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  background: rgba(229, 200, 138, 0.1) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
 }
 
 /* 대상 패널 - 개선됨 */
@@ -759,20 +769,23 @@ body::before {
 /* 데스크톱 반응형 */
 @media (min-width: 768px) {
   .login-form {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr; /* 세로 배치 유지 */
   }
   
   .battle-arena {
     display: grid;
     grid-template-areas:
-      "header header"
-      "chat chat"
-      "main teams"
-      "actions actions";
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-columns: 2fr 1fr;
+      "header header header"
+      "chat chat chat"
+      "teams main teams2"
+      "actions actions actions"
+      "status status status";
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-columns: 300px 1fr 300px;
     padding: 20px;
     gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
   }
   
   .battle-header {
@@ -782,13 +795,25 @@ body::before {
     padding: 20px 30px;
   }
   
+  .chat-area {
+    grid-area: chat;
+    min-height: 180px;
+  }
+  
   .game-main {
     grid-area: main;
   }
   
-  .teams-container {
+  .team-panel.phoenix {
     grid-area: teams;
-    gap: 20px;
+  }
+  
+  .team-panel.death {
+    grid-area: teams2;
+  }
+  
+  .teams-container {
+    display: contents; /* 그리드 아이템들을 개별적으로 배치 */
   }
   
   .action-panel {
@@ -809,17 +834,16 @@ body::before {
     margin-left: 25px;
   }
   
-  .chat-area {
-    grid-area: chat;
-    min-height: 200px; /* 상단 배치를 위해 높이 조정 */
+  .battle-status {
+    grid-area: status;
   }
   
   .stats-builder {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr); /* 모바일에서도 2열 유지 */
   }
   
   .team-buttons {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr; /* 세로 배치 */
   }
   
   .notifications {
@@ -866,9 +890,57 @@ body::before {
   }
 }
 
-.loading {
-  opacity: 0.7;
-  pointer-events: none;
+/* 전투 상태 영역 - 하단 배치 */
+.battle-status {
+  background: var(--glass);
+  border: 2px solid var(--border);
+  border-radius: 15px;
+  padding: 20px;
+  backdrop-filter: blur(10px);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.battle-info {
+  background: rgba(229, 200, 138, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 15px;
+}
+
+.battle-info-title {
+  color: var(--gold);
+  font-weight: bold;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.battle-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.info-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.info-value {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 /* 터치 개선 */
@@ -929,6 +1001,15 @@ body::before {
     font-size: 0.8rem;
     padding: 12px 6px;
     min-height: 48px;
+  }
+  
+  .status-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .battle-status {
+    padding: 15px;
   }
 }
 </style>
@@ -1042,10 +1123,6 @@ body::before {
     <!-- 전장 중앙 -->
     <div class="battlefield">
       <div class="battle-log" id="battleLog">전투 로그가 여기에 표시됩니다...</div>
-      <div class="my-status">
-        <div class="my-status-title">내 전투참여자 상태</div>
-        <div class="my-status-content" id="myStatusDisplay">로딩 중...</div>
-      </div>
     </div>
   </div>
 
@@ -1090,6 +1167,41 @@ body::before {
     <div class="chat-input-area">
       <input id="chatInput" class="chat-input" placeholder="메시지 입력..." maxlength="200">
       <button id="chatSendBtn" class="chat-send">전송</button>
+    </div>
+  </div>
+
+  <!-- 전투 상태 및 내 정보 -->
+  <div class="battle-status">
+    <div class="status-grid">
+      <div class="my-status">
+        <div class="my-status-title">내 전투참여자 상태</div>
+        <div class="my-status-content" id="myStatusDisplay">로딩 중...</div>
+      </div>
+      <div class="battle-info">
+        <div class="battle-info-title">전투 정보</div>
+        <div class="battle-info-content" id="battleInfoDisplay">
+          <div class="info-item">
+            <span class="info-label">전투 ID:</span>
+            <span class="info-value" id="battleIdInfo">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">모드:</span>
+            <span class="info-value" id="battleModeInfo">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">단계:</span>
+            <span class="info-value" id="battlePhaseInfo">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">현재 턴:</span>
+            <span class="info-value" id="currentTeamInfo">-</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">승자:</span>
+            <span class="info-value" id="winnerInfo">-</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1303,11 +1415,23 @@ $('#confirmJoin').onclick = async () => {
     if (!result.success) throw new Error(result.error);
     
     gameState.joined = true;
+    console.log('팀 참가 완료! gameState 업데이트:', {
+      battleId: gameState.battleId,
+      playerName: gameState.playerName,
+      playerId: gameState.playerId,
+      selectedTeam: gameState.selectedTeam,
+      joined: gameState.joined
+    });
+    
     $('#teamSelect').style.display = 'none';
     $('#battleArena').style.display = 'block';
     
     showNotification('팀 참가 완료!', 'success');
-    await refreshGameState();
+    
+    // 즉시 상태 새로고침
+    setTimeout(async () => {
+      await refreshGameState();
+    }, 1000);
     
   } catch (err) {
     showNotification(`참가 실패: ${err.message}`, 'error', 6000);
@@ -1330,6 +1454,11 @@ function setupSocketEvents() {
       role: 'player' 
     });
     showNotification('실시간 연결 성공', 'success', 2000);
+    
+    // 연결 후 즉시 상태 새로고침
+    if (gameState.battleId) {
+      setTimeout(refreshGameState, 500);
+    }
   });
   
   socket.on('disconnect', (reason) => {
@@ -1358,6 +1487,7 @@ function setupSocketEvents() {
   });
   
   socket.on('battle-state', (data) => {
+    console.log('소켓에서 전투 상태 수신:', data);
     gameState.state = data;
     gameState.lastStateUpdate = Date.now();
     renderGame();
@@ -1407,7 +1537,12 @@ function setupSocketEvents() {
 
 // 향상된 오류 처리를 통한 게임 상태 새로 고침
 async function refreshGameState() {
-  if (!gameState.battleId) return;
+  if (!gameState.battleId) {
+    console.log('전투 ID가 없어서 상태 새로고침 건너뜀');
+    return;
+  }
+  
+  console.log('게임 상태 새로고침 시작:', gameState.battleId);
   
   try {
     const response = await fetch(`/api/battles/${gameState.battleId}`);
@@ -1421,6 +1556,16 @@ async function refreshGameState() {
     const data = await response.json();
     gameState.state = data;
     gameState.lastStateUpdate = Date.now();
+    
+    console.log('게임 상태 업데이트 완료:', {
+      battleId: data.id,
+      phase: data.phase,
+      currentTeam: data.currentTeam,
+      team1Count: data.teams.team1.length,
+      team2Count: data.teams.team2.length,
+      myPlayerId: gameState.playerId
+    });
+    
     renderGame();
     
   } catch (err) {
@@ -1431,13 +1576,25 @@ async function refreshGameState() {
 
 // 향상된 게임 렌더링
 function renderGame() {
-  if (!gameState.state) return;
+  if (!gameState.state) {
+    console.log('게임 상태가 없어서 렌더링 건너뜀');
+    return;
+  }
+  
+  console.log('게임 렌더링 시작:', {
+    phase: gameState.state.phase,
+    currentTeam: gameState.state.currentTeam,
+    myPlayerId: gameState.playerId,
+    team1Count: gameState.state.teams.team1.length,
+    team2Count: gameState.state.teams.team2.length
+  });
   
   try {
     renderHUD();
     renderTeams();
     renderBattleLog();
     renderMyStatus();
+    renderBattleInfo(); // 새로 추가
     renderActions();
     renderTargets();
     renderChat();
@@ -1548,6 +1705,33 @@ function renderBattleLog() {
   log.scrollTop = log.scrollHeight;
 }
 
+function renderBattleInfo() {
+  const state = gameState.state;
+  
+  $('#battleIdInfo').textContent = state.id || '-';
+  $('#battleModeInfo').textContent = state.mode || '-';
+  
+  const phaseText = {
+    'lobby': '대기실',
+    'battle': '전투 중',
+    'ended': '종료'
+  };
+  $('#battlePhaseInfo').textContent = phaseText[state.phase] || state.phase;
+  
+  const teamText = {
+    'team1': '불사조 기사단',
+    'team2': '죽음을 먹는 자들'
+  };
+  $('#currentTeamInfo').textContent = teamText[state.currentTeam] || '-';
+  
+  const winnerText = {
+    'team1': '불사조 기사단',
+    'team2': '죽음을 먹는 자들',
+    'draw': '무승부'
+  };
+  $('#winnerInfo').textContent = winnerText[state.winner] || '미정';
+}
+
 function renderMyStatus() {
   const myPlayer = findMyPlayer();
   const display = $('#myStatusDisplay');
@@ -1586,6 +1770,15 @@ function renderActions() {
   const myPlayer = findMyPlayer();
   const canAct = isMyTurn && myPlayer && myPlayer.alive && !myPlayer.hasActed && gameState.state.phase === 'battle';
   
+  console.log('액션 렌더링:', {
+    myTeam,
+    currentTeam: gameState.state.currentTeam,
+    isMyTurn,
+    myPlayer: myPlayer ? { name: myPlayer.name, alive: myPlayer.alive, hasActed: myPlayer.hasActed } : null,
+    phase: gameState.state.phase,
+    canAct
+  });
+  
   ['attackBtn', 'defendBtn', 'itemBtn', 'dodgeBtn', 'passBtn'].forEach(btnId => {
     const btn = $(btnId);
     if (btn) {
@@ -1595,10 +1788,14 @@ function renderActions() {
         btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
         btn.style.background = 'rgba(229, 200, 138, 0.1)';
+        btn.style.borderColor = 'var(--gold)';
+        btn.style.color = 'var(--gold)';
       } else {
         btn.style.opacity = '0.3';
         btn.style.cursor = 'not-allowed';
         btn.style.background = 'rgba(100, 100, 100, 0.1)';
+        btn.style.borderColor = 'rgba(100, 100, 100, 0.3)';
+        btn.style.color = 'rgba(100, 100, 100, 0.5)';
       }
     }
   });
@@ -1612,25 +1809,34 @@ function renderTargets() {
   select.innerHTML = '<option value="" disabled selected>적을 선택하세요</option>';
   
   const myTeam = getMyTeam();
-  if (!myTeam) return;
+  console.log('대상 선택 렌더링 - 내 팀:', myTeam);
+  
+  if (!myTeam) {
+    console.log('내 팀을 찾을 수 없음');
+    return;
+  }
   
   const enemies = myTeam === 'team1' ? gameState.state.teams.team2 : gameState.state.teams.team1;
+  console.log('적 팀 목록:', enemies);
   
   if (!enemies || !enemies.length) {
     const option = document.createElement('option');
     option.disabled = true;
     option.textContent = '적 팀이 없습니다';
     select.appendChild(option);
+    console.log('적 팀이 없음');
     return;
   }
   
   const aliveEnemies = enemies.filter(player => player.alive);
+  console.log('생존한 적:', aliveEnemies);
   
   if (aliveEnemies.length === 0) {
     const option = document.createElement('option');
     option.disabled = true;
     option.textContent = '공격 가능한 적이 없습니다';
     select.appendChild(option);
+    console.log('생존한 적이 없음');
     return;
   }
   
@@ -1639,7 +1845,10 @@ function renderTargets() {
     option.value = player.id;
     option.textContent = `${player.name} (HP: ${player.hp}/${player.maxHp})`;
     select.appendChild(option);
+    console.log('대상 추가:', player.name, player.id);
   });
+  
+  console.log('총 대상 수:', aliveEnemies.length);
 }
 
 function renderChat() {
@@ -1673,30 +1882,66 @@ function renderChat() {
 
 // 유틸리티 함수
 function findMyPlayer() {
-  if (!gameState.state) return null;
+  if (!gameState.state) {
+    console.log('게임 상태가 없음');
+    return null;
+  }
+  
   const all = [...gameState.state.teams.team1, ...gameState.state.teams.team2];
-  return all.find(p => p.id === gameState.playerId);
+  const myPlayer = all.find(p => p.id === gameState.playerId);
+  
+  console.log('내 플레이어 찾기:', {
+    playerId: gameState.playerId,
+    playerName: gameState.playerName,
+    allPlayers: all.map(p => ({ id: p.id, name: p.name })),
+    foundPlayer: myPlayer ? { id: myPlayer.id, name: myPlayer.name, alive: myPlayer.alive, hasActed: myPlayer.hasActed } : null
+  });
+  
+  return myPlayer;
 }
 
 function getMyTeam() {
-  if (!gameState.state) return null;
+  if (!gameState.state) {
+    console.log('게임 상태가 없음 - 팀 찾기 불가');
+    return null;
+  }
+  
   for (const player of gameState.state.teams.team1) {
-    if (player.id === gameState.playerId) return 'team1';
+    if (player.id === gameState.playerId) {
+      console.log('내 팀: team1');
+      return 'team1';
+    }
   }
   for (const player of gameState.state.teams.team2) {
-    if (player.id === gameState.playerId) return 'team2';
+    if (player.id === gameState.playerId) {
+      console.log('내 팀: team2');
+      return 'team2';
+    }
   }
+  
+  console.log('팀을 찾을 수 없음. playerId:', gameState.playerId);
+  console.log('team1 players:', gameState.state.teams.team1.map(p => ({ id: p.id, name: p.name })));
+  console.log('team2 players:', gameState.state.teams.team2.map(p => ({ id: p.id, name: p.name })));
+  
   return null;
 }
 
 // 향상된 피드백을 통한 액션 실행
 async function executeAction(type, payload = {}) {
+  console.log('액션 실행 시도:', { type, payload, joined: gameState.joined });
+  
   if (!gameState.joined) {
     showNotification('아직 전투에 참가하지 않았습니다', 'error');
     return;
   }
   
   try {
+    console.log('API 요청 전송:', {
+      battleId: gameState.battleId,
+      playerId: gameState.playerId,
+      action: { type, ...payload }
+    });
+    
     const response = await fetch(`/api/battles/${gameState.battleId}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1719,6 +1964,8 @@ async function executeAction(type, payload = {}) {
     }
     
     const result = await response.json();
+    console.log('API 응답:', result);
+    
     if (!result.success) {
       showNotification(result.error, 'error');
     } else {
@@ -1739,18 +1986,76 @@ async function executeAction(type, payload = {}) {
 
 // 검증이 포함된 액션 버튼 이벤트
 $('#attackBtn').onclick = () => {
+  console.log('공격 버튼 클릭됨');
   const target = $('#targetSelect').value;
+  console.log('선택된 대상:', target);
+  
   if (!target || target === '') {
     showNotification('공격할 대상을 선택하세요', 'error');
     $('#targetSelect').focus();
     return;
   }
+  
+  // 액션 실행 가능 여부 재확인
+  const myTeam = getMyTeam();
+  const isMyTurn = myTeam === gameState.state.currentTeam;
+  const myPlayer = findMyPlayer();
+  const canAct = isMyTurn && myPlayer && myPlayer.alive && !myPlayer.hasActed && gameState.state.phase === 'battle';
+  
+  console.log('공격 실행 전 상태 확인:', { myTeam, isMyTurn, canAct });
+  
+  if (!canAct) {
+    showNotification('현재 행동할 수 없습니다', 'error');
+    return;
+  }
+  
   executeAction('attack', { targetId: target });
 };
 
-$('#defendBtn').onclick = () => executeAction('defend');
-$('#dodgeBtn').onclick = () => executeAction('dodge');
-$('#passBtn').onclick = () => executeAction('pass');
+$('#defendBtn').onclick = () => {
+  console.log('방어 버튼 클릭됨');
+  const canAct = checkCanAct();
+  if (!canAct) return;
+  executeAction('defend');
+};
+
+$('#dodgeBtn').onclick = () => {
+  console.log('회피 버튼 클릭됨');
+  const canAct = checkCanAct();
+  if (!canAct) return;
+  executeAction('dodge');
+};
+
+$('#passBtn').onclick = () => {
+  console.log('패스 버튼 클릭됨');
+  const canAct = checkCanAct();
+  if (!canAct) return;
+  executeAction('pass');
+};
+
+// 행동 가능 여부 확인 함수
+function checkCanAct() {
+  const myTeam = getMyTeam();
+  const isMyTurn = myTeam === gameState.state.currentTeam;
+  const myPlayer = findMyPlayer();
+  const canAct = isMyTurn && myPlayer && myPlayer.alive && !myPlayer.hasActed && gameState.state.phase === 'battle';
+  
+  if (!canAct) {
+    if (!isMyTurn) {
+      showNotification('현재 당신의 팀 턴이 아닙니다', 'error');
+    } else if (!myPlayer) {
+      showNotification('플레이어 정보를 찾을 수 없습니다', 'error');
+    } else if (!myPlayer.alive) {
+      showNotification('전사한 플레이어는 행동할 수 없습니다', 'error');
+    } else if (myPlayer.hasActed) {
+      showNotification('이미 이번 턴에 행동했습니다', 'error');
+    } else if (gameState.state.phase !== 'battle') {
+      showNotification('전투가 진행 중이 아닙니다', 'error');
+    }
+    return false;
+  }
+  return true;
+}
 
 $('#itemBtn').onclick = () => {
   const myPlayer = findMyPlayer();
