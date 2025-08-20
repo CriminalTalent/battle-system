@@ -892,6 +892,8 @@ window.addEventListener('DOMContentLoaded', () => {
     transports: ['websocket', 'polling']
   });
 
+  let __connectedOnce = false;
+
   let BATTLE = qs.get('battle') || '';
   $('#battleId').value = BATTLE;
   let TOKEN = qs.get('token') || '';
@@ -1036,13 +1038,15 @@ window.addEventListener('DOMContentLoaded', () => {
     state.socket = ioSock;
     
     ioSock.on('connect', () => {
+      if (!__connectedOnce) { __connectedOnce = true; }
+
       console.log('Socket connected');
       $('#connStatus').textContent = '연결됨';
       $('#connStatus').className = 'connection-status connected';
       ioSock.emit('join-battle', {
         battleId: state.battleId,
         playerId: state.playerId,
-        role: 'player',
+        role: (state && state.playerId ? 'player' : 'spectator'),
         team: state.team
       });
       setTimeout(refresh, 500);
