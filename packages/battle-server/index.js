@@ -12,13 +12,15 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: "*", methods: ["GET", "POST"] },
-  path: "/socket.io"
+  path: "/socket.io",
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 app.use(cors());
 app.use(express.json());
 
-// ---------------- 업로드 설정 ----------------
+// 업로드 설정
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -38,18 +40,17 @@ const fileFilter = (_, file, cb) => {
 };
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-// ---------------- 정적 파일 서빙 (HTML은 캐시 금지) ----------------
+// 정적 파일 서빙
 const publicPath = path.join(__dirname, '../battle-web/public');
-console.log(`[PYXIS] Looking for static files in: ${publicPath}`);
+console.log(`[전투서버] 정적 파일 경로: ${publicPath}`);
 
-// HTML 파일이 존재하는지 확인
 const checkFiles = ['admin.html', 'play.html', 'watch.html'];
 checkFiles.forEach(file => {
   const filePath = path.join(publicPath, file);
   if (fs.existsSync(filePath)) {
-    console.log(`[PYXIS] ✓ Found: ${file}`);
+    console.log(`[전투서버] 파일 확인: ${file}`);
   } else {
-    console.log(`[PYXIS] ✗ Missing: ${file} at ${filePath}`);
+    console.log(`[전투서버] 파일 누락: ${file} - ${filePath}`);
   }
 });
 
@@ -69,7 +70,7 @@ app.get('/', (req, res) => {
   res.redirect('/admin.html');
 });
 
-// HTML 파일 직접 라우팅 (확장자 없이도 접근 가능)
+// HTML 파일 직접 라우팅
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(publicPath, 'admin.html'));
 });
@@ -82,9 +83,10 @@ app.get('/watch', (req, res) => {
 
 app.use('/uploads', express.static(UPLOAD_DIR, { fallthrough: true }));
 
-// ---------------- 저장소/상수 ----------------
+// 저장소 및 상수
 const battles = new Map();
 const playerSockets = new Map();
+const spectatorConnections = new Map(); // 관전자 연결 추적
 
 const BATTLE_DURATION = 60 * 60 * 1000; // 1시간
 const TURN_TIMEOUT   = 5  * 60 * 1000;  // 5분
@@ -127,7 +129,7 @@ const ITEMS = {
   '디터니':     { code: 'DESTINY', desc: '다음 공격 적중 시 치명타 확정' }
 };
 
-// ---------------- 주사위/스탯 유틸 ----------------
+// 주사위 및 스탯 유틸리티
 function rollD20() { return Math.floor(Math.random() * 20) + 1; }
 function rollDamage(attack) { return (Math.floor(Math.random() * 6) + 1) + attack; }
 function calculateInitiative(agility) { return rollD20() + agility; }
@@ -171,7 +173,7 @@ function createCharacter(playerId, name, stats, teamId, imageUrl = null, items =
 function genToken(prefix){ return `${prefix}_${crypto.randomBytes(8).toString('hex')}`; }
 function genOTP(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
-// ---------------- 관리자 토큰 검증 미들웨어 ----------------
+// 관리자 토큰 검증 미들웨어
 function verifyAdminToken(req, res, next) {
   const token = req.headers['x-admin-token'];
   const battleId = req.params.id;
@@ -189,7 +191,7 @@ function verifyAdminToken(req, res, next) {
   next();
 }
 
-// ---------------- Battle 클래스 ----------------
+// Battle 클래스
 class Battle {
   constructor(id, mode = '1v1') {
     this.id = id;
@@ -211,7 +213,7 @@ class Battle {
 
     this.tokens = { admin: null, player: null, spectator: null };
     this.otps = { admin: null, players: new Map(), spectators: new Set() };
-    this.logged = { admin: false, players: new Set(), spectators: 0 };
+    this.logged = { admin: false, players: new Set(), spectators: new Map() }; // 관전자를 Map으로 변경
     
     // 자동 정리 스케줄링
     this.scheduleCleanup();
@@ -221,7 +223,7 @@ class Battle {
     setTimeout(() => {
       if (battles.has(this.id)) {
         battles.delete(this.id);
-        console.log(`[PYXIS] Battle ${this.id} auto-cleaned up`);
+        console.log(`[전투서버] 전투 자동 정리: ${this.id}`);
       }
     }, 2 * 60 * 60 * 1000); // 2시간 후 삭제
   }
@@ -530,12 +532,13 @@ class Battle {
       winner: this.winner,
       battleLog: this.battleLog,
       chatLog: this.chatLog,
-      tokens: this.tokens ? { ...this.tokens } : undefined
+      tokens: this.tokens ? { ...this.tokens } : undefined,
+      spectatorCount: this.logged.spectators.size || 0
     };
   }
 }
 
-// ---------------- REST API ----------------
+// REST API
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'Pyxis 전투 서버 가동 중', 
@@ -549,7 +552,7 @@ app.get('/api/health', (req, res) => {
 app.post('/api/upload', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
   const publicUrl = `/uploads/${req.file.filename}`;
-      console.log(`[PYXIS] Image uploaded: ${req.file.filename}`);
+  console.log(`[전투서버] 이미지 업로드: ${req.file.filename}`);
   res.json({ ok: true, url: publicUrl, filename: req.file.filename });
 });
 
@@ -560,7 +563,7 @@ app.post('/api/battles', (req, res) => {
   const battleId = Math.random().toString(36).substring(7).toUpperCase();
   const battle = new Battle(battleId, mode);
   battles.set(battleId, battle);
-  console.log(`[PYXIS] Battle created: ${battleId} (${mode})`);
+  console.log(`[전투서버] 전투 생성: ${battleId} (${mode})`);
   res.json({ battleId, mode, state: battle.getState() });
 });
 
@@ -587,7 +590,7 @@ app.post('/api/battles/:id/join', (req, res) => {
 
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
-    console.log(`[PYXIS] Player joined: ${playerName} -> ${teamId} (${req.params.id})`);
+    console.log(`[전투서버] 플레이어 참가: ${playerName} -> ${teamId} (${req.params.id})`);
     battle.addChatMessage('전투 시스템', `${playerName}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 참가했습니다`, 'system');
     io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
   }
@@ -599,7 +602,7 @@ app.post('/api/battles/:id/start', (req, res) => {
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
   const result = battle.start();
   if (result.success) {
-    console.log(`[PYXIS] Battle started: ${req.params.id}`);
+    console.log(`[전투서버] 전투 시작: ${req.params.id}`);
     battle.addChatMessage('전투 시스템', '전투가 시작되었습니다! 전사들이여, 전투에 임하라!', 'system');
     io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
   }
@@ -626,10 +629,10 @@ app.post('/api/battles/:id/action', (req, res) => {
 
   const result = battle.executeAction(playerId, action);
   if (result.success) {
-    console.log(`[PYXIS] Action executed: ${action.type} by ${playerId} (${req.params.id})`);
+    console.log(`[전투서버] 행동 실행: ${action.type} by ${playerId} (${req.params.id})`);
     io.to(req.params.id).emit('action-executed', { battleId: req.params.id, action, result, state: battle.getState() });
     if (result.battleEnded) {
-      console.log(`[PYXIS] Battle ended: ${req.params.id}, winner: ${result.winner}`);
+      console.log(`[전투서버] 전투 종료: ${req.params.id}, 승자: ${result.winner}`);
       io.to(req.params.id).emit('battle-ended', { battleId: req.params.id, winner: result.winner, state: battle.getState() });
     }
   }
@@ -648,7 +651,7 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   battle.otps.players = new Map();
   battle.otps.spectators = new Set();
 
-  console.log(`[PYXIS] Links generated for battle: ${req.params.id}`);
+  console.log(`[전투서버] 링크 생성: ${req.params.id}`);
 
   res.json({
     battleId: battle.id,
@@ -678,7 +681,7 @@ app.post('/api/admin/battles/:id/issue-otp', verifyAdminToken, (req, res) => {
     battle.otps.spectators.add(otp);
   }
 
-  console.log(`[PYXIS] OTP issued: ${role} (${name || 'N/A'}) for battle ${battle.id}`);
+  console.log(`[전투서버] OTP 발급: ${role} (${name || 'N/A'}) - ${battle.id}`);
   res.json({ ok: true, role, name: name || undefined, otp });
 });
 
@@ -689,7 +692,7 @@ app.post('/api/admin/battles/:id/join', verifyAdminToken, (req, res) => {
   
   const result = battle.addPlayer(playerId, playerName, teamId, stats, imageUrl, items, customHp);
   if (result.success) {
-    console.log(`[PYXIS] Admin added player: ${playerName} -> ${teamId} (${battle.id})`);
+    console.log(`[전투서버] 관리자 플레이어 추가: ${playerName} -> ${teamId} (${battle.id})`);
     battle.addChatMessage('전투 시스템', `${playerName}이 관리자에 의해 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 추가되었습니다`, 'system');
     io.to(req.params.id).emit('player-joined', { 
       battleId: req.params.id, 
@@ -713,19 +716,21 @@ app.post('/api/auth/login', (req, res) => {
     if (!battle.otps.admin || otp !== battle.otps.admin) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
     battle.otps.admin = null; 
     battle.logged.admin = true;
-    console.log(`[PYXIS] Admin logged in: ${battleId}`);
+    console.log(`[전투서버] 관리자 로그인: ${battleId}`);
   } else if (role === 'player') {
     if (!name) return res.status(400).json({ error: 'player 로그인은 name이 필요합니다.' });
     const v = battle.otps.players.get(name);
     if (!v || v !== otp) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
     battle.otps.players.delete(name); 
     battle.logged.players.add(name);
-    console.log(`[PYXIS] Player logged in: ${name} (${battleId})`);
+    console.log(`[전투서버] 플레이어 로그인: ${name} (${battleId})`);
   } else {
+    // 관전자 OTP는 재사용 가능하도록 변경
     if (!battle.otps.spectators.has(otp)) return res.status(401).json({ error:'OTP가 유효하지 않습니다.' });
-    battle.otps.spectators.delete(otp); 
-    battle.logged.spectators += 1;
-    console.log(`[PYXIS] Spectator logged in: ${battleId}`);
+    // 관전자 이름이 제공된 경우 기록
+    const spectatorName = name || `관전자${Math.random().toString(36).slice(2,6)}`;
+    battle.logged.spectators.set(spectatorName, { loginTime: Date.now(), otp });
+    console.log(`[전투서버] 관전자 로그인: ${spectatorName} (${battleId})`);
   }
 
   res.json({ ok:true, role, name: name || undefined });
@@ -739,29 +744,38 @@ app.get('/api/admin/battles/:id/state', verifyAdminToken, (req, res) => {
 app.post('/api/admin/battles/:id/force-end', verifyAdminToken, (req, res) => {
   const { winner } = req.body || {};
   const result = req.battle.forceEnd(winner);
-  console.log(`[PYXIS] Battle force-ended: ${req.params.id}, winner: ${result.winner}`);
+  console.log(`[전투서버] 전투 강제 종료: ${req.params.id}, 승자: ${result.winner}`);
   res.status(result.success ? 200 : 400).json(result);
 });
 
 app.delete('/api/admin/battles/:id', verifyAdminToken, (req, res) => {
-  console.log(`[PYXIS] Battle deleted: ${req.params.id}`);
+  console.log(`[전투서버] 전투 삭제: ${req.params.id}`);
   battles.delete(req.params.id);
   res.json({ ok: true });
 });
 
-// ---------------- Socket.IO ----------------
+// Socket.IO 이벤트 처리
 io.on('connection', (socket) => {
-  console.log(`[PYXIS] Client connected: ${socket.id}`);
+  console.log(`[전투서버] 클라이언트 연결: ${socket.id}`);
   
   socket.on('join-battle', (data = {}) => {
     const { battleId, playerId, role } = data;
     if (!battleId) return;
     socket.join(battleId);
+    
+    // 관전자 연결 추적
+    if (role === 'spectator') {
+      if (!spectatorConnections.has(battleId)) {
+        spectatorConnections.set(battleId, new Set());
+      }
+      spectatorConnections.get(battleId).add(socket.id);
+    }
+    
     if (playerId) playerSockets.set(playerId, socket.id);
     const battle = battles.get(battleId);
     if (battle) {
       socket.emit('battle-state', battle.getState());
-      console.log(`[PYXIS] ${role || 'Client'} joined battle room: ${battleId}`);
+      console.log(`[전투서버] ${role || '클라이언트'} 전투 룸 입장: ${battleId}`);
     }
   });
   
@@ -774,13 +788,31 @@ io.on('connection', (socket) => {
   });
   
   socket.on('disconnect', () => {
-    console.log(`[PYXIS] Client disconnected: ${socket.id}`);
+    console.log(`[전투서버] 클라이언트 연결 해제: ${socket.id}`);
+    
+    // 관전자 연결 정리
+    for (const [battleId, connections] of spectatorConnections.entries()) {
+      if (connections.has(socket.id)) {
+        connections.delete(socket.id);
+        if (connections.size === 0) {
+          spectatorConnections.delete(battleId);
+        }
+      }
+    }
+    
+    // 플레이어 소켓 정리
+    for (const [playerId, socketId] of playerSockets.entries()) {
+      if (socketId === socket.id) {
+        playerSockets.delete(playerId);
+        break;
+      }
+    }
   });
 });
 
-// ---------------- 에러 처리 ----------------
+// 에러 처리
 app.use((err, req, res, next) => {
-  console.error('[PYXIS] API Error:', err);
+  console.error('[전투서버] API 오류:', err);
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -791,7 +823,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// ---------------- 서버 시작 ----------------
+// 서버 시작
 const PORT = process.env.PORT || 3002;
 const HOST = process.env.HOST || '0.0.0.0';
 
