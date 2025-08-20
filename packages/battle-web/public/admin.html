@@ -762,8 +762,21 @@ body::before {
             <input type="number" id="t1_luk" class="form-input" min="1" max="5" value="3">
           </div>
         </div>
-        <div class="form-grid cols-2" style="margin-bottom: 16px;">
-          <input id="t1_items" class="form-input" placeholder="아이템 (쉼표로 구분)">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label class="form-label">공격 보정기</label>
+            <input type="number" id="t1_atk_item" class="form-input" min="0" max="5" value="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">방어 보정기</label>
+            <input type="number" id="t1_def_item" class="form-input" min="0" max="5" value="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">디터니</label>
+            <input type="number" id="t1_destiny" class="form-input" min="0" max="5" value="0">
+          </div>
+        </div>
+        <div class="form-grid cols-1" style="margin-bottom: 16px;">
           <button id="btnAddT1" class="btn">팀에 추가</button>
         </div>
         <div id="t1_list" class="player-list"></div>
@@ -797,8 +810,21 @@ body::before {
             <input type="number" id="t2_luk" class="form-input" min="1" max="5" value="3">
           </div>
         </div>
-        <div class="form-grid cols-2" style="margin-bottom: 16px;">
-          <input id="t2_items" class="form-input" placeholder="아이템 (쉼표로 구분)">
+        <div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <div class="form-group">
+            <label class="form-label">공격 보정기</label>
+            <input type="number" id="t2_atk_item" class="form-input" min="0" max="5" value="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">방어 보정기</label>
+            <input type="number" id="t2_def_item" class="form-input" min="0" max="5" value="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">디터니</label>
+            <input type="number" id="t2_destiny" class="form-input" min="0" max="5" value="0">
+          </div>
+        </div>
+        <div class="form-grid cols-1" style="margin-bottom: 16px;">
           <button id="btnAddT2" class="btn">팀에 추가</button>
         </div>
         <div id="t2_list" class="player-list"></div>
@@ -910,6 +936,16 @@ window.addEventListener('DOMContentLoaded', () => {
       const d = document.createElement('div');
       d.className = 'player-card';
       const hpPercent = p.maxHp ? Math.round((p.hp / p.maxHp) * 100) : 0;
+      
+      // 아이템 개수 계산
+      const itemCounts = {};
+      (p.inventory || []).forEach(item => {
+        itemCounts[item] = (itemCounts[item] || 0) + 1;
+      });
+      const itemText = Object.entries(itemCounts)
+        .map(([item, count]) => `${item}: ${count}`)
+        .join(', ') || '없음';
+      
       d.innerHTML = `
         <div class="player-name">${p.name}</div>
         <div class="player-status">${p.alive ? '활성' : '전사'}</div>
@@ -921,6 +957,9 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="stat-item">방어 ${p.stats?.defense ?? '-'}</div>
           <div class="stat-item">민첩 ${p.stats?.agility ?? '-'}</div>
           <div class="stat-item">행운 ${p.stats?.luck ?? '-'}</div>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px;">
+          아이템: ${itemText}
         </div>
       `;
       el.appendChild(d);
@@ -1145,7 +1184,13 @@ window.addEventListener('DOMContentLoaded', () => {
         luck: +$(pre + 'luk').value
       };
       const customHp = +$(pre + 'hp').value;
-      const items = $(pre + 'items').value.split(',').map(s => s.trim()).filter(Boolean);
+      
+      // 아이템 개수 수집
+      const items = {
+        '공격 보정기': +($(pre + 'atk_item')?.value || 0),
+        '방어 보정기': +($(pre + 'def_item')?.value || 0),
+        '디터니': +($(pre + 'destiny')?.value || 0)
+      };
 
       let imageUrl = null;
       try {
@@ -1155,7 +1200,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }
 
       const body = {
-        playerId: 'p_' + Math.random().toString(36).slice(2, 8),
+        playerId: 'adm_' + Math.random().toString(36).slice(2, 8),
         playerName: name,
         teamId: team,
         stats,
@@ -1170,7 +1215,9 @@ window.addEventListener('DOMContentLoaded', () => {
       $(pre + 'name').value = '';
       $(pre + 'img').value = '';
       $(pre + 'hp').value = '100';
-      $(pre + 'items').value = '';
+      $(pre + 'atk_item').value = '0';
+      $(pre + 'def_item').value = '0';
+      $(pre + 'destiny').value = '0';
 
       showSuccess(`${name} 추가 완료`);
       await refresh();
