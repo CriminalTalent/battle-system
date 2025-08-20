@@ -354,7 +354,6 @@ body::before {
   flex-wrap: wrap;
 }
 
-/* 타이머 표시 개선 */
 .timer-display {
   font-size: 1.1rem;
   font-weight: bold;
@@ -418,7 +417,7 @@ body::before {
   border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 16px;
-  height: 350px; /* 높이 크게 증가 */
+  height: 350px;
   overflow-y: auto;
   margin-bottom: 16px;
   font-size: 0.9rem;
@@ -531,7 +530,6 @@ body::before {
   color: var(--gold);
 }
 
-/* 모바일 반응형 */
 @media (max-width: 768px) {
   .main-container {
     padding: 10px;
@@ -576,7 +574,7 @@ body::before {
   }
   
   .chat-messages {
-    height: 300px; /* 모바일에서도 큰 채팅창 */
+    height: 300px;
   }
   
   .header h1 {
@@ -588,7 +586,6 @@ body::before {
   }
 }
 
-/* 태블릿 반응형 */
 @media (min-width: 769px) and (max-width: 1024px) {
   .team-builder {
     grid-template-columns: 1fr 1fr;
@@ -603,7 +600,6 @@ body::before {
   }
 }
 
-/* 데스크톱 반응형 */
 @media (min-width: 1025px) {
   .main-container {
     padding: 24px;
@@ -622,11 +618,10 @@ body::before {
   }
   
   .chat-messages {
-    height: 400px; /* 데스크톱에서 더 큰 채팅창 */
+    height: 400px;
   }
 }
 
-/* 터치 개선 */
 @media (hover: none) and (pointer: coarse) {
   .btn:hover {
     transform: none;
@@ -639,7 +634,7 @@ body::before {
   
   .form-input, .form-select {
     min-height: 50px;
-    font-size: 16px; /* iOS 확대 방지 */
+    font-size: 16px;
   }
 }
 </style>
@@ -648,13 +643,11 @@ body::before {
 <body>
 
 <div class="main-container">
-  <!-- 헤더 -->
   <header class="header">
     <h1>Pyxis 전투 시스템</h1>
     <div class="subtitle">관리자 콘솔</div>
   </header>
 
-  <!-- 전투 구성 -->
   <section class="card">
     <div class="card-title">전투 구성</div>
     <div class="form-grid cols-3">
@@ -697,7 +690,6 @@ body::before {
     </div>
   </section>
 
-  <!-- OTP 관리 -->
   <section class="card otp-section">
     <div class="card-title">인증 및 접근 제어</div>
     <div class="form-grid cols-2">
@@ -724,7 +716,6 @@ body::before {
     </div>
   </section>
 
-  <!-- 전투 관리 -->
   <section class="card">
     <div class="card-title">전투 관리</div>
     <div class="battle-controls">
@@ -740,11 +731,9 @@ body::before {
     </div>
   </section>
 
-  <!-- 팀 구성 -->
   <section class="card">
     <div class="card-title">팀 구성</div>
     <div class="team-builder">
-      <!-- 불사조 기사단 -->
       <div class="team-panel team-phoenix">
         <div class="team-header">불사조 기사단</div>
         <div class="form-grid cols-2" style="margin-bottom: 16px;">
@@ -780,7 +769,6 @@ body::before {
         <div id="t1_list" class="player-list"></div>
       </div>
 
-      <!-- 죽음을 먹는 자들 -->
       <div class="team-panel team-death">
         <div class="team-header">죽음을 먹는 자들</div>
         <div class="form-grid cols-2" style="margin-bottom: 16px;">
@@ -818,7 +806,6 @@ body::before {
     </div>
   </section>
 
-  <!-- 전투 상태 및 커뮤니케이션 -->
   <section class="card">
     <div class="card-title">전투 상태 및 커뮤니케이션</div>
     <div class="status-display" style="margin-bottom: 20px;">
@@ -941,7 +928,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   const renderLog = (log, el) => {
-    const entries = (log || []).slice(-25); // 더 많은 로그 표시
+    const entries = (log || []).slice(-25);
     el.innerHTML = entries.map(e => `
       <div style="padding: 6px 0; border-bottom: 1px solid rgba(229, 200, 138, 0.1); font-size: 0.85rem; line-height: 1.4;">
         <strong style="color: var(--gold);">${e.type}</strong> - 
@@ -953,7 +940,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   const renderChat = (chat, el) => {
-    const messages = (chat || []).slice(-30); // 더 많은 메시지 표시
+    const messages = (chat || []).slice(-30);
     el.innerHTML = messages.map(e => {
       const time = new Date(e.timestamp).toLocaleTimeString();
       const senderColor = e.senderType === 'system' ? '#E5C88A' : 
@@ -988,7 +975,6 @@ window.addEventListener('DOMContentLoaded', () => {
       <span class="pill">현재: ${teamText[s.currentTeam] || '-'}</span>
     `;
     
-    // 타이머 추가
     if (s.remainingTurnTime && s.phase === 'battle') {
       const remaining = Math.max(0, s.remainingTurnTime);
       const minutes = Math.floor(remaining / 60000);
@@ -1022,17 +1008,16 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       const state = await api(`/api/battles/${BATTLE}`);
       draw(state);
-      retryCount = 0; // 성공 시 재시도 카운트 리셋
+      retryCount = 0;
     } catch (err) {
       console.error('상태 새로고침 실패:', err);
       retryCount++;
       if (retryCount < 3) {
-        setTimeout(refresh, 2000 * retryCount); // 지수적 백오프
+        setTimeout(refresh, 2000 * retryCount);
       }
     }
   };
 
-  // 향상된 소켓 이벤트
   ioSock.on('connect', () => {
     console.log('소켓 연결됨');
     retryCount = 0;
@@ -1056,11 +1041,9 @@ window.addEventListener('DOMContentLoaded', () => {
     }));
 
   ioSock.on('chat-message', ({ message }) => {
-    // 현재 상태에 메시지 추가하고 채팅만 다시 렌더링
-    refresh(); // 전체 상태를 새로고침해서 최신 채팅 반영
+    refresh();
   });
 
-  // 버튼 이벤트
   on('#btnCreate', 'click', async () => {
     try {
       const j = await api('/api/battles', { method: 'POST', json: true, body: JSON.stringify({ mode: $('#mode').value }) });
@@ -1184,7 +1167,6 @@ window.addEventListener('DOMContentLoaded', () => {
       const r = await api(`/api/admin/battles/${BATTLE}/join`, { method: 'POST', json: true, body: JSON.stringify(body) });
       if (!r.success) return showError(r.error || '추가 실패');
 
-      // 폼 초기화
       $(pre + 'name').value = '';
       $(pre + 'img').value = '';
       $(pre + 'hp').value = '100';
@@ -1235,7 +1217,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // URL 복사 기능
   ['adminUrl', 'playerUrl', 'spectUrl'].forEach(id => {
     on(`#${id}`, 'click', async () => {
       const text = $(`#${id}`).textContent;
@@ -1254,7 +1235,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 채팅 기능
   on('#chatSend', 'click', () => {
     const message = $('#chatInput').value.trim();
     if (!message || !BATTLE) return;
@@ -1264,7 +1244,7 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    ioSock.emit('send-chat', {
+    ioSock.emit('chat-message', {
       battleId: BATTLE,
       sender: 'Administrator',
       message: message,
@@ -1280,21 +1260,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 자동 새로고침 (15초마다)
   setInterval(() => {
     if (BATTLE && (Date.now() - lastStateUpdate > 30000)) {
       refresh();
     }
   }, 15000);
 
-  // 페이지 가시성 변경 시 새로고침
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && BATTLE) {
       refresh();
     }
   });
 
-  // 연결 상태 모니터링
   setInterval(() => {
     if (!ioSock.connected && BATTLE) {
       console.log('소켓 재연결 시도 중...');
@@ -1302,7 +1279,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, 20000);
 
-  // 초기 로드
   if (BATTLE) refresh();
 });
 </script>
