@@ -5,204 +5,1241 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>PYXIS 전투 관전석</title>
 <style>
-:root{--deep:#0a0f1a;--navy:#0f1419;--navy2:#1a1f26;--gold:#E5C88A;--gold2:#C8A882;--text:#F5E6B8;--muted:#D4C39A;--b1:rgba(229,200,138,.30);--b2:rgba(229,200,138,.15);--glass:rgba(15,20,25,.85);--glass2:rgba(10,15,26,.90)}
-*{box-sizing:border-box;margin:0;padding:0}
-body{min-height:100vh;background:linear-gradient(135deg,var(--deep),var(--navy),var(--navy2));color:var(--text);font-family:Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.container{width:min(1200px,92vw);margin:0 auto;padding:16px 0 56px}
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.brand{font-weight:800;color:var(--gold);font-size:clamp(1.2rem,2.2vw,1.6rem)}
-.badge{border:1px solid var(--b1);color:var(--muted);border-radius:999px;padding:6px 10px;font-size:.85rem}
-.summary{display:none;gap:14px;grid-template-columns:1fr 1fr 1fr;margin-bottom:14px}
-.card{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:14px}
-.title{color:var(--muted);font-weight:700;margin-bottom:8px}
-.value{font-weight:800;color:var(--gold);font-size:clamp(1.05rem,2vw,1.35rem)}
-.value.timer.warning{color:#e67e22}.value.timer.critical{color:#c0392b}
-.main{display:none;gap:16px}
-@media(min-width:1024px){.main{grid-template-columns:1fr 1.1fr 1fr;display:grid}}
-@media(max-width:1023.98px){.main{display:grid;grid-template-columns:1fr;gap:12px}}
-.panel{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:14px}
-.panel-title{font-weight:800;color:var(--gold);margin-bottom:10px}
-.player-card{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;background:rgba(10,15,26,.55);border:1px solid var(--b2);border-radius:12px;padding:10px;margin-bottom:10px}
-.avatar{width:56px;height:56px;border-radius:50%;border:1px solid var(--b1);background:radial-gradient(circle at 30% 30%,rgba(229,200,138,.35),rgba(229,200,138,.1))}
-.pname{font-weight:700}.psub{color:var(--muted);font-size:.85rem}
-.center{display:grid;gap:14px}
-.grid2{display:grid;gap:10px;grid-template-columns:repeat(2,1fr)}
-.stat{background:rgba(10,15,26,.55);border:1px solid var(--b2);border-radius:10px;padding:10px;display:flex;justify-content:space-between}
-.stat .k{color:var(--muted);font-size:.9rem}.stat .v{font-weight:700}
-.chat{background:var(--glass2);border:2px solid var(--gold);border-radius:15px;padding:14px}
-.chat-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.chat-title{color:var(--gold);font-weight:800}
-.chat-log{background:rgba(10,15,26,.80);border:1px solid var(--b2);border-radius:10px;padding:12px;min-height:150px;max-height:260px;overflow:auto;line-height:1.5}
-.chat-row{display:flex;gap:10px;margin-top:10px}
-.chat-in{flex:1;background:rgba(10,15,26,.85);border:1px solid var(--b1);color:var(--text);border-radius:10px;padding:12px;min-height:46px}
-.btn{border:1px solid var(--gold);background:linear-gradient(135deg,#C8A882,#E5C88A);color:#0a0f1a;font-weight:800;border-radius:12px;padding:12px 16px;min-width:84px}
-.btn.sec{background:transparent;color:var(--text);border-color:var(--b1)}
-.log{background:rgba(10,15,26,.80);border:1px solid var(--b2);border-radius:10px;padding:12px;min-height:160px;max-height:320px;overflow:auto;line-height:1.5}
+:root {
+  --deep-navy: #0a0f1a;
+  --navy: #0f1419;
+  --navy-light: #1a1f26;
+  --gold: #E5C88A;
+  --gold-light: #F5E6B8;
+  --gold-dark: #C8A882;
+  --accent: #2a3441;
+  --text-primary: #F5E6B8;
+  --text-secondary: #D4C39A;
+  --border: rgba(229, 200, 138, 0.3);
+  --border-light: rgba(229, 200, 138, 0.15);
+  --shadow: rgba(229, 200, 138, 0.2);
+  --glass: rgba(15, 20, 25, 0.85);
+  --glass-dark: rgba(10, 15, 26, 0.9);
+  --timer-warning: #e74c3c;
+  --timer-critical: #c0392b;
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+}
 
-/* 로그인 */
-#login{max-width:560px;margin:28px auto}
-.field{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:12px}
-.field input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)}
-.grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}
-.login-actions{display:flex;justify-content:flex-end;margin-top:12px}
-#loginBtn:disabled{opacity:.5;cursor:not-allowed;background:var(--glass2);color:var(--muted);border-color:var(--b2)}
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 50%, var(--navy-light) 100%);
+  color: var(--text-primary);
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  font-size: 16px;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(229, 200, 138, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.spectator-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.spectator-header {
+  background: var(--glass-dark);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(229, 200, 138, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+.spectator-header::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, transparent, var(--gold), transparent, var(--gold), transparent);
+  border-radius: 16px;
+  z-index: -1;
+  opacity: 0.3;
+  animation: borderGlow 4s linear infinite;
+}
+
+@keyframes borderGlow {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
+}
+
+.spectator-title {
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(229, 200, 138, 0.5);
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+.spectator-badge {
+  background: rgba(229, 200, 138, 0.15);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--gold);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spectator-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulse 2s infinite;
+}
+
+.spectator-badge.disconnected::before {
+  background: var(--danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.connection-status {
+  display: inline-block;
+  background: rgba(229, 200, 138, 0.15);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.connection-status.connected {
+  background: rgba(39, 174, 96, 0.2);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.connection-status.disconnected {
+  background: rgba(231, 76, 60, 0.2);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.login-panel {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 25px;
+  backdrop-filter: blur(15px);
+  max-width: 700px;
+  margin: 40px auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-title {
+  font-size: 1.5rem;
+  color: var(--gold);
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+
+.form-field {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.form-label {
+  font-size: 0.9rem;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  background: rgba(10, 15, 26, 0.8);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(229, 200, 138, 0.2);
+}
+
+.btn {
+  background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 14px 24px;
+  color: var(--deep-navy);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  border: none;
+}
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(229, 200, 138, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  background: var(--accent);
+  color: var(--text-secondary);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, var(--accent), var(--navy-light));
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--navy-light), var(--accent));
+}
+
+.login-actions {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.battle-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.overview-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+
+.overview-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.overview-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.timer-display {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 0 15px rgba(229, 200, 138, 0.5);
+}
+
+.timer-display.warning {
+  color: var(--timer-warning);
+  text-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+}
+
+.timer-display.critical {
+  color: var(--timer-critical);
+  text-shadow: 0 0 15px rgba(192, 57, 43, 0.5);
+  animation: pulse 1s infinite;
+}
+
+.spectator-view {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 1024px) {
+  .spectator-view {
+    grid-template-columns: 1fr 1.2fr 1fr;
+  }
+}
+
+@media (max-width: 1023px) {
+  .spectator-view {
+    grid-template-columns: 1fr;
+  }
+}
+
+.team-display {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 20px;
+  backdrop-filter: blur(15px);
+}
+
+.team-header {
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  padding: 15px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(229, 200, 138, 0.2), rgba(229, 200, 138, 0.1));
+  color: var(--gold);
+  border: 1px solid var(--border-light);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.player-showcase {
+  display: grid;
+  gap: 15px;
+}
+
+.showcase-card {
+  background: rgba(10, 15, 26, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.showcase-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 0deg, transparent, rgba(229, 200, 138, 0.1), transparent);
+  animation: rotate 8s linear infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.showcase-card:hover::before {
+  opacity: 1;
+}
+
+.showcase-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(229, 200, 138, 0.2);
+}
+
+@keyframes rotate {
+  to { transform: rotate(360deg); }
+}
+
+.showcase-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+  position: relative;
+  z-index: 1;
+}
+
+.showcase-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 2px solid var(--border-light);
+  background: radial-gradient(circle at 30% 30%, rgba(229, 200, 138, 0.3), rgba(229, 200, 138, 0.1));
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}
+
+.showcase-info {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.showcase-name {
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 6px;
+  font-size: 1.1rem;
+}
+
+.showcase-status {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.health-showcase {
+  background: rgba(10, 15, 26, 0.8);
+  border-radius: 12px;
+  height: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.health-showcase::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.health-showcase-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--success) 0%, var(--warning) 50%, var(--danger) 100%);
+  transition: width 0.8s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.showcase-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.showcase-stat {
+  text-align: center;
+  padding: 8px;
+  background: rgba(10, 15, 26, 0.4);
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.stat-value {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 0.9rem;
+}
+
+.central-hub {
+  display: grid;
+  gap: 20px;
+}
+
+.battle-monitor {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 20px;
+  backdrop-filter: blur(15px);
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.monitor-item {
+  background: rgba(10, 15, 26, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.monitor-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.monitor-value {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.spectator-chat {
+  background: var(--glass-dark);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  position: relative;
+}
+
+.spectator-chat::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  background: linear-gradient(45deg, var(--gold), transparent, var(--gold), transparent);
+  border-radius: 16px;
+  z-index: -1;
+  opacity: 0.3;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chat-title {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.chat-info {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.chat-display {
+  background: rgba(10, 15, 26, 0.8);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 15px;
+  height: 280px;
+  overflow-y: auto;
+  margin-bottom: 15px;
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
+
+.chat-display::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-display::-webkit-scrollbar-track {
+  background: rgba(10, 15, 26, 0.5);
+  border-radius: 4px;
+}
+
+.chat-display::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 4px;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 12px;
+}
+
+.chat-input {
+  flex: 1;
+  background: rgba(10, 15, 26, 0.8);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(229, 200, 138, 0.2);
+}
+
+.battle-chronicle {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.chronicle-content {
+  background: rgba(10, 15, 26, 0.8);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 15px;
+  height: 250px;
+  overflow-y: auto;
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
+
+.chronicle-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chronicle-content::-webkit-scrollbar-track {
+  background: rgba(10, 15, 26, 0.5);
+  border-radius: 4px;
+}
+
+.chronicle-content::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.notifications {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 350px;
+}
+
+.notification {
+  background: var(--glass-dark);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  backdrop-filter: blur(15px);
+  animation: slideIn 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.notification.success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.notification.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .spectator-container {
+    padding: 10px;
+  }
+  
+  .spectator-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .form-grid.cols-2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .chat-input-row {
+    flex-direction: column;
+  }
+  
+  .overview-card {
+    padding: 15px;
+  }
+  
+  .showcase-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .btn:active {
+    transform: scale(0.98);
+  }
+  
+  .showcase-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .showcase-card:hover::before {
+    opacity: 0;
+  }
+}
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <div class="brand">PYXIS 전투 관전석</div>
-    <div class="badge" id="connBadge">연결 준비</div>
-  </div>
 
-  <!-- 로그인 -->
-  <div id="login" class="panel">
-    <div class="panel-title">관전 접속</div>
-    <div class="grid">
-      <div class="field" style="grid-column:1/3"><div class="title">관전자 이름</div><input id="spectatorName" placeholder="예: 관전자1"></div>
-      <div class="field"><div class="title">전투 ID</div><input id="battleId" placeholder="예: ABC123"></div>
-      <div class="field"><div class="title">토큰</div><input id="tokenInput" placeholder="토큰"></div>
-      <div class="field" style="grid-column:1/3"><div class="title">참가 코드</div><input id="otp" placeholder="6자리 코드"></div>
+<div class="spectator-container">
+  <header class="spectator-header">
+    <h1 class="spectator-title">PYXIS 전투 관전석</h1>
+    <div class="spectator-badge" id="connStatus">연결 준비</div>
+  </header>
+
+  <!-- 로그인 패널 -->
+  <div id="loginPanel" class="login-panel">
+    <div class="login-title">관전 접속</div>
+    <div class="form-grid cols-2">
+      <div class="form-field" style="grid-column: 1 / -1;">
+        <div class="form-label">관전자 이름</div>
+        <input id="spectatorName" class="form-input" placeholder="예: 관전자1">
+      </div>
+      <div class="form-field">
+        <div class="form-label">전투 ID</div>
+        <input id="battleId" class="form-input" placeholder="예: ABC123">
+      </div>
+      <div class="form-field">
+        <div class="form-label">토큰</div>
+        <input id="tokenInput" class="form-input" placeholder="토큰">
+      </div>
+      <div class="form-field" style="grid-column: 1 / -1;">
+        <div class="form-label">참가 코드</div>
+        <input id="otp" class="form-input" placeholder="6자리 코드">
+      </div>
     </div>
-    <div class="login-actions"><button id="loginBtn" class="btn" disabled>접속</button></div>
+    <div class="login-actions">
+      <button id="loginBtn" class="btn" disabled>접속</button>
+    </div>
   </div>
 
-  <!-- 요약 -->
-  <div id="summaryBar" class="summary">
-    <div class="card"><div class="title">단계</div><div class="value" id="battlePhase">-</div></div>
-    <div class="card"><div class="title">턴</div><div class="value" id="turnSide">-</div></div>
-    <div class="card"><div class="title">타이머</div><div class="value timer" id="turnTimer">-</div></div>
+  <!-- 전투 개요 -->
+  <div id="battleOverview" class="battle-overview" style="display: none;">
+    <div class="overview-card">
+      <div class="overview-label">단계</div>
+      <div class="overview-value" id="battlePhase">-</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-label">현재 턴</div>
+      <div class="overview-value" id="turnSide">-</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-label">턴 타이머</div>
+      <div class="timer-display" id="turnTimer">-</div>
+    </div>
+    <div class="overview-card">
+      <div class="overview-label">승자</div>
+      <div class="overview-value" id="winnerStatus">-</div>
+    </div>
   </div>
 
-  <!-- 본문 -->
-  <div id="main" class="main">
-    <div class="panel"><div class="panel-title">불사조 기사단</div><div id="team1List"></div></div>
+  <!-- 관전 뷰 -->
+  <div id="spectatorView" class="spectator-view" style="display: none;">
+    <!-- 불사조 기사단 -->
+    <div class="team-display">
+      <div class="team-header">불사조 기사단</div>
+      <div id="team1Display" class="player-showcase"></div>
+    </div>
 
-    <div class="center">
-      <div class="panel">
-        <div class="panel-title">전투 상태</div>
-        <div class="grid2">
-          <div class="stat"><span class="k">단계</span><span class="v" id="phaseDetail">-</span></div>
-          <div class="stat"><span class="k">턴 시간</span><span class="v" id="turnRemain">-</span></div>
-          <div class="stat"><span class="k">시작</span><span class="v" id="startAt">-</span></div>
-          <div class="stat"><span class="k">경과</span><span class="v" id="duration">-</span></div>
+    <!-- 중앙 허브 -->
+    <div class="central-hub">
+      <div class="battle-monitor">
+        <div class="form-label" style="margin-bottom: 12px;">전투 모니터</div>
+        <div class="monitor-grid">
+          <div class="monitor-item">
+            <span class="monitor-label">단계</span>
+            <span class="monitor-value" id="phaseDetail">-</span>
+          </div>
+          <div class="monitor-item">
+            <span class="monitor-label">턴 시간</span>
+            <span class="monitor-value" id="turnRemain">-</span>
+          </div>
+          <div class="monitor-item">
+            <span class="monitor-label">시작 시간</span>
+            <span class="monitor-value" id="startAt">-</span>
+          </div>
+          <div class="monitor-item">
+            <span class="monitor-label">경과 시간</span>
+            <span class="monitor-value" id="duration">-</span>
+          </div>
         </div>
       </div>
 
-      <section class="chat">
-        <div class="chat-head"><div class="chat-title">실시간 채팅</div><div class="psub">관전자 채널</div></div>
-        <div id="chatMessages" class="chat-log"></div>
-        <div class="chat-row">
-          <input id="chatInput" class="chat-in" placeholder="메시지 입력…" maxlength="200">
-          <button id="chatSendBtn" class="btn">전송</button>
-          <button id="refreshBtn" class="btn sec">새로고침</button>
+      <div class="spectator-chat">
+        <div class="chat-header">
+          <div class="chat-title">관전자 채팅</div>
+          <div class="chat-info">실시간 토론</div>
         </div>
-      </section>
+        <div id="chatDisplay" class="chat-display"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" class="chat-input" placeholder="메시지 입력..." maxlength="200">
+          <button id="chatSendBtn" class="btn">전송</button>
+          <button id="refreshBtn" class="btn-secondary">새로고침</button>
+        </div>
+      </div>
 
-      <div class="panel"><div class="panel-title">전투 로그</div><div id="battleLog" class="log"></div></div>
+      <div class="battle-chronicle">
+        <div class="form-label" style="margin-bottom: 12px;">전투 연대기</div>
+        <div id="battleChronicle" class="chronicle-content"></div>
+      </div>
     </div>
 
-    <div class="panel"><div class="panel-title">죽음을 먹는 자들</div><div id="team2List"></div></div>
+    <!-- 죽음을 먹는 자들 -->
+    <div class="team-display">
+      <div class="team-header">죽음을 먹는 자들</div>
+      <div id="team2Display" class="player-showcase"></div>
+    </div>
   </div>
 </div>
 
-<div id="notes" style="position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:50"></div>
+<div id="notifications" class="notifications"></div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const $=s=>document.querySelector(s);
-function toast(m){const w=$('#notes');const d=document.createElement('div');d.style.cssText='background:rgba(15,20,25,.85);border:1px solid rgba(229,200,138,.3);border-radius:10px;padding:10px 12px;color:#F5E6B8';d.textContent=m;w.appendChild(d);setTimeout(()=>{d.style.opacity='0';setTimeout(()=>w.removeChild(d),250)},1800);}
-
-const qs=new URLSearchParams(location.search);
-$('#battleId').value=qs.get('battle')||''; $('#tokenInput').value=qs.get('token')||'';
-
-const st={socket:null,battleId:null,token:null,name:'관전자',data:null,timer:{lastMs:0,lastSync:0,interval:null},poll:null};
-
-/* 로그인 폼 활성화 */
-['spectatorName','battleId','otp','tokenInput'].forEach(id=>$('#'+id).addEventListener('input',()=>{
-  const ok=$('#spectatorName').value.trim()&&$('#battleId').value.trim()&&$('#otp').value.trim()&&$('#tokenInput').value.trim();
-  $('#loginBtn').disabled=!ok;
-}));
-
-$('#loginBtn').onclick=async()=>{
-  try{
-    const body={battleId:$('#battleId').value.trim(),role:'spectator',name:$('#spectatorName').value.trim(),otp:$('#otp').value.trim(),token:$('#tokenInput').value.trim()};
-    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!r.ok) throw new Error('인증 실패');
-    st.battleId=body.battleId; st.token=body.token; st.name=body.name||'관전자';
-    $('#login').style.display='none'; $('#summaryBar').style.display='grid'; $('#main').style.display='grid';
-    connect();
-  }catch(e){toast(e.message||'로그인 실패');}
-};
-
-/* 소켓 + 폴링 */
-function connect(){
-  const s=io({path:'/socket.io',transports:['websocket']}); st.socket=s;
-  s.on('connect',()=>{ $('#connBadge').textContent='연결됨'; s.emit('join-battle',{battleId:st.battleId,role:'spectator',name:st.name}); refresh(); st.poll=setInterval(refresh,2000); });
-  s.on('disconnect',()=>$('#connBadge').textContent='연결 끊김');
-  s.on('state',d=>{st.data=d; render(true);});
-  s.on('chat-message',({message})=>{ if(!st.data) st.data={}; if(!st.data.chatLog) st.data.chatLog=[]; st.data.chatLog.push(message); renderChat(); });
-}
-
-/* 타이머 */
-function startTimerFromState(){
-  const d=st.data; if(!d||!d.remainingTurnTime||d.phase!=='battle'){ setTimerLabel('-'); clearTimer(); return; }
-  st.timer.lastMs=Math.max(0,d.remainingTurnTime); st.timer.lastSync=Date.now(); clearTimer();
-  st.timer.interval=setInterval(tickTimer,1000); tickTimer();
-}
-function clearTimer(){ if(st.timer.interval){clearInterval(st.timer.interval); st.timer.interval=null;} }
-function tickTimer(){
-  const left=Math.max(0, st.timer.lastMs-(Date.now()-st.timer.lastSync));
-  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000), t=`${m}:${s.toString().padStart(2,'0')}`;
-  const el=$('#turnTimer'); el.textContent=t; el.className='value timer'+(left<30000?' critical':left<60000?' warning':''); $('#turnRemain').textContent=t;
-  if(left===0) clearTimer();
-}
-function setTimerLabel(t){const el=$('#turnTimer');el.textContent=t;el.className='value timer'}
-
-/* 렌더 */
-function render(fromServer=false){
-  const d=st.data; if(!d) return;
-  $('#battlePhase').textContent=d.phase||'-';
-  $('#turnSide').textContent=d.currentTeam==='team1'?'불사조 기사단 턴': d.currentTeam==='team2'?'죽음을 먹는 자들 턴':'-';
-  $('#phaseDetail').textContent=d.phase||'-'; $('#startAt').textContent=d.startAt||'-'; $('#duration').textContent=d.duration||'-';
-  if(fromServer) startTimerFromState();
-
-  renderTeam('team1','#team1List'); renderTeam('team2','#team2List');
-  $('#battleLog').innerHTML=(d.log||[]).map(x=>`<div>${x}</div>`).join('');
-  renderChat();
-}
-
-function renderTeam(key,sel){
-  const box=$(sel), list=(st.data?.teams?.[key]||[]);
-  box.innerHTML=''; if(!list.length){ box.textContent='참가 대기'; return; }
-  list.forEach(p=>{
-    const hp=p.maxHp?Math.max(0,Math.round((p.hp/p.maxHp)*100)):0;
-    const div=document.createElement('div');
-    div.className='player-card';
-    div.innerHTML=`<div class="avatar" style="background-image:url('${p.avatar||''}');background-size:cover;background-position:center"></div>
-      <div><div class="pname">${p.name}</div><div class="psub">${p.hp}/${p.maxHp} HP · ${p.alive?'생존':'전사'} · ${p.hasActed?'행동완료':'대기'}</div></div>
-      <div class="psub">${hp}%</div>`;
-    box.appendChild(div);
+window.addEventListener('DOMContentLoaded', () => {
+  const $ = s => document.querySelector(s);
+  const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
+  const qs = new URLSearchParams(location.search);
+  
+  const ioSock = io({ 
+    path: '/socket.io',
+    timeout: 10000,
+    transports: ['websocket', 'polling']
   });
-}
 
-/* 채팅 */
-function renderChat(){
-  const log=$('#chatMessages'), arr=(st.data?.chatLog||[]).slice(-50);
-  log.innerHTML=arr.length?arr.map(m=>`<div>[${new Date(m.timestamp||Date.now()).toLocaleTimeString()}] ${m.name||'system'}: ${m.text||''}</div>`).join(''):'<div style="color:#E5C88A;text-align:center">채팅이 없습니다.</div>';
-  log.scrollTop=log.scrollHeight;
-}
-$('#chatSendBtn').onclick=sendChat; $('#chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
-function sendChat(){
-  const v=$('#chatInput').value.trim(); if(!v||!st.socket) return;
-  if(!st.data) st.data={}; if(!st.data.chatLog) st.data.chatLog=[];
-  st.data.chatLog.push({name:st.name||'spectator',text:v,timestamp:Date.now()}); renderChat();
-  st.socket.emit('chat-message',{battleId:st.battleId,role:'spectator',text:v}); $('#chatInput').value='';
-}
+  let BATTLE = qs.get('battle') || '';
+  $('#battleId').value = BATTLE;
+  let TOKEN = qs.get('token') || '';
+  $('#tokenInput').value = TOKEN;
+  
+  let state = {
+    socket: null,
+    battleId: null,
+    token: null,
+    name: '관전자',
+    data: null,
+    timer: {
+      lastMs: 0,
+      lastSync: 0,
+      interval: null
+    }
+  };
 
-/* 새로고침(주기 폴링 포함) */
-$('#refreshBtn').onclick=refresh;
-async function refresh(){try{const r=await fetch(`/api/battles/${st.battleId}/state`);if(!r.ok)throw 0;st.data=await r.json();render(true);}catch(e){}}
+  function showNotification(msg, type = 'success') {
+    const notificationDiv = document.createElement('div');
+    notificationDiv.className = `notification ${type}`;
+    notificationDiv.textContent = msg;
+    $('#notifications').appendChild(notificationDiv);
+    setTimeout(() => {
+      if (notificationDiv.parentNode) {
+        notificationDiv.style.opacity = '0';
+        notificationDiv.style.transform = 'translateX(100%)';
+        setTimeout(() => notificationDiv.remove(), 300);
+      }
+    }, type === 'error' ? 4000 : 2500);
+  }
+
+  function validateForm() {
+    const ok = $('#spectatorName').value.trim() && 
+               $('#battleId').value.trim() && 
+               $('#otp').value.trim() && 
+               $('#tokenInput').value.trim();
+    $('#loginBtn').disabled = !ok;
+  }
+
+  ['spectatorName', 'battleId', 'otp', 'tokenInput'].forEach(id => 
+    $('#' + id).addEventListener('input', validateForm)
+  );
+
+  $('#loginBtn').onclick = login;
+
+  async function login() {
+    try {
+      const body = {
+        battleId: $('#battleId').value.trim(),
+        role: 'spectator',
+        name: $('#spectatorName').value.trim(),
+        otp: $('#otp').value.trim(),
+        token: $('#tokenInput').value.trim()
+      };
+
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!r.ok) throw new Error('인증 실패');
+
+      const j = await r.json();
+      state.battleId = body.battleId;
+      state.token = body.token;
+      state.name = body.name || '관전자';
+
+      $('#loginPanel').style.display = 'none';
+      $('#battleOverview').style.display = 'grid';
+      $('#spectatorView').style.display = 'grid';
+      
+      connect();
+      showNotification('관전에 성공적으로 접속했습니다!');
+    } catch (e) {
+      showNotification(e.message || '로그인 실패', 'error');
+    }
+  }
+
+  function connect() {
+    state.socket = ioSock;
+    
+    ioSock.on('connect', () => {
+      $('#connStatus').textContent = '실시간 연결';
+      $('#connStatus').className = 'spectator-badge';
+      ioSock.emit('join-battle', {
+        battleId: state.battleId,
+        role: 'spectator',
+        name: state.name
+      });
+      setTimeout(refresh, 200);
+    });
+
+    ioSock.on('disconnect', () => {
+      $('#connStatus').textContent = '연결 끊김';
+      $('#connStatus').className = 'spectator-badge disconnected';
+    });
+
+    ioSock.on('battle-state', d => {
+      state.data = d;
+      render(true);
+    });
+
+    ioSock.on('player-joined', d => {
+      state.data = d.state;
+      render(true);
+    });
+
+    ioSock.on('battle-started', d => {
+      state.data = d.state;
+      render(true);
+      showNotification('전투가 시작되었습니다!');
+    });
+
+    ioSock.on('action-executed', d => {
+      state.data = d.state;
+      render(true);
+    });
+
+    ioSock.on('battle-ended', d => {
+      state.data = d.state;
+      render(true);
+      const winnerText = d.winner === 'team1' ? '불사조 기사단' : 
+                        d.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
+      showNotification(`전투 종료! 승자: ${winnerText}`);
+    });
+
+    ioSock.on('chat-message', ({ message }) => {
+      if (!state.data) state.data = {};
+      if (!state.data.chatLog) state.data.chatLog = [];
+      state.data.chatLog.push(message);
+      renderChat();
+    });
+  }
+
+  function startTimerFromState() {
+    const d = state.data;
+    if (!d || !d.remainingTurnTime || d.phase !== 'battle') {
+      setTimerLabel('-');
+      clearTimer();
+      return;
+    }
+    state.timer.lastMs = Math.max(0, d.remainingTurnTime);
+    state.timer.lastSync = Date.now();
+    clearTimer();
+    state.timer.interval = setInterval(tickTimer, 1000);
+    tickTimer();
+  }
+
+  function clearTimer() {
+    if (state.timer.interval) {
+      clearInterval(state.timer.interval);
+      state.timer.interval = null;
+    }
+  }
+
+  function tickTimer() {
+    const left = Math.max(0, state.timer.lastMs - (Date.now() - state.timer.lastSync));
+    const m = Math.floor(left / 60000);
+    const s = Math.floor((left % 60000) / 1000);
+    const t = `${m}:${s.toString().padStart(2, '0')}`;
+    
+    const el = $('#turnTimer');
+    el.textContent = t;
+    el.className = 'timer-display';
+    if (left < 30000) el.className += ' critical';
+    else if (left < 60000) el.className += ' warning';
+    
+    $('#turnRemain').textContent = t;
+    if (left === 0) clearTimer();
+  }
+
+  function setTimerLabel(t) {
+    const el = $('#turnTimer');
+    el.textContent = t;
+    el.className = 'timer-display';
+  }
+
+  function render(fromServer = false) {
+    const d = state.data;
+    if (!d) return;
+
+    const phaseText = {
+      'lobby': '대기실',
+      'battle': '전투 중',
+      'ended': '종료'
+    };
+
+    const teamText = {
+      'team1': '불사조 기사단',
+      'team2': '죽음을 먹는 자들'
+    };
+
+    const winnerText = {
+      'team1': '불사조 기사단',
+      'team2': '죽음을 먹는 자들',
+      'draw': '무승부'
+    };
+
+    $('#battlePhase').textContent = phaseText[d.phase] || d.phase;
+    $('#turnSide').textContent = d.currentTeam ? `${teamText[d.currentTeam]} 턴` : '-';
+    $('#phaseDetail').textContent = phaseText[d.phase] || d.phase;
+    $('#winnerStatus').textContent = winnerText[d.winner] || '미정';
+
+    if (d.startTime) {
+      $('#startAt').textContent = new Date(d.startTime).toLocaleTimeString();
+    }
+
+    if (d.startTime && d.phase === 'battle') {
+      const elapsed = Date.now() - d.startTime;
+      const minutes = Math.floor(elapsed / 60000);
+      const seconds = Math.floor((elapsed % 60000) / 1000);
+      $('#duration').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    } else {
+      $('#duration').textContent = '-';
+    }
+
+    if (fromServer) startTimerFromState();
+
+    renderTeamDisplay('team1', '#team1Display');
+    renderTeamDisplay('team2', '#team2Display');
+    renderBattleChronicle();
+    renderChat();
+  }
+
+  function renderTeamDisplay(key, sel) {
+    const box = $(sel);
+    const list = state.data?.teams?.[key] || [];
+    
+    if (!list.length) {
+      box.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 30px; font-style: italic;">참가자 없음</div>';
+      return;
+    }
+
+    box.innerHTML = '';
+    list.forEach(p => {
+      const hp = p.maxHp ? Math.max(0, Math.round((p.hp / p.maxHp) * 100)) : 0;
+      const div = document.createElement('div');
+      div.className = 'showcase-card';
+      div.innerHTML = `
+        <div class="showcase-header">
+          <div class="showcase-avatar" style="background-image: url('${p.imageUrl || ''}')"></div>
+          <div class="showcase-info">
+            <div class="showcase-name">${p.name}</div>
+            <div class="showcase-status">${p.hp}/${p.maxHp} HP • ${p.alive ? '생존' : '전사'} • ${p.hasActed ? '행동완료' : '대기'}</div>
+            <div class="health-showcase">
+              <div class="health-showcase-fill" style="width: ${hp}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="showcase-stats">
+          <div class="showcase-stat">
+            <div class="stat-label">공격</div>
+            <div class="stat-value">${p.stats?.attack ?? '-'}</div>
+          </div>
+          <div class="showcase-stat">
+            <div class="stat-label">방어</div>
+            <div class="stat-value">${p.stats?.defense ?? '-'}</div>
+          </div>
+          <div class="showcase-stat">
+            <div class="stat-label">민첩</div>
+            <div class="stat-value">${p.stats?.agility ?? '-'}</div>
+          </div>
+          <div class="showcase-stat">
+            <div class="stat-label">행운</div>
+            <div class="stat-value">${p.stats?.luck ?? '-'}</div>
+          </div>
+        </div>
+      `;
+      box.appendChild(div);
+    });
+  }
+
+  function renderBattleChronicle() {
+    const el = $('#battleChronicle');
+    if (!el) return;
+    
+    const entries = (state.data?.battleLog || []).slice(-25);
+    el.innerHTML = entries.map(e => `
+      <div style="padding: 10px 0; border-bottom: 1px solid rgba(229, 200, 138, 0.1); line-height: 1.5;">
+        <strong style="color: var(--gold); text-transform: uppercase; font-size: 0.85rem;">${e.type}</strong>
+        <br><span style="color: var(--text-primary); margin-top: 4px; display: block;">${e.result || ''}</span>
+        <small style="color: var(--text-secondary); font-size: 0.8rem;">${new Date(e.timestamp).toLocaleTimeString()}</small>
+      </div>
+    `).join('') || '<div style="text-align: center; color: var(--text-secondary); padding: 20px; font-style: italic;">전투 기록이 없습니다</div>';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function renderChat() {
+    const el = $('#chatDisplay');
+    if (!el) return;
+    
+    const messages = (state.data?.chatLog || []).slice(-40);
+    el.innerHTML = messages.map(e => {
+      const time = new Date(e.timestamp).toLocaleTimeString();
+      const senderColor = e.senderType === 'system' ? '#E5C88A' : 
+                         e.senderType === 'admin' ? '#C8A882' : 
+                         e.senderType === 'spectator' ? '#F5E6B8' : '#D4C39A';
+      return `
+        <div style="padding: 8px 0; border-bottom: 1px dashed rgba(229, 200, 138, 0.1); line-height: 1.5;">
+          <span style="color: ${senderColor}; font-weight: 600; font-size: 0.85rem;">[${time}] ${e.sender}:</span>
+          <span style="color: #F5E6B8; margin-left: 10px; font-size: 0.9rem;">${e.message}</span>
+        </div>
+      `;
+    }).join('') || '<div style="color: var(--gold); text-align: center; padding: 20px; font-style: italic;">아직 대화가 없습니다</div>';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  $('#chatSendBtn').onclick = sendChat;
+  $('#chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendChat();
+  });
+
+  function sendChat() {
+    const v = $('#chatInput').value.trim();
+    if (!v || !state.socket) return;
+    
+    if (v.length > 200) {
+      showNotification('메시지는 200자 이하여야 합니다', 'error');
+      return;
+    }
+
+    state.socket.emit('chat-message', {
+      battleId: state.battleId,
+      sender: state.name || 'Spectator',
+      message: v,
+      senderType: 'spectator'
+    });
+
+    $('#chatInput').value = '';
+  }
+
+  $('#refreshBtn').onclick = refresh;
+
+  async function refresh() {
+    try {
+      const r = await fetch(`/api/battles/${state.battleId}/state`);
+      if (!r.ok) throw new Error('새로고침 실패');
+      state.data = await r.json();
+      render(true);
+    } catch (e) {
+      showNotification('새로고침 실패', 'error');
+    }
+  }
+
+  // 초기 설정
+  if (BATTLE) {
+    $('#battleId').value = BATTLE;
+  }
+  if (TOKEN) {
+    $('#tokenInput').value = TOKEN;
+  }
+});
 </script>
 </body>
 </html>
