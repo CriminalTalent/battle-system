@@ -12,29 +12,23 @@ body{min-height:100vh;background:linear-gradient(135deg,var(--deep),var(--navy),
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .brand{font-weight:800;color:var(--gold);font-size:clamp(1.2rem,2.2vw,1.6rem)}
 .badge{border:1px solid var(--b1);color:var(--muted);border-radius:999px;padding:6px 10px;font-size:.85rem}
-
 .summary{display:none;gap:14px;grid-template-columns:1fr 1fr 1fr;margin-bottom:14px}
 .card{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:14px}
 .title{color:var(--muted);font-weight:700;margin-bottom:8px}
 .value{font-weight:800;color:var(--gold);font-size:clamp(1.05rem,2vw,1.35rem)}
 .value.timer.warning{color:#e67e22}.value.timer.critical{color:#c0392b}
-
 .main{display:none;gap:16px}
 @media(min-width:1024px){.main{grid-template-columns:1fr 1.1fr 1fr;display:grid}}
 @media(max-width:1023.98px){.main{display:grid;grid-template-columns:1fr;gap:12px}}
-
 .panel{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:14px}
 .panel-title{font-weight:800;color:var(--gold);margin-bottom:10px}
-
 .player-card{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;background:rgba(10,15,26,.55);border:1px solid var(--b2);border-radius:12px;padding:10px;margin-bottom:10px}
 .avatar{width:56px;height:56px;border-radius:50%;border:1px solid var(--b1);background:radial-gradient(circle at 30% 30%,rgba(229,200,138,.35),rgba(229,200,138,.1))}
 .pname{font-weight:700}.psub{color:var(--muted);font-size:.85rem}
-
 .center{display:grid;gap:14px}
 .grid2{display:grid;gap:10px;grid-template-columns:repeat(2,1fr)}
 .stat{background:rgba(10,15,26,.55);border:1px solid var(--b2);border-radius:10px;padding:10px;display:flex;justify-content:space-between}
 .stat .k{color:var(--muted);font-size:.9rem}.stat .v{font-weight:700}
-
 .chat{background:var(--glass2);border:2px solid var(--gold);border-radius:15px;padding:14px}
 .chat-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .chat-title{color:var(--gold);font-weight:800}
@@ -96,7 +90,7 @@ body{min-height:100vh;background:linear-gradient(135deg,var(--deep),var(--navy),
       </div>
 
       <section class="chat">
-        <div class="chat-head"><div class="chat-title">실시간 채팅</div><div id="viewerCount" class="psub">관전자 채널</div></div>
+        <div class="chat-head"><div class="chat-title">실시간 채팅</div><div class="psub">관전자 채널</div></div>
         <div id="chatMessages" class="chat-log"></div>
         <div class="chat-row">
           <input id="chatInput" class="chat-in" placeholder="메시지 입력…" maxlength="200">
@@ -122,7 +116,7 @@ function toast(m){const w=$('#notes');const d=document.createElement('div');d.st
 const qs=new URLSearchParams(location.search);
 $('#battleId').value=qs.get('battle')||''; $('#tokenInput').value=qs.get('token')||'';
 
-const st={socket:null,battleId:null,token:null,name:'관전자',data:null,timer:{lastMs:0,lastSync:0,interval:null}};
+const st={socket:null,battleId:null,token:null,name:'관전자',data:null,timer:{lastMs:0,lastSync:0,interval:null},poll:null};
 
 /* 로그인 폼 활성화 */
 ['spectatorName','battleId','otp','tokenInput'].forEach(id=>$('#'+id).addEventListener('input',()=>{
@@ -141,29 +135,26 @@ $('#loginBtn').onclick=async()=>{
   }catch(e){toast(e.message||'로그인 실패');}
 };
 
-/* 소켓 */
+/* 소켓 + 폴링 */
 function connect(){
   const s=io({path:'/socket.io',transports:['websocket']}); st.socket=s;
-  s.on('connect',()=>{ $('#connBadge').textContent='연결됨'; s.emit('join-battle',{battleId:st.battleId,role:'spectator',name:st.name}); setTimeout(refresh,200); });
+  s.on('connect',()=>{ $('#connBadge').textContent='연결됨'; s.emit('join-battle',{battleId:st.battleId,role:'spectator',name:st.name}); refresh(); st.poll=setInterval(refresh,2000); });
   s.on('disconnect',()=>$('#connBadge').textContent='연결 끊김');
   s.on('state',d=>{st.data=d; render(true);});
-  // 서버 공통 브로드캐스트 채널에 맞춤
   s.on('chat-message',({message})=>{ if(!st.data) st.data={}; if(!st.data.chatLog) st.data.chatLog=[]; st.data.chatLog.push(message); renderChat(); });
 }
 
 /* 타이머 */
 function startTimerFromState(){
   const d=st.data; if(!d||!d.remainingTurnTime||d.phase!=='battle'){ setTimerLabel('-'); clearTimer(); return; }
-  st.timer.lastMs=Math.max(0,d.remainingTurnTime); st.timer.lastSync=Date.now();
-  clearTimer(); st.timer.interval=setInterval(tickTimer,1000); tickTimer();
+  st.timer.lastMs=Math.max(0,d.remainingTurnTime); st.timer.lastSync=Date.now(); clearTimer();
+  st.timer.interval=setInterval(tickTimer,1000); tickTimer();
 }
 function clearTimer(){ if(st.timer.interval){clearInterval(st.timer.interval); st.timer.interval=null;} }
 function tickTimer(){
   const left=Math.max(0, st.timer.lastMs-(Date.now()-st.timer.lastSync));
-  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
-  const t=`${m}:${s.toString().padStart(2,'0')}`;
-  const el=$('#turnTimer'); el.textContent=t; el.className='value timer'+(left<30000?' critical':left<60000?' warning':'');
-  $('#turnRemain').textContent=t;
+  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000), t=`${m}:${s.toString().padStart(2,'0')}`;
+  const el=$('#turnTimer'); el.textContent=t; el.className='value timer'+(left<30000?' critical':left<60000?' warning':''); $('#turnRemain').textContent=t;
   if(left===0) clearTimer();
 }
 function setTimerLabel(t){const el=$('#turnTimer');el.textContent=t;el.className='value timer'}
@@ -173,9 +164,7 @@ function render(fromServer=false){
   const d=st.data; if(!d) return;
   $('#battlePhase').textContent=d.phase||'-';
   $('#turnSide').textContent=d.currentTeam==='team1'?'불사조 기사단 턴': d.currentTeam==='team2'?'죽음을 먹는 자들 턴':'-';
-  $('#phaseDetail').textContent=d.phase||'-';
-  $('#startAt').textContent=d.startAt||'-';
-  $('#duration').textContent=d.duration||'-';
+  $('#phaseDetail').textContent=d.phase||'-'; $('#startAt').textContent=d.startAt||'-'; $('#duration').textContent=d.duration||'-';
   if(fromServer) startTimerFromState();
 
   renderTeam('team1','#team1List'); renderTeam('team2','#team2List');
@@ -185,8 +174,7 @@ function render(fromServer=false){
 
 function renderTeam(key,sel){
   const box=$(sel), list=(st.data?.teams?.[key]||[]);
-  if(!list.length){ box.textContent='참가 대기'; return; }
-  box.innerHTML='';
+  box.innerHTML=''; if(!list.length){ box.textContent='참가 대기'; return; }
   list.forEach(p=>{
     const hp=p.maxHp?Math.max(0,Math.round((p.hp/p.maxHp)*100)):0;
     const div=document.createElement('div');
@@ -208,16 +196,13 @@ $('#chatSendBtn').onclick=sendChat; $('#chatInput').addEventListener('keydown',e
 function sendChat(){
   const v=$('#chatInput').value.trim(); if(!v||!st.socket) return;
   if(!st.data) st.data={}; if(!st.data.chatLog) st.data.chatLog=[];
-  st.data.chatLog.push({name:st.name||'spectator',text:v,timestamp:Date.now()});
-  renderChat();
-  // 관전자도 동일 이벤트로 송신
-  st.socket.emit('chat-message',{battleId:st.battleId,role:'spectator',text:v});
-  $('#chatInput').value='';
+  st.data.chatLog.push({name:st.name||'spectator',text:v,timestamp:Date.now()}); renderChat();
+  st.socket.emit('chat-message',{battleId:st.battleId,role:'spectator',text:v}); $('#chatInput').value='';
 }
 
-/* 새로고침 */
+/* 새로고침(주기 폴링 포함) */
 $('#refreshBtn').onclick=refresh;
-async function refresh(){try{const r=await fetch(`/api/battles/${st.battleId}/state`);if(!r.ok)throw 0;st.data=await r.json();render(true);}catch(e){toast('새로고침 실패');}}
+async function refresh(){try{const r=await fetch(`/api/battles/${st.battleId}/state`);if(!r.ok)throw 0;st.data=await r.json();render(true);}catch(e){}}
 </script>
 </body>
 </html>
