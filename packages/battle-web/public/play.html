@@ -1162,6 +1162,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!d) return;
 
     console.log('Rendering data:', d);
+    console.log('My team:', myTeam(), 'My player:', me());
 
     const phaseText = {
       'lobby': '대기실',
@@ -1202,10 +1203,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
     renderTeam('team1', '#team1List');
     renderTeam('team2', '#team2List');
-    renderActionBox();
+    renderActionBox(); // 액션 박스 렌더링
     renderBattleLog();
-    renderTargets();
-    renderItems();
     renderChat();
   }
 
@@ -1259,39 +1258,50 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function renderActionBox() {
     const t = myTeam();
+    const myPlayer = me();
     const canAct = state.data?.phase === 'battle' && 
                    state.data?.currentTeam === t && 
-                   me()?.alive && 
-                   !me()?.hasActed;
+                   myPlayer?.alive && 
+                   !myPlayer?.hasActed;
 
-    const html = canAct ? `
+    console.log('renderActionBox:', { 
+      team: t, 
+      phase: state.data?.phase, 
+      currentTeam: state.data?.currentTeam, 
+      alive: myPlayer?.alive, 
+      hasActed: myPlayer?.hasActed,
+      canAct 
+    });
+
+    // 항상 액션 패널을 표시하되, 버튼만 비활성화
+    const html = `
       <div class="action-panel">
-        <div class="action-title">전투 행동</div>
+        <div class="action-title">전투 행동 ${canAct ? '(내 턴)' : '(대기 중)'}</div>
         <div class="action-grid">
-          <button id="attackBtn" class="action-btn">공격</button>
-          <button id="defendBtn" class="action-btn">방어</button>
-          <button id="dodgeBtn" class="action-btn">회피</button>
-          <button id="itemBtn" class="action-btn">아이템</button>
-          <button id="passBtn" class="action-btn">패스</button>
+          <button id="attackBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>공격</button>
+          <button id="defendBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>방어</button>
+          <button id="dodgeBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>회피</button>
+          <button id="itemBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>아이템</button>
+          <button id="passBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>패스</button>
         </div>
         <div class="target-selection">
           <div class="selection-label">대상 선택</div>
-          <select id="targetSelect" class="target-select" size="4">
+          <select id="targetSelect" class="target-select" size="4" ${!canAct ? 'disabled' : ''}>
             <option value="" selected>적을 선택하세요</option>
           </select>
         </div>
         <div class="target-selection">
           <div class="selection-label">아이템 사용</div>
           <div class="item-section">
-            <select id="itemSelect" class="item-select" size="3"></select>
+            <select id="itemSelect" class="item-select" size="3" ${!canAct ? 'disabled' : ''}></select>
             <div class="item-controls">
-              <input id="itemQty" class="item-qty" type="number" min="1" value="1">
-              <button id="itemUseBtn" class="action-btn">사용</button>
+              <input id="itemQty" class="item-qty" type="number" min="1" value="1" ${!canAct ? 'disabled' : ''}>
+              <button id="itemUseBtn" class="action-btn" ${!canAct ? 'disabled' : ''}>사용</button>
             </div>
           </div>
         </div>
       </div>
-    ` : '';
+    `;
 
     // 내 팀에만 액션 박스 표시
     if (t === 'team1') {
@@ -1305,38 +1315,53 @@ window.addEventListener('DOMContentLoaded', () => {
       $('#actionBoxTeam2').innerHTML = '';
     }
 
-    // 이벤트 리스너 재등록
-    if (canAct) {
-      setTimeout(() => {
-        const attackBtn = $('#attackBtn');
-        const defendBtn = $('#defendBtn');
-        const dodgeBtn = $('#dodgeBtn');
-        const passBtn = $('#passBtn');
-        const itemUseBtn = $('#itemUseBtn');
+    // 이벤트 리스너 등록 (항상)
+    setTimeout(() => {
+      const attackBtn = $('#attackBtn');
+      const defendBtn = $('#defendBtn');
+      const dodgeBtn = $('#dodgeBtn');
+      const passBtn = $('#passBtn');
+      const itemUseBtn = $('#itemUseBtn');
 
-        if (attackBtn) attackBtn.onclick = () => {
-          const tgt = $('#targetSelect').value;
-          if (!tgt) {
-            showNotification('공격 대상을 선택하세요', 'error');
-            return;
-          }
-          doAction('attack', { targetId: tgt });
-        };
+      if (attackBtn) attackBtn.onclick = () => {
+        if (!canAct) return;
+        const tgt = $('#targetSelect').value;
+        if (!tgt) {
+          showNotification('공격 대상을 선택하세요', 'error');
+          return;
+        }
+        doAction('attack', { targetId: tgt });
+      };
 
-        if (defendBtn) defendBtn.onclick = () => doAction('defend');
-        if (dodgeBtn) dodgeBtn.onclick = () => doAction('dodge');
-        if (passBtn) passBtn.onclick = () => doAction('pass');
-        
-        if (itemUseBtn) itemUseBtn.onclick = () => {
-          const opt = $('#itemSelect')?.selectedOptions?.[0];
-          if (!opt) {
-            showNotification('아이템을 선택하세요', 'error');
-            return;
-          }
-          doAction('use_item', { itemName: opt.value });
-        };
-      }, 100);
-    }
+      if (defendBtn) defendBtn.onclick = () => {
+        if (!canAct) return;
+        doAction('defend');
+      };
+      
+      if (dodgeBtn) dodgeBtn.onclick = () => {
+        if (!canAct) return;
+        doAction('dodge');
+      };
+      
+      if (passBtn) passBtn.onclick = () => {
+        if (!canAct) return;
+        doAction('pass');
+      };
+      
+      if (itemUseBtn) itemUseBtn.onclick = () => {
+        if (!canAct) return;
+        const opt = $('#itemSelect')?.selectedOptions?.[0];
+        if (!opt) {
+          showNotification('아이템을 선택하세요', 'error');
+          return;
+        }
+        doAction('use_item', { itemName: opt.value });
+      };
+
+      // 대상과 아이템 렌더링
+      renderTargets();
+      renderItems();
+    }, 100);
   }
 
   function renderTargets() {
