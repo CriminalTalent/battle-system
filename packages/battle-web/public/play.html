@@ -92,6 +92,15 @@ body{
 .target-label{color:var(--gold);font-weight:700;margin-bottom:8px}
 .target-select{width:100%;background:rgba(10,15,26,.85);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:15px;min-height:120px}
 
+/* 아이템 패널 */
+.item-panel{background:rgba(10,15,26,.8);border-radius:12px;padding:14px;display:grid;gap:10px}
+.item-label{color:var(--gold);font-weight:700}
+.item-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}
+.item-select{width:100%;background:rgba(10,15,26,.85);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:15px}
+.item-qty{width:92px;background:rgba(10,15,26,.85);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;font-size:15px}
+.item-hint{color:var(--text-secondary);font-size:.85rem}
+.item-empty{color:var(--text-secondary);font-size:.9rem}
+
 /* 알림 */
 .notifications{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:30}
 .toast{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text-primary);box-shadow:0 10px 24px rgba(0,0,0,.25)}
@@ -180,13 +189,25 @@ body{
       <div class="action-buttons">
         <button id="attackBtn" class="action-btn" disabled>공격</button>
         <button id="defendBtn" class="action-btn" disabled>방어</button>
-        <button id="itemBtn"   class="action-btn" disabled>아이템</button>
         <button id="dodgeBtn"  class="action-btn" disabled>회피</button>
         <button id="passBtn"   class="action-btn" disabled>패스</button>
       </div>
+
       <div class="target-panel">
         <div class="target-label">대상 선택</div>
         <select id="targetSelect" class="target-select" size="5"></select>
+      </div>
+
+      <!-- 아이템 패널: 보유 개수 기반 사용 -->
+      <div class="item-panel" id="itemPanel">
+        <div class="item-label">아이템 사용</div>
+        <div id="itemEmpty" class="item-empty" style="display:none">보유한 아이템이 없습니다</div>
+        <div class="item-row">
+          <select id="itemSelect" class="item-select"></select>
+          <input id="itemQty" class="item-qty" type="number" min="1" value="1">
+          <button id="itemUseBtn" class="action-btn" style="min-height:46px;padding:10px 12px">사용</button>
+        </div>
+        <div class="item-hint" id="itemHint"></div>
       </div>
     </div>
   </div>
@@ -284,7 +305,7 @@ function getMyTeam(){
 }
 function findMyPlayer(){
   const t=getMyTeam(); if(!t) return null;
-  return (gameState.state.teams[t]||[]).find(p=>p.id===gameState.playerId)||null;
+  return (gameState.state.teams[t]||()).find(p=>p.id===gameState.playerId)||null;
 }
 
 /* 렌더링 */
@@ -312,8 +333,9 @@ function renderGame(){
   $('#battleLog').innerHTML=(s.log||[]).map(l=>`<div>${l}</div>`).join('');
 
   renderTargets();
+  renderItems();     // 아이템 렌더 추가
   renderChat();
-  updateActionButtons();   // ← 상태 렌더 후 버튼 재평가
+  updateActionButtons();
 }
 
 function renderTeam(key,sel){
@@ -350,7 +372,48 @@ function renderTargets(){
       sel.appendChild(o);
     });
   }
-  updateActionButtons(); // ← 목록 갱신 후에도 버튼 재평가
+  updateActionButtons();
+}
+
+/* 아이템 렌더: 보유 qty 기반 */
+function renderItems(){
+  const me=findMyPlayer();
+  const list=(me?.inventory||[]).map(it=>({
+    id:it.id, name:it.name||it.id, qty: (typeof it.qty==='number'?it.qty:it.quantity??1)
+  }));
+  const select=$('#itemSelect'), qty=$('#itemQty'), hint=$('#itemHint'), empty=$('#itemEmpty');
+
+  if(!list.length){
+    empty.style.display='block';
+    select.innerHTML=''; qty.value=1; qty.min=1; qty.max=1; qty.disabled=true;
+    $('#itemUseBtn').disabled=true; hint.textContent='';
+    return;
+  }
+  empty.style.display='none'; qty.disabled=false;
+
+  select.innerHTML = list.map(it=>`<option value="${it.id}" data-qty="${it.qty}">
+    ${it.name} × ${it.qty}
+  </option>`).join('');
+
+  // 선택한 아이템 수량 한도 설정
+  const applyLimit=()=>{
+    const opt=select.selectedOptions[0];
+    const max=opt?parseInt(opt.dataset.qty||'1',10):1;
+    qty.min=1; qty.max=Math.max(1,max);
+    if(parseInt(qty.value||'1',10)>max) qty.value=max;
+    hint.textContent = `사용 가능 수량: ${max}`;
+    updateActionButtons();
+  };
+  select.onchange=applyLimit; qty.oninput=applyLimit; applyLimit();
+}
+
+function selectedItemInfo(){
+  const opt=$('#itemSelect')?.selectedOptions?.[0];
+  if(!opt) return null;
+  const id=opt.value;
+  const max=parseInt(opt.dataset.qty||'1',10);
+  const qty=Math.max(1, Math.min(max, parseInt($('#itemQty').value||'1',10)));
+  return {id, qty, max};
 }
 
 /* 채팅 */
@@ -384,13 +447,22 @@ function updateActionButtons(){
   const base = canBaseAct();
   const me = findMyPlayer();
   const hasTarget = !!($('#targetSelect')?.value);
+
   $('#defendBtn').disabled = !base;
   $('#dodgeBtn').disabled  = !base;
   $('#passBtn').disabled   = !base;
-  $('#itemBtn').disabled   = !(base && me?.inventory?.length>0);
-  $('#attackBtn').disabled = !(base && hasTarget);   // 공격만 대상 필요
+
+  // 아이템: 선택/수량 확인
+  const si = selectedItemInfo();
+  const hasItemCap = !!(me?.inventory?.length) && si && si.max>0 && si.qty>=1;
+  $('#itemUseBtn').disabled = !(base && hasItemCap);
+
+  // 공격은 대상 필요
+  $('#attackBtn').disabled = !(base && hasTarget);
 }
 $('#targetSelect').addEventListener('change', updateActionButtons);
+$('#itemSelect')?.addEventListener('change', updateActionButtons);
+$('#itemQty')?.addEventListener('input', updateActionButtons);
 
 /* 액션 실행 */
 async function executeAction(type,payload={}){
@@ -414,12 +486,10 @@ $('#attackBtn').onclick=()=>{
 $('#defendBtn').onclick = ()=>executeAction('defend');
 $('#dodgeBtn').onclick  = ()=>executeAction('dodge');
 $('#passBtn').onclick   = ()=>executeAction('pass');
-$('#itemBtn').onclick   = ()=>{
-  const me=findMyPlayer();
-  if(!me?.inventory?.length){ toast('사용할 아이템이 없습니다'); return; }
-  // 가장 첫 아이템 사용 예시(기존 로직과 호환)
-  const first = me.inventory[0];
-  executeAction('use_item',{itemId:first.id});
+$('#itemUseBtn').onclick= ()=>{
+  const si=selectedItemInfo();
+  if(!si){ toast('아이템을 선택하세요'); return; }
+  executeAction('use_item',{itemId:si.id, qty:si.qty});
 };
 
 /* 상태 새로고침 */
