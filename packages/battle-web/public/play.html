@@ -17,7 +17,7 @@ body{
   color:var(--text); font-family:Pretendard,"Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
 .container{width:min(1200px,92vw); margin:0 auto; padding:16px 0 56px}
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .brand{font-weight:800;color:var(--gold);font-size:clamp(1.2rem,2.2vw,1.6rem)}
 .badge{border:1px solid var(--b1);color:var(--muted);border-radius:999px;padding:6px 10px;font-size:.85rem}
 
@@ -27,7 +27,12 @@ body{
 .value{font-weight:800;color:var(--gold);font-size:clamp(1.05rem,2vw,1.35rem)}
 .value.timer.warning{color:#e67e22}.value.timer.critical{color:#c0392b}
 
-.main{display:none;grid-template-columns:1fr 1.1fr 1fr;gap:16px;align-items:start}
+.main{display:none;gap:16px}
+@media(min-width:1024px){.main{grid-template-columns:1fr 1.1fr 1fr;display:grid}}
+@media(max-width:1023.98px){
+  .main{display:grid;grid-template-columns:1fr;gap:12px}
+}
+
 .panel{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:14px}
 .panel-title{font-weight:800;color:var(--gold);margin-bottom:10px}
 
@@ -57,9 +62,10 @@ body{
 .chat-in{flex:1;background:rgba(10,15,26,.85);border:1px solid var(--b1);color:var(--text);border-radius:10px;padding:12px;min-height:46px}
 .btn{border:1px solid var(--gold);background:linear-gradient(135deg,#C8A882,#E5C88A);color:#0a0f1a;font-weight:800;border-radius:12px;padding:12px 16px;min-width:84px}
 .btn.sec{background:transparent;color:var(--text);border-color:var(--b1)}
+
 .log{background:rgba(10,15,26,.80);border:1px solid var(--b2);border-radius:10px;padding:12px;min-height:160px;max-height:320px;overflow:auto;line-height:1.5}
 
-/* 로그인 패널 */
+/* 로그인 */
 #login{max-width:680px;margin:28px auto}
 .field{background:var(--glass);border:1px solid var(--b1);border-radius:14px;padding:12px}
 .field input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--b1);background:rgba(10,15,26,.85);color:var(--text)}
@@ -128,31 +134,7 @@ body{
     <div class="panel">
       <div class="panel-title">불사조 기사단</div>
       <div id="team1List"></div>
-
-      <div class="action-box">
-        <div class="actions">
-          <button id="attackBtn" class="act">공격</button>
-          <button id="defendBtn" class="act">방어</button>
-          <button id="dodgeBtn"  class="act">회피</button>
-          <button id="itemBtn"   class="act">아이템</button>
-          <button id="passBtn"   class="act">패스</button>
-        </div>
-        <div class="sel-wrap">
-          <div class="sel-label">대상 선택</div>
-          <select id="targetSelect" class="select" size="5"><option disabled selected>대상은 선택할 수 없음</option></select>
-        </div>
-        <div class="sel-wrap">
-          <div class="sel-label">아이템 사용</div>
-          <div class="grid" style="grid-template-columns:1fr auto">
-            <select id="itemSelect" class="select" size="3" style="min-height:auto"></select>
-            <div>
-              <input id="itemQty" class="select" type="number" min="1" value="1" style="min-height:auto;width:110px">
-              <button id="itemUseBtn" class="act" style="margin-top:10px;min-height:46px">사용</button>
-            </div>
-          </div>
-          <div id="itemHint" class="psub" style="margin-top:6px"></div>
-        </div>
-      </div>
+      <div id="actionBoxTeam1"></div>
     </div>
 
     <!-- 중앙 -->
@@ -190,6 +172,7 @@ body{
     <div class="panel">
       <div class="panel-title">죽음을 먹는 자들</div>
       <div id="team2List"></div>
+      <div id="actionBoxTeam2"></div>
     </div>
   </div>
 </div>
@@ -204,53 +187,36 @@ function toast(m){const w=$('#notes');const d=document.createElement('div');d.st
 const qs=new URLSearchParams(location.search);
 $('#battleId').value=qs.get('battle')||''; $('#tokenInput').value=qs.get('token')||'';
 
-const st={socket:null,battleId:null,playerId:null,token:null,name:null,avatar:null,team:null,data:null};
+const st={
+  socket:null,battleId:null,playerId:null,token:null,name:null,avatar:null,team:null,data:null,
+  timer:{lastMs:0,lastSync:0,interval:null}
+};
 
-/* 팀 선택 토글 */
+/* 팀 선택 */
 function selectTeam(key){
   st.team=key;
   $('#joinTeam1').classList.toggle('selected',key==='team1');
   $('#joinTeam2').classList.toggle('selected',key==='team2');
   validateForm();
 }
-$('#joinTeam1').addEventListener('click',()=>selectTeam('team1'));
-$('#joinTeam2').addEventListener('click',()=>selectTeam('team2'));
-$('#joinTeam1').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectTeam('team1')}});
-$('#joinTeam2').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectTeam('team2')}});
-
-/* 입력 검증 → 참가 버튼 활성화 */
-['playerName','battleId','otp','tokenInput'].forEach(id=>{
-  $('#'+id).addEventListener('input',validateForm);
-});
+$('#joinTeam1').onclick=()=>selectTeam('team1');
+$('#joinTeam2').onclick=()=>selectTeam('team2');
+['playerName','battleId','otp','tokenInput'].forEach(id=>$('#'+id).addEventListener('input',validateForm));
 function validateForm(){
-  const ok = ($('#playerName').value.trim().length>0) &&
-             ($('#battleId').value.trim().length>0) &&
-             ($('#otp').value.trim().length>0) &&
-             ($('#tokenInput').value.trim().length>0) &&
-             (st.team==='team1' || st.team==='team2');
+  const ok=$('#playerName').value.trim() && $('#battleId').value.trim() && $('#otp').value.trim() && $('#tokenInput').value.trim() && st.team;
   $('#loginBtn').disabled=!ok;
 }
 
-/* 참가 */
-$('#loginBtn').addEventListener('click',login);
-document.addEventListener('keydown',e=>{
-  if(e.key==='Enter' && !$('#loginBtn').disabled && $('#login').style.display!=='none'){ login(); }
-});
+/* 로그인 */
+$('#loginBtn').onclick=login;
+document.addEventListener('keydown',e=>{ if(e.key==='Enter' && !$('#loginBtn').disabled && $('#login').style.display!=='none'){ login(); }});
 async function login(){
   try{
-    const body={
-      battleId:$('#battleId').value.trim(),
-      role:'player',
-      name:$('#playerName').value.trim(),
-      otp:$('#otp').value.trim(),
-      token:$('#tokenInput').value.trim()
-    };
-    if(!st.team){toast('팀을 선택하세요');return;}
+    const body={battleId:$('#battleId').value.trim(),role:'player',name:$('#playerName').value.trim(),otp:$('#otp').value.trim(),token:$('#tokenInput').value.trim()};
     const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok) throw new Error('인증 실패');
     const j=await r.json();
-    st.battleId=body.battleId; st.playerId=j.playerId; st.token=body.token;
-    st.name=body.name||'플레이어'; st.avatar=$('#avatarUrl').value.trim()||'';
+    st.battleId=body.battleId; st.playerId=j.playerId; st.token=body.token; st.name=body.name||'플레이어'; st.avatar=$('#avatarUrl').value.trim()||'';
     $('#login').style.display='none'; $('#summaryBar').style.display='grid'; $('#main').style.display='grid';
     connect();
   }catch(e){toast(e.message||'로그인 실패');}
@@ -264,42 +230,75 @@ function connect(){
     setTimeout(refresh,200);
   });
   s.on('disconnect',()=>$('#connBadge').textContent='연결 끊김');
-  s.on('state',d=>{st.data=d; render();});
-  s.on('player-joined',d=>{st.data=d.state; render();});
-  s.on('action-result',d=>{st.data=d.state; render();});
+  s.on('state',d=>{st.data=d; render(true);});
+  s.on('player-joined',d=>{st.data=d.state; render(true);});
+  s.on('action-result',d=>{st.data=d.state; render(true);});
   s.on('chat-message',({message})=>{ if(st.data?.chatLog){st.data.chatLog.push(message); renderChat();} });
 }
 
-/* 편의 함수 */
-function myTeam(){ const id=st.playerId, t1=st.data?.teams?.team1||[], t2=st.data?.teams?.team2||[]; if(t1.find(p=>p.id===id))return'team1'; if(t2.find(p=>p.id===id))return'team2'; return st.team; }
+/* 공통 */
+function myTeam(){
+  const id=st.playerId, t1=st.data?.teams?.team1||[], t2=st.data?.teams?.team2||[];
+  if(t1.find(p=>p.id===id)) return 'team1';
+  if(t2.find(p=>p.id===id)) return 'team2';
+  return st.team||null;
+}
 function me(){ const t=myTeam(); return t?(st.data?.teams?.[t]||[]).find(p=>p.id===st.playerId)||null:null; }
 
-/* 렌더 */
-function render(){
-  const d=st.data; if(!d) return;
-  $('#battlePhase').textContent=d.phase||'-';
-  $('#turnSide').textContent=d.currentTeam==='team1'?'불사조 기사단 턴':'죽음을 먹는 자들 턴';
-  if(d.remainingTurnTime && d.phase==='battle'){
-    const r=Math.max(0,d.remainingTurnTime), m=Math.floor(r/60000), s=Math.floor((r%60000)/1000);
-    const el=$('#turnTimer'); el.textContent=`${m}:${s.toString().padStart(2,'0')}`;
-    el.className='value timer'+(r<30000?' critical':r<60000?' warning':'');
-  }
-  renderTeam('team1','#team1List'); renderTeam('team2','#team2List');
+/* 타이머 */
+function startTimerFromState(){
+  const d=st.data; if(!d||!d.remainingTurnTime){ setTimerLabel('-'); clearTimer(); return; }
+  st.timer.lastMs = Math.max(0, d.remainingTurnTime);
+  st.timer.lastSync = Date.now();
+  clearTimer();
+  st.timer.interval = setInterval(tickTimer, 1000);
+  tickTimer();
+}
+function clearTimer(){ if(st.timer.interval){ clearInterval(st.timer.interval); st.timer.interval=null; } }
+function tickTimer(){
+  const elapsed = Date.now() - st.timer.lastSync;
+  const left = Math.max(0, st.timer.lastMs - elapsed);
+  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
+  const el=$('#turnTimer'); el.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  el.className='value timer'+(left<30000?' critical':left<60000?' warning':'');
+  $('#turnRemain').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  if(left===0) clearTimer();
+}
+function setTimerLabel(t){ const el=$('#turnTimer'); el.textContent=t; el.className='value timer'; }
 
+/* 렌더 */
+function render(fromServer=false){
+  const d=st.data; if(!d) return;
+
+  // 상단/중앙 상태
+  $('#battlePhase').textContent=d.phase||'-';
+  const teamLabel = d.currentTeam==='team1'?'불사조 기사단 턴': d.currentTeam==='team2'?'죽음을 먹는 자들 턴':'-';
+  $('#turnSide').textContent=teamLabel;
   $('#phaseDetail').textContent=d.phase||'-';
-  $('#turnRemain').textContent=d.turnTime||'-';
   $('#startAt').textContent=d.startAt||'-';
   $('#duration').textContent=d.duration||'-';
-  $('#battleLog').innerHTML=(d.log||[]).map(x=>`<div>${x}</div>`).join('');
 
+  // 타이머 동기화
+  if(fromServer) startTimerFromState();
+
+  // 팀 패널
+  renderTeam('team1','#team1List'); renderTeam('team2','#team2List');
+
+  // 내 팀 위치에만 액션 박스 삽입
+  renderActionBox();
+
+  // 로그/채팅
+  $('#battleLog').innerHTML=(d.log||[]).map(x=>`<div>${x}</div>`).join('');
   renderTargets();
   renderItems();
   renderChat();
-  updateActionButtons(); // 상태 수신 후부터 조건 적용
+  updateActionButtons();
 }
-function renderTeam(k,sel){
-  const box=$(sel), list=(st.data?.teams?.[k]||[]); box.innerHTML='';
+
+function renderTeam(key,sel){
+  const box=$(sel), list=(st.data?.teams?.[key]||[]);
   if(!list.length){ box.textContent='참가 대기'; return; }
+  box.innerHTML='';
   list.forEach(p=>{
     const hp=p.maxHp?Math.max(0,Math.round((p.hp/p.maxHp)*100)):0;
     const div=document.createElement('div');
@@ -310,8 +309,59 @@ function renderTeam(k,sel){
     box.appendChild(div);
   });
 }
+
+/* 액션 박스: 내 팀 칼럼에만 렌더 */
+function renderActionBox(){
+  const t=myTeam();
+  const html = `
+    <div class="action-box">
+      <div class="actions">
+        <button id="attackBtn" class="act">공격</button>
+        <button id="defendBtn" class="act">방어</button>
+        <button id="dodgeBtn"  class="act">회피</button>
+        <button id="itemBtn"   class="act">아이템</button>
+        <button id="passBtn"   class="act">패스</button>
+      </div>
+      <div class="sel-wrap">
+        <div class="sel-label">대상 선택</div>
+        <select id="targetSelect" class="select" size="5"><option disabled selected>대상은 선택할 수 없음</option></select>
+      </div>
+      <div class="sel-wrap">
+        <div class="sel-label">아이템 사용</div>
+        <div class="grid" style="grid-template-columns:1fr auto">
+          <select id="itemSelect" class="select" size="3" style="min-height:auto"></select>
+          <div>
+            <input id="itemQty" class="select" type="number" min="1" value="1" style="min-height:auto;width:110px">
+            <button id="itemUseBtn" class="act" style="margin-top:10px;min-height:46px">사용</button>
+          </div>
+        </div>
+        <div id="itemHint" class="psub" style="margin-top:6px"></div>
+      </div>
+    </div>`;
+  $('#actionBoxTeam1').innerHTML = t==='team1' ? html : '';
+  $('#actionBoxTeam2').innerHTML = t==='team2' ? html : '';
+
+  // 이벤트 핸들러 재바인딩
+  const bind=sel=>document.querySelector(sel);
+  bind('#attackBtn')?.addEventListener('click',()=>{ const tgt=bind('#targetSelect').value; if(!tgt){toast('공격 대상을 선택하세요');return;} doAction('attack',{targetId:tgt}); });
+  bind('#defendBtn')?.addEventListener('click',()=>doAction('defend'));
+  bind('#dodgeBtn') ?.addEventListener('click',()=>doAction('dodge'));
+  bind('#passBtn')  ?.addEventListener('click',()=>doAction('pass'));
+  bind('#itemBtn')  ?.addEventListener('click',()=>bind('#itemSelect')?.focus());
+  bind('#itemUseBtn')?.addEventListener('click',()=>{
+    const opt=bind('#itemSelect')?.selectedOptions?.[0]; if(!opt){toast('아이템을 선택하세요');return;}
+    const qty=Math.max(1,Math.min(parseInt(opt.dataset.qty||'1',10), parseInt(bind('#itemQty').value||'1',10)));
+    doAction('use_item',{itemId:opt.value, qty});
+  });
+  bind('#targetSelect')?.addEventListener('change',updateActionButtons);
+  bind('#itemSelect') ?.addEventListener('change',updateActionButtons);
+  bind('#itemQty')    ?.addEventListener('input',updateActionButtons);
+}
+
+/* 대상/아이템 */
 function renderTargets(){
-  const sel=$('#targetSelect'); sel.innerHTML='';
+  const sel=$('#targetSelect'); if(!sel){return;}
+  sel.innerHTML='';
   const t=myTeam(); if(!t||!st.data?.teams){ sel.innerHTML='<option disabled selected>대상을 선택할 수 없음</option>'; return; }
   const enemies=t==='team1'?(st.data.teams.team2||[]):(st.data.teams.team1||[]);
   const alive=enemies.filter(p=>p.alive);
@@ -322,8 +372,8 @@ function renderTargets(){
   }
 }
 function renderItems(){
+  const sel=$('#itemSelect'), qty=$('#itemQty'), hint=$('#itemHint'); if(!sel){return;}
   const m=me(); const list=(m?.inventory||[]).map(it=>({id:it.id,name:it.name||it.id,qty:(typeof it.qty==='number'?it.qty:it.quantity??1)}));
-  const sel=$('#itemSelect'), qty=$('#itemQty'), hint=$('#itemHint');
   sel.innerHTML = list.length? list.map(it=>`<option value="${it.id}" data-qty="${it.qty}">${it.name} × ${it.qty}</option>`).join('') : '<option disabled>아이템 없음</option>';
   const apply=()=>{ const opt=sel.selectedOptions[0]; const max=opt?parseInt(opt.dataset.qty||'1',10):1; qty.min=1; qty.max=Math.max(1,max); if(parseInt(qty.value||'1',10)>max) qty.value=max; hint.textContent=`사용 가능 수량: ${max}`; updateActionButtons(); };
   sel.onchange=apply; qty.oninput=apply; apply();
@@ -331,7 +381,8 @@ function renderItems(){
 
 /* 채팅 */
 function renderChat(){
-  const log=$('#chatMessages'), arr=(st.data?.chatLog||[]).slice(-50);
+  const log=$('#chatMessages'); if(!log) return;
+  const arr=(st.data?.chatLog||[]).slice(-50);
   if(!arr.length){ log.innerHTML='<div style="color:#E5C88A;text-align:center">채팅이 없습니다.</div>'; return; }
   log.innerHTML=arr.map(m=>{ const t=new Date(m.timestamp||Date.now()).toLocaleTimeString(); return `<div>[${t}] ${m.name||'system'}: ${m.text||''}</div>`; }).join('');
   log.scrollTop=log.scrollHeight;
@@ -340,7 +391,7 @@ $('#chatSendBtn').onclick=()=>{ const v=$('#chatInput').value.trim(); if(!v||!st
 $('#chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#chatSendBtn').click(); });
 $('#refreshBtn').onclick=refresh;
 
-/* 버튼 토글: 로그인 직후(상태 없음)에는 초깃값 활성 유지 */
+/* 버튼 토글: 상태 없으면 초깃값 활성 유지 */
 function canBaseAct(){
   const d=st.data; if(!d) return false;
   const my=myTeam(); const turnMine = my && d.currentTeam===my;
@@ -350,21 +401,19 @@ function canBaseAct(){
 function updateActionButtons(){
   if(!st.data) return;
   const base=canBaseAct();
-  const hasTarget=!!$('#targetSelect').value;
+  const hasTarget=!!$('#targetSelect')?.value;
   const opt=$('#itemSelect')?.selectedOptions?.[0];
   const max=opt?parseInt(opt.dataset.qty||'0',10):0;
-  const q=parseInt($('#itemQty').value||'1',10);
+  const q=parseInt($('#itemQty')?.value||'1',10);
   const itemOk = max>0 && q>=1;
 
-  $('#defendBtn').disabled=!base;
-  $('#dodgeBtn').disabled=!base;
-  $('#passBtn').disabled=!base;
-  $('#attackBtn').disabled=!(base && hasTarget);
-  $('#itemUseBtn').disabled=!(base && itemOk);
+  const set=(id,dis)=>{ const el=$(id); if(el) el.disabled=dis; };
+  set('#defendBtn',!base);
+  set('#dodgeBtn',!base);
+  set('#passBtn',!base);
+  set('#attackBtn',!(base && hasTarget));
+  set('#itemUseBtn',!(base && itemOk));
 }
-$('#targetSelect').addEventListener('change',updateActionButtons);
-$('#itemSelect').addEventListener('change',updateActionButtons);
-$('#itemQty').addEventListener('input',updateActionButtons);
 
 /* 액션 */
 async function doAction(type,payload={}){
@@ -372,15 +421,9 @@ async function doAction(type,payload={}){
   const r=await fetch(`/api/battles/${st.battleId}/action`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({battleId:st.battleId,playerId:st.playerId,action:{type,...payload}})});
   if(!r.ok){toast('액션 실패');return;} const j=await r.json(); if(!j.success){toast(j.error||'실패');return;} refresh();
 }
-$('#attackBtn').onclick=()=>{ const t=$('#targetSelect').value; if(!t){toast('공격 대상을 선택하세요'); return;} doAction('attack',{targetId:t}); };
-$('#defendBtn').onclick=()=>doAction('defend');
-$('#dodgeBtn').onclick =()=>doAction('dodge');
-$('#passBtn').onclick  =()=>doAction('pass');
-$('#itemBtn').onclick  =()=>{ $('#itemSelect').focus(); };
-$('#itemUseBtn').onclick=()=>{ const opt=$('#itemSelect').selectedOptions[0]; if(!opt){toast('아이템을 선택하세요'); return;} const qty=Math.max(1,Math.min(parseInt(opt.dataset.qty||'1',10), parseInt($('#itemQty').value||'1',10))); doAction('use_item',{itemId:opt.value, qty}); };
 
 /* 상태 새로고침 */
-async function refresh(){ try{ const r=await fetch(`/api/battles/${st.battleId}/state`); if(!r.ok) throw 0; st.data=await r.json(); render(); }catch(e){} }
+async function refresh(){ try{ const r=await fetch(`/api/battles/${st.battleId}/state`); if(!r.ok) throw 0; st.data=await r.json(); render(true); }catch(e){} }
 </script>
 </body>
 </html>
