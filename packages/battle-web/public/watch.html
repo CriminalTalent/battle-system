@@ -1,247 +1,35 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>PYXIS 전투 관전석</title>
-<style>
-:root {
-  --deep-navy: #0a0f1a;
-  --navy: #0f1419;
-  --navy-light: #1a1f26;
-  --gold: #E5C88A;
-  --gold-light: #F5E6B8;
-  --gold-dark: #C8A882;
-  --accent: #2a3441;
-  --text-primary: #F5E6B8;
-  --text-secondary: #D4C39A;
-  --border: rgba(229, 200, 138, 0.3);
-  --border-light: rgba(229, 200, 138, 0.15);
-  --shadow: rgba(229, 200, 138, 0.2);
-  --glass: rgba(15, 20, 25, 0.85);
-  --glass-dark: rgba(10, 15, 26, 0.9);
-  --timer-warning: #e74c3c;
-  --timer-critical: #c0392b;
-  --success: #27ae60;
-  --warning: #f39c12;
-  --danger: #e74c3c;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent;
-}
-
-body {
-  background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 50%, var(--navy-light) 100%);
-  color: var(--text-primary);
-  font-family: 'Cinzel', 'Times New Roman', serif;
-  min-height: 100vh;
-  overflow-x: hidden;
-  position: relative;
-  font-size: 16px;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: 
-    radial-gradient(circle at 20% 20%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 40% 60%, rgba(229, 200, 138, 0.03) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: -1;
-}
-
-.spectator-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.spectator-header {
-  background: var(--glass-dark);
-  border: 2px solid var(--border);
-  border-radius: 16px;
-  padding: 20px;
-  text-align: center;
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(229, 200, 138, 0.1);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-}
-
-.spectator-header::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  background: linear-gradient(45deg, transparent, var(--gold), transparent, var(--gold), transparent);
-  border-radius: 16px;
-  z-index: -1;
-  opacity: 0.3;
-  animation: borderGlow 4s linear infinite;
-}
-
-@keyframes borderGlow {
-  0% { opacity: 0.3; }
-  50% { opacity: 0.6; }
-  100% { opacity: 0.3; }
-}
-
-.spectator-title {
-  font-size: clamp(1.5rem, 4vw, 2.2rem);
-  color: var(--gold);
-  text-shadow: 0 0 20px rgba(229, 200, 138, 0.5);
-  letter-spacing: 2px;
-  font-weight: 700;
-}
-
-.spectator-badge {
-  background: rgba(229, 200, 138, 0.15);
-  border: 1px solid var(--border-light);
-  border-radius: 20px;
-  padding: 8px 16px;
-  font-size: 0.9rem;
-  color: var(--gold);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.spectator-badge::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--success);
-  animation: pulse 2s infinite;
-}
-
-.spectator-badge.disconnected::before {
-  background: var(--danger);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.connection-status {
-  display: inline-block;
-  background: rgba(229, 200, 138, 0.15);
-  border: 1px solid var(--border-light);
-  border-radius: 20px;
-  padding: 8px 16px;
-  font-size: 0.9rem;
-  color: var(--gold);
-  font-weight: 600;
-}
-
-.connection-status.connected {
-  background: rgba(39, 174, 96, 0.2);
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.connection-status.disconnected {
-  background: rgba(231, 76, 60, 0.2);
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.login-panel {
-  background: var(--glass);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 25px;
-  backdrop-filter: blur(15px);
-  max-width: 700px;
-  margin: 40px auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-}
-
-.login-title {
-  font-size: 1.5rem;
-  color: var(--gold);
-  margin-bottom: 20px;
-  text-align: center;
-  font-weight: 700;
-}
-
-.form-grid {
-  display: grid;
-  gap: 16px;
-}
-
-.form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
-
-.form-field {
-  background: var(--glass);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.form-label {
-  font-size: 0.9rem;
-  color: var(--gold);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.form-input {
-  width: 100%;
-  background: rgba(10, 15, 26, 0.8);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--text-primary);
-  font-size: 0.95rem;
-  transition: all 0.3s ease;
-  font-family: inherit;
-}
-
 .form-input:focus {
   outline: none;
   border-color: var(--gold);
-  box-shadow: 0 0 0 2px rgba(229, 200, 138, 0.2);
+  box-shadow: 0 0 0 3px rgba(229, 200, 138, 0.1);
+  background: rgba(42, 52, 65, 0.9);
+}
+
+.form-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 .btn {
-  background: linear-gradient(135deg, var(--gold-dark), var(--gold));
-  border: 1px solid var(--gold);
-  border-radius: 8px;
-  padding: 14px 24px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-dark));
   color: var(--deep-navy);
+  padding: 14px 28px;
+  border-radius: 10px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-family: inherit;
   border: none;
+  width: 100%;
 }
 
 .btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  background: linear-gradient(135deg, var(--gold-light), var(--gold));
   transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(229, 200, 138, 0.3);
+  box-shadow: 0 6px 20px rgba(229, 200, 138, 0.4);
 }
 
 .btn:disabled {
@@ -252,19 +40,9 @@ body::before {
   color: var(--text-secondary);
 }
 
-.btn-secondary {
-  background: linear-gradient(135deg, var(--accent), var(--navy-light));
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--navy-light), var(--accent));
-}
-
 .login-actions {
   text-align: center;
-  margin-top: 20px;
+  margin-top: 25px;
 }
 
 .battle-overview {
@@ -355,417 +133,294 @@ body::before {
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(229, 200, 138, 0.2), rgba(229, 200, 138, 0.1));
   color: var(--gold);
-  border: 1px solid var(--border-light);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(229, 200, 138, 0.5);
+}
+
+.team-phoenix .team-header {
+  background: linear-gradient(135deg, rgba(231, 76, 60, 0.2), rgba(192, 57, 43, 0.2));
+  color: #e74c3c;
+  border: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+.team-deatheater .team-header {
+  background: linear-gradient(135deg, rgba(52, 152, 219, 0.2), rgba(41, 128, 185, 0.2));
+  color: #3498db;
+  border: 1px solid rgba(52, 152, 219, 0.3);
 }
 
 .player-showcase {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 15px;
 }
 
-.showcase-card {
-  background: rgba(10, 15, 26, 0.6);
+.player-card {
+  background: rgba(15, 20, 25, 0.7);
   border: 1px solid var(--border-light);
   border-radius: 12px;
-  padding: 20px;
+  padding: 15px;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
 }
 
-.showcase-card::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: conic-gradient(from 0deg, transparent, rgba(229, 200, 138, 0.1), transparent);
-  animation: rotate 8s linear infinite;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+.player-card:hover {
+  border-color: var(--border);
+  background: rgba(15, 20, 25, 0.9);
+  transform: translateY(-2px);
 }
 
-.showcase-card:hover::before {
-  opacity: 1;
-}
-
-.showcase-card:hover {
+.player-card.current-turn {
   border-color: var(--gold);
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(229, 200, 138, 0.2);
+  box-shadow: 0 0 20px rgba(229, 200, 138, 0.3);
+  background: rgba(229, 200, 138, 0.1);
 }
 
-@keyframes rotate {
-  to { transform: rotate(360deg); }
+.player-card.dead {
+  opacity: 0.5;
+  filter: grayscale(70%);
 }
 
-.showcase-header {
+.player-info {
   display: flex;
   align-items: center;
   gap: 15px;
   margin-bottom: 15px;
-  position: relative;
-  z-index: 1;
 }
 
-.showcase-avatar {
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
+.player-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  background: var(--accent);
   border: 2px solid var(--border-light);
-  background: radial-gradient(circle at 30% 30%, rgba(229, 200, 138, 0.3), rgba(229, 200, 138, 0.1));
-  background-size: cover;
-  background-position: center;
-  flex-shrink: 0;
+  object-fit: cover;
+  transition: all 0.3s ease;
 }
 
-.showcase-info {
+.player-card.current-turn .player-avatar {
+  border-color: var(--gold);
+  box-shadow: 0 0 15px rgba(229, 200, 138, 0.4);
+}
+
+.player-details {
   flex: 1;
-  position: relative;
-  z-index: 1;
 }
 
-.showcase-name {
+.player-name {
   font-weight: 700;
   color: var(--gold);
-  margin-bottom: 6px;
   font-size: 1.1rem;
+  margin-bottom: 5px;
 }
 
-.showcase-status {
+.player-status {
   font-size: 0.9rem;
   color: var(--text-secondary);
-  margin-bottom: 10px;
 }
 
-.health-showcase {
-  background: rgba(10, 15, 26, 0.8);
-  border-radius: 12px;
-  height: 12px;
+.hp-bar {
+  background: rgba(42, 52, 65, 0.7);
+  border-radius: 10px;
+  height: 8px;
+  margin: 8px 0;
   overflow: hidden;
-  margin-bottom: 10px;
-  position: relative;
 }
 
-.health-showcase::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-.health-showcase-fill {
+.hp-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--success) 0%, var(--warning) 50%, var(--danger) 100%);
-  transition: width 0.8s ease;
-  position: relative;
-  z-index: 1;
+  background: linear-gradient(90deg, var(--success) 0%, var(--warning) 70%, var(--danger) 100%);
+  transition: width 0.5s ease;
+  border-radius: 10px;
 }
 
-.showcase-stats {
+.player-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  position: relative;
-  z-index: 1;
+  margin-bottom: 15px;
 }
 
-.showcase-stat {
+.stat-item {
   text-align: center;
-  padding: 8px;
-  background: rgba(10, 15, 26, 0.4);
-  border-radius: 6px;
+  background: rgba(42, 52, 65, 0.5);
+  border-radius: 8px;
+  padding: 8px 4px;
   border: 1px solid var(--border-light);
 }
 
 .stat-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  display: block;
+  text-transform: uppercase;
 }
 
 .stat-value {
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--gold);
-  font-size: 0.9rem;
+  display: block;
+  margin-top: 2px;
+}
+
+.player-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.item-tag {
+  background: rgba(229, 200, 138, 0.15);
+  color: var(--gold);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .central-hub {
-  display: grid;
-  gap: 20px;
-}
-
-.battle-monitor {
   background: var(--glass);
   border: 1px solid var(--border-light);
   border-radius: 16px;
   padding: 20px;
   backdrop-filter: blur(15px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.battle-monitor {
+  background: rgba(15, 20, 25, 0.7);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 20px;
 }
 
 .monitor-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 15px;
 }
 
 .monitor-item {
-  background: rgba(10, 15, 26, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 15px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 10px;
+  background: rgba(42, 52, 65, 0.5);
+  border-radius: 8px;
 }
 
 .monitor-label {
+  font-size: 0.8rem;
   color: var(--text-secondary);
-  font-size: 0.9rem;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
 .monitor-value {
-  color: var(--gold);
-  font-weight: 700;
   font-size: 1rem;
-}
-
-.spectator-chat {
-  background: var(--glass-dark);
-  border: 2px solid var(--border);
-  border-radius: 16px;
-  padding: 20px;
-  position: relative;
-}
-
-.spectator-chat::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  right: -1px;
-  bottom: -1px;
-  background: linear-gradient(45deg, var(--gold), transparent, var(--gold), transparent);
-  border-radius: 16px;
-  z-index: -1;
-  opacity: 0.3;
-}
-
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.chat-title {
-  color: var(--gold);
   font-weight: 700;
-  font-size: 1.1rem;
+  color: var(--gold);
 }
 
-.chat-info {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
-
-.chat-display {
-  background: rgba(10, 15, 26, 0.8);
+.battle-log {
+  background: rgba(15, 20, 25, 0.7);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 15px;
-  height: 280px;
-  overflow-y: auto;
-  margin-bottom: 15px;
-  line-height: 1.6;
-  font-size: 0.9rem;
-}
-
-.chat-display::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-display::-webkit-scrollbar-track {
-  background: rgba(10, 15, 26, 0.5);
-  border-radius: 4px;
-}
-
-.chat-display::-webkit-scrollbar-thumb {
-  background: var(--gold);
-  border-radius: 4px;
-}
-
-.chat-input-row {
-  display: flex;
-  gap: 12px;
-}
-
-.chat-input {
-  flex: 1;
-  background: rgba(10, 15, 26, 0.8);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--text-primary);
-  font-family: inherit;
-}
-
-.chat-input:focus {
-  outline: none;
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px rgba(229, 200, 138, 0.2);
-}
-
-.battle-chronicle {
-  background: var(--glass);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 20px;
-}
-
-.chronicle-content {
-  background: rgba(10, 15, 26, 0.8);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 15px;
-  height: 250px;
+  max-height: 300px;
   overflow-y: auto;
-  line-height: 1.6;
+  flex: 1;
+}
+
+.log-title {
+  font-size: 1.2rem;
+  color: var(--gold);
+  margin-bottom: 15px;
+  font-weight: 700;
+}
+
+.log-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
   font-size: 0.9rem;
+  line-height: 1.4;
 }
 
-.chronicle-content::-webkit-scrollbar {
-  width: 8px;
+.log-entry:last-child {
+  border-bottom: none;
 }
 
-.chronicle-content::-webkit-scrollbar-track {
-  background: rgba(10, 15, 26, 0.5);
-  border-radius: 4px;
+.log-timestamp {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-right: 10px;
 }
 
-.chronicle-content::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  border-radius: 4px;
+.log-entry.system {
+  color: var(--warning);
+  font-weight: 600;
 }
 
-.notifications {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 350px;
+.log-entry.action {
+  color: var(--text-primary);
+}
+
+.log-entry.combat {
+  color: #e74c3c;
+  font-weight: 600;
 }
 
 .notification {
-  background: var(--glass-dark);
-  border: 1px solid var(--border);
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 16px 20px;
   border-radius: 10px;
-  padding: 12px 16px;
-  color: var(--text-primary);
-  backdrop-filter: blur(15px);
-  animation: slideIn 0.3s ease;
-  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+  z-index: 1000;
+  max-width: 400px;
+  word-wrap: break-word;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .notification.success {
-  border-color: var(--success);
-  color: var(--success);
+  background: linear-gradient(135deg, var(--success), #27ae60);
 }
 
 .notification.error {
-  border-color: var(--danger);
-  color: var(--danger);
+  background: linear-gradient(135deg, var(--danger), #c0392b);
 }
 
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+.notification.warning {
+  background: linear-gradient(135deg, var(--warning), #e67e22);
 }
 
-@media (max-width: 768px) {
-  .spectator-container {
-    padding: 10px;
-  }
-  
-  .spectator-header {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .form-grid.cols-2 {
-    grid-template-columns: 1fr;
-  }
-  
-  .monitor-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .chat-input-row {
-    flex-direction: column;
-  }
-  
-  .overview-card {
-    padding: 15px;
-  }
-  
-  .showcase-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.hidden { display: none !important; }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
-@media (hover: none) and (pointer: coarse) {
-  .btn:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  
-  .btn:active {
-    transform: scale(0.98);
-  }
-  
-  .showcase-card:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  
-  .showcase-card:hover::before {
-    opacity: 0;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.spectator-container > * {
+  animation: fadeIn 0.5s ease-out;
 }
 </style>
 </head>
+
 <body>
-
 <div class="spectator-container">
-  <header class="spectator-header">
-    <h1 class="spectator-title">PYXIS 전투 관전석</h1>
-    <div class="spectator-badge" id="connStatus">연결 준비</div>
-  </header>
-
   <!-- 로그인 패널 -->
   <div id="loginPanel" class="login-panel">
     <div class="login-title">관전 접속</div>
@@ -792,559 +447,638 @@ body::before {
     </div>
   </div>
 
-  <!-- 전투 개요 -->
-  <div id="battleOverview" class="battle-overview" style="display: none;">
-    <div class="overview-card">
-      <div class="overview-label">단계</div>
-      <div class="overview-value" id="battlePhase">-</div>
-    </div>
-    <div class="overview-card">
-      <div class="overview-label">현재 턴</div>
-      <div class="overview-value" id="turnSide">-</div>
-    </div>
-    <div class="overview-card">
-      <div class="overview-label">턴 타이머</div>
-      <div class="timer-display" id="turnTimer">-</div>
-    </div>
-    <div class="overview-card">
-      <div class="overview-label">승자</div>
-      <div class="overview-value" id="winnerStatus">-</div>
-    </div>
-  </div>
+  <!-- 메인 관전 화면 -->
+  <div id="spectatorScreen" class="hidden">
+    <!-- 헤더 -->
+    <header class="spectator-header">
+      <div class="spectator-title">PYXIS 전투 관전</div>
+      <div class="connection-status" id="connectionStatus">연결 중...</div>
+    </header>
 
-  <!-- 관전 뷰 -->
-  <div id="spectatorView" class="spectator-view" style="display: none;">
-    <!-- 불사조 기사단 -->
-    <div class="team-display">
-      <div class="team-header">불사조 기사단</div>
-      <div id="team1Display" class="player-showcase"></div>
-    </div>
-
-    <!-- 중앙 허브 -->
-    <div class="central-hub">
-      <div class="battle-monitor">
-        <div class="form-label" style="margin-bottom: 12px;">전투 모니터</div>
-        <div class="monitor-grid">
-          <div class="monitor-item">
-            <span class="monitor-label">단계</span>
-            <span class="monitor-value" id="phaseDetail">-</span>
-          </div>
-          <div class="monitor-item">
-            <span class="monitor-label">턴 시간</span>
-            <span class="monitor-value" id="turnRemain">-</span>
-          </div>
-          <div class="monitor-item">
-            <span class="monitor-label">시작 시간</span>
-            <span class="monitor-value" id="startAt">-</span>
-          </div>
-          <div class="monitor-item">
-            <span class="monitor-label">경과 시간</span>
-            <span class="monitor-value" id="duration">-</span>
-          </div>
-        </div>
+    <!-- 전투 개요 -->
+    <div id="battleOverview" class="battle-overview">
+      <div class="overview-card">
+        <div class="overview-label">단계</div>
+        <div class="overview-value" id="battlePhase">-</div>
       </div>
-
-      <div class="spectator-chat">
-        <div class="chat-header">
-          <div class="chat-title">관전자 채팅</div>
-          <div class="chat-info">실시간 토론</div>
-        </div>
-        <div id="chatDisplay" class="chat-display"></div>
-        <div class="chat-input-row">
-          <input id="chatInput" class="chat-input" placeholder="메시지 입력..." maxlength="200">
-          <button id="chatSendBtn" class="btn">전송</button>
-          <button id="refreshBtn" class="btn-secondary">새로고침</button>
-        </div>
+      <div class="overview-card">
+        <div class="overview-label">현재 턴</div>
+        <div class="overview-value" id="turnSide">-</div>
       </div>
-
-      <div class="battle-chronicle">
-        <div class="form-label" style="margin-bottom: 12px;">전투 연대기</div>
-        <div id="battleChronicle" class="chronicle-content"></div>
+      <div class="overview-card">
+        <div class="overview-label">턴 타이머</div>
+        <div class="timer-display" id="turnTimer">-</div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-label">승자</div>
+        <div class="overview-value" id="winnerStatus">-</div>
       </div>
     </div>
 
-    <!-- 죽음을 먹는 자들 -->
-    <div class="team-display">
-      <div class="team-header">죽음을 먹는 자들</div>
-      <div id="team2Display" class="player-showcase"></div>
+    <!-- 관전 뷰 -->
+    <div id="spectatorView" class="spectator-view">
+      <!-- 불사조 기사단 -->
+      <div class="team-display team-phoenix">
+        <div class="team-header">불사조 기사단</div>
+        <div id="team1Display" class="player-showcase"></div>
+      </div>
+
+      <!-- 중앙 허브 -->
+      <div class="central-hub">
+        <div class="battle-monitor">
+          <div class="form-label" style="margin-bottom: 12px;">전투 모니터</div>
+          <div class="monitor-grid">
+            <div class="monitor-item">
+              <span class="monitor-label">단계</span>
+              <span class="monitor-value" id="phaseDetail">-</span>
+            </div>
+            <div class="monitor-item">
+              <span class="monitor-label">턴 시간</span>
+              <span class="monitor-value" id="turnRemain">-</span>
+            </div>
+            <div class="monitor-item">
+              <span class="monitor-label">시작 시간</span>
+              <span class="monitor-value" id="startTime">-</span>
+            </div>
+            <div class="monitor-item">
+              <span class="monitor-label">모드</span>
+              <span class="monitor-value" id="battleMode">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="battle-log">
+          <div class="log-title">실시간 전투 기록</div>
+          <div id="battleLogContent"></div>
+        </div>
+      </div>
+
+      <!-- 죽음을 먹는 자들 -->
+      <div class="team-display team-deatheater">
+        <div class="team-header">죽음을 먹는 자들</div>
+        <div id="team2Display" class="player-showcase"></div>
+      </div>
     </div>
   </div>
 </div>
 
-<div id="notifications" class="notifications"></div>
-
-<script src="/socket.io/socket.io.js"></script>
 <script>
-window.addEventListener('DOMContentLoaded', () => {
-  const $ = s => document.querySelector(s);
-  const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
-  const qs = new URLSearchParams(location.search);
+// 전역 변수
+let socket = null;
+let currentBattleState = null;
+let turnTimer = null;
+
+// 유틸리티 함수
+const $ = id => document.getElementById(id);
+
+// 알림 함수들
+function showNotification(message, type = 'success') {
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.textContent = message;
+  document.body.appendChild(notification);
   
-  const ioSock = io({ 
-    path: '/socket.io',
-    timeout: 10000,
-    transports: ['websocket', 'polling']
-  });
+  setTimeout(() => {
+    notification.remove();
+  }, 5000);
+}
 
-  let BATTLE = qs.get('battle') || '';
-  $('#battleId').value = BATTLE;
-  let TOKEN = qs.get('token') || '';
-  $('#tokenInput').value = TOKEN;
+function showSuccess(message) {
+  showNotification(message, 'success');
+}
+
+function showError(message) {
+  showNotification(message, 'error');
+}
+
+// 소켓 연결
+function connectSocket() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${location.host}`;
   
-  let state = {
-    socket: null,
-    battleId: null,
-    token: null,
-    name: '관전자',
-    data: null,
-    timer: {
-      lastMs: 0,
-      lastSync: 0,
-      interval: null
-    }
-  };
-
-  function showNotification(msg, type = 'success') {
-    const notificationDiv = document.createElement('div');
-    notificationDiv.className = `notification ${type}`;
-    notificationDiv.textContent = msg;
-    $('#notifications').appendChild(notificationDiv);
-    setTimeout(() => {
-      if (notificationDiv.parentNode) {
-        notificationDiv.style.opacity = '0';
-        notificationDiv.style.transform = 'translateX(100%)';
-        setTimeout(() => notificationDiv.remove(), 300);
-      }
-    }, type === 'error' ? 4000 : 2500);
-  }
-
-  function validateForm() {
-    const ok = $('#spectatorName').value.trim() && 
-               $('#battleId').value.trim() && 
-               $('#otp').value.trim() && 
-               $('#tokenInput').value.trim();
-    $('#loginBtn').disabled = !ok;
-  }
-
-  ['spectatorName', 'battleId', 'otp', 'tokenInput'].forEach(id => 
-    $('#' + id).addEventListener('input', validateForm)
-  );
-
-  $('#loginBtn').onclick = login;
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !$('#loginBtn').disabled && $('#loginPanel').style.display !== 'none') {
-      login();
-    }
+  socket = io(wsUrl);
+  
+  socket.on('connect', () => {
+    updateConnectionStatus(true);
+    showSuccess('서버에 연결되었습니다');
   });
+  
+  socket.on('disconnect', () => {
+    updateConnectionStatus(false);
+    showError('서버 연결이 끊어졌습니다');
+  });
+  
+  socket.on('battle-state', handleBattleState);
+  socket.on('player-joined', handlePlayerJoined);
+  socket.on('battle-started', handleBattleStarted);
+  socket.on('action-executed', handleActionExecuted);
+  socket.on('battle-ended', handleBattleEnded);
+  
+  socket.on('error', (error) => {
+    showError(error.message || '알 수 없는 오류가 발생했습니다');
+  });
+}
 
-  async function login() {
-    try {
-      const body = {
-        battleId: $('#battleId').value.trim(),
+// 연결 상태 업데이트
+function updateConnectionStatus(connected) {
+  const status = $('connectionStatus');
+  if (connected) {
+    status.textContent = '연결됨';
+    status.className = 'connection-status connected';
+  } else {
+    status.textContent = '연결 끊김';
+    status.className = 'connection-status disconnected';
+  }
+}
+
+// 로그인 처리
+async function login() {
+  const spectatorName = $('spectatorName').value.trim();
+  const battleId = $('battleId').value.trim();
+  const token = $('tokenInput').value.trim();
+  const otp = $('otp').value.trim();
+  
+  if (!spectatorName || !battleId || !otp) {
+    showError('모든 필드를 입력해주세요');
+    return;
+  }
+  
+  try {
+    // 인증
+    const authRes = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        battleId,
         role: 'spectator',
-        name: $('#spectatorName').value.trim(),
-        otp: $('#otp').value.trim(),
-        token: $('#tokenInput').value.trim()
-      };
-
-      console.log('Attempting spectator login with:', body);
-
-      const r = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!r.ok) throw new Error('인증 실패');
-
-      const j = await r.json();
-      console.log('Spectator login successful:', j);
-      
-      state.battleId = body.battleId;
-      state.token = body.token;
-      state.name = body.name || '관전자';
-
-      $('#loginPanel').style.display = 'none';
-      $('#battleOverview').style.display = 'grid';
-      $('#spectatorView').style.display = 'grid';
-      
-      // 소켓 연결 및 초기 데이터 로딩
-      connect();
-      await refresh(); // 초기 상태 로딩
-      
-      showNotification('관전에 성공적으로 접속했습니다!');
-    } catch (e) {
-      console.error('Spectator login error:', e);
-      showNotification(e.message || '로그인 실패', 'error');
-    }
-  }
-
-  function connect() {
-    state.socket = ioSock;
+        name: spectatorName,
+        otp,
+        token
+      })
+    });
     
-    ioSock.on('connect', () => {
-      console.log('Socket connected');
-      $('#connStatus').textContent = '실시간 연결';
-      $('#connStatus').className = 'spectator-badge';
-      ioSock.emit('join-battle', {
-        battleId: state.battleId,
-        role: 'spectator',
-        name: state.name
-      });
-      setTimeout(refresh, 500);
-    });
-
-    ioSock.on('disconnect', () => {
-      console.log('Socket disconnected');
-      $('#connStatus').textContent = '연결 끊김';
-      $('#connStatus').className = 'spectator-badge disconnected';
-    });
-
-    ioSock.on('reconnect', () => {
-      console.log('Socket reconnected');
-      showNotification('연결이 복구되었습니다!');
-      if (state.battleId) {
-        ioSock.emit('join-battle', {
-          battleId: state.battleId,
-          role: 'spectator',
-          name: state.name
-        });
-        setTimeout(refresh, 300);
-      }
-    });
-
-    ioSock.on('battle-state', d => {
-      console.log('Battle state received:', d);
-      if (d && d.id === state.battleId) {
-        state.data = d;
-        render(true);
-      }
-    });
-
-    ioSock.on('player-joined', d => {
-      console.log('Player joined event:', d);
-      if (d && d.state && d.battleId === state.battleId) {
-        state.data = d.state;
-        render(true);
-        showNotification('새 플레이어가 참가했습니다');
-      }
-    });
-
-    ioSock.on('battle-started', d => {
-      console.log('Battle started event:', d);
-      if (d && d.state && d.battleId === state.battleId) {
-        state.data = d.state;
-        render(true);
-        showNotification('전투가 시작되었습니다!');
-      }
-    });
-
-    ioSock.on('action-executed', d => {
-      console.log('Action executed event:', d);
-      if (d && d.state && d.battleId === state.battleId) {
-        state.data = d.state;
-        render(true);
-      }
-    });
-
-    ioSock.on('battle-ended', d => {
-      console.log('Battle ended event:', d);
-      if (d && d.state && d.battleId === state.battleId) {
-        state.data = d.state;
-        render(true);
-        const winnerText = d.winner === 'team1' ? '불사조 기사단' : 
-                          d.winner === 'team2' ? '죽음을 먹는 자들' : '무승부';
-        showNotification(`전투 종료! 승자: ${winnerText}`);
-      }
-    });
-
-    ioSock.on('chat-message', ({ battleId, message }) => {
-      console.log('Chat message received:', { battleId, message });
-      if (battleId === state.battleId && message) {
-        if (!state.data) state.data = { chatLog: [] };
-        if (!state.data.chatLog) state.data.chatLog = [];
-        
-        // 중복 메시지 방지
-        const isDuplicate = state.data.chatLog.some(existing => 
-          existing.id === message.id || 
-          (existing.timestamp === message.timestamp && existing.message === message.message && existing.sender === message.sender)
-        );
-        
-        if (!isDuplicate) {
-          state.data.chatLog.push(message);
-          // 최대 100개 메시지 유지
-          if (state.data.chatLog.length > 100) {
-            state.data.chatLog = state.data.chatLog.slice(-100);
-          }
-        }
-        
-        renderChat();
-      }
-    });
-
-    // 연결 실패 시 재시도
-    ioSock.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      $('#connStatus').textContent = '연결 실패';
-      $('#connStatus').className = 'spectator-badge disconnected';
-    });
-  }
-
-  function startTimerFromState() {
-    const d = state.data;
-    if (!d || !d.remainingTurnTime || d.phase !== 'battle') {
-      setTimerLabel('-');
-      clearTimer();
-      return;
+    if (!authRes.ok) {
+      const error = await authRes.json();
+      throw new Error(error.error || '인증 실패');
     }
-    state.timer.lastMs = Math.max(0, d.remainingTurnTime);
-    state.timer.lastSync = Date.now();
-    clearTimer();
-    state.timer.interval = setInterval(tickTimer, 1000);
-    tickTimer();
-  }
-
-  function clearTimer() {
-    if (state.timer.interval) {
-      clearInterval(state.timer.interval);
-      state.timer.interval = null;
-    }
-  }
-
-  function tickTimer() {
-    const left = Math.max(0, state.timer.lastMs - (Date.now() - state.timer.lastSync));
-    const m = Math.floor(left / 60000);
-    const s = Math.floor((left % 60000) / 1000);
-    const t = `${m}:${s.toString().padStart(2, '0')}`;
     
-    const el = $('#turnTimer');
-    el.textContent = t;
-    el.className = 'timer-display';
-    if (left < 30000) el.className += ' critical';
-    else if (left < 60000) el.className += ' warning';
+    // 소켓 룸 참가
+    socket.emit('join-battle', {
+      battleId,
+      role: 'spectator'
+    });
     
-    $('#turnRemain').textContent = t;
-    if (left === 0) clearTimer();
-  }
-
-  function setTimerLabel(t) {
-    const el = $('#turnTimer');
-    el.textContent = t;
-    el.className = 'timer-display';
-  }
-
-  function render(fromServer = false) {
-    const d = state.data;
-    if (!d) return;
-
-    console.log('Rendering data:', d);
-
-    const phaseText = {
-      'lobby': '대기실',
-      'battle': '전투 중',
-      'ended': '종료'
-    };
-
-    const teamText = {
-      'team1': '불사조 기사단',
-      'team2': '죽음을 먹는 자들'
-    };
-
-    const winnerText = {
-      'team1': '불사조 기사단',
-      'team2': '죽음을 먹는 자들',
-      'draw': '무승부'
-    };
-
-    $('#battlePhase').textContent = phaseText[d.phase] || d.phase;
-    $('#turnSide').textContent = d.currentTeam ? `${teamText[d.currentTeam]} 턴` : '-';
-    $('#phaseDetail').textContent = phaseText[d.phase] || d.phase;
-    $('#winnerStatus').textContent = winnerText[d.winner] || '미정';
-
-    if (d.startTime) {
-      $('#startAt').textContent = new Date(d.startTime).toLocaleTimeString();
-    }
-
-    if (d.startTime && d.phase === 'battle') {
-      const elapsed = Date.now() - d.startTime;
-      const minutes = Math.floor(elapsed / 60000);
-      const seconds = Math.floor((elapsed % 60000) / 1000);
-      $('#duration').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    } else {
-      $('#duration').textContent = '-';
-    }
-
-    if (fromServer) startTimerFromState();
-
-    renderTeamDisplay('team1', '#team1Display');
-    renderTeamDisplay('team2', '#team2Display');
-    renderBattleChronicle();
-    renderChat();
-  }
-
-  function renderTeamDisplay(key, sel) {
-    const box = $(sel);
-    const list = state.data?.teams?.[key] || [];
+    // 화면 전환
+    $('loginPanel').classList.add('hidden');
+    $('spectatorScreen').classList.remove('hidden');
     
-    if (!list.length) {
-      box.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 30px; font-style: italic;">참가자 없음</div>';
-      return;
-    }
+    showSuccess(`${spectatorName}으로 관전을 시작합니다`);
+    
+  } catch (error) {
+    showError(error.message);
+  }
+}
 
-    box.innerHTML = '';
-    list.forEach(p => {
-      const hp = p.maxHp ? Math.max(0, Math.round((p.hp / p.maxHp) * 100)) : 0;
-      
-      // 아이템 개수 계산
-      const itemCounts = {};
-      (p.inventory || []).forEach(item => {
-        itemCounts[item] = (itemCounts[item] || 0) + 1;
-      });
-      const itemText = Object.entries(itemCounts)
-        .map(([item, count]) => `${item}: ${count}`)
-        .join(', ') || '없음';
-      
-      const div = document.createElement('div');
-      div.className = 'showcase-card';
-      div.innerHTML = `
-        <div class="showcase-header">
-          <div class="showcase-avatar" style="background-image: url('${p.imageUrl || ''}')"></div>
-          <div class="showcase-info">
-            <div class="showcase-name">${p.name}</div>
-            <div class="showcase-status">${p.hp}/${p.maxHp} HP • ${p.alive ? '생존' : '전사'} • ${p.hasActed ? '행동완료' : '대기'}</div>
-            <div class="health-showcase">
-              <div class="health-showcase-fill" style="width: ${hp}%"></div>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">
-              아이템: ${itemText}
-            </div>
+// 전투 상태 처리
+function handleBattleState(state) {
+  currentBattleState = state;
+  updateUI();
+}
+
+function handlePlayerJoined(data) {
+  if (currentBattleState) {
+    currentBattleState = data.state;
+    updateUI();
+  }
+  addBattleLog(`${data.player.name}이 전투에 참가했습니다`, 'system');
+}
+
+function handleBattleStarted(data) {
+  currentBattleState = data.state;
+  updateUI();
+  addBattleLog('전투가 시작되었습니다!', 'system');
+}
+
+function handleActionExecuted(data) {
+  currentBattleState = data.state;
+  updateUI();
+  addBattleLog(data.result.description, 'action');
+  
+  if (data.result.battleEnded) {
+    addBattleLog(`전투 종료! 승자: ${getTeamName(data.result.winner)}`, 'system');
+  }
+}
+
+function handleBattleEnded(data) {
+  currentBattleState = data.state;
+  updateUI();
+  addBattleLog(`전투가 종료되었습니다. 승자: ${getTeamName(data.winner)}`, 'system');
+}
+
+// UI 업데이트
+function updateUI() {
+  if (!currentBattleState) return;
+  
+  updateBattleOverview();
+  updateTeamDisplays();
+  updateBattleMonitor();
+}
+
+function updateBattleOverview() {
+  const { phase, turnOrder, turnIndex, winner } = currentBattleState;
+  
+  // 단계
+  let phaseText = '-';
+  if (phase === 'lobby') phaseText = '대기실';
+  else if (phase === 'battle') phaseText = '전투중';
+  else if (phase === 'ended') phaseText = '종료';
+  $('battlePhase').textContent = phaseText;
+  
+  // 현재 턴
+  if (phase === 'battle' && turnOrder && turnOrder.length > 0) {
+    const currentPlayer = turnOrder[turnIndex];
+    $('turnSide').textContent = currentPlayer ? currentPlayer.name : '-';
+    startTurnTimer();
+  } else {
+    $('turnSide').textContent = '-';
+    $('turnTimer').textContent = '-';
+    stopTurnTimer();
+  }
+  
+  // 승자
+  $('winnerStatus').textContent = getTeamName(winner) || '-';
+}
+
+function updateTeamDisplays() {
+  const { teams } = currentBattleState;
+  
+  // 불사조 기사단
+  if (teams && teams.team1) {
+    $('team1Display').innerHTML = teams.team1.map(player => renderPlayerCard(player)).join('');
+  }
+  
+  // 죽음을 먹는 자들
+  if (teams && teams.team2) {
+    $('team2Display').innerHTML = teams.team2.map(player => renderPlayerCard(player)).join('');
+  }
+}
+
+function updateBattleMonitor() {
+  const { phase, mode, startTime } = currentBattleState;
+  
+  // 단계 상세
+  let phaseDetail = '알 수 없음';
+  if (phase === 'lobby') phaseDetail = '플레이어 대기 중';
+  else if (phase === 'battle') phaseDetail = '활발한 전투 중';
+  else if (phase === 'ended') phaseDetail = '전투 완료';
+  $('phaseDetail').textContent = phaseDetail;
+  
+  // 모드
+  $('battleMode').textContent = mode || '-';
+  
+  // 시작 시간
+  if (startTime) {
+    const start = new Date(startTime);
+    $('startTime').textContent = start.toLocaleTimeString();
+  } else {
+    $('startTime').textContent = '-';
+  }
+}
+
+function renderPlayerCard(player) {
+  const isCurrentTurn = currentBattleState.phase === 'battle' && 
+                        currentBattleState.turnOrder && 
+                        currentBattleState.turnOrder[currentBattleState.turnIndex]?.id === player.id;
+  
+  const isDead = !player.alive;
+  
+  let cardClasses = 'player-card';
+  if (isCurrentTurn) cardClasses += ' current-turn';
+  if (isDead) cardClasses += ' dead';
+  
+  const hpPercentage = (player.hp / player.maxHp) * 100;
+  
+  const items = player.inventory || [];
+  const itemsHtml = items.length > 0 
+    ? items.map(item => `<span class="item-tag">${item}</span>`).join('')
+    : '<span class="item-tag">없음</span>';
+  
+  return `
+    <div class="${cardClasses}">
+      <div class="player-info">
+        <img src="${player.imageUrl || '/default-avatar.png'}" alt="${player.name}" class="player-avatar">
+        <div class="player-details">
+          <div class="player-name">${player.name}</div>
+          <div class="player-status">${isDead ? '사망' : '생존'}</div>
+          <div class="hp-bar">
+            <div class="hp-fill" style="width: ${hpPercentage}%"></div>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-secondary);">
+            HP: ${player.hp}/${player.maxHp}
           </div>
         </div>
-        <div class="showcase-stats">
-          <div class="showcase-stat">
-            <div class="stat-label">공격</div>
-            <div class="stat-value">${p.stats?.attack ?? '-'}</div>
-          </div>
-          <div class="showcase-stat">
-            <div class="stat-label">방어</div>
-            <div class="stat-value">${p.stats?.defense ?? '-'}</div>
-          </div>
-          <div class="showcase-stat">
-            <div class="stat-label">민첩</div>
-            <div class="stat-value">${p.stats?.agility ?? '-'}</div>
-          </div>
-          <div class="showcase-stat">
-            <div class="stat-label">행운</div>
-            <div class="stat-value">${p.stats?.luck ?? '-'}</div>
-          </div>
-        </div>
-      `;
-      box.appendChild(div);
-    });
-  }
-
-  function renderBattleChronicle() {
-    const el = $('#battleChronicle');
-    if (!el) return;
-    
-    const entries = (state.data?.battleLog || []).slice(-25);
-    el.innerHTML = entries.map(e => `
-      <div style="padding: 10px 0; border-bottom: 1px solid rgba(229, 200, 138, 0.1); line-height: 1.5;">
-        <strong style="color: var(--gold); text-transform: uppercase; font-size: 0.85rem;">${e.type}</strong>
-        <br><span style="color: var(--text-primary); margin-top: 4px; display: block;">${e.result || ''}</span>
-        <small style="color: var(--text-secondary); font-size: 0.8rem;">${new Date(e.timestamp).toLocaleTimeString()}</small>
       </div>
-    `).join('') || '<div style="text-align: center; color: var(--text-secondary); padding: 20px; font-style: italic;">전투 기록이 없습니다</div>';
-    el.scrollTop = el.scrollHeight;
-  }
+      <div class="player-stats">
+        <div class="stat-item">
+          <span class="stat-label">공격</span>
+          <span class="stat-value">${player.stats.attack}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">방어</span>
+          <span class="stat-value">${player.stats.defense}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">민첩</span>
+          <span class="stat-value">${player.stats.agility}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">행운</span>
+          <span class="stat-value">${player.stats.luck}</span>
+        </div>
+      </div>
+      <div class="player-items">
+        ${itemsHtml}
+      </div>
+    </div>
+  `;
+}
 
-  function renderChat() {
-    const el = $('#chatDisplay');
-    if (!el) return;
+// 턴 타이머
+function startTurnTimer() {
+  stopTurnTimer();
+  
+  const duration = 300; // 5분 = 300초
+  let timeLeft = duration;
+  
+  updateTimerDisplay(timeLeft);
+  
+  turnTimer = setInterval(() => {
+    timeLeft--;
+    updateTimerDisplay(timeLeft);
     
-    const messages = (state.data?.chatLog || []).slice(-40);
-    console.log('Rendering chat messages:', messages.length);
+    if (timeLeft <= 0) {
+      stopTurnTimer();
+    }
+  }, 1000);
+}
+
+function stopTurnTimer() {
+  if (turnTimer) {
+    clearInterval(turnTimer);
+    turnTimer = null;
+  }
+}
+
+function updateTimerDisplay(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const display = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  
+  const timerEl = $('turnTimer');
+  timerEl.textContent = display;
+  
+  const remainEl = $('turnRemain');
+  if (remainEl) remainEl.textContent = display;
+  
+  // 색상 변경
+  if (seconds <= 30) {
+    timerEl.className = 'timer-display critical';
+  } else if (seconds <= 60) {
+    timerEl.className = 'timer-display warning';
+  } else {
+    timerEl.className = 'timer-display';
+  }
+}
+
+// 유틸리티 함수들
+function getTeamName(teamId) {
+  if (teamId === 'team1') return '불사조 기사단';
+  if (teamId === 'team2') return '죽음을 먹는 자들';
+  if (teamId === 'draw') return '무승부';
+  return null;
+}
+
+function addBattleLog(message, type = 'action') {
+  const logContent = $('battleLogContent');
+  const timestamp = new Date().toLocaleTimeString();
+  
+  const logEntry = document.createElement('div');
+  logEntry.className = `log-entry ${type}`;
+  logEntry.innerHTML = `
+    <span class="log-timestamp">${timestamp}</span>
+    ${message}
+  `;
+  
+  logContent.appendChild(logEntry);
+  logContent.scrollTop = logContent.scrollHeight;
+}
+
+// 이벤트 리스너
+document.addEventListener('DOMContentLoaded', () => {
+  // URL 파라미터 처리
+  const params = new URLSearchParams(location.search);
+  const battleId = params.get('battle');
+  const token = params.get('token');
+  
+  if (battleId) $('battleId').value = battleId;
+  if (token) $('tokenInput').value = token;
+  
+  // 입력 검증
+  function validateForm() {
+    const spectatorName = $('spectatorName').value.trim();
+    const battleId = $('battleId').value.trim();
+    const otp = $('otp').value.trim();
     
-    if (messages.length === 0) {
-      el.innerHTML = '<div style="color: var(--gold); text-align: center; padding: 20px; font-style: italic;">아직 대화가 없습니다</div>';
-    } else {
-      el.innerHTML = messages.map(e => {
-        const time = new Date(e.timestamp).toLocaleTimeString();
-        const senderColor = e.senderType === 'system' ? '#E5C88A' : 
-                           e.senderType === 'admin' ? '#C8A882' : 
-                           e.senderType === 'spectator' ? '#F5E6B8' : '#D4C39A';
-        return `
-          <div style="padding: 8px 0; border-bottom: 1px dashed rgba(229, 200, 138, 0.1); line-height: 1.5;">
-            <span style="color: ${senderColor}; font-weight: 600; font-size: 0.85rem;">[${time}] ${e.sender}:</span>
-            <span style="color: #F5E6B8; margin-left: 10px; font-size: 0.9rem;">${e.message}</span>
-          </div>
-        `;
-      }).join('');
-    }
-    
-    el.scrollTop = el.scrollHeight;
+    $('loginBtn').disabled = !spectatorName || !battleId || !otp;
   }
-
-  $('#chatSendBtn').onclick = sendChat;
-  $('#chatInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') sendChat();
-  });
-
-  function sendChat() {
-    const v = $('#chatInput').value.trim();
-    if (!v || !state.socket) return;
-    
-    if (v.length > 200) {
-      showNotification('메시지는 200자 이하여야 합니다', 'error');
-      return;
-    }
-
-    state.socket.emit('chat-message', {
-      battleId: state.battleId,
-      sender: state.name || 'Spectator',
-      message: v,
-      senderType: 'spectator'
-    });
-
-    $('#chatInput').value = '';
-  }
-
-  $('#refreshBtn').onclick = refresh;
-
-  async function refresh() {
-    if (!state.battleId) return;
-    try {
-      console.log('Refreshing battle state for:', state.battleId);
-      const r = await fetch(`/api/battles/${state.battleId}/state`);
-      if (!r.ok) throw new Error('새로고침 실패');
-      const newData = await r.json();
-      console.log('Received battle data:', newData);
-      state.data = newData;
-      render(true);
-    } catch (e) {
-      console.error('Refresh failed:', e);
-      showNotification('새로고침 실패', 'error');
-    }
-  }
-
-  // 주기적 새로고침 설정
-  setInterval(() => {
-    if (state.battleId && !ioSock.connected) {
-      console.log('Socket disconnected, manual refresh...');
-      refresh();
-    }
-  }, 10000);
-
-  // 초기 설정
-  if (BATTLE) {
-    $('#battleId').value = BATTLE;
-    console.log('Initial battle ID set:', BATTLE);
-  }
-  if (TOKEN) {
-    $('#tokenInput').value = TOKEN;
-    console.log('Initial token set:', TOKEN);
-  }
+  
+  $('spectatorName').addEventListener('input', validateForm);
+  $('battleId').addEventListener('input', validateForm);
+  $('otp').addEventListener('input', validateForm);
+  
+  // 로그인 버튼
+  $('loginBtn').addEventListener('click', login);
+  
+  // 소켓 연결
+  connectSocket();
+  
+  validateForm();
 });
 </script>
+
+<!-- Socket.IO 클라이언트 라이브러리 -->
+<script src="/socket.io/socket.io.js"></script>
 </body>
 </html>
+  <!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>PYXIS 전투 관전</title>
+<style>
+:root {
+  --deep-navy: #0a0f1a;
+  --navy: #0f1419;
+  --navy-light: #1a1f26;
+  --gold: #E5C88A;
+  --gold-light: #F5E6B8;
+  --gold-dark: #C8A882;
+  --accent: #2a3441;
+  --text-primary: #F5E6B8;
+  --text-secondary: #D4C39A;
+  --border: rgba(229, 200, 138, 0.3);
+  --border-light: rgba(229, 200, 138, 0.15);
+  --shadow: rgba(229, 200, 138, 0.2);
+  --glass: rgba(15, 20, 25, 0.85);
+  --glass-dark: rgba(10, 15, 26, 0.9);
+  --timer-warning: #e74c3c;
+  --timer-critical: #c0392b;
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 50%, var(--navy-light) 100%);
+  color: var(--text-primary);
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  font-size: 16px;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(229, 200, 138, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(229, 200, 138, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.spectator-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.spectator-header {
+  background: var(--glass-dark);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 25px;
+  text-align: center;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(229, 200, 138, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spectator-title {
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(229, 200, 138, 0.5);
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+.connection-status {
+  display: inline-block;
+  background: rgba(229, 200, 138, 0.15);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.connection-status.connected {
+  background: rgba(39, 174, 96, 0.2);
+  border-color: rgba(39, 174, 96, 0.5);
+  color: var(--success);
+}
+
+.connection-status.disconnected {
+  background: rgba(231, 76, 60, 0.2);
+  border-color: rgba(231, 76, 60, 0.5);
+  color: var(--danger);
+}
+
+.login-panel {
+  background: var(--glass);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 30px;
+  backdrop-filter: blur(15px);
+  max-width: 500px;
+  margin: 50px auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-title {
+  font-size: 2rem;
+  color: var(--gold);
+  text-align: center;
+  margin-bottom: 30px;
+  font-weight: 700;
+  text-shadow: 0 0 15px rgba(229, 200, 138, 0.5);
+}
+
+.form-grid {
+  display: grid;
+  gap: 15px;
+}
+
+.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+@media (max-width: 768px) {
+  .cols-2 { grid-template-columns: 1fr; }
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-input {
+  background: rgba(42, 52, 65, 0.7);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 14px 18px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  outline
