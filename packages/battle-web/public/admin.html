@@ -817,10 +817,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 팀에 플레이어 추가 함수
   async function addPlayerToTeam(team) {
-    if (!BATTLE) return showError('전투 ID가 필요합니다');
+    if (!BATTLE) {
+      showError('전투 ID가 필요합니다');
+      return;
+    }
     
     const playerName = $(`#${team}PlayerName`).value.trim();
-    if (!playerName) return showError('플레이어 이름을 입력하세요');
+    if (!playerName) {
+      showError('플레이어 이름을 입력하세요');
+      return;
+    }
+    
+    console.log(`[디버그] 팀 ${team}에 플레이어 ${playerName} 추가 시도`);
+    console.log(`[디버그] 전투 ID: ${BATTLE}`);
     
     try {
       const formData = new FormData();
@@ -834,17 +843,35 @@ document.addEventListener('DOMContentLoaded', () => {
       formData.append('방어 보정기', $(`#${team}DefenseItem`).value);
       formData.append('디터니', $(`#${team}HealItem`).value);
 
+      console.log(`[디버그] FormData 준비 완료`);
+      console.log(`[디버그] API URL: /api/admin/battles/${BATTLE}/add-player`);
+
       const response = await fetch(`/api/admin/battles/${BATTLE}/add-player`, {
         method: 'POST',
         body: formData
       });
 
+      console.log(`[디버그] 응답 상태: ${response.status}`);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '서버 오류가 발생했습니다' }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const responseText = await response.text();
+        console.error(`[디버그] 응답 텍스트:`, responseText);
+        
+        try {
+          const errorData = JSON.parse(responseText);
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        } catch (parseError) {
+          // HTML 에러 페이지인 경우
+          if (responseText.includes('Cannot POST')) {
+            throw new Error('API 엔드포인트를 찾을 수 없습니다. 서버 재시작이 필요할 수 있습니다.');
+          }
+          throw new Error(`서버 오류: ${response.status} - ${responseText.substring(0, 100)}`);
+        }
       }
 
       const result = await response.json();
+      console.log(`[디버그] 성공 응답:`, result);
+      
       showSuccess(result.message || '플레이어가 추가되었습니다');
       
       // 입력 필드 초기화
@@ -852,12 +879,37 @@ document.addEventListener('DOMContentLoaded', () => {
       
       await refresh();
     } catch (error) {
-      showError(error.message);
+      console.error(`[디버그] 오류 발생:`, error);
+      showError(`플레이어 추가 실패: ${error.message}`);
     }
   }
 
-  on('#btnAddTeam1Player', 'click', () => addPlayerToTeam('team1'));
-  on('#btnAddTeam2Player', 'click', () => addPlayerToTeam('team2'));
+  // 이벤트 리스너 등록 (중복 방지)
+  function setupTeamManagementEvents() {
+    const team1Btn = $('#btnAddTeam1Player');
+    const team2Btn = $('#btnAddTeam2Player');
+    
+    if (team1Btn && !team1Btn.hasListener) {
+      team1Btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        console.log('[디버그] 팀 1 추가 버튼 클릭됨');
+        addPlayerToTeam('team1');
+      });
+      team1Btn.hasListener = true;
+    }
+    
+    if (team2Btn && !team2Btn.hasListener) {
+      team2Btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        console.log('[디버그] 팀 2 추가 버튼 클릭됨');
+        addPlayerToTeam('team2');
+      });
+      team2Btn.hasListener = true;
+    }
+  }
+
+  // DOM 로드 완료 후 이벤트 설정
+  setTimeout(setupTeamManagementEvents, 100);
     try {
       const j = await api('/api/battles', { 
         method: 'POST', 
