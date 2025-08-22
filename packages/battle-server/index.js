@@ -349,32 +349,6 @@ class Battle {
     return { success: true };
   }
 
-  startPlayerTurn() {
-    const currentPlayer = this.turnOrder[this.turnIndex];
-    this.currentTeam = currentPlayer.teamId;
-    
-    // 버프 턴 감소 (턴 시작 시)
-    if (currentPlayer.buffs.buffTurnsLeft > 0) {
-      currentPlayer.buffs.buffTurnsLeft--;
-      if (currentPlayer.buffs.buffTurnsLeft === 0) {
-        const oldAttack = currentPlayer.buffs.attackMultiplier;
-        const oldDefense = currentPlayer.buffs.defenseMultiplier;
-        
-        currentPlayer.buffs.attackMultiplier = 1;
-        currentPlayer.buffs.defenseMultiplier = 1;
-        
-        if (oldAttack > 1 || oldDefense > 1) {
-          this.addBattleLog(`${currentPlayer.name}의 아이템 효과가 만료되었습니다.`);
-        }
-      }
-    }
-    
-    currentPlayer.hasActed = false;
-    this.turnStartTime = Date.now();
-    
-    console.log(`턴 시작: ${currentPlayer.name} (${this.currentTeam})`);
-  }
-
   executeAction(playerId, action) {
     if (this.phase !== 'battle') throw new Error('전투가 진행 중이 아닙니다');
     
@@ -545,36 +519,6 @@ class Battle {
       success: true, 
       description 
     };
-  }) || !player.inventory.length) {
-      throw new Error('보유한 아이템이 없습니다.');
-    }
-    
-    const idx = player.inventory.findIndex(n => n === itemName);
-    if (idx === -1) throw new Error('보유하지 않은 아이템입니다.');
-    
-    player.inventory.splice(idx, 1);
-    
-    switch (itemName) {
-      case '공격 보정기':
-        player.buffs.attackMultiplier = 2;
-        player.buffs.buffTurnsLeft = 1;
-        break;
-      case '방어 보정기':
-        player.buffs.defenseMultiplier = 2;
-        player.buffs.buffTurnsLeft = 1;
-        break;
-      case '디터니':
-        const healAmount = 10;
-        player.hp = Math.min(player.maxHp, player.hp + healAmount);
-        break;
-      default:
-        throw new Error('알 수 없는 아이템입니다.');
-    }
-    
-    return { 
-      success: true, 
-      description: `${player.name}이 ${itemName}을(를) 사용했습니다.` 
-    };
   }
 
   findPlayer(playerId) {
@@ -591,6 +535,33 @@ class Battle {
     }
     
     this.startPlayerTurn();
+  }
+
+  // 버프 턴 감소 처리 개선
+  startPlayerTurn() {
+    const currentPlayer = this.turnOrder[this.turnIndex];
+    this.currentTeam = currentPlayer.teamId;
+    
+    // 버프 턴 감소 (턴 시작 시)
+    if (currentPlayer.buffs.buffTurnsLeft > 0) {
+      currentPlayer.buffs.buffTurnsLeft--;
+      if (currentPlayer.buffs.buffTurnsLeft === 0) {
+        const oldAttack = currentPlayer.buffs.attackMultiplier;
+        const oldDefense = currentPlayer.buffs.defenseMultiplier;
+        
+        currentPlayer.buffs.attackMultiplier = 1;
+        currentPlayer.buffs.defenseMultiplier = 1;
+        
+        if (oldAttack > 1 || oldDefense > 1) {
+          this.addBattleLog(`${currentPlayer.name}의 아이템 효과가 만료되었습니다.`);
+        }
+      }
+    }
+    
+    currentPlayer.hasActed = false;
+    this.turnStartTime = Date.now();
+    
+    console.log(`턴 시작: ${currentPlayer.name} (${this.currentTeam})`);
   }
 
   checkBattleEnd() {
@@ -737,6 +708,40 @@ app.post('/api/admin/battles/:id/add-character', verifyAdminToken, (req, res) =>
     const result = battle.addCharacter(name, teamId, stats, imageUrl, items, customHp);
     console.log(`[전투서버] 캐릭터 추가: ${name} -> ${teamId} (${req.params.id})`);
     io.to(req.params.id).emit('character-added', { battleId: req.params.id, character: result.character, state: battle.getState() });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 전투 참가
+app.post('/api/battles/:id/join', (req, res) => {
+  const { playerId, name, teamId, stats, imageUrl, items, customHp } = req.body;
+  const battle = battles.get(req.params.id);
+  
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  
+  try {
+    const result = battle.join(playerId, name, teamId, stats, imageUrl, items, customHp);
+    console.log(`[전투서버] 플레이어 참가: ${name} -> ${teamId} (${req.params.id})`);
+    battle.addChatMessage('전투 시스템', `${name}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 참가했습니다`, 'system');
+    io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 전투 시작
+app.post('/api/battles/:id/start', (req, res) => {
+  const battle = battles.get(req.params.id);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  
+  try {
+    const result = battle.start();
+    console.log(`[전투서버] 전투 시작: ${req.params.id}`);
+    battle.addChatMessage('전투 시스템', '전투가 시작되었습니다! 전사들이여, 전투에 임하라!', 'system');
+    io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -960,37 +965,3 @@ httpServer.listen(PORT, HOST, () => {
   console.log('8. 아이템: 공격/방어 보정기(1턴, ×2), 디터니(10 회복, 1회성)');
   console.log('===============================');
 });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 전투 참가
-app.post('/api/battles/:id/join', (req, res) => {
-  const { playerId, name, teamId, stats, imageUrl, items, customHp } = req.body;
-  const battle = battles.get(req.params.id);
-  
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
-  
-  try {
-    const result = battle.join(playerId, name, teamId, stats, imageUrl, items, customHp);
-    console.log(`[전투서버] 플레이어 참가: ${name} -> ${teamId} (${req.params.id})`);
-    battle.addChatMessage('전투 시스템', `${name}이 ${teamId === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'}에 참가했습니다`, 'system');
-    io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
-    res.json(result);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 전투 시작
-app.post('/api/battles/:id/start', (req, res) => {
-  const battle = battles.get(req.params.id);
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
-  
-  try {
-    const result = battle.start();
-    console.log(`[전투서버] 전투 시작: ${req.params.id}`);
-    battle.addChatMessage('전투 시스템', '전투가 시작되었습니다! 전사들이여, 전투에 임하라!', 'system');
-    io.to(req.params.id).emit('battle-started', { battleId: req.params.id, state: battle.getState() });
-    res.json(result);
