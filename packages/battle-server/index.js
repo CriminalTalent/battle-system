@@ -647,7 +647,7 @@ app.post('/api/battles/:id/players', upload.single('image'), (req, res) => {
   const result = battle.addPlayer(playerId, name, stats, team, imageUrl, items, customHp);
   
   if (result.success) {
-    console.log(`[전투서버] 플레이어 추가: ${name} → ${team} (${req.params.id})`);
+    console.log(`[전투서버] 플레이어 추가 (임시라우트): ${name} → ${team} (${req.params.id})`);
     io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
   }
   res.json(result);
@@ -870,4 +870,35 @@ httpServer.listen(PORT, () => {
   console.log(`[전투서버] 관리자 페이지: http://localhost:${PORT}/admin`);
   console.log(`[전투서버] 플레이어 페이지: http://localhost:${PORT}/play`);
   console.log(`[전투서버] 관전자 페이지: http://localhost:${PORT}/watch`);
+});4).toString('hex');
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  const customHp = hp ? parseInt(hp) : null;
+  const stats = { 
+    attack: parseInt(attack), 
+    defense: parseInt(defense), 
+    agility: parseInt(agility), 
+    luck: parseInt(luck) 
+  };
+
+  const result = battle.addPlayer(playerId, name, stats, team, imageUrl, items, customHp);
+  
+  if (result.success) {
+    console.log(`[전투서버] 플레이어 추가: ${name} → ${team} (${req.params.id})`);
+    io.to(req.params.id).emit('player-joined', { battleId: req.params.id, player: result.character, state: battle.getState() });
+  }
+  res.json(result);
 });
+
+// 임시 호환성 라우트 - admin.html의 잘못된 API 호출 처리
+app.post('/api/admin/battles/:id/join', upload.single('image'), (req, res) => {
+  const { name, attack = 3, defense = 3, agility = 3, luck = 3, team, hp } = req.body || {};
+  const items = {
+    '공격 보정기': parseInt(req.body['공격 보정기'] || 0),
+    '방어 보정기': parseInt(req.body['방어 보정기'] || 0),
+    '디터니': parseInt(req.body['디터니'] || 0)
+  };
+  
+  const battle = battles.get(req.params.id);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+
+  const playerId = crypto.randomBytes(
