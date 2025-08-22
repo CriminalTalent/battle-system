@@ -121,6 +121,42 @@ function rollD20() {
   return Math.floor(Math.random() * 20) + 1; 
 }
 
+// 이니셔티브 계산 (동점 시 다시 굴리기)
+function calculateInitiativeWithTiebreaker(players) {
+  const initiatives = [];
+  
+  for (const player of players) {
+    let initiative, rolls = 0;
+    let isUnique = false;
+    
+    do {
+      const diceRoll = rollD20();
+      initiative = player.stats.agility + diceRoll;
+      rolls++;
+      
+      // 동점 체크
+      isUnique = !initiatives.some(init => init.initiative === initiative);
+      
+      // 무한루프 방지 (매우 드문 경우)
+      if (rolls > 10) {
+        initiative += Math.random() * 0.01; // 미세 조정으로 강제 구분
+        isUnique = true;
+      }
+      
+    } while (!isUnique);
+    
+    initiatives.push({
+      player,
+      initiative,
+      agilityBase: player.stats.agility,
+      finalRoll: Math.floor(initiative - player.stats.agility),
+      rollCount: rolls
+    });
+  }
+  
+  return initiatives.sort((a, b) => b.initiative - a.initiative);
+}
+
 // 배틀 클래스
 class Battle {
   constructor(mode = '1v1') {
@@ -292,29 +328,24 @@ class Battle {
     this.phase = 'battle';
     this.startTime = Date.now();
     
-    // 이니셔티브 계산
+    // 동점 처리가 포함된 이니셔티브 계산
     const allPlayers = [...this.teams.team1, ...this.teams.team2];
-    const initiatives = allPlayers.map(player => {
-      const agilityRoll = rollD20() + player.stats.agility;
-      return { 
-        player: player, 
-        initiative: agilityRoll,
-        agilityBase: player.stats.agility,
-        diceRoll: agilityRoll - player.stats.agility
-      };
-    }).sort((a, b) => b.initiative - a.initiative);
+    const initiatives = calculateInitiativeWithTiebreaker(allPlayers);
     
     this.turnOrder = initiatives.map(i => i.player);
     this.turnIndex = 0;
     
     this.addBattleLog('전투가 시작되었습니다!');
     
+    // 이니셔티브 결과 로그
     initiatives.forEach(init => {
-      this.addBattleLog(`${init.player.name}: 민첩성(${init.agilityBase}) + 주사위(${init.diceRoll}) = ${init.initiative}`);
+      const tieMsg = init.rollCount > 1 ? ` (${init.rollCount}번째 굴림)` : '';
+      this.addBattleLog(
+        `${init.player.name}: 민첩성(${init.agilityBase}) + 주사위(${init.finalRoll}) = ${Math.floor(init.initiative)}${tieMsg}`
+      );
     });
     
     this.startPlayerTurn();
-    
     return { success: true };
   }
 
@@ -322,13 +353,19 @@ class Battle {
     const currentPlayer = this.turnOrder[this.turnIndex];
     this.currentTeam = currentPlayer.teamId;
     
-    // 버프 턴 감소
+    // 버프 턴 감소 (턴 시작 시)
     if (currentPlayer.buffs.buffTurnsLeft > 0) {
       currentPlayer.buffs.buffTurnsLeft--;
       if (currentPlayer.buffs.buffTurnsLeft === 0) {
+        const oldAttack = currentPlayer.buffs.attackMultiplier;
+        const oldDefense = currentPlayer.buffs.defenseMultiplier;
+        
         currentPlayer.buffs.attackMultiplier = 1;
         currentPlayer.buffs.defenseMultiplier = 1;
-        this.addBattleLog(`${currentPlayer.name}의 아이템 효과가 만료되었습니다.`);
+        
+        if (oldAttack > 1 || oldDefense > 1) {
+          this.addBattleLog(`${currentPlayer.name}의 아이템 효과가 만료되었습니다.`);
+        }
       }
     }
     
@@ -384,25 +421,36 @@ class Battle {
     if (!target.alive) throw new Error('대상이 이미 사망했습니다');
     if (target.teamId === attacker.teamId) throw new Error('아군은 공격할 수 없습니다');
     
-    const attackerHitRoll = rollD20() + attacker.stats.luck;
-    const attackerAttackPower = (attacker.stats.attack * attacker.buffs.attackMultiplier) + rollD20();
+    // 공격자 수치 계산
+    const attackerLuckRoll = rollD20();
+    const attackerHitValue = attacker.stats.luck + attackerLuckRoll; // 명중율
+    
+    const attackerAttackRoll = rollD20();
+    const attackerAttackValue = (attacker.stats.attack * attacker.buffs.attackMultiplier) + attackerAttackRoll; // 공격력
     
     let result;
     
     if (actionType === 'dodge') {
-      const dodgeRoll = rollD20() + target.stats.agility;
+      // 회피 시도: 민첩성 + 주사위(1-20) vs 공격자 명중력
+      const defenderAgilityRoll = rollD20();
+      const defenderDodgeValue = target.stats.agility + defenderAgilityRoll;
       
-      if (dodgeRoll >= attackerHitRoll) {
+      if (defenderDodgeValue >= attackerHitValue) {
+        // 완전 회피 성공
         result = {
           success: true,
-          description: `${target.name}이 ${attacker.name}의 공격을 완전히 회피했습니다! (회피: ${dodgeRoll} vs 명중: ${attackerHitRoll})`,
+          description: `${target.name}이 ${attacker.name}의 공격을 완전히 회피했습니다! (회피: ${defenderDodgeValue} vs 명중: ${attackerHitValue})`,
           damage: 0,
           hit: false,
-          dodged: true
+          dodged: true,
+          attackerRolls: { luck: attackerLuckRoll, attack: attackerAttackRoll },
+          defenderRolls: { agility: defenderAgilityRoll }
         };
       } else {
-        let damage = attackerAttackPower;
+        // 회피 실패 - 정면으로 맞음 (방어력 적용 안됨)
+        let damage = attackerAttackValue;
         
+        // 치명타 체크: 주사위(1-20) ≥ (20 - 행운/2)
         const criticalRoll = rollD20();
         const criticalThreshold = 20 - Math.floor(attacker.stats.luck / 2);
         const isCritical = criticalRoll >= criticalThreshold;
@@ -414,17 +462,23 @@ class Battle {
         
         result = {
           success: true,
-          description: `${target.name}의 회피 실패! ${attacker.name}이 ${damage} 데미지를 입혔습니다!${isCritical ? ' (치명타!)' : ''} (회피: ${dodgeRoll} vs 명중: ${attackerHitRoll})`,
+          description: `${target.name}의 회피 실패! ${attacker.name}이 ${damage} 데미지를 입혔습니다!${isCritical ? ' (치명타!)' : ''} (회피: ${defenderDodgeValue} vs 명중: ${attackerHitValue})`,
           damage,
           hit: true,
           critical: isCritical,
-          targetEliminated: !target.alive
+          targetEliminated: !target.alive,
+          attackerRolls: { luck: attackerLuckRoll, attack: attackerAttackRoll, critical: criticalRoll },
+          defenderRolls: { agility: defenderAgilityRoll }
         };
       }
     } else {
+      // 기본 방어: 방어력으로 데미지 감소
       const targetDefense = target.stats.defense * target.buffs.defenseMultiplier;
-      let damage = Math.max(1, attackerAttackPower - targetDefense);
       
+      // 방어는 공격력 - 방어력 = 데미지 (최소 1)
+      let damage = Math.max(1, attackerAttackValue - targetDefense);
+      
+      // 치명타 체크
       const criticalRoll = rollD20();
       const criticalThreshold = 20 - Math.floor(attacker.stats.luck / 2);
       const isCritical = criticalRoll >= criticalThreshold;
@@ -436,11 +490,13 @@ class Battle {
       
       result = {
         success: true,
-        description: `${attacker.name}이 ${target.name}에게 ${damage} 데미지를 입혔습니다!${isCritical ? ' (치명타!)' : ''} (공격력: ${Math.floor(attackerAttackPower)} vs 방어력: ${Math.floor(targetDefense)})`,
+        description: `${attacker.name}이 ${target.name}에게 ${damage} 데미지를 입혔습니다!${isCritical ? ' (치명타!)' : ''} (공격력: ${Math.floor(attackerAttackValue)} vs 방어력: ${Math.floor(targetDefense)})`,
         damage,
         hit: true,
         critical: isCritical,
-        targetEliminated: !target.alive
+        targetEliminated: !target.alive,
+        attackerRolls: { luck: attackerLuckRoll, attack: attackerAttackRoll, critical: criticalRoll },
+        defenderRolls: { defense: targetDefense }
       };
     }
     
@@ -449,6 +505,47 @@ class Battle {
 
   executeUseItem(player, itemName) {
     if (!Array.isArray(player.inventory) || !player.inventory.length) {
+      throw new Error('보유한 아이템이 없습니다.');
+    }
+    
+    const idx = player.inventory.findIndex(n => n === itemName);
+    if (idx === -1) throw new Error('보유하지 않은 아이템입니다.');
+    
+    // 아이템 소모 (1회성)
+    player.inventory.splice(idx, 1);
+    
+    let description = '';
+    
+    switch (itemName) {
+      case '공격 보정기':
+        player.buffs.attackMultiplier = 2; // 공격력 ×2
+        player.buffs.buffTurnsLeft = 1;    // 1턴
+        description = `${player.name}이 공격 보정기를 사용했습니다. 다음 공격의 위력이 2배가 됩니다!`;
+        break;
+        
+      case '방어 보정기':
+        player.buffs.defenseMultiplier = 2; // 방어력 ×2
+        player.buffs.buffTurnsLeft = 1;     // 1턴
+        description = `${player.name}이 방어 보정기를 사용했습니다. 다음 턴까지 방어력이 2배가 됩니다!`;
+        break;
+        
+      case '디터니':
+        const healAmount = 10; // 고정 10 회복
+        const oldHp = player.hp;
+        player.hp = Math.min(player.maxHp, player.hp + healAmount);
+        const actualHeal = player.hp - oldHp;
+        description = `${player.name}이 디터니를 사용했습니다. HP가 ${actualHeal} 회복되었습니다! (${oldHp} → ${player.hp})`;
+        break;
+        
+      default:
+        throw new Error('알 수 없는 아이템입니다.');
+    }
+    
+    return { 
+      success: true, 
+      description 
+    };
+  }) || !player.inventory.length) {
       throw new Error('보유한 아이템이 없습니다.');
     }
     
@@ -852,6 +949,16 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`플레이어: http://localhost:${PORT}/play.html`);
   console.log(`관전자: http://localhost:${PORT}/watch.html`);
   console.log('=====================================');
+  console.log('=== PYXIS 전투 시스템 규칙 ===');
+  console.log('1. 이니셔티브: 민첩성 + 주사위(1-20), 동점 시 다시 굴림');
+  console.log('2. 공격력: 공격력 + 주사위(1-20) - 상대 방어력 = 기본 데미지');
+  console.log('3. 명중율: 행운 + 주사위(1-20)');
+  console.log('4. 회피율: 민첩성 + 주사위(1-20)');
+  console.log('5. 치명타: 주사위(1-20) ≥ (20 - 행운/2) → 2배 데미지');
+  console.log('6. 방어: 방어력으로 데미지 감소');
+  console.log('7. 회피: 완전회피 vs 정면으로 맞음');
+  console.log('8. 아이템: 공격/방어 보정기(1턴, ×2), 디터니(10 회복, 1회성)');
+  console.log('===============================');
 });
   } catch (error) {
     res.status(400).json({ error: error.message });
