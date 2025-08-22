@@ -165,6 +165,14 @@ body::before {
   box-shadow: 0 0 0 2px rgba(229, 200, 138, 0.2);
 }
 
+.form-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
 .form-grid {
   display: grid;
   gap: 12px;
@@ -186,9 +194,9 @@ body::before {
   border: 1px solid var(--border-light);
 }
 
-.pill.success { background: var(--success); color: white; }
-.pill.warning { background: var(--warning); color: white; }
-.pill.danger { background: var(--danger); color: white; }
+.pill.success { background: #27ae60; color: white; }
+.pill.warning { background: #f39c12; color: white; }
+.pill.danger { background: #e74c3c; color: white; }
 
 .url-display {
   display: grid;
@@ -326,7 +334,6 @@ body::before {
   font-weight: 600;
   color: var(--gold);
   margin-bottom: 10px;
-  sticky-top: 0;
 }
 
 .chat-controls {
@@ -355,6 +362,14 @@ body::before {
 .notification.success { background: #27ae60; }
 .notification.error { background: #e74c3c; }
 .notification.info { background: #3498db; }
+
+.team-management {
+  background: var(--navy-light);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 10px;
+}
 
 @media (max-width: 768px) {
   .main-container {
@@ -779,7 +794,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 로그 렌더링 함수
   function renderLog(log, el) {
     if (!log || !el) return;
     
@@ -794,7 +808,6 @@ document.addEventListener('DOMContentLoaded', () => {
     el.scrollTop = el.scrollHeight;
   }
 
-  // 채팅 렌더링 함수
   function renderChat(chat, el) {
     if (!chat || !el) return;
     
@@ -884,32 +897,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 이벤트 리스너 등록 (중복 방지)
-  function setupTeamManagementEvents() {
-    const team1Btn = $('#btnAddTeam1Player');
-    const team2Btn = $('#btnAddTeam2Player');
-    
-    if (team1Btn && !team1Btn.hasListener) {
-      team1Btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        console.log('[디버그] 팀 1 추가 버튼 클릭됨');
-        addPlayerToTeam('team1');
-      });
-      team1Btn.hasListener = true;
-    }
-    
-    if (team2Btn && !team2Btn.hasListener) {
-      team2Btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        console.log('[디버그] 팀 2 추가 버튼 클릭됨');
-        addPlayerToTeam('team2');
-      });
-      team2Btn.hasListener = true;
-    }
-  }
-
-  // DOM 로드 완료 후 이벤트 설정
-  setTimeout(setupTeamManagementEvents, 100);
+  // 이벤트 리스너 등록
+  on('#btnCreate', 'click', async () => {
     try {
       const j = await api('/api/battles', { 
         method: 'POST', 
@@ -972,3 +961,121 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       $('#adminLoginState').textContent = '인증 실패';
       $('#adminLoginState').className = 'pill danger';
+    }
+  });
+
+  on('#btnIssuePlayer', 'click', async () => {
+    const playerName = $('#playerNameForOtp').value.trim();
+    if (!BATTLE || !playerName) return showError('전투 ID와 플레이어 이름이 필요합니다');
+    try {
+      const j = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
+        method: 'POST', 
+        body: JSON.stringify({ role: 'player', playerName }) 
+      });
+      $('#playerOtp').textContent = j.otp || '-';
+      showSuccess('플레이어 OTP 발급 완료');
+    } catch (err) {
+      // 오류는 이미 api 함수에서 처리됨
+    }
+  });
+
+  on('#btnIssueSpect', 'click', async () => {
+    if (!BATTLE) return showError('전투 ID가 필요합니다');
+    try {
+      const j = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
+        method: 'POST', 
+        body: JSON.stringify({ role: 'spectator' }) 
+      });
+      $('#spectOtp').textContent = j.otp || '-';
+      showSuccess('관전자 OTP 발급 완료');
+    } catch (err) {
+      // 오류는 이미 api 함수에서 처리됨
+    }
+  });
+
+  on('#btnStart', 'click', async () => {
+    if (!BATTLE) return showError('전투 ID가 필요합니다');
+    try {
+      await api(`/api/admin/battles/${BATTLE}/start`, { method: 'POST' });
+      showSuccess('전투 시작');
+      await refresh();
+    } catch (err) {
+      // 오류는 이미 api 함수에서 처리됨
+    }
+  });
+
+  on('#btnEnd', 'click', async () => {
+    if (!BATTLE) return showError('전투 ID가 필요합니다');
+    const winner = $('#winnerSel').value;
+    try {
+      await api(`/api/admin/battles/${BATTLE}/end`, { 
+        method: 'POST',
+        body: JSON.stringify({ winner: winner || null })
+      });
+      showSuccess('전투 종료');
+      await refresh();
+    } catch (err) {
+      // 오류는 이미 api 함수에서 처리됨
+    }
+  });
+
+  on('#btnNextTurn', 'click', async () => {
+    if (!BATTLE) return showError('전투 ID가 필요합니다');
+    try {
+      await api(`/api/admin/battles/${BATTLE}/next-turn`, { method: 'POST' });
+      showSuccess('다음 턴으로 진행');
+      await refresh();
+    } catch (err) {
+      // 오류는 이미 api 함수에서 처리됨
+    }
+  });
+
+  // 팀 관리 이벤트 리스너 등록
+  on('#btnAddTeam1Player', 'click', (e) => {
+    e.preventDefault();
+    console.log('[디버그] 팀 1 추가 버튼 클릭됨');
+    addPlayerToTeam('team1');
+  });
+
+  on('#btnAddTeam2Player', 'click', (e) => {
+    e.preventDefault();
+    console.log('[디버그] 팀 2 추가 버튼 클릭됨');
+    addPlayerToTeam('team2');
+  });
+
+  on('#btnSendChat', 'click', () => {
+    const message = $('#adminChatInput').value.trim();
+    if (!message || !socket) return;
+    
+    socket.emit('send-chat', {
+      battleId: BATTLE,
+      message: message,
+      senderType: 'admin'
+    });
+    
+    $('#adminChatInput').value = '';
+  });
+
+  // 엔터키로 채팅 전송
+  on('#adminChatInput', 'keypress', (e) => {
+    if (e.key === 'Enter') {
+      $('#btnSendChat').click();
+    }
+  });
+
+  // 초기 설정
+  if (BATTLE) {
+    $('#battleId').value = BATTLE;
+    refresh();
+  }
+
+  if (TOK.admin) {
+    $('#adminLoginState').textContent = '인증 완료';
+    $('#adminLoginState').className = 'pill success';
+    connectSocket();
+  }
+});
+</script>
+
+</body>
+</html>
