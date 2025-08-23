@@ -690,12 +690,12 @@ body::before {
       <!-- 전투 아레나 -->
       <div class="battle-arena">
         <div class="team-panel">
-          <h3 id="team1Title" class="team-title">팀 1</h3>
+          <h3 id="team1Title" class="team-title">불사조 기사단</h3>
           <div id="team1Players"></div>
         </div>
         
         <div class="team-panel">
-          <h3 id="team2Title" class="team-title">팀 2</h3>
+          <h3 id="team2Title" class="team-title">죽음을 먹는자들</h3>
           <div id="team2Players"></div>
         </div>
       </div>
@@ -710,8 +710,8 @@ body::before {
         <div class="log-panel">
           <h3 class="log-title">채팅 & 응원</h3>
           <div class="cheer-buttons">
-            <button onclick="sendCheer('팀 1')" class="cheer-btn">팀 1 응원!</button>
-            <button onclick="sendCheer('팀 2')" class="cheer-btn">팀 2 응원!</button>
+            <button onclick="sendCheer('불사조 기사단')" class="cheer-btn">불사조 기사단 응원!</button>
+            <button onclick="sendCheer('죽음을 먹는자들')" class="cheer-btn">죽음을 먹는자들 응원!</button>
             <button onclick="sendCheer('대박')" class="cheer-btn">대박!</button>
             <button onclick="sendCheer('화이팅')" class="cheer-btn">화이팅!</button>
           </div>
@@ -935,7 +935,7 @@ body::before {
     
     if (team1Title) {
       team1Title.className = 'team-title';
-      team1Title.textContent = gameState.teams?.team1?.name || '팀 1';
+      team1Title.textContent = '불사조 기사단';
       if (gameState.currentTeam === 'team1' && gameState.status === 'ongoing') {
         team1Title.classList.add('current-turn');
       }
@@ -943,7 +943,7 @@ body::before {
     
     if (team2Title) {
       team2Title.className = 'team-title';
-      team2Title.textContent = gameState.teams?.team2?.name || '팀 2';
+      team2Title.textContent = '죽음을 먹는자들';
       if (gameState.currentTeam === 'team2' && gameState.status === 'ongoing') {
         team2Title.classList.add('current-turn');
       }
@@ -1033,17 +1033,18 @@ body::before {
       const currentTeam = gameState.teams[gameState.currentTeam];
       if (currentTeam) {
         const currentPlayer = currentTeam.players[gameState.currentPlayerIndex];
+        const teamName = gameState.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는자들';
         if (currentPlayer) {
-          turnText.textContent = `${currentTeam.name} - ${currentPlayer.name}의 턴`;
+          turnText.textContent = `${teamName} - ${currentPlayer.name}의 턴`;
         } else {
-          turnText.textContent = `${currentTeam.name} 턴`;
+          turnText.textContent = `${teamName} 턴`;
         }
       }
     } else if (gameState.status === 'ended') {
       const winner = gameState.winner;
       if (winner) {
-        const winnerTeam = gameState.teams[winner];
-        turnText.textContent = `${winnerTeam.name} 승리!`;
+        const teamName = winner === 'team1' ? '불사조 기사단' : '죽음을 먹는자들';
+        turnText.textContent = `${teamName} 승리!`;
       } else {
         turnText.textContent = '무승부!';
       }
@@ -1149,8 +1150,8 @@ body::before {
     const subtitle = $('#gameOverSubtitle');
 
     if (gameState.winner) {
-      const winnerTeam = gameState.teams[gameState.winner];
-      title.textContent = `${winnerTeam.name} 승리!`;
+      const teamName = gameState.winner === 'team1' ? '불사조 기사단' : '죽음을 먹는자들';
+      title.textContent = `${teamName} 승리!`;
       title.style.color = 'var(--gold)';
       subtitle.textContent = '축하합니다!';
     } else {
