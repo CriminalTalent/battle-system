@@ -829,12 +829,12 @@ body::before {
       <!-- 전투 아레나 -->
       <div class="battle-arena">
         <div class="team-panel">
-          <h3 class="team-title">팀 1</h3>
+          <h3 class="team-title">불사조 기사단</h3>
           <div id="team1Players"></div>
         </div>
         
         <div class="team-panel">
-          <h3 class="team-title">팀 2</h3>
+          <h3 class="team-title">죽음을 먹는자들</h3>
           <div id="team2Players"></div>
         </div>
       </div>
@@ -1031,7 +1031,7 @@ body::before {
       allPlayers.forEach(player => {
         const option = document.createElement('option');
         option.value = player.id;
-        option.textContent = `${player.name} (${player.team === 'team1' ? '팀 1' : '팀 2'})`;
+        option.textContent = `${player.name} (${player.team === 'team1' ? '불사조 기사단' : '죽음을 먹는자들'})`;
         select.appendChild(option);
       });
     }
@@ -1242,7 +1242,7 @@ body::before {
     } else if (gameState.status === 'ongoing') {
       const currentTeam = gameState.teams[gameState.currentTeam];
       if (currentTeam) {
-        const teamName = currentTeam.name;
+        const teamName = currentTeam.name || (gameState.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는자들');
         if (isMyTurn()) {
           turnText.textContent = `당신의 턴입니다!`;
         } else {
@@ -1253,7 +1253,8 @@ body::before {
       const winner = gameState.winner;
       if (winner) {
         const winnerTeam = gameState.teams[winner];
-        turnText.textContent = `${winnerTeam.name} 승리!`;
+        const teamName = winnerTeam.name || (winner === 'team1' ? '불사조 기사단' : '죽음을 먹는자들');
+        turnText.textContent = `${teamName} 승리!`;
       } else {
         turnText.textContent = '무승부!';
       }
@@ -1535,10 +1536,11 @@ body::before {
       const winnerTeam = gameState.teams[gameState.winner];
       const myPlayer = getMyPlayer();
       const isWinner = myPlayer && myPlayer.team === gameState.winner;
+      const teamName = winnerTeam.name || (gameState.winner === 'team1' ? '불사조 기사단' : '죽음을 먹는자들');
 
       title.textContent = isWinner ? '승리!' : '패배!';
-      title.style.color = isWinner ? 'var(--success)' : 'var(--danger)';
-      subtitle.textContent = `${winnerTeam.name} 승리`;
+      title.style.color = isWinner ? 'var(--gold)' : 'var(--danger)';
+      subtitle.textContent = `${teamName} 승리`;
     } else {
       title.textContent = '무승부!';
       title.style.color = 'var(--gold)';
