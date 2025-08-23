@@ -737,4 +737,177 @@ io.on('connection', (socket) => {
   socket.on('adminAuth', ({ battleId, otp }) => {
     const battle = battles.get(battleId);
     if (!battle) {
-      socket.emit('authError', '존재하지
+      socket.emit('authError', '존재하지 않는 전투입니다.');
+      return;
+    }
+    
+    if (battle.otps.admin !== otp) {
+      socket.emit('authError', '잘못된 관리자 OTP입니다.');
+      return;
+    }
+    
+    adminConnections.set(socket.id, { battleId, role: 'admin' });
+    socket.emit('authSuccess', { role: 'admin', battle });
+    console.log(`[관리자인증] 소켓: ${socket.id}, 전투: ${battleId}`);
+  });
+  
+  // 플레이어 인증
+  socket.on('playerAuth', ({ battleId, otp, playerId }) => {
+    const battle = battles.get(battleId);
+    if (!battle) {
+      socket.emit('authError', '존재하지 않는 전투입니다.');
+      return;
+    }
+    
+    if (battle.otps.player !== otp) {
+      socket.emit('authError', '잘못된 플레이어 OTP입니다.');
+      return;
+    }
+    
+    const player = findPlayerInBattle(battle, playerId);
+    if (!player) {
+      socket.emit('authError', '플레이어를 찾을 수 없습니다.');
+      return;
+    }
+    
+    player.socketId = socket.id;
+    player.connected = true;
+    player.lastSeen = Date.now();
+    
+    playerSockets.set(socket.id, { battleId, playerId, role: 'player' });
+    socket.emit('authSuccess', { role: 'player', battle, player });
+    
+    broadcastBattleState(battleId);
+    console.log(`[플레이어인증] 소켓: ${socket.id}, 플레이어: ${player.name}`);
+  });
+  
+  // 관전자 인증
+  socket.on('spectatorAuth', ({ battleId, otp }) => {
+    const battle = battles.get(battleId);
+    if (!battle) {
+      socket.emit('authError', '존재하지 않는 전투입니다.');
+      return;
+    }
+    
+    if (battle.otps.spectator !== otp) {
+      socket.emit('authError', '잘못된 관전자 OTP입니다.');
+      return;
+    }
+    
+    spectatorConnections.set(socket.id, { battleId, role: 'spectator' });
+    socket.emit('authSuccess', { role: 'spectator', battle });
+    console.log(`[관전자인증] 소켓: ${socket.id}, 전투: ${battleId}`);
+  });
+  
+  // 플레이어 액션
+  socket.on('playerAction', (actionData) => {
+    try {
+      const playerInfo = playerSockets.get(socket.id);
+      if (!playerInfo) {
+        socket.emit('actionError', '인증되지 않은 플레이어입니다.');
+        return;
+      }
+      
+      // 기본 액션 처리 (실제 전투 로직은 추후 구현)
+      const battle = battles.get(playerInfo.battleId);
+      const player = findPlayerInBattle(battle, playerInfo.playerId);
+      
+      if (player) {
+        addBattleLog(playerInfo.battleId, 'action', `${player.name}이(가) ${actionData.type} 행동을 수행했습니다.`);
+      }
+      
+      socket.emit('actionSuccess');
+    } catch (error) {
+      socket.emit('actionError', error.message);
+    }
+  });
+  
+  // 채팅 메시지
+  socket.on('chatMessage', ({ message }) => {
+    const adminInfo = adminConnections.get(socket.id);
+    const playerInfo = playerSockets.get(socket.id);
+    const spectatorInfo = spectatorConnections.get(socket.id);
+    
+    if (adminInfo) {
+      addChatLog(adminInfo.battleId, '관리자', message, 'admin');
+    } else if (playerInfo) {
+      const battle = battles.get(playerInfo.battleId);
+      const player = findPlayerInBattle(battle, playerInfo.playerId);
+      if (player) {
+        addChatLog(playerInfo.battleId, player.name, message, 'player');
+      }
+    } else if (spectatorInfo) {
+      // 관전자는 채팅 불가 (응원 메시지만 가능)
+      socket.emit('chatError', '관전자는 채팅할 수 없습니다.');
+    }
+  });
+  
+  // 응원 메시지 (관전자용)
+  socket.on('cheerMessage', ({ team }) => {
+    const spectatorInfo = spectatorConnections.get(socket.id);
+    if (!spectatorInfo) return;
+    
+    const cheerMessages = [
+      `${team} 화이팅!`,
+      `${team} 파이팅!`,
+      `${team} 응원합니다!`,
+      `${team} 최고!`,
+      `${team} 힘내세요!`
+    ];
+    
+    const randomMessage = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
+    addChatLog(spectatorInfo.battleId, '관전자', randomMessage, 'spectator');
+  });
+  
+  // 하트비트
+  socket.on('heartbeat', () => {
+    connectionHeartbeats.set(socket.id, Date.now());
+  });
+  
+  // 연결 해제
+  socket.on('disconnect', () => {
+    console.log(`[소켓해제] ID: ${socket.id}`);
+    
+    // 플레이어 연결 상태 업데이트
+    const playerInfo = playerSockets.get(socket.id);
+    if (playerInfo) {
+      const battle = battles.get(playerInfo.battleId);
+      if (battle) {
+        const player = findPlayerInBattle(battle, playerInfo.playerId);
+        if (player) {
+          player.connected = false;
+          player.socketId = null;
+          broadcastBattleState(playerInfo.battleId);
+        }
+      }
+      playerSockets.delete(socket.id);
+    }
+    
+    // 연결 정보 정리
+    adminConnections.delete(socket.id);
+    spectatorConnections.delete(socket.id);
+    connectionHeartbeats.delete(socket.id);
+  });
+});
+
+// 연결 상태 모니터링
+setInterval(() => {
+  const now = Date.now();
+  connectionHeartbeats.forEach((lastSeen, socketId) => {
+    if (now - lastSeen > HEARTBEAT_INTERVAL * 2) {
+      console.log(`[연결타임아웃] 소켓: ${socketId}`);
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect();
+      connectionHeartbeats.delete(socketId);
+    }
+  });
+}, HEARTBEAT_INTERVAL);
+
+// 서버 시작
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`[전투서버] 포트 ${PORT}에서 실행 중`);
+  console.log(`[전투서버] 관리자 페이지: http://localhost:${PORT}/admin`);
+  console.log(`[전투서버] 플레이어 페이지: http://localhost:${PORT}/play`);
+  console.log(`[전투서버] 관전자 페이지: http://localhost:${PORT}/watch`);
+});
