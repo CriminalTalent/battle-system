@@ -294,6 +294,7 @@ function addPlayer(battleId, playerData) {
     actionType: null,
     isDefending: false,
     isDodging: false,
+    isReady: false,
     
     // 연결 정보
     socketId: null,
@@ -310,8 +311,71 @@ function addPlayer(battleId, playerData) {
   return player;
 }
 
-// 전투 시작
-function startBattle(battleId) {
+// 전투 시작 가능 상태 조회
+app.get('/api/admin/battles/:id/can-start', (req, res) => {
+  try {
+    const battleId = req.params.id;
+    const result = canStartBattle(battleId);
+    
+    res.json({
+      canStart: result.canStart,
+      reason: result.reason
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 전투 시작 가능 여부 확인
+function canStartBattle(battleId) {
+  const battle = battles.get(battleId);
+  if (!battle) return { canStart: false, reason: '존재하지 않는 전투입니다.' };
+  
+  if (battle.status !== 'waiting') {
+    return { canStart: false, reason: '이미 시작된 전투입니다.' };
+  }
+
+  const totalPlayers = battle.teams.team1.players.length + battle.teams.team2.players.length;
+  const expectedPlayers = battle.config.playersPerTeam * 2;
+  
+  if (totalPlayers < expectedPlayers) {
+    return { canStart: false, reason: `플레이어가 부족합니다. (${totalPlayers}/${expectedPlayers})` };
+  }
+
+  // 모든 플레이어가 준비 완료인지 확인
+  const allPlayers = [
+    ...battle.teams.team1.players,
+    ...battle.teams.team2.players
+  ];
+
+  const readyPlayers = allPlayers.filter(p => p.isReady).length;
+  if (readyPlayers < expectedPlayers) {
+    return { canStart: false, reason: `준비되지 않은 플레이어가 있습니다. (${readyPlayers}/${expectedPlayers})` };
+  }
+
+  return { canStart: true, reason: '전투 시작 가능' };
+}
+
+// 플레이어 준비 상태 토글
+function togglePlayerReady(battleId, playerId) {
+  const battle = battles.get(battleId);
+  if (!battle) throw new Error('존재하지 않는 전투입니다.');
+  
+  if (battle.status !== 'waiting') {
+    throw new Error('전투가 이미 시작되었습니다.');
+  }
+
+  const player = findPlayerInBattle(battle, playerId);
+  if (!player) throw new Error('플레이어를 찾을 수 없습니다.');
+
+  player.isReady = !player.isReady;
+  
+  const readyText = player.isReady ? '준비 완료' : '준비 취소';
+  addBattleLog(battleId, 'system', `${player.name}이(가) ${readyText}했습니다.`);
+  
+  broadcastBattleState(battleId);
+  return player.isReady;
+}
   const battle = battles.get(battleId);
   if (!battle) throw new Error('존재하지 않는 전투입니다.');
   
@@ -1256,6 +1320,24 @@ io.on('connection', (socket) => {
     console.log(`[관전자인증] 소켓: ${socket.id}, 전투: ${battleId}`);
   });
   
+  // 플레이어 준비 상태 토글
+  socket.on('playerReady', () => {
+    try {
+      const playerInfo = playerSockets.get(socket.id);
+      if (!playerInfo) {
+        socket.emit('actionError', '인증되지 않은 플레이어입니다.');
+        return;
+      }
+      
+      const isReady = togglePlayerReady(playerInfo.battleId, playerInfo.playerId);
+      socket.emit('readySuccess', { isReady });
+      
+    } catch (error) {
+      console.error(`[플레이어준비오류] ${error.message}`);
+      socket.emit('actionError', error.message);
+    }
+  });
+
   // 플레이어 액션
   socket.on('playerAction', (actionData) => {
     try {
