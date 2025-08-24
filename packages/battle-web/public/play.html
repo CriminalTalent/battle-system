@@ -991,6 +991,18 @@ body::before {
     showNotification(message, 'success');
   }
 
+  // 전투 데이터에서 내 플레이어 정보 가져오기
+  function getMyPlayerFromBattle(battle) {
+    if (!battle || !currentPlayerId) return null;
+    
+    const allPlayers = [
+      ...(battle.teams?.team1?.players || []),
+      ...(battle.teams?.team2?.players || [])
+    ];
+    
+    return allPlayers.find(p => p.id === currentPlayerId);
+  }
+
   // 준비 상태 토글
   function toggleReady() {
     if (!socket) return;
@@ -1108,6 +1120,11 @@ body::before {
       
       if (data.battle.status === 'waiting') {
         $('#waitingScreen').classList.remove('hidden');
+        // 플레이어의 준비 상태 반영
+        const myPlayer = getMyPlayerFromBattle(data.battle);
+        if (myPlayer) {
+          updateReadyStatus(myPlayer.isReady);
+        }
       } else {
         $('#battleScreen').classList.remove('hidden');
       }
