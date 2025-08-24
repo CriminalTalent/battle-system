@@ -1,8 +1,9 @@
 {
-  "name": "battle-api",
+  "name": "@battle-system/api",
   "version": "2.0.0",
-  "description": "Team Battle System API Server - 민첩성 기반 선후공 시스템",
+  "description": "Real-time multiplayer turn-based battle system API server with agility-based initiative system",
   "main": "src/server.js",
+  "private": true,
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
@@ -16,8 +17,11 @@
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop ecosystem.config.js",
     "pm2:restart": "pm2 restart ecosystem.config.js",
-    "setup": "npm install && mkdir -p logs",
-    "health": "curl http://localhost:3001/api/health || echo 'Server not running'"
+    "setup": "npm install && mkdir -p logs uploads",
+    "health": "curl http://localhost:3001/api/health || echo 'Server not running'",
+    "clean": "rimraf node_modules coverage logs/*.log",
+    "prestart": "npm run setup",
+    "postinstall": "echo 'Battle API dependencies installed successfully'"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -29,7 +33,10 @@
     "uuid": "^9.0.1",
     "express-rate-limit": "^7.1.5",
     "dotenv": "^16.4.5",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "multer": "^1.4.5",
+    "path": "^0.12.7",
+    "fs-extra": "^11.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3",
@@ -37,17 +44,19 @@
     "supertest": "^6.3.4",
     "eslint": "^8.57.0",
     "eslint-config-node": "^4.1.0",
-    "socket.io-client": "^4.7.4"
+    "socket.io-client": "^4.7.4",
+    "rimraf": "^5.0.5"
   },
   "optionalDependencies": {
     "jsonwebtoken": "^9.0.2",
     "redis": "^4.6.13",
     "joi": "^17.12.2",
     "express-validator": "^7.0.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "pm2": "^5.3.0"
   },
   "keywords": [
-    "battle",
+    "battle-system",
     "team-battle", 
     "api",
     "socket.io",
@@ -55,21 +64,27 @@
     "express",
     "turn-based",
     "initiative",
-    "agility",
+    "agility-based",
+    "dice-rolling",
     "pvp",
-    "multiplayer"
+    "multiplayer",
+    "korean",
+    "websocket",
+    "game-engine"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/CriminalTalent/battle-system.git"
+    "url": "https://github.com/CriminalTalent/battle-system.git",
+    "directory": "packages/battle-api"
   },
   "bugs": {
     "url": "https://github.com/CriminalTalent/battle-system/issues"
   },
-  "homepage": "https://github.com/CriminalTalent/battle-system#readme",
+  "homepage": "https://github.com/CriminalTalent/battle-system/tree/main/packages/battle-api#readme",
   "author": {
     "name": "CriminalTalent",
-    "email": "contact@example.com"
+    "email": "contact@example.com",
+    "url": "https://github.com/CriminalTalent"
   },
   "contributors": [
     {
@@ -84,21 +99,32 @@
   },
   "config": {
     "port": 3001,
-    "host": "0.0.0.0"
+    "host": "0.0.0.0",
+    "env": "development"
   },
   "jest": {
     "testEnvironment": "node",
     "collectCoverageFrom": [
       "src/**/*.js",
       "!src/server.js",
-      "!src/**/*.test.js"
+      "!src/**/*.test.js",
+      "!src/**/*.spec.js"
     ],
     "coverageDirectory": "coverage",
-    "coverageReporters": ["text", "lcov", "html"],
+    "coverageReporters": ["text", "lcov", "html", "json-summary"],
     "testMatch": [
       "**/tests/**/*.test.js",
-      "**/src/**/*.test.js"
-    ]
+      "**/src/**/*.test.js",
+      "**/src/**/*.spec.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
   },
   "eslintConfig": {
     "extends": ["eslint:recommended"],
@@ -109,26 +135,50 @@
     },
     "parserOptions": {
       "ecmaVersion": 2022,
-      "sourceType": "module"
+      "sourceType": "commonjs"
     },
     "rules": {
       "no-console": "off",
-      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "prefer-const": "error",
+      "no-var": "error",
+      "eqeqeq": ["error", "always"],
+      "curly": ["error", "all"]
     }
   },
   "nodemonConfig": {
     "watch": ["src/"],
     "ext": "js,json",
-    "ignore": ["src/**/*.test.js", "logs/", "coverage/"],
+    "ignore": [
+      "src/**/*.test.js", 
+      "src/**/*.spec.js",
+      "logs/", 
+      "coverage/",
+      "uploads/",
+      "node_modules/"
+    ],
     "env": {
-      "NODE_ENV": "development"
-    }
+      "NODE_ENV": "development",
+      "DEBUG": "battle:*"
+    },
+    "delay": "1000"
   },
   "files": [
     "src/",
     "package.json",
     "README.md",
     "Dockerfile",
-    ".dockerignore"
-  ]
+    ".dockerignore",
+    "ecosystem.config.js"
+  ],
+  "directories": {
+    "lib": "./src",
+    "test": "./tests"
+  },
+  "workspaces": {
+    "nohoist": [
+      "**/socket.io",
+      "**/socket.io/**"
+    ]
+  }
 }
