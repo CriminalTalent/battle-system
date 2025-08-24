@@ -848,7 +848,16 @@ body::before {
     <!-- 대기 화면 -->
     <div id="waitingScreen" class="waiting-message hidden">
       <div class="waiting-text">전투 준비 중...</div>
-      <div class="waiting-subtitle">관리자가 전투를 시작할 때까지 기다려주세요</div>
+      <div class="waiting-subtitle">모든 플레이어가 준비를 완료하면 관리자가 전투를 시작할 수 있습니다</div>
+      
+      <div style="margin-top: 30px;">
+        <button id="readyBtn" onclick="toggleReady()" class="btn btn-primary">
+          준비 완료
+        </button>
+        <div id="readyStatus" style="margin-top: 15px; font-size: 1.1rem; color: var(--text-secondary);">
+          준비 상태: 대기중
+        </div>
+      </div>
     </div>
 
     <!-- 메인 전투 화면 -->
@@ -982,6 +991,34 @@ body::before {
     showNotification(message, 'success');
   }
 
+  // 준비 상태 토글
+  function toggleReady() {
+    if (!socket) return;
+    
+    const btn = $('#readyBtn');
+    btn.disabled = true;
+    btn.textContent = '처리중...';
+    
+    socket.emit('playerReady');
+  }
+
+  // 준비 상태 업데이트
+  function updateReadyStatus(isReady) {
+    const btn = $('#readyBtn');
+    const status = $('#readyStatus');
+    
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = isReady ? '준비 취소' : '준비 완료';
+      btn.className = isReady ? 'btn btn-warning' : 'btn btn-primary';
+    }
+    
+    if (status) {
+      status.textContent = `준비 상태: ${isReady ? '준비 완료' : '대기중'}`;
+      status.style.color = isReady ? 'var(--success)' : 'var(--text-secondary)';
+    }
+  }
+
   // 플레이어 인증
   async function authenticatePlayer() {
     const battleId = $('#battleIdInput').value.trim();
@@ -1100,6 +1137,11 @@ body::before {
       updateDisplay();
     });
     
+    socket.on('readySuccess', (data) => {
+      updateReadyStatus(data.isReady);
+      showSuccess(data.isReady ? '준비 완료!' : '준비 취소');
+    });
+
     socket.on('actionSuccess', () => {
       showSuccess('행동이 성공적으로 수행되었습니다!');
       resetActionSelection();
@@ -1205,6 +1247,8 @@ body::before {
       const statusText = [];
       if (!player.alive) statusText.push('전사');
       else if (!player.connected) statusText.push('연결끊김');
+      else if (gameState.status === 'waiting' && player.isReady) statusText.push('준비완료');
+      else if (gameState.status === 'waiting') statusText.push('준비중');
       else if (player.isDefending) statusText.push('방어중');
       else if (player.isDodging) statusText.push('회피중');
       else if (player.hasActed) statusText.push('행동완료');
