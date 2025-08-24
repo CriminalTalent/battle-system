@@ -1299,7 +1299,7 @@ io.on('connection', (socket) => {
   });
   
   // 관전자 인증
-  socket.on('spectatorAuth', ({ battleId, otp }) => {
+  socket.on('spectatorAuth', ({ battleId, otp, spectatorName }) => {
     const battle = battles.get(battleId);
     if (!battle) {
       socket.emit('authError', '존재하지 않는 전투입니다.');
@@ -1310,14 +1310,35 @@ io.on('connection', (socket) => {
       socket.emit('authError', '잘못된 관전자 OTP입니다.');
       return;
     }
+
+    // 관전자 수 제한 체크 (40명)
+    let spectatorCount = 0;
+    spectatorConnections.forEach(conn => {
+      if (conn.battleId === battleId) spectatorCount++;
+    });
+
+    if (spectatorCount >= 40) {
+      socket.emit('authError', '관전자 인원이 가득 찼습니다. (최대 40명)');
+      return;
+    }
     
-    spectatorConnections.set(socket.id, { battleId, role: 'spectator' });
+    const spectatorData = { 
+      battleId, 
+      role: 'spectator',
+      name: spectatorName || '관전자',
+      joinedAt: Date.now()
+    };
+    
+    spectatorConnections.set(socket.id, spectatorData);
     socket.emit('authSuccess', { role: 'spectator', battle });
+    
+    // 관전자 입장 메시지
+    addChatLog(battleId, '시스템', `${spectatorData.name}님이 관전을 시작했습니다.`, 'system');
     
     // 연결 상태 브로드캐스트
     broadcastConnectionStatus(battleId);
     
-    console.log(`[관전자인증] 소켓: ${socket.id}, 전투: ${battleId}`);
+    console.log(`[관전자인증] 소켓: ${socket.id}, 전투: ${battleId}, 이름: ${spectatorData.name}`);
   });
   
   // 플레이어 준비 상태 토글
@@ -1382,20 +1403,19 @@ io.on('connection', (socket) => {
   });
   
   // 응원 메시지 (관전자용)
-  socket.on('cheerMessage', ({ team }) => {
+  socket.on('cheerMessage', ({ message }) => {
     const spectatorInfo = spectatorConnections.get(socket.id);
     if (!spectatorInfo) return;
     
-    const cheerMessages = [
-      `${team} 화이팅!`,
-      `${team} 파이팅!`,
-      `${team} 응원합니다!`,
-      `${team} 최고!`,
-      `${team} 힘내세요!`
-    ];
+    // 허용된 응원 메시지만 처리
+    const allowedMessages = ['힘내!', '지지마!', '이길 수 있어!', '포기하지 마!', '화이팅!', '대박!'];
     
-    const randomMessage = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
-    addChatLog(spectatorInfo.battleId, '관전자', randomMessage, 'spectator');
+    if (!allowedMessages.includes(message)) {
+      socket.emit('chatError', '허용되지 않은 메시지입니다.');
+      return;
+    }
+    
+    addChatLog(spectatorInfo.battleId, spectatorInfo.name, message, 'spectator');
   });
   
   // 하트비트
@@ -1433,6 +1453,9 @@ io.on('connection', (socket) => {
     // 관전자 연결 해제
     const spectatorInfo = spectatorConnections.get(socket.id);
     if (spectatorInfo) {
+      // 관전자 퇴장 메시지
+      addChatLog(spectatorInfo.battleId, '시스템', `${spectatorInfo.name}님이 관전을 종료했습니다.`, 'system');
+      
       broadcastConnectionStatus(spectatorInfo.battleId);
       spectatorConnections.delete(socket.id);
     }
