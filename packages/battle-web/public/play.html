@@ -1151,6 +1151,14 @@ body::before {
         showGameOver();
       }
       
+      // 대기중일 때 준비 상태 업데이트
+      if (battle.status === 'waiting') {
+        const myPlayer = getMyPlayerFromBattle(battle);
+        if (myPlayer) {
+          updateReadyStatus(myPlayer.isReady);
+        }
+      }
+      
       updateDisplay();
     });
     
@@ -1538,8 +1546,13 @@ body::before {
       btn.classList.remove('selected');
     });
 
-    // 아이템 버튼 선택 표시
-    event.target.classList.add('selected');
+    // 아이템 버튼 선택 표시 (이벤트 대상 찾기)
+    const itemBtns = document.querySelectorAll('.item-btn');
+    itemBtns.forEach(btn => {
+      if (btn.textContent.includes(item)) {
+        btn.classList.add('selected');
+      }
+    });
 
     // 아이템이 대상이 필요한지 확인
     const needsTarget = item === '디터니'; // 회복 아이템은 자신 또는 아군에게 사용 가능
