@@ -1,4 +1,733 @@
-<!doctype html>
+<div class="form-grid cols-3" style="margin-bottom: 16px;">
+          <input id="playerNameForOtp" class="form-input" placeholder="플레이어 이름">
+          <button id="btnIssuePlayer" class="btn btn-secondary">플레이어 OTP</button>
+          <span class="pill" id="playerOtp">-</span>
+        </div>
+        <div class="form-grid cols-2">
+          <button id="btnIssueSpect" class="btn btn-secondary">관전자 OTP</button>
+          <span class="pill" id="spectOtp">-</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 플레이어 준비 상태 -->
+  <section class="card" id="readySection" style="display: none;">
+    <div class="card-title">플레이어 준비 상태</div>
+    
+    <div class="ready-indicator">
+      <div class="ready-count" id="readyCount">준비 완료: 0/0</div>
+      <div class="ready-progress">
+        <div class="ready-fill" id="readyProgress" style="width: 0%"></div>
+      </div>
+      <div id="readyMessage" style="color: var(--text-secondary); font-size: 14px;">
+        모든 플레이어가 준비를 완료해야 전투를 시작할 수 있습니다
+      </div>
+    </div>
+  </section>
+
+  <!-- 전투 관리 -->
+  <section class="card">
+    <div class="card-title">전투 관리</div>
+    <div class="battle-controls">
+      <button class="btn btn-success" id="btnStart" disabled>전투 시작</button>
+      <select id="winnerSel" class="form-select" style="min-width: 200px;">
+        <option value="">승자: 자동 (HP 합계)</option>
+        <option value="team1">불사조 기사단 승리</option>
+        <option value="team2">죽음을 먹는자들 승리</option>
+      </select>
+      <button class="btn btn-danger" id="btnEnd">전투 종료</button>
+      <button class="btn btn-secondary" id="btnNextTurn">다음 턴</button>
+    </div>
+
+    <!-- 팀 관리 섹션 -->
+    <div class="form-grid cols-2" style="margin: 20px 0;">
+      <div class="team-management">
+        <div class="card-title" style="font-size: 1.1rem; margin-bottom: 15px;">불사조 기사단 관리</div>
+        <div class="form-grid" style="gap: 10px;">
+          <input id="team1PlayerName" class="form-input" placeholder="플레이어 이름">
+          
+          <div class="form-label" style="margin-top: 10px;">스탯 설정 (1-5)</div>
+          <div class="form-grid cols-4" style="gap: 8px;">
+            <div>
+              <label class="form-label" style="font-size: 12px;">공격력</label>
+              <input id="team1Attack" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">방어력</label>
+              <input id="team1Defense" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">민첩성</label>
+              <input id="team1Agility" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">행운</label>
+              <input id="team1Luck" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+          </div>
+          
+          <div class="form-label" style="margin-top: 10px;">아이템 할당</div>
+          <div class="form-grid cols-3" style="gap: 8px;">
+            <div>
+              <label class="form-label" style="font-size: 12px;">공격 보정기</label>
+              <input id="team1AttackItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">방어 보정기</label>
+              <input id="team1DefenseItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">디터니</label>
+              <input id="team1HealItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+          </div>
+          
+          <button class="btn" onclick="addPlayerToTeam('team1')" style="margin-top: 10px;">불사조 기사단에 추가</button>
+        </div>
+      </div>
+
+      <div class="team-management">
+        <div class="card-title" style="font-size: 1.1rem; margin-bottom: 15px;">죽음을 먹는자들 관리</div>
+        <div class="form-grid" style="gap: 10px;">
+          <input id="team2PlayerName" class="form-input" placeholder="플레이어 이름">
+          
+          <div class="form-label" style="margin-top: 10px;">스탯 설정 (1-5)</div>
+          <div class="form-grid cols-4" style="gap: 8px;">
+            <div>
+              <label class="form-label" style="font-size: 12px;">공격력</label>
+              <input id="team2Attack" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">방어력</label>
+              <input id="team2Defense" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">민첩성</label>
+              <input id="team2Agility" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">행운</label>
+              <input id="team2Luck" class="form-input" type="number" value="2" min="1" max="5">
+            </div>
+          </div>
+          
+          <div class="form-label" style="margin-top: 10px;">아이템 할당</div>
+          <div class="form-grid cols-3" style="gap: 8px;">
+            <div>
+              <label class="form-label" style="font-size: 12px;">공격 보정기</label>
+              <input id="team2AttackItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">방어 보정기</label>
+              <input id="team2DefenseItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">디터니</label>
+              <input id="team2HealItem" class="form-input" type="number" value="0" min="0" max="5">
+            </div>
+          </div>
+          
+          <button class="btn" onclick="addPlayerToTeam('team2')" style="margin-top: 10px;">죽음을 먹는자들에 추가</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 전투 상태 -->
+  <section class="status-grid">
+    <div class="status-display">
+      <div class="status-title">불사조 기사단 현황</div>
+      <div id="team1Status" class="player-list">
+        <div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>
+      </div>
+    </div>
+    
+    <div class="status-display">
+      <div class="status-title">죽음을 먹는자들 현황</div>
+      <div id="team2Status" class="player-list">
+        <div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 로그 섹션 -->
+  <section class="status-grid">
+    <div class="status-display">
+      <div class="status-title">전투 로그</div>
+      <div id="battleLog" class="log-content"></div>
+    </div>
+    
+    <div class="status-display">
+      <div class="status-title">채팅</div>
+      <div id="chatLog" class="log-content"></div>
+      <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <input type="text" id="chatInput" placeholder="메시지 입력..." maxlength="200" style="flex: 1; background: var(--navy-light); border: 1px solid var(--border-light); border-radius: 6px; padding: 10px 12px; color: var(--text-primary); font-size: 14px;">
+        <button onclick="sendChat()" style="background: var(--gold-dark); border: 1px solid var(--gold); border-radius: 6px; padding: 10px 15px; color: var(--navy); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease;">전송</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+let BATTLE = null;
+let TOK = {};
+let socket = null;
+let readyCheckInterval = null;
+
+// 도움 함수들
+function $(sel) { return document.querySelector(sel); }
+function on(sel, event, fn) { $(sel)?.addEventListener(event, fn); }
+
+// API 호출 함수
+async function api(url, opts = {}) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      ...opts
+    });
+    
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+    
+    return await res.json();
+  } catch (error) {
+    showError(error.message);
+    throw error;
+  }
+}
+
+// 알림 표시
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  setTimeout(() => notification.classList.add('show'), 100);
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => document.body.removeChild(notification), 300);
+  }, 3000);
+}
+
+function showSuccess(message) { showNotification(message, 'success'); }
+function showError(message) { showNotification(message, 'error'); }
+
+// 준비 상태 체크
+async function checkReadyStatus() {
+  if (!BATTLE) return;
+  
+  try {
+    const battle = await api(`/api/battles/${BATTLE}`);
+    updateReadyDisplay(battle);
+    
+    // 전투 시작 가능 여부 체크
+    const canStartResult = await api(`/api/admin/battles/${BATTLE}/can-start`);
+    updateStartButton(canStartResult);
+    
+  } catch (error) {
+    console.error('준비 상태 체크 오류:', error);
+  }
+}
+
+// 준비 상태 표시 업데이트
+function updateReadyDisplay(battle) {
+  if (!battle || !battle.teams) return;
+  
+  const allPlayers = [
+    ...(battle.teams.team1?.players || []),
+    ...(battle.teams.team2?.players || [])
+  ];
+  
+  const readyPlayers = allPlayers.filter(p => p.isReady).length;
+  const totalPlayers = allPlayers.length;
+  const expectedPlayers = battle.config?.playersPerTeam * 2 || totalPlayers;
+  
+  // 준비 섹션 표시/숨김
+  const readySection = $('#readySection');
+  if (battle.status === 'waiting' && totalPlayers > 0) {
+    readySection.style.display = 'block';
+  } else {
+    readySection.style.display = 'none';
+    return;
+  }
+  
+  // 준비 카운트 업데이트
+  const readyCount = $('#readyCount');
+  const readyProgress = $('#readyProgress');
+  const readyMessage = $('#readyMessage');
+  
+  if (readyCount) {
+    readyCount.textContent = `준비 완료: ${readyPlayers}/${expectedPlayers}`;
+  }
+  
+  if (readyProgress) {
+    const percentage = expectedPlayers > 0 ? (readyPlayers / expectedPlayers) * 100 : 0;
+    readyProgress.style.width = `${percentage}%`;
+  }
+  
+  if (readyMessage) {
+    if (readyPlayers === expectedPlayers && totalPlayers === expectedPlayers) {
+      readyMessage.textContent = '모든 플레이어가 준비되었습니다! 전투를 시작할 수 있습니다.';
+      readyMessage.style.color = 'var(--success)';
+    } else if (totalPlayers < expectedPlayers) {
+      readyMessage.textContent = `플레이어가 부족합니다. (${totalPlayers}/${expectedPlayers})`;
+      readyMessage.style.color = 'var(--warning)';
+    } else {
+      readyMessage.textContent = '모든 플레이어가 준비를 완료해야 전투를 시작할 수 있습니다.';
+      readyMessage.style.color = 'var(--text-secondary)';
+    }
+  }
+}
+
+// 전투 시작 버튼 업데이트
+function updateStartButton(canStartResult) {
+  const startBtn = $('#btnStart');
+  if (!startBtn) return;
+  
+  if (canStartResult.canStart) {
+    startBtn.disabled = false;
+    startBtn.textContent = '전투 시작';
+    startBtn.title = '전투를 시작합니다';
+  } else {
+    startBtn.disabled = true;
+    startBtn.textContent = '전투 시작 (불가)';
+    startBtn.title = canStartResult.reason || '전투 시작 조건이 충족되지 않았습니다';
+  }
+}
+
+// 상태 새로고침
+async function refresh() {
+  if (!BATTLE) return;
+  
+  try {
+    const battle = await api(`/api/battles/${BATTLE}`);
+    updateBattleDisplay(battle);
+    updateReadyDisplay(battle);
+  } catch (error) {
+    console.error('새로고침 오류:', error);
+  }
+}
+
+// 전투 화면 업데이트
+function updateBattleDisplay(battle) {
+  if (!battle) return;
+  
+  // 팀 상태 업데이트
+  updateTeamStatus('team1', battle.teams?.team1?.players || []);
+  updateTeamStatus('team2', battle.teams?.team2?.players || []);
+  
+  // 로그 업데이트
+  if (battle.battleLog) {
+    updateLog('battleLog', battle.battleLog);
+  }
+  
+  if (battle.chatLog) {
+    updateLog('chatLog', battle.chatLog);
+  }
+}
+
+// 팀 상태 업데이트
+function updateTeamStatus(teamId, players) {
+  const container = $(`#${teamId}Status`);
+  if (!container) return;
+  
+  if (players.length === 0) {
+    container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>';
+    return;
+  }
+  
+  container.innerHTML = players.map(player => {
+    const hpPercent = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
+    const itemCounts = {};
+    (player.inventory || []).forEach(item => {
+      itemCounts[item] = (itemCounts[item] || 0) + 1;
+    });
+    const itemText = Object.entries(itemCounts)
+      .map(([item, count]) => `${item}: ${count}`)
+      .join(', ') || '없음';
+    
+    return `
+      <div class="player-item ${player.isReady ? 'ready' : ''}">
+        <div class="player-avatar" style="background-image: url('${player.imageUrl || ''}')"></div>
+        <div class="player-info">
+          <div class="player-name">${player.name}</div>
+          <div class="health-bar">
+            <div class="health-fill" style="width: ${hpPercent}%"></div>
+          </div>
+          <div class="player-stats">
+            <span>HP: ${player.hp}/${player.maxHp}</span>
+            <span>${player.alive ? '생존' : '전사'}</span>
+            <span>${player.connected ? '온라인' : '오프라인'}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
+            공격${player.stats?.attack || 0} 방어${player.stats?.defense || 0} 민첩${player.stats?.agility || 0} 행운${player.stats?.luck || 0}
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary);">
+            아이템: ${itemText}
+          </div>
+        </div>
+        <div class="ready-status ${player.isReady ? 'ready' : 'waiting'}">
+          ${player.isReady ? '준비완료' : '준비중'}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 로그 업데이트
+function updateLog(containerId, entries) {
+  const container = $(`#${containerId}`);
+  if (!container || !entries) return;
+  
+  container.innerHTML = entries.slice(-20).map(entry => {
+    const time = new Date(entry.timestamp).toLocaleTimeString();
+    return `
+      <div class="log-entry">
+        <strong style="color: var(--gold);">${entry.type || '시스템'}</strong>: 
+        ${entry.message || entry.content || ''}
+        <br><small style="color: var(--text-secondary);">${time}</small>
+      </div>
+    `;
+  }).join('');
+  
+  container.scrollTop = container.scrollHeight;
+}
+
+// 플레이어 추가 함수
+async function addPlayerToTeam(team) {
+  if (!BATTLE) {
+    showError('전투 ID가 필요합니다');
+    return;
+  }
+  
+  const playerName = $(`#${team}PlayerName`).value.trim();
+  if (!playerName) {
+    showError('플레이어 이름을 입력하세요');
+    return;
+  }
+  
+  try {
+    const formData = new FormData();
+    formData.append('name', playerName);
+    formData.append('team', team);
+    formData.append('attack', $(`#${team}Attack`).value);
+    formData.append('defense', $(`#${team}Defense`).value);
+    formData.append('agility', $(`#${team}Agility`).value);
+    formData.append('luck', $(`#${team}Luck`).value);
+    formData.append('공격 보정기', $(`#${team}AttackItem`).value);
+    formData.append('방어 보정기', $(`#${team}DefenseItem`).value);
+    formData.append('디터니', $(`#${team}HealItem`).value);
+
+    const response = await fetch(`/api/admin/battles/${BATTLE}/add-player`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    showSuccess(result.message || '플레이어가 추가되었습니다');
+    
+    // 입력 필드 초기화
+    $(`#${team}PlayerName`).value = '';
+    
+    await refresh();
+  } catch (error) {
+    showError(`플레이어 추가 실패: ${error.message}`);
+  }
+}
+
+// 소켓 연결
+function connectSocket() {
+  if (!BATTLE) return;
+  
+  if (socket) {
+    socket.disconnect();
+  }
+  
+  socket = io({
+    transports: ['websocket', 'polling'],
+    upgrade: true,
+    rememberUpgrade: true
+  });
+  
+  socket.on('connect', () => {
+    console.log('소켓 연결됨:', socket.id);
+    socket.emit('join-admin', { battleId: BATTLE });
+  });
+  
+  socket.on('battle-state', (data) => {
+    updateBattleDisplay(data.state);
+  });
+  
+  socket.on('battle-update', (data) => {
+    updateBattleDisplay(data.state);
+  });
+  
+  socket.on('chat-message', (data) => {
+    // 채팅 메시지 수신시 로그 업데이트
+    if (data.battleId === BATTLE) {
+      refresh();
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('소켓 연결 해제됨');
+  });
+}
+
+// URL 파라미터에서 초기 설정 로드
+function loadInitialState() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  const battle = params.get('battle');
+  
+  if (token) {
+    TOK.admin = token;
+    $('#adminLoginState').textContent = '인증됨';
+    $('#adminLoginState').style.background = 'var(--gold)';
+    $('#adminLoginState').style.color = 'var(--navy)';
+  }
+  
+  if (battle) {
+    BATTLE = battle;
+    $('#battleId').value = battle;
+    refresh();
+    connectSocket();
+    
+    // 준비 상태 체크 시작 (대기중일 때만)
+    readyCheckInterval = setInterval(() => {
+      checkReadyStatus();
+    }, 2000);
+  }
+}
+
+// 이벤트 리스너 등록
+on('#btnCreate', 'click', async () => {
+  try {
+    const result = await api('/api/battles', { 
+      method: 'POST', 
+      body: JSON.stringify({ mode: $('#mode').value }) 
+    });
+    BATTLE = result.battleId;
+    $('#battleId').value = BATTLE;
+    history.replaceState(null, '', `/admin?token=${TOK.admin || ''}&battle=${BATTLE}`);
+    showSuccess('전투 생성 완료');
+    await refresh();
+    connectSocket();
+    
+    // 준비 상태 체크 시작
+    if (readyCheckInterval) clearInterval(readyCheckInterval);
+    readyCheckInterval = setInterval(() => {
+      checkReadyStatus();
+    }, 2000);
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnLinks', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  try {
+    const result = await api(`/api/admin/battles/${BATTLE}/links`, { method: 'POST' });
+    TOK = result.tokens || TOK;
+    $('#adminUrl').textContent = location.origin + `/admin?token=${TOK.admin}&battle=${BATTLE}`;
+    $('#playerUrl').textContent = location.origin + `/play?token=${TOK.player}&battle=${BATTLE}`;
+    $('#spectUrl').textContent = location.origin + `/watch?token=${TOK.spectator}&battle=${BATTLE}`;
+    showSuccess('링크 생성 완료');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnFetch', 'click', refresh);
+
+on('#btnIssueAdmin', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  try {
+    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
+      method: 'POST', 
+      body: JSON.stringify({ role: 'admin' }) 
+    });
+    $('#adminOtp').textContent = result.otp || '생성됨';
+    showSuccess('관리자 OTP 생성 완료');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnAdminLogin', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  const otp = $('#adminOtpInput').value.trim();
+  if (!otp) return showError('OTP를 입력하세요');
+  
+  try {
+    const result = await api(`/api/admin/battles/${BATTLE}/auth`, { 
+      method: 'POST', 
+      body: JSON.stringify({ otp, role: 'admin' }) 
+    });
+    TOK.admin = result.token;
+    $('#adminLoginState').textContent = '인증됨';
+    $('#adminLoginState').style.background = 'var(--gold)';
+    $('#adminLoginState').style.color = 'var(--navy)';
+    showSuccess('관리자 인증 완료');
+    connectSocket();
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnIssuePlayer', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  const playerName = $('#playerNameForOtp').value.trim();
+  if (!playerName) return showError('플레이어 이름을 입력하세요');
+  
+  try {
+    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
+      method: 'POST', 
+      body: JSON.stringify({ role: 'player', playerName }) 
+    });
+    $('#playerOtp').textContent = result.otp || '생성됨';
+    showSuccess('플레이어 OTP 생성 완료');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnIssueSpect', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  try {
+    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
+      method: 'POST', 
+      body: JSON.stringify({ role: 'spectator' }) 
+    });
+    $('#spectOtp').textContent = result.otp || '생성됨';
+    showSuccess('관전자 OTP 생성 완료');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnStart', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  try {
+    await api(`/api/admin/battles/${BATTLE}/start`, { method: 'POST' });
+    showSuccess('전투가 시작되었습니다');
+    
+    // 준비 상태 체크 중지
+    if (readyCheckInterval) {
+      clearInterval(readyCheckInterval);
+      readyCheckInterval = null;
+    }
+    
+    await refresh();
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnEnd', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  const winner = $('#winnerSel').value || null;
+  try {
+    await api(`/api/admin/battles/${BATTLE}/end`, { 
+      method: 'POST', 
+      body: JSON.stringify({ winner }) 
+    });
+    showSuccess('전투가 종료되었습니다');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+on('#btnNextTurn', 'click', async () => {
+  if (!BATTLE) return showError('전투 ID가 필요합니다');
+  try {
+    await api(`/api/admin/battles/${BATTLE}/next-turn`, { method: 'POST' });
+    showSuccess('다음 턴으로 진행');
+  } catch (error) {
+    // 오류는 이미 api 함수에서 처리됨
+  }
+});
+
+// 채팅 전송 함수
+function sendChat() {
+  const input = $('#chatInput');
+  const message = input.value.trim();
+  
+  if (!message) return;
+  
+  if (socket && socket.connected) {
+    // 소켓을 통해 채팅 전송
+    socket.emit('chat-message', { 
+      battleId: BATTLE,
+      message: message,
+      sender: '관리자',
+      senderType: 'admin'
+    });
+    input.value = '';
+  } else {
+    // 소켓이 없으면 API로 전송
+    sendChatViaAPI(message);
+  }
+}
+
+// API를 통한 채팅 전송 (백업)
+async function sendChatViaAPI(message) {
+  if (!BATTLE) return;
+  
+  try {
+    await api(`/api/admin/battles/${BATTLE}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({
+        message: message,
+        sender: '관리자',
+        senderType: 'admin'
+      })
+    });
+    $('#chatInput').value = '';
+  } catch (error) {
+    showError('채팅 전송 실패: ' + error.message);
+  }
+}
+
+// 페이지 로드시 초기화
+document.addEventListener('DOMContentLoaded', () => {
+  loadInitialState();
+  
+  // 채팅 입력 엔터키 이벤트
+  const chatInput = $('#chatInput');
+  if (chatInput) {
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendChat();
+      }
+    });
+  }
+});
+
+// 페이지 언로드시 정리
+window.addEventListener('beforeunload', () => {
+  if (readyCheckInterval) {
+    clearInterval(readyCheckInterval);
+  }
+});
+
+// Socket.IO 스크립트 로드
+const script = document.createElement('script');
+script.src = '/socket.io/socket.io.js';
+document.head.appendChild(script);
+</script>
+</body>
+</html>
+    <!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -190,6 +919,11 @@ body::before {
   border-color: #e74c3c;
 }
 
+.btn-success {
+  background: var(--success);
+  border-color: #27ae60;
+}
+
 .url-display {
   background: var(--navy-light);
   border: 1px solid var(--border-light);
@@ -296,6 +1030,11 @@ body::before {
   border-radius: 8px;
 }
 
+.player-item.ready {
+  border-color: var(--success);
+  box-shadow: 0 0 10px rgba(39, 174, 96, 0.3);
+}
+
 .player-avatar {
   width: 40px;
   height: 40px;
@@ -323,6 +1062,24 @@ body::before {
   font-size: 12px;
   display: flex;
   gap: 8px;
+}
+
+.ready-status {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ready-status.ready {
+  background: var(--success);
+  color: white;
+}
+
+.ready-status.waiting {
+  background: var(--warning);
+  color: white;
 }
 
 .health-bar {
@@ -358,6 +1115,36 @@ body::before {
 
 .log-entry:last-child {
   border-bottom: none;
+}
+
+.ready-indicator {
+  background: var(--glass);
+  border: 2px solid var(--border-light);
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.ready-count {
+  font-size: 1.2rem;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.ready-progress {
+  background: var(--navy);
+  border-radius: 10px;
+  height: 20px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.ready-fill {
+  background: linear-gradient(90deg, var(--warning) 0%, var(--success) 100%);
+  height: 100%;
+  transition: width 0.3s ease;
 }
 
 .notification {
@@ -483,602 +1270,4 @@ body::before {
         <div class="pill" id="adminLoginState">인증되지 않음</div>
       </div>
       <div>
-        <div class="form-grid cols-3" style="margin-bottom: 16px;">
-          <input id="playerNameForOtp" class="form-input" placeholder="플레이어 이름">
-          <button id="btnIssuePlayer" class="btn btn-secondary">플레이어 OTP</button>
-          <span class="pill" id="playerOtp">-</span>
-        </div>
-        <div class="form-grid cols-2">
-          <button id="btnIssueSpect" class="btn btn-secondary">관전자 OTP</button>
-          <span class="pill" id="spectOtp">-</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 전투 관리 -->
-  <section class="card">
-    <div class="card-title">전투 관리</div>
-    <div class="battle-controls">
-      <button class="btn" id="btnStart">전투 시작</button>
-      <select id="winnerSel" class="form-select" style="min-width: 200px;">
-        <option value="">승자: 자동 (HP 합계)</option>
-        <option value="team1">불사조 기사단 승리</option>
-        <option value="team2">죽음을 먹는자들 승리</option>
-      </select>
-      <button class="btn btn-danger" id="btnEnd">전투 종료</button>
-      <button class="btn btn-secondary" id="btnNextTurn">다음 턴</button>
-    </div>
-
-    <!-- 팀 관리 섹션 -->
-    <div class="form-grid cols-2" style="margin: 20px 0;">
-      <div class="team-management">
-        <div class="card-title" style="font-size: 1.1rem; margin-bottom: 15px;">불사조 기사단 관리</div>
-        <div class="form-grid" style="gap: 10px;">
-          <input id="team1PlayerName" class="form-input" placeholder="플레이어 이름">
-          
-          <div class="form-label" style="margin-top: 10px;">스탯 설정 (1-5)</div>
-          <div class="form-grid cols-4" style="gap: 8px;">
-            <div>
-              <label class="form-label" style="font-size: 12px;">공격력</label>
-              <input id="team1Attack" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">방어력</label>
-              <input id="team1Defense" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">민첩성</label>
-              <input id="team1Agility" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">행운</label>
-              <input id="team1Luck" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-          </div>
-          
-          <div class="form-label" style="margin-top: 10px;">아이템 할당</div>
-          <div class="form-grid cols-3" style="gap: 8px;">
-            <div>
-              <label class="form-label" style="font-size: 12px;">공격 보정기</label>
-              <input id="team1AttackItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">방어 보정기</label>
-              <input id="team1DefenseItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">디터니</label>
-              <input id="team1HealItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-          </div>
-          
-          <button class="btn" onclick="addPlayerToTeam('team1')" style="margin-top: 10px;">불사조 기사단에 추가</button>
-        </div>
-      </div>
-
-      <div class="team-management">
-        <div class="card-title" style="font-size: 1.1rem; margin-bottom: 15px;">죽음을 먹는자들 관리</div>
-        <div class="form-grid" style="gap: 10px;">
-          <input id="team2PlayerName" class="form-input" placeholder="플레이어 이름">
-          
-          <div class="form-label" style="margin-top: 10px;">스탯 설정 (1-5)</div>
-          <div class="form-grid cols-4" style="gap: 8px;">
-            <div>
-              <label class="form-label" style="font-size: 12px;">공격력</label>
-              <input id="team2Attack" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">방어력</label>
-              <input id="team2Defense" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">민첩성</label>
-              <input id="team2Agility" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">행운</label>
-              <input id="team2Luck" class="form-input" type="number" value="2" min="1" max="5">
-            </div>
-          </div>
-          
-          <div class="form-label" style="margin-top: 10px;">아이템 할당</div>
-          <div class="form-grid cols-3" style="gap: 8px;">
-            <div>
-              <label class="form-label" style="font-size: 12px;">공격 보정기</label>
-              <input id="team2AttackItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">방어 보정기</label>
-              <input id="team2DefenseItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 12px;">디터니</label>
-              <input id="team2HealItem" class="form-input" type="number" value="0" min="0" max="5">
-            </div>
-          </div>
-          
-          <button class="btn" onclick="addPlayerToTeam('team2')" style="margin-top: 10px;">죽음을 먹는자들에 추가</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 전투 상태 -->
-  <section class="status-grid">
-    <div class="status-display">
-      <div class="status-title">불사조 기사단 현황</div>
-      <div id="team1Status" class="player-list">
-        <div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>
-      </div>
-    </div>
-    
-    <div class="status-display">
-      <div class="status-title">죽음을 먹는자들 현황</div>
-      <div id="team2Status" class="player-list">
-        <div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 로그 섹션 -->
-  <section class="status-grid">
-    <div class="status-display">
-      <div class="status-title">전투 로그</div>
-      <div id="battleLog" class="log-content"></div>
-    </div>
-    
-    <div class="status-display">
-      <div class="status-title">채팅</div>
-      <div id="chatLog" class="log-content"></div>
-      <div style="display: flex; gap: 10px; margin-top: 15px;">
-        <input type="text" id="chatInput" placeholder="메시지 입력..." maxlength="200" style="flex: 1; background: var(--navy-light); border: 1px solid var(--border-light); border-radius: 6px; padding: 10px 12px; color: var(--text-primary); font-size: 14px;">
-        <button onclick="sendChat()" style="background: var(--gold-dark); border: 1px solid var(--gold); border-radius: 6px; padding: 10px 15px; color: var(--navy); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease;">전송</button>
-      </div>
-    </div>
-  </section>
-</div>
-
-<script>
-let BATTLE = null;
-let TOK = {};
-let socket = null;
-
-// 도움 함수들
-function $(sel) { return document.querySelector(sel); }
-function on(sel, event, fn) { $(sel)?.addEventListener(event, fn); }
-
-// API 호출 함수
-async function api(url, opts = {}) {
-  try {
-    const res = await fetch(url, {
-      headers: { 'Content-Type': 'application/json', ...opts.headers },
-      ...opts
-    });
-    
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    }
-    
-    return await res.json();
-  } catch (error) {
-    showError(error.message);
-    throw error;
-  }
-}
-
-// 알림 표시
-function showNotification(message, type = 'info') {
-  const notification = document.createElement('div');
-  notification.className = `notification ${type}`;
-  notification.textContent = message;
-  document.body.appendChild(notification);
-  
-  setTimeout(() => notification.classList.add('show'), 100);
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => document.body.removeChild(notification), 300);
-  }, 3000);
-}
-
-function showSuccess(message) { showNotification(message, 'success'); }
-function showError(message) { showNotification(message, 'error'); }
-
-// 상태 새로고침
-async function refresh() {
-  if (!BATTLE) return;
-  
-  try {
-    const battle = await api(`/api/battles/${BATTLE}`);
-    updateBattleDisplay(battle);
-  } catch (error) {
-    console.error('새로고침 오류:', error);
-  }
-}
-
-// 전투 화면 업데이트
-function updateBattleDisplay(battle) {
-  if (!battle) return;
-  
-  // 팀 상태 업데이트
-  updateTeamStatus('team1', battle.teams?.team1?.players || []);
-  updateTeamStatus('team2', battle.teams?.team2?.players || []);
-  
-  // 로그 업데이트
-  if (battle.battleLog) {
-    updateLog('battleLog', battle.battleLog);
-  }
-  
-  if (battle.chatLog) {
-    updateLog('chatLog', battle.chatLog);
-  }
-}
-
-// 팀 상태 업데이트
-function updateTeamStatus(teamId, players) {
-  const container = $(`#${teamId}Status`);
-  if (!container) return;
-  
-  if (players.length === 0) {
-    container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); font-size: 14px;">플레이어 없음</div>';
-    return;
-  }
-  
-  container.innerHTML = players.map(player => {
-    const hpPercent = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
-    const itemCounts = {};
-    (player.inventory || []).forEach(item => {
-      itemCounts[item] = (itemCounts[item] || 0) + 1;
-    });
-    const itemText = Object.entries(itemCounts)
-      .map(([item, count]) => `${item}: ${count}`)
-      .join(', ') || '없음';
-    
-    return `
-      <div class="player-item">
-        <div class="player-avatar" style="background-image: url('${player.imageUrl || ''}')"></div>
-        <div class="player-info">
-          <div class="player-name">${player.name}</div>
-          <div class="health-bar">
-            <div class="health-fill" style="width: ${hpPercent}%"></div>
-          </div>
-          <div class="player-stats">
-            <span>HP: ${player.hp}/${player.maxHp}</span>
-            <span>${player.alive ? '생존' : '전사'}</span>
-          </div>
-          <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
-            공격${player.stats?.attack || 0} 방어${player.stats?.defense || 0} 민첩${player.stats?.agility || 0} 행운${player.stats?.luck || 0}
-          </div>
-          <div style="font-size: 11px; color: var(--text-secondary);">
-            아이템: ${itemText}
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-// 로그 업데이트
-function updateLog(containerId, entries) {
-  const container = $(`#${containerId}`);
-  if (!container || !entries) return;
-  
-  container.innerHTML = entries.slice(-20).map(entry => {
-    const time = new Date(entry.timestamp).toLocaleTimeString();
-    return `
-      <div class="log-entry">
-        <strong style="color: var(--gold);">${entry.type || '시스템'}</strong>: 
-        ${entry.message || entry.content || ''}
-        <br><small style="color: var(--text-secondary);">${time}</small>
-      </div>
-    `;
-  }).join('');
-  
-  container.scrollTop = container.scrollHeight;
-}
-
-// 플레이어 추가 함수
-async function addPlayerToTeam(team) {
-  if (!BATTLE) {
-    showError('전투 ID가 필요합니다');
-    return;
-  }
-  
-  const playerName = $(`#${team}PlayerName`).value.trim();
-  if (!playerName) {
-    showError('플레이어 이름을 입력하세요');
-    return;
-  }
-  
-  try {
-    const formData = new FormData();
-    formData.append('name', playerName);
-    formData.append('team', team);
-    formData.append('attack', $(`#${team}Attack`).value);
-    formData.append('defense', $(`#${team}Defense`).value);
-    formData.append('agility', $(`#${team}Agility`).value);
-    formData.append('luck', $(`#${team}Luck`).value);
-    formData.append('공격 보정기', $(`#${team}AttackItem`).value);
-    formData.append('방어 보정기', $(`#${team}DefenseItem`).value);
-    formData.append('디터니', $(`#${team}HealItem`).value);
-
-    const response = await fetch(`/api/admin/battles/${BATTLE}/add-player`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
-    showSuccess(result.message || '플레이어가 추가되었습니다');
-    
-    // 입력 필드 초기화
-    $(`#${team}PlayerName`).value = '';
-    
-    await refresh();
-  } catch (error) {
-    showError(`플레이어 추가 실패: ${error.message}`);
-  }
-}
-
-// 소켓 연결
-function connectSocket() {
-  if (!BATTLE) return;
-  
-  if (socket) {
-    socket.disconnect();
-  }
-  
-  socket = io({
-    transports: ['websocket', 'polling'],
-    upgrade: true,
-    rememberUpgrade: true
-  });
-  
-  socket.on('connect', () => {
-    console.log('소켓 연결됨:', socket.id);
-    socket.emit('join-admin', { battleId: BATTLE });
-  });
-  
-  socket.on('battle-state', (data) => {
-    updateBattleDisplay(data.state);
-  });
-  
-  socket.on('battle-update', (data) => {
-    updateBattleDisplay(data.state);
-  });
-  
-  socket.on('chat-message', (data) => {
-    // 채팅 메시지 수신시 로그 업데이트
-    if (data.battleId === BATTLE) {
-      refresh();
-    }
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('소켓 연결 해제됨');
-  });
-}
-
-// URL 파라미터에서 초기 설정 로드
-function loadInitialState() {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
-  const battle = params.get('battle');
-  
-  if (token) {
-    TOK.admin = token;
-    $('#adminLoginState').textContent = '인증됨';
-    $('#adminLoginState').style.background = 'var(--gold)';
-    $('#adminLoginState').style.color = 'var(--navy)';
-  }
-  
-  if (battle) {
-    BATTLE = battle;
-    $('#battleId').value = battle;
-    refresh();
-    connectSocket();
-  }
-}
-
-// 이벤트 리스너 등록
-on('#btnCreate', 'click', async () => {
-  try {
-    const result = await api('/api/battles', { 
-      method: 'POST', 
-      body: JSON.stringify({ mode: $('#mode').value }) 
-    });
-    BATTLE = result.battleId;
-    $('#battleId').value = BATTLE;
-    history.replaceState(null, '', `/admin?token=${TOK.admin || ''}&battle=${BATTLE}`);
-    showSuccess('전투 생성 완료');
-    await refresh();
-    connectSocket();
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnLinks', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/links`, { method: 'POST' });
-    TOK = result.tokens || TOK;
-    $('#adminUrl').textContent = location.origin + `/admin?token=${TOK.admin}&battle=${BATTLE}`;
-    $('#playerUrl').textContent = location.origin + `/play?token=${TOK.player}&battle=${BATTLE}`;
-    $('#spectUrl').textContent = location.origin + `/watch?token=${TOK.spectator}&battle=${BATTLE}`;
-    showSuccess('링크 생성 완료');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnFetch', 'click', refresh);
-
-on('#btnIssueAdmin', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
-      method: 'POST', 
-      body: JSON.stringify({ role: 'admin' }) 
-    });
-    $('#adminOtp').textContent = result.otp || '생성됨';
-    showSuccess('관리자 OTP 생성 완료');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnAdminLogin', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  const otp = $('#adminOtpInput').value.trim();
-  if (!otp) return showError('OTP를 입력하세요');
-  
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/auth`, { 
-      method: 'POST', 
-      body: JSON.stringify({ otp, role: 'admin' }) 
-    });
-    TOK.admin = result.token;
-    $('#adminLoginState').textContent = '인증됨';
-    $('#adminLoginState').style.background = 'var(--gold)';
-    $('#adminLoginState').style.color = 'var(--navy)';
-    showSuccess('관리자 인증 완료');
-    connectSocket();
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnIssuePlayer', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  const playerName = $('#playerNameForOtp').value.trim();
-  if (!playerName) return showError('플레이어 이름을 입력하세요');
-  
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
-      method: 'POST', 
-      body: JSON.stringify({ role: 'player', playerName }) 
-    });
-    $('#playerOtp').textContent = result.otp || '생성됨';
-    showSuccess('플레이어 OTP 생성 완료');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnIssueSpect', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/issue-otp`, { 
-      method: 'POST', 
-      body: JSON.stringify({ role: 'spectator' }) 
-    });
-    $('#spectOtp').textContent = result.otp || '생성됨';
-    showSuccess('관전자 OTP 생성 완료');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnStart', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  try {
-    await api(`/api/admin/battles/${BATTLE}/start`, { method: 'POST' });
-    showSuccess('전투가 시작되었습니다');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnEnd', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  const winner = $('#winnerSel').value || null;
-  try {
-    await api(`/api/admin/battles/${BATTLE}/end`, { 
-      method: 'POST', 
-      body: JSON.stringify({ winner }) 
-    });
-    showSuccess('전투가 종료되었습니다');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-on('#btnNextTurn', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  try {
-    await api(`/api/admin/battles/${BATTLE}/next-turn`, { method: 'POST' });
-    showSuccess('다음 턴으로 진행');
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
-  }
-});
-
-// 채팅 전송 함수
-function sendChat() {
-  const input = $('#chatInput');
-  const message = input.value.trim();
-  
-  if (!message) return;
-  
-  if (socket && socket.connected) {
-    // 소켓을 통해 채팅 전송
-    socket.emit('chat-message', { 
-      battleId: BATTLE,
-      message: message,
-      sender: '관리자',
-      senderType: 'admin'
-    });
-    input.value = '';
-  } else {
-    // 소켓이 없으면 API로 전송
-    sendChatViaAPI(message);
-  }
-}
-
-// API를 통한 채팅 전송 (백업)
-async function sendChatViaAPI(message) {
-  if (!BATTLE) return;
-  
-  try {
-    await api(`/api/admin/battles/${BATTLE}/chat`, {
-      method: 'POST',
-      body: JSON.stringify({
-        message: message,
-        sender: '관리자',
-        senderType: 'admin'
-      })
-    });
-    $('#chatInput').value = '';
-  } catch (error) {
-    showError('채팅 전송 실패: ' + error.message);
-  }
-}
-
-// 페이지 로드시 초기화
-document.addEventListener('DOMContentLoaded', () => {
-  loadInitialState();
-  
-  // 채팅 입력 엔터키 이벤트
-  const chatInput = $('#chatInput');
-  if (chatInput) {
-    chatInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendChat();
-      }
-    });
-  }
-});
-
-// Socket.IO 스크립트 로드
-const script = document.createElement('script');
-script.src = '/socket.io/socket.io.js';
-document.head.appendChild(script);
-</script>
-</body>
-</html>
+        <div
