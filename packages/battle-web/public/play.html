@@ -228,6 +228,11 @@ body::before {
   border-bottom: 2px solid var(--border-light);
 }
 
+.team-title.current-turn {
+  color: var(--success);
+  text-shadow: 0 0 15px rgba(39, 174, 96, 0.5);
+}
+
 .player-card {
   display: flex;
   align-items: center;
@@ -245,9 +250,19 @@ body::before {
   box-shadow: 0 0 20px rgba(229, 200, 138, 0.3);
 }
 
+.player-card.my-player {
+  border-color: var(--success);
+  box-shadow: 0 0 20px rgba(39, 174, 96, 0.3);
+}
+
 .player-card.dead {
   opacity: 0.5;
   filter: grayscale(100%);
+}
+
+.player-card.disconnected {
+  opacity: 0.7;
+  border-style: dashed;
 }
 
 .player-avatar {
@@ -407,6 +422,13 @@ body::before {
   color: var(--navy);
 }
 
+.action-btn.selected {
+  background: var(--gold);
+  border-color: var(--gold-light);
+  color: var(--navy);
+  box-shadow: 0 0 20px rgba(229, 200, 138, 0.5);
+}
+
 .target-selection {
   margin-top: 15px;
   padding: 15px;
@@ -441,6 +463,11 @@ body::before {
 
 .target-btn:hover {
   background: var(--gold-dark);
+  color: var(--navy);
+}
+
+.target-btn.selected {
+  background: var(--gold);
   color: var(--navy);
 }
 
@@ -489,6 +516,12 @@ body::before {
   cursor: not-allowed;
   transform: none !important;
   box-shadow: none !important;
+}
+
+.item-btn.selected {
+  background: var(--gold);
+  border-color: var(--gold-light);
+  box-shadow: 0 0 15px rgba(229, 200, 138, 0.4);
 }
 
 .battle-log {
@@ -829,12 +862,12 @@ body::before {
       <!-- 전투 아레나 -->
       <div class="battle-arena">
         <div class="team-panel">
-          <h3 class="team-title">불사조 기사단</h3>
+          <h3 id="team1Title" class="team-title">불사조 기사단</h3>
           <div id="team1Players"></div>
         </div>
         
         <div class="team-panel">
-          <h3 class="team-title">죽음을 먹는자들</h3>
+          <h3 id="team2Title" class="team-title">죽음을 먹는자들</h3>
           <div id="team2Players"></div>
         </div>
       </div>
@@ -872,6 +905,13 @@ body::before {
             <div class="target-title">아이템 사용 대상 (필요시):</div>
             <div id="itemTargetList" class="target-list"></div>
           </div>
+        </div>
+
+        <!-- 행동 확인 버튼 -->
+        <div style="margin-top: 20px;">
+          <button id="executeBtn" onclick="executeAction()" class="btn btn-primary hidden">
+            행동 실행
+          </button>
         </div>
       </div>
 
@@ -1067,6 +1107,14 @@ body::before {
     
     socket.on('actionError', (message) => {
       showError(message);
+      resetActionSelection();
+    });
+
+    socket.on('forceDisconnect', (message) => {
+      showError(message);
+      setTimeout(() => {
+        location.reload();
+      }, 3000);
     });
     
     // 주기적으로 연결 확인
@@ -1094,8 +1142,11 @@ body::before {
     if (!gameState) return;
 
     // 팀별 플레이어 렌더링
-    renderTeam(gameState.teams?.team1?.players || [], $('#team1Players'));
-    renderTeam(gameState.teams?.team2?.players || [], $('#team2Players'));
+    renderTeam(gameState.teams?.team1?.players || [], $('#team1Players'), 'team1');
+    renderTeam(gameState.teams?.team2?.players || [], $('#team2Players'), 'team2');
+
+    // 팀 타이틀 업데이트
+    updateTeamTitles();
 
     // 턴 정보 업데이트
     updateTurnInfo();
@@ -1114,7 +1165,7 @@ body::before {
   }
 
   // 팀 렌더링
-  function renderTeam(players, container) {
+  function renderTeam(players, container, teamId) {
     if (!container) return;
     
     container.innerHTML = '';
@@ -1127,9 +1178,19 @@ body::before {
         div.classList.add('current-turn');
       }
       
+      // 내 플레이어 하이라이트
+      if (player.id === currentPlayerId) {
+        div.classList.add('my-player');
+      }
+      
       // 사망한 플레이어
       if (!player.alive) {
         div.classList.add('dead');
+      }
+
+      // 연결 끊긴 플레이어
+      if (!player.connected) {
+        div.classList.add('disconnected');
       }
       
       const hpPercent = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
@@ -1139,12 +1200,30 @@ body::before {
       if (player.buffs?.attack_buff) buffs.push('공격력 강화');
       if (player.buffs?.defense_buff) buffs.push('방어력 강화');
       const buffText = buffs.length > 0 ? ` (${buffs.join(', ')})` : '';
+
+      // 상태 표시
+      const statusText = [];
+      if (!player.alive) statusText.push('전사');
+      else if (!player.connected) statusText.push('연결끊김');
+      else if (player.isDefending) statusText.push('방어중');
+      else if (player.isDodging) statusText.push('회피중');
+      else if (player.hasActed) statusText.push('행동완료');
+      else statusText.push('대기중');
+
+      // 아이템 개수 표시
+      const itemCounts = {};
+      (player.inventory || []).forEach(item => {
+        itemCounts[item] = (itemCounts[item] || 0) + 1;
+      });
+      const itemText = Object.entries(itemCounts)
+        .map(([item, count]) => `${item}: ${count}`)
+        .join(', ') || '없음';
       
       div.innerHTML = `
         <div class="player-avatar" style="background-image: url('${player.imageUrl || ''}')"></div>
         <div class="player-info">
           <div class="player-name">${player.name}${buffText}</div>
-          <div class="player-hp">${player.hp}/${player.maxHp} HP ${player.alive ? '(생존)' : '(전사)'}</div>
+          <div class="player-hp">${player.hp}/${player.maxHp} HP (${statusText.join(', ')})</div>
           <div class="hp-bar">
             <div class="hp-fill" style="width: ${hpPercent}%"></div>
           </div>
@@ -1154,10 +1233,35 @@ body::before {
             <span class="stat-badge">민첩 ${player.stats?.agility || 0}</span>
             <span class="stat-badge">행운 ${player.stats?.luck || 0}</span>
           </div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
+            아이템: ${itemText}
+          </div>
         </div>
       `;
       container.appendChild(div);
     });
+  }
+
+  // 팀 타이틀 업데이트
+  function updateTeamTitles() {
+    const team1Title = $('#team1Title');
+    const team2Title = $('#team2Title');
+    
+    if (team1Title) {
+      team1Title.className = 'team-title';
+      team1Title.textContent = '불사조 기사단';
+      if (gameState.currentTeam === 'team1' && gameState.status === 'ongoing') {
+        team1Title.classList.add('current-turn');
+      }
+    }
+    
+    if (team2Title) {
+      team2Title.className = 'team-title';
+      team2Title.textContent = '죽음을 먹는자들';
+      if (gameState.currentTeam === 'team2' && gameState.status === 'ongoing') {
+        team2Title.classList.add('current-turn');
+      }
+    }
   }
 
   // 현재 플레이어인지 체크
@@ -1211,6 +1315,7 @@ body::before {
         const teamName = currentTeam.name || (gameState.currentTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는자들');
         if (isMyTurn()) {
           turnText.textContent = `당신의 턴입니다!`;
+          turnText.style.color = 'var(--success)';
         } else {
           const alivePlayers = currentTeam.players.filter(p => p.alive);
           const currentPlayer = alivePlayers[gameState.currentPlayerIndex];
@@ -1219,6 +1324,7 @@ body::before {
           } else {
             turnText.textContent = `${teamName} 턴`;
           }
+          turnText.style.color = 'var(--gold)';
         }
       }
     } else if (gameState.status === 'ended') {
@@ -1230,6 +1336,7 @@ body::before {
       } else {
         turnText.textContent = '무승부!';
       }
+      turnText.style.color = 'var(--gold)';
       if (turnTimer) turnTimer.textContent = '';
     }
   }
@@ -1286,6 +1393,7 @@ body::before {
       });
     } else {
       actionPanel.classList.add('hidden');
+      resetActionSelection();
     }
   }
 
@@ -1327,22 +1435,31 @@ body::before {
     selectedTarget = null;
     selectedItem = null;
 
+    // 기존 선택 해제
+    document.querySelectorAll('.action-btn').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+
+    // 현재 버튼 선택
+    document.getElementById(`${action}Btn`)?.classList.add('selected');
+
     // 대상 선택 패널 표시/숨김
     const targetSelection = $('#targetSelection');
     const targetList = $('#targetList');
+    const executeBtn = $('#executeBtn');
 
     if (action === 'attack') {
       if (targetSelection && targetList) {
         targetSelection.classList.remove('hidden');
         updateTargetList(targetList, 'enemy');
+        executeBtn.classList.add('hidden');
       }
     } else {
       if (targetSelection) {
         targetSelection.classList.add('hidden');
       }
-      
-      // 공격이 아닌 경우 즉시 실행
-      executeAction();
+      // 공격이 아닌 경우 즉시 실행 버튼 표시
+      executeBtn.classList.remove('hidden');
     }
   }
 
@@ -1352,20 +1469,33 @@ body::before {
     selectedItem = item;
     selectedTarget = null;
 
+    // 기존 선택 해제
+    document.querySelectorAll('.action-btn').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+    document.querySelectorAll('.item-btn').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+
+    // 아이템 버튼 선택 표시
+    event.target.classList.add('selected');
+
     // 아이템이 대상이 필요한지 확인
     const needsTarget = item === '디터니'; // 회복 아이템은 자신 또는 아군에게 사용 가능
     
     const itemTargetSelection = $('#itemTargetSelection');
     const itemTargetList = $('#itemTargetList');
+    const executeBtn = $('#executeBtn');
 
     if (needsTarget && itemTargetSelection && itemTargetList) {
       itemTargetSelection.classList.remove('hidden');
       updateTargetList(itemTargetList, 'ally');
+      executeBtn.classList.add('hidden');
     } else {
       if (itemTargetSelection) {
         itemTargetSelection.classList.add('hidden');
       }
-      executeAction();
+      executeBtn.classList.remove('hidden');
     }
   }
 
@@ -1397,16 +1527,26 @@ body::before {
         const btn = document.createElement('button');
         btn.className = 'target-btn';
         btn.textContent = player.name;
-        btn.onclick = () => selectTarget(player.id);
+        btn.onclick = () => selectTarget(player.id, btn);
         container.appendChild(btn);
       }
     });
   }
 
   // 대상 선택
-  function selectTarget(targetId) {
+  function selectTarget(targetId, btnElement) {
     selectedTarget = targetId;
-    executeAction();
+    
+    // 기존 선택 해제
+    document.querySelectorAll('.target-btn').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+    
+    // 현재 버튼 선택
+    btnElement.classList.add('selected');
+    
+    // 실행 버튼 표시
+    $('#executeBtn').classList.remove('hidden');
   }
 
   // 액션 실행
@@ -1416,11 +1556,16 @@ body::before {
     const actionData = {
       type: selectedAction,
       targetId: selectedTarget,
-      itemType: selectedItem, // 서버와 매개변수명 맞춤
+      itemType: selectedItem,
       itemTargetId: selectedTarget
     };
 
+    console.log('액션 실행:', actionData);
     socket.emit('playerAction', actionData);
+    
+    // 버튼 비활성화
+    $('#executeBtn').disabled = true;
+    $('#executeBtn').textContent = '처리중...';
   }
 
   // 액션 선택 리셋
@@ -1429,14 +1574,25 @@ body::before {
     selectedTarget = null;
     selectedItem = null;
 
+    // 모든 선택 상태 해제
+    document.querySelectorAll('.action-btn, .item-btn, .target-btn').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+
     const targetSelection = $('#targetSelection');
     const itemTargetSelection = $('#itemTargetSelection');
+    const executeBtn = $('#executeBtn');
 
     if (targetSelection) {
       targetSelection.classList.add('hidden');
     }
     if (itemTargetSelection) {
       itemTargetSelection.classList.add('hidden');
+    }
+    if (executeBtn) {
+      executeBtn.classList.add('hidden');
+      executeBtn.disabled = false;
+      executeBtn.textContent = '행동 실행';
     }
   }
 
@@ -1493,7 +1649,7 @@ body::before {
     
     if (!message || !socket) return;
     
-    socket.emit('chatMessage', { message }); // 서버와 이벤트명 맞춤
+    socket.emit('chatMessage', { message });
     input.value = '';
   }
 
@@ -1533,16 +1689,28 @@ body::before {
       });
     }
 
-    // 전투 ID나 OTP 변경시 플레이어 목록 업데이트
+    // 전투 ID 변경시 플레이어 목록 업데이트
     const battleIdInput = $('#battleIdInput');
-    const playerOtpInput = $('#playerOtpInput');
-    
     if (battleIdInput) {
       battleIdInput.addEventListener('blur', loadBattleInfo);
+      battleIdInput.addEventListener('input', () => {
+        clearTimeout(battleIdInput.loadTimer);
+        battleIdInput.loadTimer = setTimeout(loadBattleInfo, 1000);
+      });
+    }
+
+    // URL 파라미터 체크
+    const urlParams = new URLSearchParams(window.location.search);
+    const battleId = urlParams.get('battle');
+    const token = urlParams.get('token');
+    
+    if (battleId) {
+      $('#battleIdInput').value = battleId;
+      loadBattleInfo();
     }
     
-    if (playerOtpInput) {
-      playerOtpInput.addEventListener('blur', loadBattleInfo);
+    if (token) {
+      $('#playerOtpInput').value = token;
     }
   });
   </script>
