@@ -42,8 +42,8 @@ const fileFilter = (_, file, cb) => {
 };
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_UPLOAD_BYTES } });
 
-// 정적 파일 서빙
-const publicPath = path.join(__dirname, '../battle-web/public');
+// 정적 파일 서빙 (수정된 경로)
+const publicPath = path.join(__dirname, 'public');
 console.log(`[전투서버] 정적 파일 경로: ${publicPath}`);
 
 const checkFiles = ['admin.html', 'play.html', 'watch.html'];
@@ -458,6 +458,16 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
 
 // REST API 엔드포인트들
 
+// 헬스체크
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: '전투 서버가 정상 작동 중입니다.',
+    timestamp: Date.now(),
+    battles: battles.size
+  });
+});
+
 // 전투 생성
 app.post('/api/battles', (req, res) => {
   try {
@@ -538,194 +548,6 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   }
 });
 
-// OTP 발급
-app.post('/api/admin/battles/:id/issue-otp', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const { role, playerName } = req.body;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    const otp = generateOTP();
-    battle.otps[role] = otp;
-    
-    res.json({
-      success: true,
-      otp: otp,
-      role: role
-    });
-    
-    console.log(`[OTP발급] 전투: ${battleId}, 역할: ${role}`);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 관리자 인증
-app.post('/api/admin/battles/:id/auth', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const { otp, role } = req.body;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    if (battle.otps[role] !== otp) {
-      return res.status(401).json({ error: '잘못된 OTP입니다.' });
-    }
-    
-    const token = crypto.randomBytes(16).toString('hex');
-    
-    res.json({
-      success: true,
-      token: token,
-      role: role
-    });
-    
-    console.log(`[${role}인증] 전투: ${battleId}`);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 플레이어 추가 (FormData 지원)
-app.post('/api/admin/battles/:id/add-player', upload.single('image'), (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    const { name, team, attack, defense, agility, luck } = req.body;
-    
-    // 스탯 파싱
-    const stats = {
-      attack: parseInt(attack) || 2,
-      defense: parseInt(defense) || 2,
-      agility: parseInt(agility) || 2,
-      luck: parseInt(luck) || 2
-    };
-    
-    // 아이템 인벤토리 구성
-    const inventory = [];
-    const attackItems = parseInt(req.body['공격 보정기']) || 0;
-    const defenseItems = parseInt(req.body['방어 보정기']) || 0;
-    const healItems = parseInt(req.body['디터니']) || 0;
-    
-    for (let i = 0; i < attackItems; i++) inventory.push('공격 보정기');
-    for (let i = 0; i < defenseItems; i++) inventory.push('방어 보정기');
-    for (let i = 0; i < healItems; i++) inventory.push('디터니');
-    
-    // 이미지 URL
-    let imageUrl = '';
-    if (req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
-    }
-    
-    const player = addPlayer(battleId, {
-      name: name || `플레이어${Date.now()}`,
-      team,
-      stats,
-      inventory,
-      imageUrl
-    });
-    
-    res.json({
-      success: true,
-      message: `${player.name}이(가) ${battle.teams[team].name}에 추가되었습니다.`,
-      player
-    });
-    
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 전투 시작
-app.post('/api/admin/battles/:id/start', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    battle.status = 'ongoing';
-    addBattleLog(battleId, 'system', '전투가 시작되었습니다!');
-    
-    res.json({ success: true, message: '전투가 시작되었습니다!' });
-    console.log(`[전투시작] ID: ${battleId}`);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 전투 종료
-app.post('/api/admin/battles/:id/end', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const { winner } = req.body;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    let message = '전투가 종료되었습니다.';
-    if (winner) {
-      const teamName = battle.teams[winner].name;
-      message = `${teamName} 승리로 전투가 종료되었습니다!`;
-      endBattle(battleId, winner, `관리자에 의한 강제 종료 - ${teamName} 승리`);
-    } else {
-      endBattle(battleId, null, '관리자에 의한 강제 종료');
-    }
-    
-    res.json({ success: true, message });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 다음 턴
-app.post('/api/admin/battles/:id/next-turn', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    
-    if (!battle) {
-      return res.status(404).json({ error: '존재하지 않는 전투입니다.' });
-    }
-    
-    addBattleLog(battleId, 'system', '관리자가 다음 턴으로 진행했습니다.');
-    
-    res.json({ success: true, message: '다음 턴으로 진행되었습니다.' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 관리자 채팅
-app.post('/api/admin/battles/:id/chat', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const { message, sender, senderType } = req.body;
-    
-    addChatLog(battleId, sender || '관리자', message, senderType || 'admin');
-    
-    res.json({ success: true, message: '채팅 전송 완료' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Socket.IO 연결 처리
 io.on('connection', (socket) => {
   console.log(`[소켓연결] ID: ${socket.id}`);
@@ -799,66 +621,6 @@ io.on('connection', (socket) => {
     console.log(`[관전자인증] 소켓: ${socket.id}, 전투: ${battleId}`);
   });
   
-  // 플레이어 액션
-  socket.on('playerAction', (actionData) => {
-    try {
-      const playerInfo = playerSockets.get(socket.id);
-      if (!playerInfo) {
-        socket.emit('actionError', '인증되지 않은 플레이어입니다.');
-        return;
-      }
-      
-      // 기본 액션 처리 (실제 전투 로직은 추후 구현)
-      const battle = battles.get(playerInfo.battleId);
-      const player = findPlayerInBattle(battle, playerInfo.playerId);
-      
-      if (player) {
-        addBattleLog(playerInfo.battleId, 'action', `${player.name}이(가) ${actionData.type} 행동을 수행했습니다.`);
-      }
-      
-      socket.emit('actionSuccess');
-    } catch (error) {
-      socket.emit('actionError', error.message);
-    }
-  });
-  
-  // 채팅 메시지
-  socket.on('chatMessage', ({ message }) => {
-    const adminInfo = adminConnections.get(socket.id);
-    const playerInfo = playerSockets.get(socket.id);
-    const spectatorInfo = spectatorConnections.get(socket.id);
-    
-    if (adminInfo) {
-      addChatLog(adminInfo.battleId, '관리자', message, 'admin');
-    } else if (playerInfo) {
-      const battle = battles.get(playerInfo.battleId);
-      const player = findPlayerInBattle(battle, playerInfo.playerId);
-      if (player) {
-        addChatLog(playerInfo.battleId, player.name, message, 'player');
-      }
-    } else if (spectatorInfo) {
-      // 관전자는 채팅 불가 (응원 메시지만 가능)
-      socket.emit('chatError', '관전자는 채팅할 수 없습니다.');
-    }
-  });
-  
-  // 응원 메시지 (관전자용)
-  socket.on('cheerMessage', ({ team }) => {
-    const spectatorInfo = spectatorConnections.get(socket.id);
-    if (!spectatorInfo) return;
-    
-    const cheerMessages = [
-      `${team} 화이팅!`,
-      `${team} 파이팅!`,
-      `${team} 응원합니다!`,
-      `${team} 최고!`,
-      `${team} 힘내세요!`
-    ];
-    
-    const randomMessage = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
-    addChatLog(spectatorInfo.battleId, '관전자', randomMessage, 'spectator');
-  });
-  
   // 하트비트
   socket.on('heartbeat', () => {
     connectionHeartbeats.set(socket.id, Date.now());
@@ -908,6 +670,7 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`[전투서버] 포트 ${PORT}에서 실행 중`);
   console.log(`[전투서버] 관리자 페이지: http://localhost:${PORT}/admin`);
-  console.log(`[전투서버] 플레이어 페이지: http://localhost:${PORT}/play`);
+  console.log(`[전투서버] 플레이어 페이지: http://localhost:${PORT}/play`);  
   console.log(`[전투서버] 관전자 페이지: http://localhost:${PORT}/watch`);
+  console.log(`[전투서버] 헬스체크: http://localhost:${PORT}/api/health`);
 });
