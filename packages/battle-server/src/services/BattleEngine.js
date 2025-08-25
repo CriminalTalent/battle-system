@@ -1,5 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
-
+// packages/battle-api/src/services/BattleEngine.js
 class BattleEngine {
   constructor() {
     this.battles = new Map();
@@ -7,82 +6,94 @@ class BattleEngine {
   }
 
   /**
-   * 새로운 전투 생성
+   * 전투 생성
    */
-  createBattle(config = {}) {
-    const battleId = `battle_${uuidv4()}`;
+  createBattle(mode = '1v1', adminId = null) {
+    const battleId = require('crypto').randomBytes(16).toString('hex');
+    const config = this.getBattleConfig(mode);
     
     const battle = {
       id: battleId,
-      mode: config.mode || '1v1',
-      status: 'waiting',
+      mode: mode,
+      status: 'waiting', // waiting, ongoing, ended
+      createdAt: Date.now(),
+      adminId: adminId,
+      
+      // 팀 구조
       teams: {
-        team1: {
-          name: '불사조 기사단',
-          players: []
-        },
-        team2: {
-          name: '죽음을 먹는자들',
-          players: []
-        }
+        team1: { name: '불사조 기사단', players: [] },
+        team2: { name: '죽음을 먹는자들', players: [] }
       },
-      config: {
-        playersPerTeam: this.getPlayersPerTeam(config.mode),
-        turnTimeLimit: config.turnTimeLimit || 300000, // 5분
-        maxTurns: config.maxTurns || 50,
-        itemsEnabled: config.itemsEnabled !== false,
-        autoStart: config.autoStart !== false
-      },
-      currentTeam: 'team1',
-      currentPlayerIndex: 0,
-      turnOrder: [],
-      turnNumber: 0,
+      
+      // 전투 상태
+      currentTeam: null, // 'team1' 또는 'team2'
       roundNumber: 1,
+      turnNumber: 1,
+      turnStartTime: null,
+      
+      // 로그
       battleLog: [],
       chatLog: [],
-      createdAt: Date.now(),
-      turnStartTime: null,
-      winner: null,
-      endReason: null
+      
+      // 설정
+      config: config,
+      
+      // OTP 시스템 (30분 만료)
+      otps: {
+        admin: this.generateOTP(),
+        player: this.generateOTP(),
+        spectator: this.generateOTP()
+      },
+      otpExpiry: {
+        admin: Date.now() + (60 * 60 * 1000), // 1시간
+        player: Date.now() + (60 * 60 * 1000), // 1시간  
+        spectator: Date.now() + (30 * 60 * 1000) // 30분
+      }
     };
-
+    
     this.battles.set(battleId, battle);
-    this.addBattleLog(battleId, 'system', `${battle.mode} 전투가 생성되었습니다`);
+    console.log(`[전투생성] ID: ${battleId}, 모드: ${mode}`);
     
     return battle;
   }
 
   /**
-   * 모드별 팀당 플레이어 수 반환
+   * 전투 설정 가져오기
    */
-  getPlayersPerTeam(mode) {
-    const modes = {
-      '1v1': 1,
-      '2v2': 2,
-      '3v3': 3,
-      '4v4': 4
+  getBattleConfig(mode) {
+    const configs = {
+      '1v1': { playersPerTeam: 1 },
+      '2v2': { playersPerTeam: 2 },
+      '3v3': { playersPerTeam: 3 },
+      '4v4': { playersPerTeam: 4 }
     };
-    return modes[mode] || 1;
+    return configs[mode] || configs['1v1'];
   }
 
   /**
-   * 전투에 플레이어 참가
+   * OTP 생성
    */
-  joinBattle(battleId, playerData, team = null) {
+  generateOTP() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  /**
+   * 플레이어 추가
+   */
+  addPlayer(battleId, playerData) {
     const battle = this.battles.get(battleId);
     if (!battle) {
-      throw new Error('전투를 찾을 수 없습니다');
+      throw new Error('존재하지 않는 전투입니다');
     }
-
+    
     if (battle.status !== 'waiting') {
       throw new Error('이미 시작된 전투입니다');
     }
 
-    // 자동 팀 배정
-    if (!team) {
-      const team1Count = battle.teams.team1.players.length;
-      const team2Count = battle.teams.team2.players.length;
-      team = team1Count <= team2Count ? 'team1' : 'team2';
+    const { name, team, stats, inventory = [], imageUrl = '' } = playerData;
+    
+    if (!['team1', 'team2'].includes(team)) {
+      throw new Error('잘못된 팀입니다');
     }
 
     const targetTeam = battle.teams[team];
@@ -90,48 +101,53 @@ class BattleEngine {
       throw new Error('해당 팀이 가득 찼습니다');
     }
 
-    // 플레이어 데이터 생성
+    // 중복 이름 체크
+    const allPlayers = [
+      ...battle.teams.team1.players,
+      ...battle.teams.team2.players
+    ];
+    if (allPlayers.some(p => p.name === name)) {
+      throw new Error('이미 존재하는 플레이어 이름입니다');
+    }
+
     const player = {
-      id: playerData.id || uuidv4(),
-      name: playerData.name || `플레이어${Date.now()}`,
+      id: require('crypto').randomBytes(8).toString('hex'),
+      name: name,
       team: team,
-      hp: playerData.maxHp || 100,
-      maxHp: playerData.maxHp || 100,
-      stats: {
-        attack: playerData.attack || 50,
-        defense: playerData.defense || 30,
-        agility: playerData.agility || 50,
-        luck: playerData.luck || 30
-      },
-      inventory: playerData.inventory || [],
+      stats: this.normalizeStats(stats),
+      inventory: [...inventory],
       buffs: {},
+      
+      // 전투 상태
+      hp: 100,
+      maxHp: 100,
       alive: true,
-      connected: true,
-      isReady: false,
       hasActed: false,
       isDefending: false,
       isDodging: false,
-      imageUrl: playerData.imageUrl || null
+      
+      // 추가 정보
+      imageUrl: imageUrl,
+      connected: false,
+      socketId: null
     };
 
     targetTeam.players.push(player);
-    this.addBattleLog(battleId, 'system', `${player.name}님이 ${targetTeam.name}에 참가했습니다`);
-
-    // 모든 팀이 가득 찼는지 확인
-    if (this.isAllTeamsFull(battle) && battle.config.autoStart) {
-      this.startBattle(battleId);
-    }
-
-    return battle;
+    this.addBattleLog(battleId, 'system', `${player.name}이(가) ${targetTeam.name}에 참가했습니다`);
+    
+    return player;
   }
 
   /**
-   * 모든 팀이 가득 찼는지 확인
+   * 스탯 정규화 (최소 1, 최대 5)
    */
-  isAllTeamsFull(battle) {
-    const team1Full = battle.teams.team1.players.length === battle.config.playersPerTeam;
-    const team2Full = battle.teams.team2.players.length === battle.config.playersPerTeam;
-    return team1Full && team2Full;
+  normalizeStats(stats = {}) {
+    return {
+      attack: Math.max(1, Math.min(5, stats.attack || 2)),
+      defense: Math.max(1, Math.min(5, stats.defense || 2)),
+      agility: Math.max(1, Math.min(5, stats.agility || 2)),
+      luck: Math.max(1, Math.min(5, stats.luck || 2))
+    };
   }
 
   /**
@@ -147,69 +163,54 @@ class BattleEngine {
       throw new Error('이미 시작된 전투입니다');
     }
 
-    // 턴 순서 결정 (민첩성 기반)
-    this.determineInitiative(battle);
-
+    // 팀별 민첩성 총합으로 선공 결정
+    this.determineFirstTeam(battle);
+    
     battle.status = 'ongoing';
     battle.turnStartTime = Date.now();
     
     this.addBattleLog(battleId, 'system', '전투가 시작되었습니다!');
-    this.addBattleLog(battleId, 'system', `턴 순서가 결정되었습니다`);
-
-    // 첫 턴 시작
-    this.startNextTurn(battleId);
+    this.startTeamTurn(battleId);
 
     return battle;
   }
 
   /**
-   * 민첩성 기반 이니셔티브 결정
+   * 팀별 민첩성으로 선공 결정
    */
-  determineInitiative(battle) {
-    const allPlayers = [
-      ...battle.teams.team1.players,
-      ...battle.teams.team2.players
-    ];
+  determineFirstTeam(battle) {
+    const team1Total = battle.teams.team1.players.reduce((sum, p) => {
+      const roll = this.rollDice(20);
+      this.addBattleLog(battle.id, 'system', `${p.name}: 민첩 ${p.stats.agility} + 주사위 ${roll} = ${p.stats.agility + roll}`);
+      return sum + p.stats.agility + roll;
+    }, 0);
 
-    // 각 플레이어의 이니셔티브 굴림
-    const initiatives = allPlayers.map(player => {
-      let roll, total;
-      do {
-        roll = this.rollDice(20);
-        total = player.stats.agility + roll;
-      } while (initiatives.some(i => i && i.total === total)); // 동점 방지
+    const team2Total = battle.teams.team2.players.reduce((sum, p) => {
+      const roll = this.rollDice(20);
+      this.addBattleLog(battle.id, 'system', `${p.name}: 민첩 ${p.stats.agility} + 주사위 ${roll} = ${p.stats.agility + roll}`);
+      return sum + p.stats.agility + roll;
+    }, 0);
 
-      return {
-        playerId: player.id,
-        playerName: player.name,
-        team: player.team,
-        agility: player.stats.agility,
-        roll: roll,
-        total: total
-      };
-    });
+    this.addBattleLog(battle.id, 'system', `${battle.teams.team1.name} 총합: ${team1Total}`);
+    this.addBattleLog(battle.id, 'system', `${battle.teams.team2.name} 총합: ${team2Total}`);
 
-    // 총합 기준 내림차순 정렬
-    initiatives.sort((a, b) => b.total - a.total);
-
-    // 턴 순서 로그
-    initiatives.forEach((init, index) => {
-      this.addBattleLog(
-        battle.id, 
-        'system',
-        `${index + 1}번째: ${init.playerName} (민첩 ${init.agility} + 주사위 ${init.roll} = ${init.total})`
-      );
-    });
-
-    // 라운드별 팀 교대 방식
-    battle.turnOrder = initiatives;
-    battle.initiativeRolls = initiatives;
+    if (team1Total > team2Total) {
+      battle.currentTeam = 'team1';
+      this.addBattleLog(battle.id, 'system', `${battle.teams.team1.name}이(가) 선공합니다!`);
+    } else if (team2Total > team1Total) {
+      battle.currentTeam = 'team2';
+      this.addBattleLog(battle.id, 'system', `${battle.teams.team2.name}이(가) 선공합니다!`);
+    } else {
+      // 동점시 다시 굴림
+      this.addBattleLog(battle.id, 'system', '동점! 다시 굴립니다...');
+      this.determineFirstTeam(battle);
+    }
   }
 
   /**
-   * 다음 턴 시작
+   * 팀 턴 시작
    */
-  startNextTurn(battleId) {
+  startTeamTurn(battleId) {
     const battle = this.battles.get(battleId);
     if (!battle || battle.status !== 'ongoing') return;
 
@@ -219,110 +220,68 @@ class BattleEngine {
       return;
     }
 
-    // 다음 플레이어 찾기
     const currentTeam = battle.teams[battle.currentTeam];
     const alivePlayers = currentTeam.players.filter(p => p.alive);
 
     if (alivePlayers.length === 0) {
-      // 현재 팀에 생존자가 없으면 다른 팀으로
-      battle.currentTeam = battle.currentTeam === 'team1' ? 'team2' : 'team1';
-      battle.currentPlayerIndex = 0;
-      this.startNextTurn(battleId);
+      // 현재 팀에 생존자가 없으면 상대팀 승리
+      const winnerTeam = battle.currentTeam === 'team1' ? 'team2' : 'team1';
+      battle.winner = winnerTeam;
+      this.endBattle(battleId);
       return;
     }
 
-    // 현재 플레이어가 이미 행동했거나 죽었으면 다음 플레이어로
-    if (battle.currentPlayerIndex >= alivePlayers.length) {
-      // 팀 전환
-      battle.currentTeam = battle.currentTeam === 'team1' ? 'team2' : 'team1';
-      battle.currentPlayerIndex = 0;
-      battle.turnNumber++;
-
-      // 라운드 증가 체크
-      if (battle.turnNumber % 2 === 0) {
-        battle.roundNumber++;
-        this.addBattleLog(battleId, 'system', `===== 라운드 ${battle.roundNumber} 시작 =====`);
-        this.resetTurnFlags(battle);
-      }
-
-      this.startNextTurn(battleId);
-      return;
-    }
-
-    const currentPlayer = alivePlayers[battle.currentPlayerIndex];
-    battle.turnStartTime = Date.now();
-
-    this.addBattleLog(
-      battleId, 
-      'system',
-      `${currentPlayer.name}의 턴입니다 (${currentTeam.name})`
-    );
-
-    // 턴 타이머 설정
-    this.setTurnTimer(battleId);
-
-    return battle;
-  }
-
-  /**
-   * 턴 플래그 초기화
-   */
-  resetTurnFlags(battle) {
-    const allPlayers = [
-      ...battle.teams.team1.players,
-      ...battle.teams.team2.players
-    ];
-
-    allPlayers.forEach(player => {
+    // 팀 턴 시작
+    this.addBattleLog(battleId, 'system', `===== ${currentTeam.name} 팀 턴 시작 =====`);
+    
+    // 모든 플레이어의 행동 플래그 초기화
+    alivePlayers.forEach(player => {
       player.hasActed = false;
       player.isDefending = false;
       player.isDodging = false;
     });
+
+    battle.turnStartTime = Date.now();
+    this.setTurnTimer(battleId);
   }
 
   /**
-   * 턴 타이머 설정
+   * 팀 턴 종료 체크
    */
-  setTurnTimer(battleId) {
-    // 기존 타이머 제거
-    if (this.turnTimers.has(battleId)) {
-      clearTimeout(this.turnTimers.get(battleId));
-    }
-
-    const timer = setTimeout(() => {
-      const battle = this.battles.get(battleId);
-      if (battle && battle.status === 'ongoing') {
-        this.addBattleLog(battleId, 'system', '시간 초과! 턴을 넘깁니다.');
-        this.endCurrentTurn(battleId);
-      }
-    }, 300000); // 5분
-
-    this.turnTimers.set(battleId, timer);
-  }
-
-  /**
-   * 현재 턴 종료
-   */
-  endCurrentTurn(battleId) {
+  checkTeamTurnEnd(battleId) {
     const battle = this.battles.get(battleId);
     if (!battle) return;
 
-    // 현재 플레이어의 버프 제거 (1턴 지속)
     const currentTeam = battle.teams[battle.currentTeam];
     const alivePlayers = currentTeam.players.filter(p => p.alive);
-    const currentPlayer = alivePlayers[battle.currentPlayerIndex];
-    
-    if (currentPlayer) {
-      // 1턴 버프 제거
-      if (currentPlayer.buffs.attack_buff) {
-        currentPlayer.buffs.attack_buff = false;
-        this.addBattleLog(battleId, 'system', `${currentPlayer.name}의 공격력 강화가 종료되었습니다`);
-      }
-      if (currentPlayer.buffs.defense_buff) {
-        currentPlayer.buffs.defense_buff = false;
-        this.addBattleLog(battleId, 'system', `${currentPlayer.name}의 방어력 강화가 종료되었습니다`);
-      }
+    const allActed = alivePlayers.every(p => p.hasActed);
+
+    if (allActed) {
+      this.endTeamTurn(battleId);
     }
+  }
+
+  /**
+   * 팀 턴 종료
+   */
+  endTeamTurn(battleId) {
+    const battle = this.battles.get(battleId);
+    if (!battle) return;
+
+    const currentTeam = battle.teams[battle.currentTeam];
+    this.addBattleLog(battleId, 'system', `===== ${currentTeam.name} 팀 턴 종료 =====`);
+
+    // 버프 정리 (1턴 지속 효과들)
+    currentTeam.players.forEach(player => {
+      if (player.buffs.attack_buff) {
+        player.buffs.attack_buff = false;
+        this.addBattleLog(battleId, 'system', `${player.name}의 공격력 강화가 종료되었습니다`);
+      }
+      if (player.buffs.defense_buff) {
+        player.buffs.defense_buff = false;
+        this.addBattleLog(battleId, 'system', `${player.name}의 방어력 강화가 종료되었습니다`);
+      }
+    });
 
     // 타이머 정리
     if (this.turnTimers.has(battleId)) {
@@ -330,9 +289,12 @@ class BattleEngine {
       this.turnTimers.delete(battleId);
     }
 
-    // 다음 플레이어로
-    battle.currentPlayerIndex++;
-    this.startNextTurn(battleId);
+    // 상대팀으로 전환
+    battle.currentTeam = battle.currentTeam === 'team1' ? 'team2' : 'team1';
+    battle.turnNumber++;
+
+    // 새 팀 턴 시작
+    this.startTeamTurn(battleId);
   }
 
   /**
@@ -357,13 +319,13 @@ class BattleEngine {
       throw new Error('죽은 플레이어는 행동할 수 없습니다');
     }
 
-    // 현재 턴인지 확인
-    const currentTeam = battle.teams[battle.currentTeam];
-    const alivePlayers = currentTeam.players.filter(p => p.alive);
-    const currentPlayer = alivePlayers[battle.currentPlayerIndex];
+    if (player.hasActed) {
+      throw new Error('이미 행동했습니다');
+    }
 
-    if (!currentPlayer || currentPlayer.id !== playerId) {
-      throw new Error('당신의 턴이 아닙니다');
+    // 현재 팀 턴인지 확인
+    if (player.team !== battle.currentTeam) {
+      throw new Error('현재 당신의 팀 턴이 아닙니다');
     }
 
     let result = {};
@@ -389,13 +351,15 @@ class BattleEngine {
     }
 
     player.hasActed = true;
-    this.endCurrentTurn(battleId);
+    
+    // 팀 턴 종료 체크
+    this.checkTeamTurnEnd(battleId);
 
     return result;
   }
 
   /**
-   * 공격 실행
+   * 공격 실행 (단순화된 버전)
    */
   executeAttack(battle, attacker, targetId) {
     const target = this.findPlayer(battle, targetId);
@@ -411,7 +375,7 @@ class BattleEngine {
       throw new Error('같은 팀은 공격할 수 없습니다');
     }
 
-    // 공격 굴림
+    // 공격력 계산: 공격력 + 주사위(1-20)
     const attackRoll = this.rollDice(20);
     let attackPower = attacker.stats.attack + attackRoll;
 
@@ -421,50 +385,30 @@ class BattleEngine {
       this.addBattleLog(battle.id, 'action', `${attacker.name}의 공격력이 강화되었습니다!`);
     }
 
-    // 명중률 계산
-    const hitRoll = attacker.stats.luck + this.rollDice(20);
-    const dodgeRoll = target.stats.agility + this.rollDice(20);
+    this.addBattleLog(
+      battle.id, 
+      'action', 
+      `${attacker.name}이(가) 공격합니다! (공격력 ${attacker.stats.attack} + 주사위 ${attackRoll} = ${attackPower})`
+    );
 
-    // 회피 상태 체크
-    if (target.isDodging && dodgeRoll >= attackPower) {
-      this.addBattleLog(
-        battle.id,
-        'action',
-        `${attacker.name}의 공격을 ${target.name}이(가) 완벽하게 회피했습니다!`
-      );
-      return { hit: false, damage: 0 };
-    }
-
-    // 명중 실패
-    if (hitRoll < dodgeRoll) {
-      this.addBattleLog(
-        battle.id,
-        'action',
-        `${attacker.name}의 공격이 빗나갔습니다!`
-      );
-      return { hit: false, damage: 0 };
-    }
-
-    // 방어 상태 체크
-    let finalDamage = 0;
+    // 방어 중인 경우 방어값만큼 차감
+    let finalDamage = attackPower;
     if (target.isDefending) {
-      const defenseRoll = target.stats.agility + this.rollDice(20);
       let defenseValue = target.stats.defense;
       
+      // 방어 버프 적용
       if (target.buffs.defense_buff) {
         defenseValue = Math.floor(defenseValue * 1.5);
+        this.addBattleLog(battle.id, 'action', `${target.name}의 방어력이 강화되었습니다!`);
       }
 
-      const damageReduction = Math.max(0, defenseValue - attacker.stats.attack);
-      finalDamage = Math.max(1, attackPower - defenseValue - damageReduction);
+      finalDamage = Math.max(1, attackPower - defenseValue);
       
       this.addBattleLog(
         battle.id,
         'action',
-        `${target.name}이(가) 방어 자세로 데미지를 ${damageReduction} 감소시켰습니다`
+        `${target.name}이(가) 방어 중입니다! (방어력 ${defenseValue}로 ${attackPower - finalDamage} 데미지 차감)`
       );
-    } else {
-      finalDamage = Math.max(1, attackPower - target.stats.defense);
     }
 
     // 치명타 체크
@@ -477,7 +421,7 @@ class BattleEngine {
       this.addBattleLog(
         battle.id,
         'action',
-        `치명타! ${attacker.name}의 공격이 급소를 명중시켰습니다!`
+        `치명타! 데미지가 2배가 됩니다!`
       );
     }
 
@@ -487,9 +431,10 @@ class BattleEngine {
     this.addBattleLog(
       battle.id,
       'action',
-      `${attacker.name}이(가) ${target.name}에게 ${finalDamage}의 데미지를 입혔습니다 (남은 HP: ${target.hp}/${target.maxHp})`
+      `${target.name}이(가) ${finalDamage} 데미지를 받았습니다! (남은 HP: ${target.hp}/${target.maxHp})`
     );
 
+    // 사망 체크
     if (target.hp <= 0) {
       target.alive = false;
       this.addBattleLog(
@@ -499,13 +444,59 @@ class BattleEngine {
       );
     }
 
+    // 역공격 기회 제공 (방어했을 때만)
+    if (target.isDefending && target.alive) {
+      this.offerCounterAttack(battle, target, attacker);
+    }
+
     return {
       hit: true,
       damage: finalDamage,
       isCritical: isCritical,
       targetHp: target.hp,
-      targetAlive: target.alive
+      targetAlive: target.alive,
+      counterAttackAvailable: target.isDefending && target.alive
     };
+  }
+
+  /**
+   * 역공격 기회 제공
+   */
+  offerCounterAttack(battle, defender, originalAttacker) {
+    this.addBattleLog(
+      battle.id,
+      'system',
+      `${defender.name}에게 역공격 기회가 주어집니다!`
+    );
+
+    // 역공격 실행 (자동)
+    const counterRoll = this.rollDice(20);
+    const counterPower = defender.stats.attack + counterRoll;
+    
+    this.addBattleLog(
+      battle.id,
+      'action',
+      `${defender.name}의 역공격! (공격력 ${defender.stats.attack} + 주사위 ${counterRoll} = ${counterPower})`
+    );
+
+    // 역공격 데미지 적용 (방어 불가)
+    originalAttacker.hp = Math.max(0, originalAttacker.hp - counterPower);
+    
+    this.addBattleLog(
+      battle.id,
+      'action',
+      `${originalAttacker.name}이(가) ${counterPower} 역공격 데미지를 받았습니다! (남은 HP: ${originalAttacker.hp}/${originalAttacker.maxHp})`
+    );
+
+    // 역공격으로 사망 체크
+    if (originalAttacker.hp <= 0) {
+      originalAttacker.alive = false;
+      this.addBattleLog(
+        battle.id,
+        'system',
+        `${originalAttacker.name}이(가) 역공격으로 전투불능 상태가 되었습니다!`
+      );
+    }
   }
 
   /**
@@ -518,7 +509,7 @@ class BattleEngine {
     this.addBattleLog(
       battle.id,
       'action',
-      `${player.name}이(가) 방어 자세를 취했습니다`
+      `${player.name}이(가) 방어 자세를 취했습니다 (방어력: ${player.stats.defense}${player.buffs.defense_buff ? ' x1.5' : ''})`
     );
 
     return {
@@ -556,7 +547,7 @@ class BattleEngine {
       throw new Error('해당 아이템을 보유하고 있지 않습니다');
     }
 
-    // 아이템 제거
+    // 아이템 제거 (1회용)
     player.inventory.splice(itemIndex, 1);
 
     let result = {};
@@ -567,7 +558,7 @@ class BattleEngine {
         this.addBattleLog(
           battle.id,
           'action',
-          `${player.name}이(가) 공격 보정기를 사용했습니다 (공격력 1.5배)`
+          `${player.name}이(가) 공격 보정기를 사용했습니다! (다음 공격력 1.5배)`
         );
         result = { success: true, effect: 'attack_buff' };
         break;
@@ -577,7 +568,7 @@ class BattleEngine {
         this.addBattleLog(
           battle.id,
           'action',
-          `${player.name}이(가) 방어 보정기를 사용했습니다 (방어력 1.5배)`
+          `${player.name}이(가) 방어 보정기를 사용했습니다! (다음 방어력 1.5배)`
         );
         result = { success: true, effect: 'defense_buff' };
         break;
@@ -596,7 +587,7 @@ class BattleEngine {
         this.addBattleLog(
           battle.id,
           'action',
-          `${player.name}이(가) ${healTarget.name}에게 디터니를 사용했습니다 (HP +${actualHeal})`
+          `${player.name}이(가) ${healTarget.name}에게 디터니를 사용했습니다! (HP +${actualHeal})`
         );
         result = { success: true, effect: 'heal', healAmount: actualHeal };
         break;
@@ -625,6 +616,26 @@ class BattleEngine {
   }
 
   /**
+   * 턴 타이머 설정
+   */
+  setTurnTimer(battleId) {
+    // 기존 타이머 제거
+    if (this.turnTimers.has(battleId)) {
+      clearTimeout(this.turnTimers.get(battleId));
+    }
+
+    const timer = setTimeout(() => {
+      const battle = this.battles.get(battleId);
+      if (battle && battle.status === 'ongoing') {
+        this.addBattleLog(battleId, 'system', '팀 턴 시간 초과! 다음 팀으로 넘어갑니다');
+        this.endTeamTurn(battleId);
+      }
+    }, 300000); // 5분
+
+    this.turnTimers.set(battleId, timer);
+  }
+
+  /**
    * 승리 조건 체크
    */
   checkVictoryCondition(battle) {
@@ -641,8 +652,8 @@ class BattleEngine {
       return true;
     }
 
-    // 최대 턴 수 체크
-    if (battle.turnNumber >= battle.config.maxTurns) {
+    // 최대 턴 수 체크 (50턴)
+    if (battle.turnNumber >= 50) {
       // HP 총합으로 승자 결정
       const team1Hp = battle.teams.team1.players.reduce((sum, p) => sum + p.hp, 0);
       const team2Hp = battle.teams.team2.players.reduce((sum, p) => sum + p.hp, 0);
@@ -670,6 +681,7 @@ class BattleEngine {
     if (!battle) return;
 
     battle.status = 'ended';
+    battle.endTime = Date.now();
     
     if (forcedWinner) {
       battle.winner = forcedWinner;
@@ -787,36 +799,10 @@ class BattleEngine {
   }
 
   /**
-   * 플레이어 준비 상태 토글
+   * 강제 전투 종료 (관리자용)
    */
-  togglePlayerReady(battleId, playerId) {
-    const battle = this.battles.get(battleId);
-    if (!battle || battle.status !== 'waiting') return false;
-
-    const player = this.findPlayer(battle, playerId);
-    if (!player) return false;
-
-    player.isReady = !player.isReady;
-    
-    this.addBattleLog(
-      battleId,
-      'system',
-      `${player.name}이(가) ${player.isReady ? '준비 완료' : '준비 취소'}했습니다`
-    );
-
-    // 모든 플레이어가 준비되었는지 확인
-    const allPlayers = [
-      ...battle.teams.team1.players,
-      ...battle.teams.team2.players
-    ];
-    
-    const allReady = allPlayers.length > 0 && allPlayers.every(p => p.isReady);
-    
-    if (allReady && this.isAllTeamsFull(battle)) {
-      this.startBattle(battleId);
-    }
-
-    return player.isReady;
+  forceEndBattle(battleId, winner = null) {
+    return this.endBattle(battleId, winner);
   }
 }
 
