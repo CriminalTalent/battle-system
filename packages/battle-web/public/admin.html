@@ -1,345 +1,92 @@
-<script>
-let BATTLE = null;
-let TOK = {};
-let socket = null;
-let readyCheckInterval = null;
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>전투 시스템 - 관리자 콘솔</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    let BATTLE = null;
+    let TOK = {};
+    let socket = null;
 
-function $(sel) { return document.querySelector(sel); }
-function on(sel, event, fn) { $(sel)?.addEventListener(event, fn); }
+    const $ = (sel) => document.querySelector(sel);
 
-async function api(url, opts = {}) {
-  try {
-    const res = await fetch(url, {
-      headers: { 'Content-Type': 'application/json', ...opts.headers },
-      ...opts
-    });
-
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      throw new Error(error.error || `HTTP ${res.status}`);
+    async function api(url, opts = {}) {
+      try {
+        const res = await fetch(url, {
+          headers: { 'Content-Type': 'application/json', ...opts.headers },
+          ...opts
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(error.error || `HTTP ${res.status}`);
+        }
+        return await res.json();
+      } catch (error) {
+        alert(error.message);
+        throw error;
+      }
     }
 
-    return await res.json();
-  } catch (error) {
-    showError(error.message);
-    throw error;
-  }
-}
+    function getParams() {
+      const params = new URLSearchParams(location.search);
+      return {
+        battleId: params.get("battle") || '',
+        token: params.get("token") || ''
+      };
+    }
 
-function showNotification(message, type = 'info') {
-  const notification = document.createElement('div');
-  notification.className = `notification ${type}`;
-  notification.textContent = message;
-  document.body.appendChild(notification);
+    async function loadBattle(battleId) {
+      const battle = await api(`/api/battles/${battleId}`);
+      console.log("Battle loaded:", battle);
+      // 필요한 UI 반영
+    }
 
-  setTimeout(() => notification.classList.add('show'), 100);
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => document.body.removeChild(notification), 300);
-  }, 3000);
-}
+    async function authAsAdmin(battleId, otp) {
+      const result = await api(`/api/admin/battles/${battleId}/auth`, {
+        method: 'POST',
+        body: JSON.stringify({ otp, role: 'admin' })
+      });
+      TOK.admin = result.token;
+      console.log("Admin authenticated:", result.token);
+    }
 
-function showSuccess(msg) { showNotification(msg, 'success'); }
-function showError(msg) { showNotification(msg, 'error'); }
+    function connectSocket() {
+      socket = io();
+      socket.on('connect', () => {
+        console.log('Socket connected:', socket.id);
+        if (TOK.admin && BATTLE) {
+          socket.emit('adminAuth', { battleId: BATTLE, otp: TOK.admin });
+        }
+      });
+      socket.on('battleUpdate', (battle) => {
+        console.log('Battle updated:', battle);
+      });
+      socket.on('disconnect', () => {
+        console.log('Socket disconnected');
+      });
+    }
 
-function updateStartButton(result) {
-  const btn = $('#btnStart');
-  if (!btn) return;
-  if (result.canStart) {
-    btn.disabled = false;
-    btn.textContent = '전투 시작';
-    btn.title = '전투를 시작할 수 있습니다';
-  } else {
-    btn.disabled = true;
-    btn.textContent = '전투 시작 (불가)';
-    btn.title = result.reason || '조건 미충족';
-  }
-}
+    async function init() {
+      const { battleId, token } = getParams();
+      if (!battleId || !token) {
+        document.body.innerHTML = '<h2>잘못된 접근입니다. battle ID와 token이 필요합니다.</h2>';
+        return;
+      }
 
-function updateReadyDisplay(battle) {
-  const players = [
-    ...(battle.teams?.team1?.players || []),
-    ...(battle.teams?.team2?.players || [])
-  ];
-  const readyCount = players.filter(p => p.isReady).length;
-  const expected = battle.config?.playersPerTeam * 2 || players.length;
+      BATTLE = battleId;
+      TOK.admin = token;
 
-  const readySection = $('#readySection');
-  if (battle.status === 'waiting' && players.length > 0) {
-    readySection.style.display = 'block';
-  } else {
-    readySection.style.display = 'none';
-    return;
-  }
+      await loadBattle(battleId);
+      connectSocket();
+    }
 
-  $('#readyCount').textContent = `준비 완료: ${readyCount}/${expected}`;
-  $('#readyProgress').style.width = `${(readyCount / expected) * 100}%`;
-
-  const msg = $('#readyMessage');
-  if (readyCount === expected) {
-    msg.textContent = '모든 플레이어가 준비되었습니다! 전투를 시작할 수 있습니다.';
-    msg.style.color = 'var(--success)';
-  } else if (players.length < expected) {
-    msg.textContent = `플레이어가 부족합니다. (${players.length}/${expected})`;
-    msg.style.color = 'var(--warning)';
-  } else {
-    msg.textContent = '모든 플레이어가 준비를 완료해야 전투를 시작할 수 있습니다.';
-    msg.style.color = 'var(--text-secondary)';
-  }
-}
-
-function updateTeamStatus(teamId, players) {
-  const container = $(`#${teamId}Status`);
-  if (!container) return;
-
-  if (!Array.isArray(players) || players.length === 0) {
-    container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);font-size:14px;">플레이어 없음</div>`;
-    return;
-  }
-
-  container.innerHTML = players.map(p => {
-    const hpPercent = p.maxHp > 0 ? (p.hp / p.maxHp) * 100 : 0;
-    const itemCounts = {};
-    (p.inventory || []).forEach(i => itemCounts[i] = (itemCounts[i] || 0) + 1);
-    const items = Object.entries(itemCounts).map(([k, v]) => `${k}: ${v}`).join(', ') || '없음';
-
-    return `
-      <div class="player-item ${p.isReady ? 'ready' : ''}">
-        <div class="player-avatar" style="background-image:url('${p.imageUrl || ''}')"></div>
-        <div class="player-info">
-          <div class="player-name">${p.name}</div>
-          <div class="health-bar"><div class="health-fill" style="width:${hpPercent}%"></div></div>
-          <div class="player-stats">
-            <span>HP: ${p.hp}/${p.maxHp}</span>
-            <span>${p.alive ? '생존' : '전사'}</span>
-            <span>${p.connected ? '온라인' : '오프라인'}</span>
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">
-            공격${p.stats?.attack || 0} 방어${p.stats?.defense || 0} 민첩${p.stats?.agility || 0} 행운${p.stats?.luck || 0}
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary);">아이템: ${items}</div>
-        </div>
-        <div class="ready-status ${p.isReady ? 'ready' : 'waiting'}">
-          ${p.isReady ? '준비완료' : '준비중'}
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function updateBattleDisplay(battle) {
-  updateTeamStatus('team1', battle.teams?.team1?.players);
-  updateTeamStatus('team2', battle.teams?.team2?.players);
-  updateLog('battleLog', battle.battleLog || []);
-  updateLog('chatLog', battle.chatLog || []);
-}
-
-function updateLog(id, list) {
-  const el = $(`#${id}`);
-  if (!el || !Array.isArray(list)) return;
-
-  el.innerHTML = list.slice(-20).map(entry => {
-    const time = new Date(entry.timestamp).toLocaleTimeString();
-    return `
-      <div class="log-entry">
-        <strong style="color:var(--gold);">${entry.type || '시스템'}</strong>: ${entry.message || entry.content || ''}
-        <br><small style="color:var(--text-secondary);">${time}</small>
-      </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
-}
-
-async function refresh() {
-  if (!BATTLE) return;
-  const battle = await api(`/api/battles/${BATTLE}`);
-  updateBattleDisplay(battle);
-  updateReadyDisplay(battle);
-  const result = await api(`/api/admin/battles/${BATTLE}/can-start`);
-  updateStartButton(result);
-}
-
-async function checkReadyStatus() {
-  if (BATTLE) {
-    const battle = await api(`/api/battles/${BATTLE}`);
-    updateReadyDisplay(battle);
-  }
-}
-
-async function addPlayerToTeam(team) {
-  if (!BATTLE) return showError('전투 ID 필요');
-
-  const name = $(`#${team}PlayerName`).value.trim();
-  if (!name) return showError('이름 입력');
-
-  const data = new FormData();
-  data.append('name', name);
-  data.append('team', team);
-  ['Attack', 'Defense', 'Agility', 'Luck'].forEach(stat =>
-    data.append(stat.toLowerCase(), $(`#${team}${stat}`).value)
-  );
-  data.append('공격 보정기', $(`#${team}AttackItem`).value);
-  data.append('방어 보정기', $(`#${team}DefenseItem`).value);
-  data.append('디터니', $(`#${team}HealItem`).value);
-
-  const res = await fetch(`/api/admin/battles/${BATTLE}/add-player`, {
-    method: 'POST',
-    body: data
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.status }));
-    throw new Error(err.error || res.status);
-  }
-
-  showSuccess('플레이어 추가됨');
-  $(`#${team}PlayerName`).value = '';
-  await refresh();
-}
-
-function connectSocket() {
-  if (!BATTLE) return;
-  if (socket) socket.disconnect();
-
-  socket = io();
-  socket.on('connect', () => {
-    if (TOK.admin) socket.emit('adminAuth', { battleId: BATTLE, otp: TOK.admin });
-  });
-  socket.on('battleUpdate', b => { updateBattleDisplay(b); updateReadyDisplay(b); });
-  socket.on('chatMessage', m => refresh());
-  socket.on('disconnect', () => {});
-}
-
-function sendChat() {
-  const input = $('#chatInput');
-  const msg = input.value.trim();
-  if (!msg) return;
-  if (socket?.connected) {
-    socket.emit('chatMessage', { message: msg });
-    input.value = '';
-  } else sendChatViaAPI(msg);
-}
-
-async function sendChatViaAPI(msg) {
-  if (!BATTLE) return;
-  await api(`/api/admin/battles/${BATTLE}/chat`, {
-    method: 'POST',
-    body: JSON.stringify({
-      message: msg,
-      sender: '관리자',
-      senderType: 'admin'
-    })
-  });
-  $('#chatInput').value = '';
-}
-
-function loadInitialState() {
-  const p = new URLSearchParams(location.search);
-  TOK.admin = p.get('token');
-  BATTLE = p.get('battle');
-  if (TOK.admin) {
-    $('#adminLoginState').textContent = '인증됨';
-    $('#adminLoginState').style.background = 'var(--gold)';
-    $('#adminLoginState').style.color = 'var(--navy)';
-  }
-  if (BATTLE) {
-    $('#battleId').value = BATTLE;
-    refresh();
-    connectSocket();
-    readyCheckInterval = setInterval(checkReadyStatus, 2000);
-  }
-}
-
-// === 이벤트 등록 ===
-on('#btnCreate', 'click', async () => {
-  const r = await api('/api/battles', {
-    method: 'POST',
-    body: JSON.stringify({ mode: $('#mode').value })
-  });
-  BATTLE = r.battleId;
-  $('#battleId').value = BATTLE;
-  history.replaceState(null, '', `/admin?token=${TOK.admin || ''}&battle=${BATTLE}`);
-  showSuccess('전투 생성 완료');
-  refresh();
-  connectSocket();
-});
-
-on('#btnLinks', 'click', async () => {
-  const r = await api(`/api/admin/battles/${BATTLE}/links`, { method: 'POST' });
-  TOK = r.tokens || TOK;
-  $('#adminUrl').textContent = `${location.origin}/admin?token=${TOK.admin}&battle=${BATTLE}`;
-  $('#playerUrl').textContent = `${location.origin}/play?token=${TOK.player}&battle=${BATTLE}`;
-  $('#spectUrl').textContent = `${location.origin}/watch?token=${TOK.spectator}&battle=${BATTLE}`;
-});
-
-on('#btnFetch', 'click', refresh);
-
-on('#btnIssueAdmin', 'click', async () => {
-  const r = await api(`/api/admin/battles/${BATTLE}/issue-otp`, {
-    method: 'POST',
-    body: JSON.stringify({ role: 'admin' })
-  });
-  $('#adminOtp').textContent = r.otp || '-';
-});
-
-on('#btnAdminLogin', 'click', async () => {
-  const otp = $('#adminOtpInput').value.trim();
-  const r = await api(`/api/admin/battles/${BATTLE}/auth`, {
-    method: 'POST',
-    body: JSON.stringify({ otp, role: 'admin' })
-  });
-  TOK.admin = r.token;
-  $('#adminLoginState').textContent = '인증됨';
-  $('#adminLoginState').style.background = 'var(--gold)';
-  $('#adminLoginState').style.color = 'var(--navy)';
-  connectSocket();
-});
-
-on('#btnIssuePlayer', 'click', async () => {
-  const name = $('#playerNameForOtp').value.trim();
-  const r = await api(`/api/admin/battles/${BATTLE}/issue-otp`, {
-    method: 'POST',
-    body: JSON.stringify({ role: 'player', playerName: name })
-  });
-  $('#playerOtp').textContent = r.otp || '-';
-});
-
-on('#btnIssueSpect', 'click', async () => {
-  const r = await api(`/api/admin/battles/${BATTLE}/issue-otp`, {
-    method: 'POST',
-    body: JSON.stringify({ role: 'spectator' })
-  });
-  $('#spectOtp').textContent = r.otp || '-';
-});
-
-on('#btnStart', 'click', async () => {
-  await api(`/api/admin/battles/${BATTLE}/start`, { method: 'POST' });
-  clearInterval(readyCheckInterval);
-  readyCheckInterval = null;
-  refresh();
-});
-
-on('#btnEnd', 'click', async () => {
-  await api(`/api/admin/battles/${BATTLE}/end`, {
-    method: 'POST',
-    body: JSON.stringify({ winner: $('#winnerSel').value })
-  });
-});
-
-on('#btnNextTurn', 'click', async () => {
-  await api(`/api/admin/battles/${BATTLE}/next-turn`, { method: 'POST' });
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  loadInitialState();
-  $('#chatInput')?.addEventListener('keypress', e => {
-    if (e.key === 'Enter') sendChat();
-  });
-});
-
-window.addEventListener('beforeunload', () => {
-  if (readyCheckInterval) clearInterval(readyCheckInterval);
-});
-
-const script = document.createElement('script');
-script.src = '/socket.io/socket.io.js';
-document.head.appendChild(script);
-</script>
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
