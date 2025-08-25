@@ -1,92 +1,147 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-  <title>전투 시스템 - 관리자 콘솔</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>관리자 페이지</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="root"></div>
-  <script src="/socket.io/socket.io.js"></script>
+  <div class="container">
+    <h1>전투 관리</h1>
+    <button id="createBattleBtn">전투 생성</button>
+    <button id="generateLinksBtn">링크 생성</button>
+    <button id="refreshBtn">상태 갱신</button>
+
+    <h3>관리자 URL:</h3>
+    <input type="text" id="adminUrl" readonly>
+
+    <h3>플레이어 URL:</h3>
+    <input type="text" id="playerUrl" readonly>
+
+    <h3>관전자 URL:</h3>
+    <input type="text" id="spectatorUrl" readonly>
+
+    <div class="otp-section">
+      <h2>🔒 인증 및 접근 제어</h2>
+
+      <button id="generateOtpBtn">관리자 OTP</button>
+      <input type="text" id="otpDisplay" readonly>
+
+      <input type="text" id="otpInput" placeholder="OTP 입력">
+      <button id="loginBtn">관리자 로그인</button>
+      <div id="authStatus">인증되지 않음</div>
+    </div>
+
+    <input type="text" id="playerNameInput" placeholder="플레이어 이름" />
+    <button id="playerJoinBtn">플레이어 입장</button>
+
+    <div id="logBox" style="margin-top: 20px; white-space: pre-wrap; color: red;"></div>
+  </div>
+
   <script>
-    let BATTLE = null;
-    let TOK = {};
-    let socket = null;
+    let battleId = null;
+    let token = null;
 
-    const $ = (sel) => document.querySelector(sel);
+    const $ = id => document.getElementById(id);
 
-    async function api(url, opts = {}) {
-      try {
-        const res = await fetch(url, {
-          headers: { 'Content-Type': 'application/json', ...opts.headers },
-          ...opts
-        });
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-          throw new Error(error.error || `HTTP ${res.status}`);
-        }
-        return await res.json();
-      } catch (error) {
-        alert(error.message);
-        throw error;
+    function log(msg) {
+      $("logBox").textContent = msg;
+    }
+
+    async function createBattle() {
+      const res = await fetch("/api/battles", { method: "POST" });
+      const data = await res.json();
+      battleId = data.battleId;
+      log("전투 생성 완료: " + battleId);
+    }
+
+    function generateLinks() {
+      if (!battleId) return alert("전투를 먼저 생성하세요.");
+
+      const adminToken = generateToken("admin");
+      const playerToken = generateToken("player");
+      const spectatorToken = generateToken("spectator");
+
+      $("adminUrl").value = `${location.origin}/admin?token=${adminToken}&battle=${battleId}`;
+      $("playerUrl").value = `${location.origin}/play?token=${playerToken}&battle=${battleId}`;
+      $("spectatorUrl").value = `${location.origin}/watch?token=${spectatorToken}&battle=${battleId}`;
+    }
+
+    function generateToken(role) {
+      return btoa(`${role}-${Date.now()}`);
+    }
+
+    async function refreshBattle() {
+      if (!battleId) return alert("전투 ID 없음");
+
+      const res = await fetch(`/api/battles/${battleId}`);
+      const data = await res.json();
+      renderTeam(data.teams?.team1?.players || [], "team1");
+      renderTeam(data.teams?.team2?.players || [], "team2");
+    }
+
+    function renderTeam(list, teamName) {
+      if (!Array.isArray(list)) return;
+      list.forEach(player => {
+        console.log(`[${teamName}] ${player}`);
+      });
+    }
+
+    async function issueOtp() {
+      if (!battleId) return alert("전투 생성 후 실행하세요.");
+
+      const form = new URLSearchParams();
+      form.append("role", "admin");
+
+      const res = await fetch(`/api/admin/battles/${battleId}/issue-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString()
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        $("otpDisplay").value = data.otp;
+        log("OTP 발급 성공");
+      } else {
+        log("OTP 발급 실패: " + data.error);
       }
     }
 
-    function getParams() {
-      const params = new URLSearchParams(location.search);
-      return {
-        battleId: params.get("battle") || '',
-        token: params.get("token") || ''
-      };
-    }
+    async function loginAsAdmin() {
+      const otp = $("otpInput").value.trim();
+      if (!otp || !battleId) return alert("OTP와 전투 ID가 필요합니다.");
 
-    async function loadBattle(battleId) {
-      const battle = await api(`/api/battles/${battleId}`);
-      console.log("Battle loaded:", battle);
-      // 필요한 UI 반영
-    }
+      const form = new URLSearchParams();
+      form.append("otp", otp);
+      form.append("role", "admin");
+      form.append("battleId", battleId);
 
-    async function authAsAdmin(battleId, otp) {
-      const result = await api(`/api/admin/battles/${battleId}/auth`, {
-        method: 'POST',
-        body: JSON.stringify({ otp, role: 'admin' })
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString()
       });
-      TOK.admin = result.token;
-      console.log("Admin authenticated:", result.token);
-    }
 
-    function connectSocket() {
-      socket = io();
-      socket.on('connect', () => {
-        console.log('Socket connected:', socket.id);
-        if (TOK.admin && BATTLE) {
-          socket.emit('adminAuth', { battleId: BATTLE, otp: TOK.admin });
-        }
-      });
-      socket.on('battleUpdate', (battle) => {
-        console.log('Battle updated:', battle);
-      });
-      socket.on('disconnect', () => {
-        console.log('Socket disconnected');
-      });
-    }
-
-    async function init() {
-      const { battleId, token } = getParams();
-      if (!battleId || !token) {
-        document.body.innerHTML = '<h2>잘못된 접근입니다. battle ID와 token이 필요합니다.</h2>';
-        return;
+      const data = await res.json();
+      if (data.success) {
+        token = data.token;
+        $("authStatus").textContent = "인증 완료";
+        $("authStatus").style.color = "green";
+        log("관리자 인증 성공");
+      } else {
+        $("authStatus").textContent = "인증 실패";
+        $("authStatus").style.color = "red";
+        log("로그인 실패: " + (data.error || "오류 발생"));
       }
-
-      BATTLE = battleId;
-      TOK.admin = token;
-
-      await loadBattle(battleId);
-      connectSocket();
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    $("createBattleBtn").onclick = createBattle;
+    $("generateLinksBtn").onclick = generateLinks;
+    $("refreshBtn").onclick = refreshBattle;
+    $("generateOtpBtn").onclick = issueOtp;
+    $("loginBtn").onclick = loginAsAdmin;
   </script>
 </body>
 </html>
