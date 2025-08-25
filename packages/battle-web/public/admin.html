@@ -1,20 +1,129 @@
-on('#btnAdminLogin', 'click', async () => {
-  if (!BATTLE) return showError('전투 ID가 필요합니다');
-  const otp = $('#adminOtpInput').value.trim();
-  if (!otp) return showError('OTP를 입력하세요');
-  
-  try {
-    const result = await api(`/api/admin/battles/${BATTLE}/auth`, { 
-      method: 'POST', 
-      body: JSON.stringify({ otp, role: 'admin' }) 
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>전투 시스템 - 관리자 콘솔</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f1419;
+      color: #F5E6B8;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #E5C88A;
+    }
+    .section {
+      background: #1a1f26;
+      border: 1px solid rgba(229,200,138,0.2);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+    button {
+      background-color: #2a3441;
+      color: #F5E6B8;
+      border: 1px solid rgba(229,200,138,0.4);
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #C8A882;
+      color: #0f1419;
+    }
+    code {
+      background: #222;
+      padding: 5px 10px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-top: 5px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>전투 시스템 - 관리자 콘솔</h1>
+
+<div class="section">
+  <h2>1. 전투 생성</h2>
+  <select id="mode">
+    <option value="1v1">1v1</option>
+    <option value="2v2">2v2</option>
+  </select>
+  <button onclick="createBattle()">전투 생성</button>
+  <div id="battleIdInfo"></div>
+</div>
+
+<div class="section">
+  <h2>2. OTP 발급</h2>
+  <input id="otpRole" placeholder="역할 (admin/player/spectator)">
+  <input id="playerName" placeholder="플레이어 이름 (player일 때)">
+  <button onclick="issueOtp()">OTP 발급</button>
+  <div id="otpDisplay"></div>
+</div>
+
+<div class="section">
+  <h2>3. 로그인</h2>
+  <input id="otpInput" placeholder="OTP 입력">
+  <button onclick="login()">로그인</button>
+  <div id="tokenDisplay"></div>
+</div>
+
+<script>
+  let battleId = '';
+  let token = '';
+
+  async function createBattle() {
+    const mode = document.getElementById('mode').value;
+    const res = await fetch('/api/battles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
     });
-    TOK.admin = result.token;
-    $('#adminLoginState').textContent = '인증됨';
-    $('#adminLoginState').style.background = 'var(--gold)';
-    $('#adminLoginState').style.color = 'var(--navy)';
-    showSuccess('관리자 인증 완료');
-    connectSocket();
-  } catch (error) {
-    // 오류는 이미 api 함수에서 처리됨
+    const data = await res.json();
+    battleId = data.battleId;
+    document.getElementById('battleIdInfo').innerHTML = 'Battle ID: <code>' + battleId + '</code>';
   }
-});
+
+  async function issueOtp() {
+    if (!battleId) return alert('전투 ID를 먼저 생성하세요');
+    const role = document.getElementById('otpRole').value.trim();
+    const playerName = document.getElementById('playerName').value.trim();
+    const body = { role };
+    if (role === 'player') body.playerName = playerName;
+    const res = await fetch(`/api/admin/battles/${battleId}/issue-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    document.getElementById('otpDisplay').innerHTML = 'OTP: <code>' + data.otp + '</code>';
+  }
+
+  async function login() {
+    if (!battleId) return alert('전투 ID가 없습니다');
+    const otp = document.getElementById('otpInput').value.trim();
+    const res = await fetch(`/api/admin/battles/${battleId}/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp, role: 'admin' })
+    });
+    const data = await res.json();
+    token = data.token;
+    document.getElementById('tokenDisplay').innerHTML = 'Token: <code>' + token + '</code>';
+  }
+</script>
+
+</body>
+</html>
