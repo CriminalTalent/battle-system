@@ -1,36 +1,33 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const { Server } = require('socket.io');
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const http = require("http");
+const { Server } = require("socket.io");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+    origin: "*",
+    methods: ["GET", "POST"]
   }
 });
 
-// 기본 설정
-const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || '0.0.0.0';
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-
-app.use(cors({ origin: CORS_ORIGIN }));
+// 미들웨어
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
-// 전역 상태 저장 (예시)
+// 전투 상태를 저장할 임시 메모리 저장소
 const battles = {};
-const otps = {};
+const otps = {}; // { battleId: { role: otp } }
 
-// 헬스 체크
-app.get('/api/health', (req, res) => {
+// 헬스체크
+app.get("/api/health", (req, res) => {
   res.json({
-    status: 'healthy',
+    status: "healthy",
     uptime: process.uptime(),
     memory: process.memoryUsage(),
     timestamp: new Date(),
@@ -39,15 +36,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // 전투 생성
-app.post('/api/battles', (req, res) => {
-  const battleId = `battle_${crypto.randomUUID()}`;
+app.post("/api/battles", (req, res) => {
+  const battleId = "battle_" + uuidv4();
   const battle = {
     id: battleId,
-    mode: '1v1',
-    status: 'waiting',
+    mode: "1v1",
+    status: "waiting",
     teams: {
-      team1: { name: '불사조 기사단', players: [] },
-      team2: { name: '죽음을 먹는자들', players: [] }
+      team1: { name: "불사조 기사단", players: [] },
+      team2: { name: "죽음을 먹는자들", players: [] }
     },
     config: {
       playersPerTeam: 1,
@@ -56,18 +53,21 @@ app.post('/api/battles', (req, res) => {
       itemsEnabled: true,
       autoStart: true
     },
-    currentTeam: 'team1',
+    currentTeam: "team1",
     currentPlayerIndex: 0,
     turnOrder: [],
     turnNumber: 0,
     roundNumber: 1,
-    battleLog: [{
-      type: 'system',
-      message: '1v1 전투가 생성되었습니다',
-      timestamp: Date.now()
-    }],
+    battleLog: [
+      {
+        type: "system",
+        message: "1v1 전투가 생성되었습니다",
+        timestamp: Date.now()
+      }
+    ],
     chatLog: [],
     createdAt: Date.now(),
+    turnStartTime: null,
     winner: null,
     endReason: null
   };
@@ -82,81 +82,87 @@ app.post('/api/battles', (req, res) => {
 });
 
 // 전투 조회
-app.get('/api/battles/:battleId', (req, res) => {
+app.get("/api/battles/:battleId", (req, res) => {
   const battle = battles[req.params.battleId];
-  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  if (!battle) {
+    return res.status(404).json({ error: "전투를 찾을 수 없습니다" });
+  }
   res.json(battle);
 });
 
-// 관리자 OTP 발급
-app.post('/api/admin/battles/:battleId/issue-otp', (req, res) => {
+// OTP 발급
+app.post("/api/admin/battles/:battleId/issue-otp", express.urlencoded({ extended: true }), (req, res) => {
   const { role } = req.body;
-  const battleId = req.params.battleId;
+  const { battleId } = req.params;
 
-  if (!['admin', 'player', 'spectator'].includes(role)) {
-    return res.status(400).json({ error: '유효하지 않은 역할입니다' });
+  if (!["admin", "player", "spectator"].includes(role)) {
+    return res.status(400).json({ error: "유효하지 않은 역할입니다" });
   }
 
-  const otp = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const otp = Math.random().toString(36).substr(2, 6).toUpperCase();
 
-  otps[otp] = {
+  if (!otps[battleId]) otps[battleId] = {};
+  otps[battleId][role] = otp;
+
+  res.json({
+    success: true,
+    otp,
     role,
-    battleId,
-    expiresAt: Date.now() + 5 * 60 * 1000 // 5분 후 만료
-  };
-
-  res.json({ success: true, otp, role, expiresIn: '5분' });
+    expiresIn: "5분"
+  });
 });
 
-// 인증 및 로그인 처리
-app.post('/api/auth/login', (req, res) => {
-  const { otp, role } = req.body;
+// 🔐 로그인 라우트 추가
+app.post("/api/auth/login", express.urlencoded({ extended: true }), (req, res) => {
+  const { otp, role, battleId } = req.body;
 
-  if (!otp || !role) {
-    return res.status(400).json({ error: 'OTP 또는 역할이 누락되었습니다.' });
+  if (!otp || !role || !battleId) {
+    return res.status(400).json({ error: "OTP, 역할, 전투 ID가 필요합니다." });
   }
 
-  const found = otps[otp];
-
-  if (!found || found.role !== role || found.expiresAt < Date.now()) {
-    return res.status(401).json({ error: '인증 실패' });
+  if (!otps[battleId] || !otps[battleId][role]) {
+    return res.status(404).json({ error: "OTP 정보가 존재하지 않습니다." });
   }
 
-  return res.json({ success: true, token: `${role}-token`, battleId: found.battleId });
+  if (otps[battleId][role] !== otp) {
+    return res.status(401).json({ error: "인증 실패. 올바른 OTP가 아닙니다." });
+  }
+
+  return res.json({
+    success: true,
+    token: `${role.toUpperCase()}-${Date.now()}`
+  });
 });
 
-// 정적 파일 제공 (admin, play, watch 페이지)
-const publicPath = path.join(__dirname, '../public');
-app.use('/admin', express.static(path.join(publicPath, 'admin')));
-app.use('/play', express.static(path.join(publicPath, 'play')));
-app.use('/watch', express.static(path.join(publicPath, 'watch')));
+// 소켓 연결
+io.on("connection", (socket) => {
+  console.log("소켓 연결:", socket.id);
 
-// 소켓 연결 예시
-io.on('connection', (socket) => {
-  console.log('소켓 연결:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('소켓 연결 해제:', socket.id);
+  socket.on("disconnect", () => {
+    console.log("소켓 연결 해제:", socket.id);
   });
 });
 
 // 서버 시작
+const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || "0.0.0.0";
+
 server.listen(PORT, HOST, () => {
-  console.log('========================================');
-  console.log('   전투 시스템 서버 시작');
-  console.log('========================================');
+  console.log("========================================");
+  console.log("   전투 시스템 서버 시작");
+  console.log("========================================");
   console.log(`포트: ${PORT}`);
   console.log(`호스트: ${HOST}`);
   console.log(`환경: ${process.env.NODE_ENV}`);
-  console.log(`CORS: ${CORS_ORIGIN}`);
-  console.log('========================================');
-  console.log('API 엔드포인트:');
+  console.log(`CORS: *`);
+  console.log("========================================");
+  console.log("API 엔드포인트:");
   console.log(`- 헬스체크: http://${HOST}:${PORT}/api/health`);
-  console.log('- 전투 생성: POST /api/battles');
-  console.log('- 전투 조회: GET /api/battles/:battleId');
-  console.log('========================================');
+  console.log(`- 전투 생성: POST /api/battles`);
+  console.log(`- 전투 조회: GET /api/battles/:battleId`);
+  console.log("========================================");
   console.log(`관리자 페이지: http://${HOST}:${PORT}/admin`);
   console.log(`플레이어 페이지: http://${HOST}:${PORT}/play`);
   console.log(`관전자 페이지: http://${HOST}:${PORT}/watch`);
-  console.log('========================================');
+  console.log("========================================");
 });
