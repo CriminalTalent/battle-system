@@ -1,15 +1,14 @@
 {
   "name": "battle-system",
-  "version": "1.0.0",
-  "description": "Real-time multiplayer turn-based battle system",
+  "version": "2.0.0",
+  "description": "실시간 멀티플레이어 턴제 전투 시스템 - 민첩성 기반 이니셔티브, Socket.IO 실시간 동기화, 전술적 아이템 시스템",
   "private": true,
   "workspaces": [
-    "packages/battle-server",
-    "packages/battle-web"
+    "packages/battle-server"
   ],
   "scripts": {
-    "dev": "concurrently \"npm --workspace packages/battle-server run dev\" \"npm --workspace packages/battle-web start\"",
-    "start": "concurrently \"npm --workspace packages/battle-server start\" \"npm --workspace packages/battle-web start\"",
+    "dev": "npm --workspace packages/battle-server run dev",
+    "start": "npm --workspace packages/battle-server start",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint \"packages/*/src/**/*.{js,jsx}\" \"packages/battle-server/*.js\"",
@@ -19,16 +18,22 @@
     
     "setup": "npm install && npm install --workspaces",
     "dev:server": "npm --workspace packages/battle-server run dev",
-    "dev:web": "npm --workspace packages/battle-web run dev",
     "start:server": "npm --workspace packages/battle-server start",
-    "start:web": "npm --workspace packages/battle-web start",
     
     "docker:build": "docker-compose build",
-    "docker:up": "docker-compose up",
+    "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
     
-    "quick-start": "chmod +x scripts/quick-start.sh && ./scripts/quick-start.sh"
+    "deploy": "pm2 restart battle-server --update-env && pm2 save",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs battle-server",
+    "pm2:status": "pm2 status",
+    
+    "health": "curl http://localhost:3001/api/health || echo 'Server not running'",
+    "update-github": "chmod +x scripts/update-github.sh && ./scripts/update-github.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
@@ -48,15 +53,31 @@
     "url": "https://github.com/CriminalTalent/battle-system.git"
   },
   "keywords": [
-    "battle",
-    "game",
+    "battle-system",
+    "team-battle",
     "realtime",
     "multiplayer",
-    "react",
-    "nodejs",
     "socket.io",
-    "turn-based"
+    "express",
+    "turn-based",
+    "initiative",
+    "agility-based",
+    "tactical",
+    "pvp",
+    "korean",
+    "websocket",
+    "game-engine",
+    "pm2",
+    "docker"
   ],
-  "author": "CriminalTalent",
-  "license": "MIT"
+  "author": {
+    "name": "CriminalTalent",
+    "email": "contact@example.com",
+    "url": "https://github.com/CriminalTalent"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/CriminalTalent/battle-system/issues"
+  },
+  "homepage": "https://github.com/CriminalTalent/battle-system#readme"
 }
