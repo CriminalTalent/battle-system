@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>전투 관리자 페이지</title>
+  <title>Pyxis 전투 시스템</title>
   <style>
     :root {
       --deep-navy: #0a0f1a;
@@ -97,7 +97,7 @@
 
     .button-group {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 15px;
       margin-bottom: 20px;
     }
@@ -106,14 +106,13 @@
       background: var(--accent);
       border: 2px solid var(--border-light);
       border-radius: 10px;
-      padding: 15px 20px;
+      padding: 12px 16px;
       color: var(--text-primary);
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1px;
       transition: all 0.3s ease;
+      text-align: center;
     }
 
     .btn:hover:not(:disabled) {
@@ -121,14 +120,12 @@
       border-color: var(--gold);
       color: var(--navy);
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(229, 200, 138, 0.4);
     }
 
     .btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
       transform: none !important;
-      box-shadow: none !important;
     }
 
     .btn-primary {
@@ -168,15 +165,15 @@
       background: var(--navy);
       border: 1px solid var(--border-light);
       border-radius: 8px;
-      padding: 12px 15px;
+      padding: 10px 12px;
       color: var(--text-primary);
-      font-size: 14px;
+      font-size: 12px;
       font-family: monospace;
     }
 
     .status-info {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 15px;
       margin-top: 15px;
     }
@@ -185,33 +182,20 @@
       background: var(--navy);
       border: 1px solid var(--border-light);
       border-radius: 8px;
-      padding: 15px;
+      padding: 12px;
       text-align: center;
     }
 
     .status-label {
       color: var(--text-secondary);
-      font-size: 12px;
+      font-size: 11px;
       margin-bottom: 5px;
     }
 
     .status-value {
       color: var(--gold);
-      font-size: 1.2rem;
+      font-size: 1.1rem;
       font-weight: 600;
-    }
-
-    .log-area {
-      background: var(--navy);
-      border: 1px solid var(--border-light);
-      border-radius: 8px;
-      padding: 15px;
-      height: 200px;
-      overflow-y: auto;
-      font-family: monospace;
-      font-size: 13px;
-      line-height: 1.4;
-      white-space: pre-wrap;
     }
 
     .hidden {
@@ -222,15 +206,12 @@
       .button-group {
         grid-template-columns: 1fr;
       }
-      
       .status-info {
         grid-template-columns: 1fr;
       }
-      
       .container {
         padding: 20px;
       }
-      
       .title {
         font-size: 2rem;
       }
@@ -240,85 +221,81 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1 class="title">전투 시스템 관리자</h1>
-      <p class="subtitle">팀 대 팀 실시간 턴제 전투 시스템</p>
+      <h1 class="title">Pyxis 전투 시스템</h1>
+      <p class="subtitle">관리자 콘솔</p>
     </div>
 
-    <!-- 전투 생성 섹션 -->
+    <!-- 전투 구성 -->
     <div class="section">
-      <h2 class="section-title">전투 생성</h2>
-      <div class="button-group">
-        <button id="createBattleBtn" class="btn btn-primary">전투 생성</button>
-        <button id="generateLinksBtn" class="btn btn-success" disabled>링크 생성</button>
-        <button id="startBattleBtn" class="btn btn-warning" disabled>전투 시작</button>
-        <button id="endBattleBtn" class="btn btn-danger" disabled>전투 종료</button>
-      </div>
+      <h2 class="section-title">전투 구성</h2>
       
       <div class="status-info">
         <div class="status-card">
           <div class="status-label">전투 ID</div>
-          <div id="battleIdStatus" class="status-value">-</div>
+          <div id="battleIdStatus" class="status-value">전투 ID</div>
         </div>
         <div class="status-card">
-          <div class="status-label">전투 상태</div>
-          <div id="battleStatusValue" class="status-value">대기중</div>
+          <div class="status-label">전투 모드</div>
+          <div class="status-value">1v1</div>
         </div>
         <div class="status-card">
-          <div class="status-label">플레이어 수</div>
-          <div id="playerCountStatus" class="status-value">0/2</div>
+          <div class="status-label">동작</div>
+          <div class="status-value">
+            <div class="button-group">
+              <button id="createBattleBtn" class="btn btn-primary">전투 생성</button>
+              <button id="generateLinksBtn" class="btn btn-success" disabled>링크 생성</button>
+              <button id="startBattleBtn" class="btn btn-warning" disabled>상태 갱신</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="urlSection" class="hidden" style="margin-top: 20px;">
+        <div class="url-group">
+          <label class="url-label">관리자 URL:</label>
+          <input type="text" id="adminUrl" class="url-input" readonly>
+        </div>
+        
+        <div class="url-group">
+          <label class="url-label">플레이어 URL:</label>
+          <input type="text" id="playerUrl" class="url-input" readonly>
+        </div>
+        
+        <div class="url-group">
+          <label class="url-label">관전자 URL:</label>
+          <input type="text" id="spectatorUrl" class="url-input" readonly>
         </div>
       </div>
     </div>
 
-    <!-- URL 링크 섹션 -->
-    <div id="urlSection" class="section hidden">
-      <h2 class="section-title">접속 링크</h2>
-      
-      <div class="url-group">
-        <label class="url-label">관리자 URL</label>
-        <input type="text" id="adminUrl" class="url-input" readonly>
-      </div>
-      
-      <div class="url-group">
-        <label class="url-label">플레이어 URL</label>
-        <input type="text" id="playerUrl" class="url-input" readonly>
-      </div>
-      
-      <div class="url-group">
-        <label class="url-label">관전자 URL</label>
-        <input type="text" id="spectatorUrl" class="url-input" readonly>
-      </div>
-    </div>
-
-    <!-- 로그 섹션 -->
+    <!-- 전투 관리 -->
     <div class="section">
-      <h2 class="section-title">시스템 로그</h2>
-      <div id="logArea" class="log-area">시스템이 준비되었습니다.</div>
+      <h2 class="section-title">전투 관리</h2>
+      <div class="button-group">
+        <button id="adminStartBtn" class="btn btn-warning" disabled>전투 시작</button>
+        <button class="btn">승자 지정 (HP 합계)</button>
+        <button id="forceEndBtn" class="btn btn-danger" disabled>강제 종료</button>
+        <button id="endBattleBtn" class="btn btn-danger" disabled>전투 삭제</button>
+      </div>
+      
+      <div style="margin-top: 15px; text-align: right;">
+        <button class="btn btn-success">현재 성능 정보</button>
+      </div>
     </div>
   </div>
 
   <script>
     let battleId = null;
-    let battleData = null;
 
-    // DOM 요소 선택 헬퍼
     function $(id) {
       return document.getElementById(id);
-    }
-
-    // 로그 추가
-    function addLog(message) {
-      const logArea = $('logArea');
-      const timestamp = new Date().toLocaleTimeString();
-      logArea.textContent += `[${timestamp}] ${message}\n`;
-      logArea.scrollTop = logArea.scrollHeight;
     }
 
     // 전투 생성
     async function createBattle() {
       try {
         $('createBattleBtn').disabled = true;
-        addLog('전투 생성 중...');
+        $('createBattleBtn').textContent = '생성 중...';
         
         const response = await fetch('/api/battles', {
           method: 'POST',
@@ -326,23 +303,19 @@
           body: JSON.stringify({ mode: '1v1' })
         });
         
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error('전투 생성 실패');
         
         const data = await response.json();
         battleId = data.battleId;
-        battleData = data.battle;
         
         $('battleIdStatus').textContent = battleId.substring(0, 8) + '...';
         $('generateLinksBtn').disabled = false;
-        
-        addLog(`전투 생성 성공: ${battleId}`);
-        addLog('이제 "링크 생성"을 클릭하세요.');
+        $('createBattleBtn').textContent = '전투 생성';
         
       } catch (error) {
-        addLog(`전투 생성 실패: ${error.message}`);
+        alert('전투 생성 실패: ' + error.message);
         $('createBattleBtn').disabled = false;
+        $('createBattleBtn').textContent = '전투 생성';
       }
     }
 
@@ -352,15 +325,13 @@
       
       try {
         $('generateLinksBtn').disabled = true;
-        addLog('링크 생성 중...');
+        $('generateLinksBtn').textContent = '생성 중...';
         
         const response = await fetch(`/api/admin/battles/${battleId}/links`, {
           method: 'POST'
         });
         
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error('링크 생성 실패');
         
         const data = await response.json();
         const baseUrl = window.location.origin;
@@ -370,49 +341,15 @@
         $('spectatorUrl').value = `${baseUrl}${data.urls.spectator}`;
         
         $('urlSection').classList.remove('hidden');
-        $('startBattleBtn').disabled = false;
-        
-        addLog('링크 생성 완료');
-        addLog('플레이어들에게 링크를 배포하세요.');
-        
-        // 5초마다 전투 상태 확인
-        if (window.statusInterval) clearInterval(window.statusInterval);
-        window.statusInterval = setInterval(checkBattleStatus, 5000);
+        $('adminStartBtn').disabled = false;
+        $('forceEndBtn').disabled = false;
+        $('endBattleBtn').disabled = false;
+        $('generateLinksBtn').textContent = '링크 생성';
         
       } catch (error) {
-        addLog(`링크 생성 실패: ${error.message}`);
+        alert('링크 생성 실패: ' + error.message);
         $('generateLinksBtn').disabled = false;
-      }
-    }
-
-    // 전투 상태 확인
-    async function checkBattleStatus() {
-      if (!battleId) return;
-      
-      try {
-        const response = await fetch(`/api/battles/${battleId}`);
-        if (response.ok) {
-          const battle = await response.json();
-          const playerCount = battle.teams.team1.players.length + battle.teams.team2.players.length;
-          const maxPlayers = battle.config.playersPerTeam * 2;
-          
-          $('playerCountStatus').textContent = `${playerCount}/${maxPlayers}`;
-          $('battleStatusValue').textContent = battle.status === 'waiting' ? '대기중' : 
-                                              battle.status === 'ongoing' ? '진행중' : '종료';
-          
-          if (battle.status === 'ongoing') {
-            $('startBattleBtn').disabled = true;
-            $('endBattleBtn').disabled = false;
-          } else if (battle.status === 'ended') {
-            $('startBattleBtn').disabled = true;
-            $('endBattleBtn').disabled = true;
-            if (window.statusInterval) {
-              clearInterval(window.statusInterval);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('상태 확인 실패:', error);
+        $('generateLinksBtn').textContent = '링크 생성';
       }
     }
 
@@ -421,9 +358,6 @@
       if (!battleId) return;
       
       try {
-        $('startBattleBtn').disabled = true;
-        addLog('전투 시작 중...');
-        
         const response = await fetch(`/api/admin/battles/${battleId}/start`, {
           method: 'POST'
         });
@@ -433,12 +367,10 @@
           throw new Error(errorData.error);
         }
         
-        $('endBattleBtn').disabled = false;
-        addLog('전투가 시작되었습니다!');
+        alert('전투가 시작되었습니다!');
         
       } catch (error) {
-        addLog(`전투 시작 실패: ${error.message}`);
-        $('startBattleBtn').disabled = false;
+        alert('전투 시작 실패: ' + error.message);
       }
     }
 
@@ -451,32 +383,25 @@
       }
       
       try {
-        $('endBattleBtn').disabled = true;
-        addLog('전투 종료 중...');
-        
         const response = await fetch(`/api/admin/battles/${battleId}/end`, {
           method: 'POST'
         });
         
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error('전투 종료 실패');
         
-        addLog('전투가 종료되었습니다.');
+        alert('전투가 종료되었습니다.');
         
       } catch (error) {
-        addLog(`전투 종료 실패: ${error.message}`);
-        $('endBattleBtn').disabled = false;
+        alert('전투 종료 실패: ' + error.message);
       }
     }
 
-    // 이벤트 리스너 등록
+    // 이벤트 리스너
     $('createBattleBtn').onclick = createBattle;
     $('generateLinksBtn').onclick = generateLinks;
-    $('startBattleBtn').onclick = startBattle;
+    $('adminStartBtn').onclick = startBattle;
+    $('forceEndBtn').onclick = endBattle;
     $('endBattleBtn').onclick = endBattle;
-
-    addLog('전투 관리자 시스템이 준비되었습니다.');
   </script>
 </body>
 </html>
