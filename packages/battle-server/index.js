@@ -3,122 +3,101 @@ const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
-const BattleEngine = require("./src/services/BattleEngine"); // ✅ 올바른 경로
+
+// BattleEngine 클래스 불러오기
+const BattleEngine = require("./src/services/BattleEngine");
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: "*" } });
+const io = new Server(httpServer, {
+  cors: { origin: "*" },
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 정적 파일 제공 (public 디렉토리)
 app.use(express.static(path.join(__dirname, "public")));
-
-// ✅ admin / play / watch 라우트 추가
-app.get("/admin", (_, res) =>
-  res.sendFile(path.join(__dirname, "public", "admin.html"))
-);
-
-app.get("/play", (_, res) =>
-  res.sendFile(path.join(__dirname, "public", "play.html"))
-);
-
-app.get("/watch", (_, res) =>
-  res.sendFile(path.join(__dirname, "public", "watch.html"))
-);
 
 const engine = new BattleEngine();
 
-// ===================== REST API =====================
+// ================================
+// REST API
+// ================================
 
-// 헬스 체크
-app.get("/api/health", (_, res) => {
+// 헬스체크
+app.get("/api/health", (_, res) =>
   res.json({
     status: "ok",
     battles: engine.battles.size,
-    timestamp: new Date().toISOString()
-  });
-});
+    timestamp: new Date().toISOString(),
+  })
+);
 
 // 전투 생성
 app.post("/api/battles", (req, res) => {
   try {
     const { mode } = req.body;
     const battle = engine.createBattle(mode);
-    res.json(battle);
+
+    res.json({
+      success: true,
+      battleId: battle.id,
+      battle,
+    });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
 // 전투 조회
 app.get("/api/battles/:id", (req, res) => {
   const battle = engine.getBattle(req.params.id);
-  if (!battle) return res.status(404).json({ error: "not found" });
-  res.json(battle);
+  if (!battle) {
+    return res.status(404).json({ success: false, error: "전투를 찾을 수 없습니다." });
+  }
+  res.json({ success: true, battle });
 });
 
-// ===================== Socket.IO =====================
-io.on("connection", socket => {
-  console.log("[소켓 연결]", socket.id);
-
-  // 관리자 인증
-  socket.on("adminAuth", ({ battleId, otp }) => {
-    const battle = engine.getBattle(battleId);
-    if (!battle || battle.otps.admin !== otp) {
-      return socket.emit("authError", "잘못된 관리자 OTP");
-    }
-    socket.join(battleId);
-    socket.emit("authSuccess", { role: "admin", battle });
-    console.log(`[관리자 인증] battleId=${battleId}`);
-  });
+// ================================
+// Socket.IO
+// ================================
+io.on("connection", (socket) => {
+  console.log("[소켓 연결] ID:", socket.id);
 
   // 플레이어 인증
   socket.on("playerAuth", ({ battleId, otp, playerId }) => {
     const battle = engine.getBattle(battleId);
     if (!battle || battle.otps.player !== otp) {
-      return socket.emit("authError", "잘못된 플레이어 OTP");
+      return socket.emit("authError", "인증 실패");
     }
     socket.join(battleId);
-    socket.emit("authSuccess", { role: "player", battle });
-    console.log(`[플레이어 인증] battleId=${battleId}, playerId=${playerId}`);
-  });
-
-  // 관전자 인증
-  socket.on("spectatorAuth", ({ battleId, otp }) => {
-    const battle = engine.getBattle(battleId);
-    if (!battle || battle.otps.spectator !== otp) {
-      return socket.emit("authError", "잘못된 관전자 OTP");
-    }
-    socket.join(battleId);
-    socket.emit("authSuccess", { role: "spectator", battle });
-    console.log(`[관전자 인증] battleId=${battleId}`);
+    socket.emit("authSuccess", { battle });
+    console.log(`[플레이어 인증 성공] 전투: ${battleId}, 플레이어: ${playerId}`);
   });
 
   // 플레이어 행동
   socket.on("playerAction", ({ battleId, playerId, action }) => {
     try {
-      const result = engine.executeAction(battleId, playerId, action);
+      engine.executeAction(battleId, playerId, action);
       io.to(battleId).emit("battleUpdate", engine.getBattle(battleId));
-      socket.emit("actionSuccess", result);
-    } catch (e) {
-      socket.emit("actionError", e.message);
+    } catch (err) {
+      socket.emit("actionError", err.message);
     }
   });
 
-  // 채팅
-  socket.on("chatMessage", ({ battleId, sender, message }) => {
-    const battle = engine.getBattle(battleId);
-    if (!battle) return;
-    engine.addChatMessage(battleId, sender, message);
-    io.to(battleId).emit("battleUpdate", engine.getBattle(battleId));
-  });
-
+  // 연결 해제
   socket.on("disconnect", () => {
-    console.log("[소켓 해제]", socket.id);
+    console.log("[소켓 해제] ID:", socket.id);
   });
 });
 
-// ===================== 서버 실행 =====================
+// ================================
+// 서버 실행
+// ================================
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log("========================================");
@@ -128,8 +107,8 @@ httpServer.listen(PORT, () => {
   console.log(`환경: ${process.env.NODE_ENV || "development"}`);
   console.log("----------------------------------------");
   console.log(`헬스체크: http://localhost:${PORT}/api/health`);
-  console.log(`관리자 페이지: http://localhost:${PORT}/admin`);
-  console.log(`플레이어 페이지: http://localhost:${PORT}/play`);
-  console.log(`관전자 페이지: http://localhost:${PORT}/watch`);
+  console.log(`관리자 페이지: http://localhost:${PORT}/admin.html`);
+  console.log(`플레이어 페이지: http://localhost:${PORT}/play.html`);
+  console.log(`관전자 페이지: http://localhost:${PORT}/watch.html`);
   console.log("========================================");
 });
