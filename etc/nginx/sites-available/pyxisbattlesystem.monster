@@ -5,18 +5,22 @@ server {
     root /var/www/battle-system;
     index index.html;
 
+    # 관리자 페이지
     location /admin {
-        try_files $uri /admin.html;
+        alias /var/www/battle-system/admin.html;
     }
 
+    # 플레이어 페이지
     location /play {
-        try_files $uri /play.html;
+        alias /var/www/battle-system/play.html;
     }
 
+    # 관전자 페이지
     location /watch {
-        try_files $uri /watch.html;
+        alias /var/www/battle-system/watch.html;
     }
 
+    # API 프록시
     location /api/ {
         proxy_pass http://127.0.0.1:3001/;
         proxy_http_version 1.1;
@@ -25,6 +29,7 @@ server {
         proxy_set_header Host $host;
     }
 
+    # Socket.IO 프록시
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
