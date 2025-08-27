@@ -1,70 +1,71 @@
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+    listen 80;
+    listen [::]:80;
     server_name pyxisbattlesystem.monster;
 
-    # 정적 루트
-    root /var/www/battle-system;
-    index index.html;
+    # 실제 정적 파일 경로 (현재 적용 상태에 맞춤)
+    # 필요 시 /var/www/battle-system/public 로 변경하세요.
+    root   /root/battle-system/packages/battle-server/public;
+    index  index.html;
 
-    # 보안/기본 헤더(필요 시 조정)
+    # 보안/기본 헤더
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
-    # 정적 캐시(원하면 조정/삭제)
-    location ~* \.(?:css|js|mjs|svg|png|jpg|jpeg|gif|webp|ico)$ {
+    # 정적 캐시 (필요시 조정)
+    location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
         access_log off;
-        expires 7d;
-        add_header Cache-Control "public, max-age=604800, immutable";
+        expires 1y;
+        add_header Cache-Control "public, immutable";
         try_files $uri =404;
     }
 
-    # 기본 루트 요청
-    location = / { try_files /index.html =404; }
-
-    # 관리자/플레이/관전자 단일 파일 라우팅
-    location = /admin { try_files /admin.html =404; }
-    location = /play  { try_files /play.html  =404; }
-    location = /watch { try_files /watch.html =404; }
-
-    # 기타 정적 요청
+    # SPA 라우팅(정적 우선, 없으면 index.html)
     location / {
-        try_files $uri $uri/ =404;
+        try_files $uri $uri/ /index.html;
     }
 
-    # ---- API 프록시 (/api 프리픽스 유지) ----
-    # upstream이 /api/health 등으로 동작하므로 슬래시 없는 proxy_pass 사용
+    # ---- API 프록시 (/api 프리픽스 보존 — 문제 근본차단용) ----
+    # 업스트림으로 현재 요청 경로 전체(/api 포함)를 그대로 전달
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;   # ← 끝에 / 없음!
-        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:3001$request_uri;
 
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_read_timeout 300;
         proxy_send_timeout 300;
     }
 
-    # ---- Socket.IO(WebSocket) ----
-    # 업스트림이 루트에서 소켓을 받는다면 /api 프리픽스 불필요
-    # Upgrade 헤더 처리는 map + $connection_upgrade 사용(아래 http{} 전역 map 필요)
+    # ---- Socket.IO (WebSocket) ----
+    # /etc/nginx/nginx.conf 의 map $http_upgrade $connection_upgrade 필요
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
 
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade            $http_upgrade;
+        proxy_set_header Connection         $connection_upgrade;
+        proxy_set_header Host               $host;
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto  $scheme;
 
         proxy_read_timeout 300;
         proxy_send_timeout 300;
         proxy_buffering off;  # 실시간 전송
     }
+
+    # 에러 페이지 (SPA 환경에서는 404도 index로 폴백)
+    error_page 404 /index.html;
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html { root /usr/share/nginx/html; }
+
+    # 숨김 파일 차단
+    location ~ /\. { deny all; }
+    location ~ ~$ { deny all; }
 }
