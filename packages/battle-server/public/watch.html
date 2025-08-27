@@ -23,75 +23,68 @@
     }
     button { cursor: pointer; background: #c8a882; color: #0a0f1a; font-weight: bold; }
     .team { border: 1px solid #444; margin: 10px 0; padding: 10px; border-radius: 8px; }
-    .log { background: #1a1f26; padding: 10px; height: 200px; overflow-y: auto; font-size: 14px; }
-    .cheer { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
-    .cheer button { flex: 1; min-width: 100px; }
+    .log, .chat { background: #1a1f26; padding: 10px; height: 200px; overflow-y: auto; font-size: 14px; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>관전자 입장</h1>
+  <h1>관전자 모드</h1>
 
   <!-- 인증 화면 -->
   <div id="authScreen">
     <input type="text" id="spectatorName" placeholder="관전자 이름">
     <input type="text" id="battleId" placeholder="전투 ID">
     <input type="text" id="otp" placeholder="관전자 OTP">
-    <button onclick="joinAsSpectator()">관전 시작</button>
+    <button onclick="joinBattle()">관전 시작</button>
   </div>
 
   <!-- 관전 화면 -->
-  <div id="spectatorScreen" class="hidden">
+  <div id="watchScreen" class="hidden">
     <h2>전투 상황</h2>
     <div id="battleStatus"></div>
     <div id="teams"></div>
-
-    <h3>응원하기</h3>
-    <div class="cheer">
-      <button onclick="sendCheer('힘내!')">힘내!</button>
-      <button onclick="sendCheer('지지마!')">지지마!</button>
-      <button onclick="sendCheer('이길 수 있어!')">이길 수 있어!</button>
-      <button onclick="sendCheer('포기하지 마!')">포기하지 마!</button>
-      <button onclick="sendCheer('화이팅!')">화이팅!</button>
-      <button onclick="sendCheer('대박!')">대박!</button>
-    </div>
 
     <h3>전투 로그</h3>
     <div id="log" class="log"></div>
 
     <h3>채팅</h3>
-    <div id="chat" class="log"></div>
+    <div id="chat" class="chat"></div>
+    <input type="text" id="chatInput" placeholder="메시지 입력">
+    <button onclick="sendChat()">보내기</button>
+
+    <h3>응원</h3>
+    <button onclick="sendCheer('힘내!')">힘내!</button>
+    <button onclick="sendCheer('지지마!')">지지마!</button>
+    <button onclick="sendCheer('이길 수 있어!')">이길 수 있어!</button>
+    <button onclick="sendCheer('화이팅!')">화이팅!</button>
   </div>
 </div>
 
 <script>
 let socket = null;
 let battleId = null;
-let spectatorName = null;
 
-function joinAsSpectator() {
-  spectatorName = document.getElementById("spectatorName").value.trim();
+function joinBattle() {
+  const spectatorName = document.getElementById("spectatorName").value.trim() || "관전자";
   battleId = document.getElementById("battleId").value.trim();
   const otp = document.getElementById("otp").value.trim();
 
-  if (!spectatorName || !battleId || !otp) {
-    alert("모든 값을 입력하세요");
+  if (!battleId || !otp) {
+    alert("전투 ID와 OTP를 입력하세요");
     return;
   }
 
   socket = io({ transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
-    console.log("소켓 연결됨", socket.id);
-
-    // 관전자 인증
+    console.log("소켓 연결됨 (관전자)", socket.id);
     socket.emit("spectatorAuth", { battleId, otp, spectatorName });
   });
 
   socket.on("authSuccess", data => {
-    console.log("인증 성공", data);
+    console.log("관전자 인증 성공", data);
     document.getElementById("authScreen").classList.add("hidden");
-    document.getElementById("spectatorScreen").classList.remove("hidden");
+    document.getElementById("watchScreen").classList.remove("hidden");
     renderBattle(data.battle);
   });
 
@@ -100,8 +93,6 @@ function joinAsSpectator() {
   socket.on("battleUpdate", battle => {
     renderBattle(battle);
   });
-
-  socket.on("chatError", msg => alert("채팅 오류: " + msg));
 }
 
 function renderBattle(battle) {
@@ -121,14 +112,12 @@ function renderBattle(battle) {
     teamsDiv.appendChild(div);
   }
 
-  // 로그
   const logDiv = document.getElementById("log");
   logDiv.innerHTML = battle.battleLog.map(e =>
     `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.message}`
   ).join("<br>");
   logDiv.scrollTop = logDiv.scrollHeight;
 
-  // 채팅
   const chatDiv = document.getElementById("chat");
   chatDiv.innerHTML = battle.chatLog.map(c =>
     `[${new Date(c.timestamp).toLocaleTimeString()}] ${c.sender} (${c.senderType}): ${c.message}`
@@ -136,8 +125,14 @@ function renderBattle(battle) {
   chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
+function sendChat() {
+  const msg = document.getElementById("chatInput").value.trim();
+  if (!msg) return;
+  socket.emit("chatMessage", { message: msg });
+  document.getElementById("chatInput").value = "";
+}
+
 function sendCheer(message) {
-  if (!socket) return;
   socket.emit("cheerMessage", { message });
 }
 </script>
