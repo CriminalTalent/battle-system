@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PYXIS 전투 관리석</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400;500;600;700;800;900&display=swap');
+    
     /* 기본 리셋 */
     * {
       margin: 0;
@@ -13,11 +15,29 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #0a0e1a 0%, #1a2332 50%, #2a3441 100%);
+      font-family: 'Playfair Display', serif;
+      background: 
+        radial-gradient(circle at 30% 20%, rgba(201, 169, 110, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 70% 80%, rgba(26, 35, 50, 0.8) 0%, transparent 70%),
+        linear-gradient(135deg, #0a0e1a 0%, #1a2332 50%, #2a3441 100%);
       color: #f8f9fa;
       min-height: 100vh;
       line-height: 1.6;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 80% 20%, rgba(201, 169, 110, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 20% 80%, rgba(201, 169, 110, 0.02) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
     }
 
     .container {
@@ -28,61 +48,136 @@
 
     .header {
       text-align: center;
-      margin-bottom: 40px;
-      padding: 40px 20px;
+      margin-bottom: 50px;
+      padding: 60px 20px;
       background: rgba(10, 14, 26, 0.8);
-      border: 1px solid rgba(201, 169, 110, 0.3);
-      border-radius: 20px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(201, 169, 110, 0.2);
+      border-radius: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(201, 169, 110, 0.1) 0%, transparent 70%);
+      animation: rotate 20s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes rotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     .title {
-      font-size: 3.5rem;
-      font-weight: 300;
+      font-family: 'Playfair Display', serif;
+      font-size: 4.5rem;
+      font-weight: 400;
       color: #c9a96e;
-      margin-bottom: 10px;
-      letter-spacing: 2px;
+      margin-bottom: 16px;
+      letter-spacing: 0.05em;
+      position: relative;
+      z-index: 1;
+      text-shadow: 0 0 30px rgba(201, 169, 110, 0.5);
+    }
+
+    .title::before {
+      content: '✦';
+      position: absolute;
+      top: -15px;
+      left: 20px;
+      font-size: 2rem;
+      color: #c9a96e;
+      animation: twinkle 3s ease-in-out infinite;
+    }
+
+    .title::after {
+      content: '✧';
+      position: absolute;
+      bottom: -10px;
+      right: 30px;
+      font-size: 1.5rem;
+      color: #d4b982;
+      animation: twinkle 2.5s ease-in-out infinite reverse;
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
     }
 
     .subtitle {
-      font-size: 1.2rem;
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
       color: #adb5bd;
       font-weight: 300;
-      letter-spacing: 1px;
+      letter-spacing: 2px;
+      position: relative;
+      z-index: 1;
     }
 
     .card {
-      background: rgba(26, 35, 50, 0.6);
-      border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 16px;
-      padding: 30px;
-      margin-bottom: 30px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(10px);
+      background: rgba(26, 35, 50, 0.4);
+      border: 1px solid rgba(201, 169, 110, 0.15);
+      border-radius: 20px;
+      padding: 35px;
+      margin-bottom: 35px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(15px);
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #c9a96e, transparent);
+      opacity: 0.6;
+    }
+
+    .card:hover {
+      border-color: rgba(201, 169, 110, 0.3);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+      transform: translateY(-2px);
     }
 
     .card-title {
-      font-size: 1.5rem;
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem;
       color: #c9a96e;
-      margin-bottom: 20px;
-      padding-bottom: 10px;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
       border-bottom: 1px solid rgba(201, 169, 110, 0.2);
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
     }
 
     .card-title::before {
       content: '';
       width: 4px;
-      height: 24px;
-      background: linear-gradient(to bottom, #d4b982, #c9a96e);
+      height: 28px;
+      background: linear-gradient(to bottom, #d4b982, #c9a96e, #b8935a);
       border-radius: 2px;
+      box-shadow: 0 0 10px rgba(201, 169, 110, 0.4);
     }
 
     .form-grid {
       display: grid;
-      gap: 16px;
+      gap: 18px;
     }
 
     .form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
@@ -92,354 +187,381 @@
     .form-group {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     .form-label {
+      font-family: 'Playfair Display', serif;
       color: #c9a96e;
-      font-size: 0.9rem;
+      font-size: 1rem;
       font-weight: 500;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
 
     .form-input, .form-select {
-      background: rgba(10, 14, 26, 0.8);
-      border: 1px solid rgba(201, 169, 110, 0.3);
-      border-radius: 8px;
-      padding: 12px 16px;
+      font-family: 'Playfair Display', serif;
+      background: rgba(10, 14, 26, 0.7);
+      border: 1px solid rgba(201, 169, 110, 0.25);
+      border-radius: 10px;
+      padding: 14px 18px;
       color: #f8f9fa;
       font-size: 1rem;
       transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
     }
 
     .form-input:focus, .form-select:focus {
       outline: none;
       border-color: #c9a96e;
-      box-shadow: 0 0 0 2px rgba(201, 169, 110, 0.2);
+      box-shadow: 0 0 0 3px rgba(201, 169, 110, 0.1), 0 0 20px rgba(201, 169, 110, 0.2);
+      transform: translateY(-1px);
     }
 
     .btn {
-      background: linear-gradient(135deg, #b8935a, #c9a96e);
+      font-family: 'Playfair Display', serif;
+      background: linear-gradient(135deg, #b8935a, #c9a96e, #d4b982);
       border: none;
-      border-radius: 8px;
-      padding: 12px 24px;
+      border-radius: 10px;
+      padding: 14px 28px;
       color: #0a0e1a;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
       text-transform: uppercase;
       letter-spacing: 1px;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      box-shadow: 0 2px 8px rgba(201, 169, 110, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
     }
 
     .btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(201, 169, 110, 0.3);
-      background: linear-gradient(135deg, #c9a96e, #d4b982);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 16px rgba(201, 169, 110, 0.4);
+      background: linear-gradient(135deg, #c9a96e, #d4b982, #e8d5b7);
     }
 
     .btn:disabled {
-      opacity: 0.5;
+      opacity: 0.4;
       cursor: not-allowed;
       transform: none;
+      background: rgba(52, 58, 64, 0.8);
+      color: #adb5bd;
     }
 
     .btn-secondary {
-      background: linear-gradient(135deg, #3a4451, #2c3e50);
+      background: linear-gradient(135deg, #3a4451, #2c3e50, #34495e);
       color: #f8f9fa;
+      box-shadow: 0 2px 8px rgba(52, 58, 64, 0.3);
     }
 
     .btn-secondary:hover {
-      background: linear-gradient(135deg, #2c3e50, #3a4451);
+      background: linear-gradient(135deg, #2c3e50, #34495e, #3a4451);
     }
 
     .btn-danger {
-      background: linear-gradient(135deg, #dc3545, #c82333);
+      background: linear-gradient(135deg, #dc3545, #c82333, #e74c3c);
       color: white;
+      box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
     }
 
     .btn-success {
-      background: linear-gradient(135deg, #28a745, #20c997);
+      background: linear-gradient(135deg, #28a745, #20c997, #17a2b8);
       color: white;
+      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
     }
 
     .btn-warning {
-      background: linear-gradient(135deg, #ffc107, #fd7e14);
+      background: linear-gradient(135deg, #ffc107, #fd7e14, #f39c12);
       color: #0a0e1a;
+      box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
     }
 
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 16px;
-      margin: 20px 0;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 18px;
+      margin: 24px 0;
     }
 
     .status-card {
       background: rgba(10, 14, 26, 0.6);
       border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 12px;
-      padding: 16px;
+      border-radius: 14px;
+      padding: 18px;
       text-align: center;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .status-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #b8935a, #c9a96e, #d4b982);
+      border-radius: 14px 14px 0 0;
+    }
+
+    .status-card:hover {
+      border-color: rgba(201, 169, 110, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
 
     .status-label {
+      font-family: 'Playfair Display', serif;
       color: #adb5bd;
-      font-size: 0.8rem;
-      margin-bottom: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 10px;
       text-transform: uppercase;
       letter-spacing: 1px;
+      font-weight: 500;
     }
 
     .status-value {
+      font-family: 'Playfair Display', serif;
       color: #c9a96e;
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       font-weight: 700;
+      letter-spacing: 0.02em;
     }
 
     .url-display {
-      margin-top: 20px;
-      padding: 20px;
+      margin-top: 24px;
+      padding: 24px;
       background: rgba(10, 14, 26, 0.6);
-      border-radius: 12px;
+      border-radius: 14px;
       border: 1px solid rgba(201, 169, 110, 0.2);
+      backdrop-filter: blur(15px);
     }
 
     .url-item {
       display: flex;
       align-items: center;
-      margin-bottom: 12px;
-      gap: 16px;
+      margin-bottom: 14px;
+      gap: 18px;
     }
 
     .url-label {
+      font-family: 'Playfair Display', serif;
       color: #c9a96e;
       font-weight: 600;
-      min-width: 120px;
-      font-size: 0.9rem;
+      min-width: 130px;
+      font-size: 1rem;
     }
 
     .code-display {
       background: rgba(10, 14, 26, 0.8);
       border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-family: monospace;
-      font-size: 0.8rem;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
       color: #d4b982;
       cursor: pointer;
       flex: 1;
       word-break: break-all;
+      transition: all 0.3s ease;
     }
 
     .code-display:hover {
       background: rgba(201, 169, 110, 0.1);
       border-color: #c9a96e;
+      transform: translateY(-1px);
     }
 
     .player-list {
-      max-height: 300px;
+      max-height: 320px;
       overflow-y: auto;
-      margin-top: 16px;
+      margin-top: 18px;
+    }
+
+    .player-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .player-list::-webkit-scrollbar-track {
+      background: rgba(10, 14, 26, 0.5);
+      border-radius: 3px;
+    }
+
+    .player-list::-webkit-scrollbar-thumb {
+      background: #c9a96e;
+      border-radius: 3px;
     }
 
     .player-card {
       background: rgba(10, 14, 26, 0.6);
       border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 8px;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
       border-left: 3px solid #c9a96e;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .player-card:hover {
+      border-color: rgba(201, 169, 110, 0.4);
+      transform: translateX(4px);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     }
 
     .player-name {
+      font-family: 'Playfair Display', serif;
       color: #c9a96e;
       font-weight: 600;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      font-size: 1.1rem;
     }
 
     .player-stats {
+      font-family: 'Playfair Display', serif;
       color: #adb5bd;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      font-weight: 400;
     }
 
     .chat-area {
       background: rgba(10, 14, 26, 0.8);
       border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 8px;
-      height: 200px;
+      border-radius: 10px;
+      height: 220px;
       overflow-y: auto;
-      padding: 16px;
-      margin-bottom: 16px;
-      font-family: monospace;
+      padding: 18px;
+      margin-bottom: 18px;
+      font-family: 'Courier New', monospace;
       font-size: 0.9rem;
+      backdrop-filter: blur(15px);
+    }
+
+    .chat-area::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-area::-webkit-scrollbar-track {
+      background: rgba(10, 14, 26, 0.5);
+      border-radius: 3px;
+    }
+
+    .chat-area::-webkit-scrollbar-thumb {
+      background: #c9a96e;
+      border-radius: 3px;
     }
 
     .chat-controls {
       display: flex;
-      gap: 12px;
+      gap: 14px;
     }
 
     .chat-input {
+      font-family: 'Playfair Display', serif;
       flex: 1;
       background: rgba(10, 14, 26, 0.8);
-      border: 1px solid rgba(201, 169, 110, 0.3);
-      border-radius: 8px;
-      padding: 12px;
+      border: 1px solid rgba(201, 169, 110, 0.25);
+      border-radius: 10px;
+      padding: 14px;
       color: #f8f9fa;
+      font-size: 1rem;
+      backdrop-filter: blur(10px);
     }
 
     .chat-input:focus {
       outline: none;
       border-color: #c9a96e;
+      box-shadow: 0 0 0 2px rgba(201, 169, 110, 0.1);
     }
 
-    /* 모달 스타일 */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
+    .battle-controls {
       display: flex;
-      align-items: center;
+      gap: 14px;
       justify-content: center;
-      z-index: 1000;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
+      margin-top: 24px;
     }
 
-    .modal:not(.hidden) {
-      opacity: 1;
-      pointer-events: all;
-    }
-
-    .modal-content {
-      background: rgba(26, 35, 50, 0.95);
-      border: 1px solid rgba(201, 169, 110, 0.3);
-      border-radius: 16px;
-      padding: 30px;
-      max-width: 600px;
-      width: 90%;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .modal-title {
-      font-size: 1.4rem;
-      color: #c9a96e;
-      font-weight: 600;
-    }
-
-    .modal-close {
-      background: none;
-      border: none;
-      color: #adb5bd;
-      font-size: 1.5rem;
-      cursor: pointer;
-      padding: 4px 8px;
-    }
-
-    .modal-close:hover {
-      color: #f8f9fa;
-    }
-
-    .modal-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      margin-top: 20px;
-    }
-
-    .stats-section, .items-section {
-      margin-bottom: 20px;
-    }
-
-    .section-label {
-      color: #c9a96e;
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .stats-row, .items-row {
+    .team-info {
       display: grid;
-      gap: 12px;
-      margin-bottom: 16px;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 24px;
     }
 
-    .stats-row {
-      grid-template-columns: repeat(4, 1fr);
-    }
-
-    .items-row {
-      grid-template-columns: repeat(3, 1fr);
-    }
-
-    .stat-input-group, .item-input-group {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      padding: 12px;
+    .team-card {
       background: rgba(10, 14, 26, 0.6);
       border: 1px solid rgba(201, 169, 110, 0.2);
-      border-radius: 8px;
+      border-radius: 14px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      position: relative;
     }
 
-    .stat-label, .item-label {
-      color: #adb5bd;
-      font-size: 0.8rem;
-      font-weight: 500;
+    .team-card.phoenix {
+      border-left: 4px solid #dc3545;
+    }
+
+    .team-card.death {
+      border-left: 4px solid #28a745;
+    }
+
+    .team-name {
+      font-family: 'Playfair Display', serif;
+      color: #c9a96e;
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 14px;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .stat-input, .item-input {
-      background: rgba(10, 14, 26, 0.8);
-      border: 1px solid rgba(201, 169, 110, 0.3);
-      border-radius: 6px;
-      padding: 8px;
-      color: #f8f9fa;
-      text-align: center;
-      font-weight: 600;
-      width: 100%;
-    }
-
-    .stat-input:focus, .item-input:focus {
-      outline: none;
-      border-color: #c9a96e;
+      letter-spacing: 1px;
     }
 
     .hidden {
       display: none !important;
     }
 
-    .team-section {
-      text-align: center;
-      margin-bottom: 20px;
+    .action-log {
+      background: rgba(10, 14, 26, 0.8);
+      border: 1px solid rgba(201, 169, 110, 0.2);
+      border-radius: 10px;
+      height: 200px;
+      overflow-y: auto;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #adb5bd;
     }
 
-    .team-title {
-      color: #c9a96e;
-      font-size: 1.2rem;
-      font-weight: 600;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    .action-log::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .action-log::-webkit-scrollbar-track {
+      background: rgba(10, 14, 26, 0.5);
+      border-radius: 3px;
+    }
+
+    .action-log::-webkit-scrollbar-thumb {
+      background: #c9a96e;
+      border-radius: 3px;
     }
 
     /* 반응형 */
@@ -449,17 +571,21 @@
       .form-grid.cols-4 {
         grid-template-columns: 1fr;
       }
-      .stats-row {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .items-row {
-        grid-template-columns: 1fr;
-      }
+      
       .title {
-        font-size: 2.5rem;
+        font-size: 3rem;
       }
+      
       .chat-controls {
         flex-direction: column;
+      }
+      
+      .team-info {
+        grid-template-columns: 1fr;
+      }
+      
+      .container {
+        padding: 15px;
       }
     }
   </style>
@@ -470,74 +596,6 @@
     <div class="header">
       <h1 class="title">PYXIS</h1>
       <p class="subtitle">전투 관리석</p>
-    </div>
-
-    <!-- 플레이어 추가 모달 -->
-    <div id="playerModal" class="modal hidden">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 class="modal-title">플레이어 추가</h3>
-          <button class="modal-close" id="closeModal">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">캐릭터 이름</label>
-            <input type="text" id="modalPlayerName" class="form-input" placeholder="캐릭터 이름을 입력하세요" maxlength="20">
-          </div>
-          
-          <div class="form-group">
-            <label class="form-label">팀 선택</label>
-            <select id="modalTeam" class="form-select">
-              <option value="phoenix">불사조 기사단</option>
-              <option value="death">죽음을 먹는자들</option>
-            </select>
-          </div>
-
-          <div class="stats-section">
-            <div class="section-label">캐릭터 스탯 (1-5 범위)</div>
-            <div class="stats-row">
-              <div class="stat-input-group">
-                <div class="stat-label">공격력</div>
-                <input type="number" class="stat-input" id="modalAttack" min="1" max="5" value="1">
-              </div>
-              <div class="stat-input-group">
-                <div class="stat-label">방어력</div>
-                <input type="number" class="stat-input" id="modalDefense" min="1" max="5" value="1">
-              </div>
-              <div class="stat-input-group">
-                <div class="stat-label">민첩성</div>
-                <input type="number" class="stat-input" id="modalAgility" min="1" max="5" value="1">
-              </div>
-              <div class="stat-input-group">
-                <div class="stat-label">행운</div>
-                <input type="number" class="stat-input" id="modalLuck" min="1" max="5" value="1">
-              </div>
-            </div>
-          </div>
-          
-          <div class="items-section">
-            <div class="section-label">아이템 보유량</div>
-            <div class="items-row">
-              <div class="item-input-group">
-                <div class="item-label">공격 보정기<br>(공격력×1.5)</div>
-                <input type="number" class="item-input" id="modalAttackBoost" min="0" max="5" value="2">
-              </div>
-              <div class="item-input-group">
-                <div class="item-label">방어 보정기<br>(방어력×1.5)</div>
-                <input type="number" class="item-input" id="modalDefenseBoost" min="0" max="5" value="2">
-              </div>
-              <div class="item-input-group">
-                <div class="item-label">디터니<br>(HP+10 회복)</div>
-                <input type="number" class="item-input" id="modalDittany" min="0" max="5" value="2">
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="cancelModal">취소</button>
-          <button class="btn btn-primary" id="confirmAddPlayer">플레이어 추가</button>
-        </div>
-      </div>
     </div>
 
     <!-- 전투 구성 -->
@@ -561,7 +619,7 @@
         <div class="form-group">
           <label class="form-label">동작</label>
           <div class="form-grid cols-3">
-            <button class="btn btn-primary" id="btnCreate">전투 생성</button>
+            <button class="btn" id="btnCreate">전투 생성</button>
             <button class="btn btn-secondary" id="btnLinks" disabled>링크 생성</button>
             <button class="btn btn-secondary" id="btnFetch">상태 갱신</button>
           </div>
@@ -585,20 +643,28 @@
 
       <div class="status-grid">
         <div class="status-card">
-          <div class="status-label">ID</div>
-          <div class="status-value" id="statusId">undefined</div>
+          <div class="status-label">전투 ID</div>
+          <div class="status-value" id="statusId">-</div>
         </div>
         <div class="status-card">
           <div class="status-label">모드</div>
-          <div class="status-value" id="statusMode">undefined</div>
+          <div class="status-value" id="statusMode">-</div>
         </div>
         <div class="status-card">
-          <div class="status-label">단계</div>
-          <div class="status-value" id="statusPhase">undefined</div>
+          <div class="status-label">상태</div>
+          <div class="status-value" id="statusState">준비중</div>
         </div>
         <div class="status-card">
-          <div class="status-label">현재</div>
-          <div class="status-value" id="statusCurrent">미정</div>
+          <div class="status-label">플레이어</div>
+          <div class="status-value" id="statusPlayers">0/0</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">턴</div>
+          <div class="status-value" id="statusTurn">0</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">현재 팀</div>
+          <div class="status-value" id="statusCurrentTeam">-</div>
         </div>
       </div>
     </section>
@@ -606,455 +672,478 @@
     <!-- 전투 관리 -->
     <section class="card">
       <div class="card-title">전투 관리</div>
-      <div class="form-grid cols-4">
-        <button id="btnStart" class="btn btn-warning" disabled>전투 시작</button>
-        <button id="btnWinner" class="btn btn-secondary">승자 지정</button>
-        <button id="btnForceEnd" class="btn btn-danger" disabled>강제 종료</button>
-        <button id="btnDelete" class="btn btn-danger" disabled>전투 삭제</button>
-      </div>
       
-      <div style="margin-top: 20px; display: flex; gap: 16px; justify-content: flex-end;">
-        <button class="btn btn-success" id="btnAddPlayer">플레이어 추가</button>
-        <button class="btn btn-success" id="btnPerformance">성능 정보</button>
+      <div class="battle-controls">
+        <button class="btn btn-success" id="btnStart" disabled>전투 시작</button>
+        <button class="btn btn-warning" id="btnPause" disabled>일시 정지</button>
+        <button class="btn btn-danger" id="btnEnd" disabled>전투 종료</button>
+        <button class="btn btn-secondary" id="btnReset" disabled>초기화</button>
       </div>
-    </section>
 
-    <!-- 참가자 현황 -->
-    <section class="card">
-      <div class="card-title">참가자 현황</div>
-      
-      <div class="form-grid cols-2">
-        <div class="team-section">
-          <h4 class="team-title">불사조 기사단</h4>
+      <div class="team-info">
+        <div class="team-card phoenix">
+          <div class="team-name">불사조 기사단</div>
           <div class="player-list" id="phoenixPlayers">
-            <div style="text-align: center; color: #adb5bd; padding: 20px;">참가자가 없습니다</div>
+            <div class="status-label">플레이어 없음</div>
           </div>
         </div>
-        <div class="team-section">
-          <h4 class="team-title">죽음을 먹는자들</h4>
+        <div class="team-card death">
+          <div class="team-name">죽음을 먹는자들</div>
           <div class="player-list" id="deathPlayers">
-            <div style="text-align: center; color: #adb5bd; padding: 20px;">참가자가 없습니다</div>
+            <div class="status-label">플레이어 없음</div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 실시간 채팅 -->
+    <!-- 실시간 로그 -->
     <section class="card">
-      <div class="card-title">실시간 채팅</div>
-      <div id="chatArea" class="chat-area"></div>
+      <div class="card-title">실시간 전투 로그</div>
+      <div class="action-log" id="actionLog">
+        시스템: 전투 관리석이 준비되었습니다.<br>
+      </div>
+    </section>
+
+    <!-- 관리자 채팅 -->
+    <section class="card">
+      <div class="card-title">관리자 공지</div>
+      <div class="chat-area" id="chatArea">
+        시스템: 관리자 채팅이 활성화되었습니다.<br>
+      </div>
       <div class="chat-controls">
-        <input type="text" id="chatInput" class="chat-input" placeholder="메시지 입력">
-        <button class="btn btn-primary" id="btnSendChat">전송</button>
-        <button class="btn btn-secondary" id="btnClearChat">지우기</button>
+        <input type="text" id="chatInput" class="chat-input" placeholder="관리자 공지사항을 입력하세요...">
+        <button class="btn" id="btnSendChat">전송</button>
       </div>
     </section>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.socket.io/4.7.0/socket.io.min.js"></script>
   <script>
-    let socket;
+    // 전역 변수
     let currentBattle = null;
+    let socket = null;
+    let isAuthenticated = false;
 
-    // 서버 연결
-    function connectToServer() {
+    // DOM 요소
+    const elements = {
+      battleId: document.getElementById('battleId'),
+      mode: document.getElementById('mode'),
+      statusId: document.getElementById('statusId'),
+      statusMode: document.getElementById('statusMode'),
+      statusState: document.getElementById('statusState'),
+      statusPlayers: document.getElementById('statusPlayers'),
+      statusTurn: document.getElementById('statusTurn'),
+      statusCurrentTeam: document.getElementById('statusCurrentTeam'),
+      urlSection: document.getElementById('urlSection'),
+      adminUrl: document.getElementById('adminUrl'),
+      playerUrl: document.getElementById('playerUrl'),
+      spectUrl: document.getElementById('spectUrl'),
+      phoenixPlayers: document.getElementById('phoenixPlayers'),
+      deathPlayers: document.getElementById('deathPlayers'),
+      actionLog: document.getElementById('actionLog'),
+      chatArea: document.getElementById('chatArea'),
+      chatInput: document.getElementById('chatInput'),
+      btnCreate: document.getElementById('btnCreate'),
+      btnLinks: document.getElementById('btnLinks'),
+      btnFetch: document.getElementById('btnFetch'),
+      btnStart: document.getElementById('btnStart'),
+      btnPause: document.getElementById('btnPause'),
+      btnEnd: document.getElementById('btnEnd'),
+      btnReset: document.getElementById('btnReset'),
+      btnSendChat: document.getElementById('btnSendChat')
+    };
+
+    // 이벤트 리스너
+    elements.btnCreate.addEventListener('click', createBattle);
+    elements.btnLinks.addEventListener('click', generateLinks);
+    elements.btnFetch.addEventListener('click', fetchBattleState);
+    elements.btnStart.addEventListener('click', startBattle);
+    elements.btnPause.addEventListener('click', pauseBattle);
+    elements.btnEnd.addEventListener('click', endBattle);
+    elements.btnReset.addEventListener('click', resetBattle);
+    elements.btnSendChat.addEventListener('click', sendChat);
+
+    elements.chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendChat();
+      }
+    });
+
+    // URL 복사 이벤트
+    elements.adminUrl.addEventListener('click', () => copyToClipboard(elements.adminUrl.textContent));
+    elements.playerUrl.addEventListener('click', () => copyToClipboard(elements.playerUrl.textContent));
+    elements.spectUrl.addEventListener('click', () => copyToClipboard(elements.spectUrl.textContent));
+
+    // 전투 생성
+    async function createBattle() {
+      try {
+        const response = await fetch('/api/battles', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            mode: elements.mode.value
+          })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          currentBattle = result.battle;
+          elements.battleId.value = result.battle.id;
+          elements.btnLinks.disabled = false;
+          updateStatus();
+          addLog('전투가 생성되었습니다: ' + result.battle.id);
+        } else {
+          alert('전투 생성 실패: ' + result.error);
+        }
+      } catch (error) {
+        console.error('전투 생성 오류:', error);
+        alert('전투 생성 중 오류가 발생했습니다.');
+      }
+    }
+
+    // 링크 생성
+    async function generateLinks() {
+      if (!currentBattle) return;
+
+      try {
+        const response = await fetch(`/api/admin/battles/${currentBattle.id}/links`, {
+          method: 'POST'
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          const baseUrl = window.location.origin;
+          elements.adminUrl.textContent = `${baseUrl}/admin?battle=${currentBattle.id}&token=${result.otps.admin}`;
+          elements.playerUrl.textContent = `${baseUrl}/play?battle=${currentBattle.id}&token=${result.otps.player}`;
+          elements.spectUrl.textContent = `${baseUrl}/watch?battle=${currentBattle.id}&token=${result.otps.spectator}`;
+          
+          elements.urlSection.classList.remove('hidden');
+          addLog('OTP 링크가 생성되었습니다.');
+          
+          // Socket 연결 시도
+          connectSocket(result.otps.admin);
+        } else {
+          alert('링크 생성 실패: ' + result.error);
+        }
+      } catch (error) {
+        console.error('링크 생성 오류:', error);
+        alert('링크 생성 중 오류가 발생했습니다.');
+      }
+    }
+
+    // Socket 연결
+    function connectSocket(adminOtp) {
+      if (socket) {
+        socket.disconnect();
+      }
+
       socket = io();
       
       socket.on('connect', () => {
-        console.log('서버 연결 성공');
+        console.log('Socket 연결됨');
+        // 관리자 인증
+        socket.emit('adminAuth', {
+          battleId: currentBattle.id,
+          otp: adminOtp
+        });
       });
-      
-      socket.on('disconnect', () => {
-        console.log('서버 연결 해제');
+
+      socket.on('authSuccess', (data) => {
+        isAuthenticated = true;
+        addLog('관리자 인증 성공');
+        elements.btnStart.disabled = false;
       });
-      
-      socket.on('battleUpdate', (battle) => {
-        console.log('전투 상태 업데이트:', battle);
-        currentBattle = battle;
-        updateUI(battle);
+
+      socket.on('authError', (data) => {
+        addLog('인증 실패: ' + data.message);
       });
-      
+
+      socket.on('battleUpdate', (battleData) => {
+        currentBattle = battleData;
+        updateStatus();
+        updatePlayerLists();
+      });
+
       socket.on('chatMessage', (data) => {
-        addChatMessage(data);
+        addChatMessage(`${data.player}: ${data.message}`);
+      });
+
+      socket.on('actionResult', (data) => {
+        addLog(`${data.player}: ${data.action} - ${data.result}`);
+      });
+
+      socket.on('disconnect', () => {
+        isAuthenticated = false;
+        addLog('서버 연결이 끊어졌습니다.');
       });
     }
 
-    // UI 업데이트
-    function updateUI(battle) {
-      if (!battle) return;
-
-      document.getElementById('statusId').textContent = battle.id || 'undefined';
-      document.getElementById('statusMode').textContent = battle.mode || 'undefined';
-      document.getElementById('statusPhase').textContent = battle.phase || 'undefined';
-      document.getElementById('statusCurrent').textContent = battle.currentTeam || '미정';
-
-      // 플레이어 목록 업데이트
-      renderPlayers(battle.teams?.phoenix || [], document.getElementById('phoenixPlayers'));
-      renderPlayers(battle.teams?.death || [], document.getElementById('deathPlayers'));
-
-      // 버튼 상태 업데이트
-      document.getElementById('btnStart').disabled = battle.phase !== 'setup';
-      document.getElementById('btnForceEnd').disabled = battle.phase === 'ended';
-      document.getElementById('btnDelete').disabled = battle.phase !== 'ended';
-    }
-
-    // 플레이어 렌더링
-    function renderPlayers(players, element) {
-      element.innerHTML = '';
-      if (players.length === 0) {
-        element.innerHTML = '<div style="text-align: center; color: #adb5bd; padding: 20px;">참가자가 없습니다</div>';
-        return;
-      }
-      
-      players.forEach(player => {
-        const div = document.createElement('div');
-        div.className = 'player-card';
-        div.innerHTML = `
-          <div class="player-name">${player.name}</div>
-          <div class="player-stats">
-            HP: ${player.hp}/${player.maxHp} | 
-            공격: ${player.stats?.attack ?? '-'} | 
-            방어: ${player.stats?.defense ?? '-'} | 
-            민첩: ${player.stats?.agility ?? '-'} | 
-            행운: ${player.stats?.luck ?? '-'}
-          </div>
-        `;
-        element.appendChild(div);
-      });
-    }
-
-    // 채팅 메시지 추가
-    function addChatMessage(data) {
-      const chatArea = document.getElementById('chatArea');
-      const messageDiv = document.createElement('div');
-      messageDiv.innerHTML = `
-        <div style="margin-bottom: 8px;">
-          <strong style="color: #c9a96e;">[${data.senderType}] ${data.sender}:</strong> 
-          <span style="color: #f8f9fa;">${data.message}</span>
-          <br><small style="color: #adb5bd;">${new Date(data.timestamp).toLocaleTimeString()}</small>
-        </div>
-      `;
-      chatArea.appendChild(messageDiv);
-      chatArea.scrollTop = chatArea.scrollHeight;
-    }
-
-    // 모달 관리
-    function openPlayerModal() {
-      document.getElementById('playerModal').classList.remove('hidden');
-    }
-
-    function closePlayerModal() {
-      document.getElementById('playerModal').classList.add('hidden');
-      // 폼 초기화
-      document.getElementById('modalPlayerName').value = '';
-      document.getElementById('modalTeam').value = 'phoenix';
-      document.getElementById('modalAttack').value = 1;
-      document.getElementById('modalDefense').value = 1;
-      document.getElementById('modalAgility').value = 1;
-      document.getElementById('modalLuck').value = 1;
-      document.getElementById('modalAttackBoost').value = 2;
-      document.getElementById('modalDefenseBoost').value = 2;
-      document.getElementById('modalDittany').value = 2;
-    }
-
-    // 모달에서 플레이어 추가
-    async function addPlayerFromModal() {
-      const battleId = document.getElementById('battleId').value;
-      if (!battleId) return alert('전투 ID가 없습니다.');
-
-      const name = document.getElementById('modalPlayerName').value.trim();
-      if (!name) return alert('캐릭터 이름을 입력해주세요.');
-
-      const team = document.getElementById('modalTeam').value;
-      const stats = {
-        attack: parseInt(document.getElementById('modalAttack').value) || 1,
-        defense: parseInt(document.getElementById('modalDefense').value) || 1,
-        agility: parseInt(document.getElementById('modalAgility').value) || 1,
-        luck: parseInt(document.getElementById('modalLuck').value) || 1
-      };
-      const items = {
-        attackBoost: parseInt(document.getElementById('modalAttackBoost').value) || 0,
-        defenseBoost: parseInt(document.getElementById('modalDefenseBoost').value) || 0,
-        dittany: parseInt(document.getElementById('modalDittany').value) || 0
-      };
+    // 전투 상태 갱신
+    async function fetchBattleState() {
+      if (!elements.battleId.value) return;
 
       try {
-        const response = await fetch(`/api/battles/${battleId}/players`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, team, stats, items })
+        const response = await fetch(`/api/battles/${elements.battleId.value}`);
+        const result = await response.json();
+        
+        if (result.success) {
+          currentBattle = result.battle;
+          updateStatus();
+          updatePlayerLists();
+          addLog('전투 상태가 갱신되었습니다.');
+        } else {
+          alert('전투 조회 실패: ' + result.error);
+        }
+      } catch (error) {
+        console.error('상태 갱신 오류:', error);
+        alert('상태 갱신 중 오류가 발생했습니다.');
+      }
+    }
+
+    // 전투 시작
+    function startBattle() {
+      if (!socket || !isAuthenticated) return;
+
+      socket.emit('startBattle', {
+        battleId: currentBattle.id
+      });
+      
+      addLog('전투 시작을 요청했습니다.');
+    }
+
+    // 전투 일시정지
+    function pauseBattle() {
+      if (!socket || !isAuthenticated) return;
+
+      socket.emit('pauseBattle', {
+        battleId: currentBattle.id
+      });
+      
+      addLog('전투 일시정지를 요청했습니다.');
+    }
+
+    // 전투 종료
+    async function endBattle() {
+      if (!currentBattle) return;
+
+      if (!confirm('정말로 전투를 종료하시겠습니까?')) return;
+
+      try {
+        const response = await fetch(`/api/admin/battles/${currentBattle.id}/end`, {
+          method: 'POST'
         });
 
-        const data = await response.json();
-        if (response.ok) {
-          console.log('플레이어 추가 완료:', data);
-          closePlayerModal();
-          fetchBattleStatus();
+        const result = await response.json();
+        
+        if (result.success) {
+          addLog('전투가 강제 종료되었습니다.');
+          elements.btnStart.disabled = true;
+          elements.btnPause.disabled = true;
+          elements.btnEnd.disabled = true;
         } else {
-          alert('플레이어 추가 실패: ' + data.error);
+          alert('전투 종료 실패: ' + result.error);
         }
       } catch (error) {
-        console.error('플레이어 추가 오류:', error);
-        alert('플레이어 추가 중 오류가 발생했습니다.');
+        console.error('전투 종료 오류:', error);
+        alert('전투 종료 중 오류가 발생했습니다.');
       }
     }
 
-    // 전투 상태 조회
-    async function fetchBattleStatus() {
-      const battleId = document.getElementById('battleId').value;
-      if (!battleId) return;
+    // 전투 초기화
+    function resetBattle() {
+      if (!confirm('전투를 초기화하시겠습니까? 모든 데이터가 삭제됩니다.')) return;
 
-      try {
-        const battle = await response.json();
-        
-        if (response.ok) {
-          currentBattle = battle;
-          updateUI(battle);
-        } else {
-          console.error('전투 상태 조회 실패:', battle.error);
-        }
-      } catch (error) {
-        console.error('전투 상태 조회 오류:', error);
+      currentBattle = null;
+      elements.battleId.value = '';
+      elements.urlSection.classList.add('hidden');
+      elements.btnLinks.disabled = true;
+      elements.btnStart.disabled = true;
+      elements.btnPause.disabled = true;
+      elements.btnEnd.disabled = true;
+      elements.btnReset.disabled = true;
+
+      // Socket 연결 해제
+      if (socket) {
+        socket.disconnect();
+        socket = null;
       }
+
+      // 상태 초기화
+      updateStatus();
+      elements.phoenixPlayers.innerHTML = '<div class="status-label">플레이어 없음</div>';
+      elements.deathPlayers.innerHTML = '<div class="status-label">플레이어 없음</div>';
+      
+      addLog('전투가 초기화되었습니다.');
     }
 
     // 채팅 전송
     function sendChat() {
-      const input = document.getElementById('chatInput');
-      const message = input.value.trim();
-      
-      if (message && socket) {
-        socket.emit('chatMessage', {
-          message: message,
-          senderType: 'admin',
-          sender: 'Admin'
-        });
-        input.value = '';
+      const message = elements.chatInput.value.trim();
+      if (!message || !socket || !isAuthenticated) return;
+
+      socket.emit('adminMessage', {
+        battleId: currentBattle.id,
+        message: message
+      });
+
+      addChatMessage(`관리자: ${message}`);
+      elements.chatInput.value = '';
+    }
+
+    // 상태 업데이트
+    function updateStatus() {
+      if (!currentBattle) {
+        elements.statusId.textContent = '-';
+        elements.statusMode.textContent = '-';
+        elements.statusState.textContent = '준비중';
+        elements.statusPlayers.textContent = '0/0';
+        elements.statusTurn.textContent = '0';
+        elements.statusCurrentTeam.textContent = '-';
+        return;
+      }
+
+      elements.statusId.textContent = currentBattle.id;
+      elements.statusMode.textContent = currentBattle.mode;
+      elements.statusState.textContent = getStateText(currentBattle.state);
+      elements.statusPlayers.textContent = `${currentBattle.players.length}/${getMaxPlayers(currentBattle.mode)}`;
+      elements.statusTurn.textContent = currentBattle.turn || 0;
+      elements.statusCurrentTeam.textContent = currentBattle.currentTeam || '-';
+
+      // 버튼 상태 업데이트
+      updateButtonStates();
+    }
+
+    // 플레이어 목록 업데이트
+    function updatePlayerLists() {
+      if (!currentBattle) return;
+
+      const phoenixPlayers = currentBattle.players.filter(p => p.team === 'phoenix');
+      const deathPlayers = currentBattle.players.filter(p => p.team === 'death');
+
+      updateTeamPlayerList(elements.phoenixPlayers, phoenixPlayers);
+      updateTeamPlayerList(elements.deathPlayers, deathPlayers);
+    }
+
+    // 팀별 플레이어 목록 업데이트
+    function updateTeamPlayerList(container, players) {
+      if (players.length === 0) {
+        container.innerHTML = '<div class="status-label">플레이어 없음</div>';
+        return;
+      }
+
+      container.innerHTML = players.map(player => `
+        <div class="player-card">
+          <div class="player-name">${player.name}</div>
+          <div class="player-stats">
+            HP: ${player.hp}/100 | 
+            공격: ${player.attack} | 
+            방어: ${player.defense} | 
+            민첩: ${player.agility} | 
+            행운: ${player.luck}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 버튼 상태 업데이트
+    function updateButtonStates() {
+      if (!currentBattle) return;
+
+      const canStart = currentBattle.state === 'waiting' && 
+                      currentBattle.players.length >= 2 && 
+                      isAuthenticated;
+      const canPause = currentBattle.state === 'active' && isAuthenticated;
+      const canEnd = ['waiting', 'active', 'paused'].includes(currentBattle.state) && isAuthenticated;
+      const canReset = true;
+
+      elements.btnStart.disabled = !canStart;
+      elements.btnPause.disabled = !canPause;
+      elements.btnEnd.disabled = !canEnd;
+      elements.btnReset.disabled = !canReset;
+    }
+
+    // 로그 추가
+    function addLog(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      elements.actionLog.innerHTML += `[${timestamp}] ${message}<br>`;
+      elements.actionLog.scrollTop = elements.actionLog.scrollHeight;
+    }
+
+    // 채팅 메시지 추가
+    function addChatMessage(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      elements.chatArea.innerHTML += `[${timestamp}] ${message}<br>`;
+      elements.chatArea.scrollTop = elements.chatArea.scrollHeight;
+    }
+
+    // 클립보드 복사
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        addLog('URL이 클립보드에 복사되었습니다.');
+      } catch (error) {
+        console.error('복사 실패:', error);
+        // Fallback
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        addLog('URL이 클립보드에 복사되었습니다.');
       }
     }
 
-    // 이벤트 리스너 등록
-    function setupEventListeners() {
-      // 모달 이벤트
-      document.getElementById('btnAddPlayer').addEventListener('click', openPlayerModal);
-      document.getElementById('closeModal').addEventListener('click', closePlayerModal);
-      document.getElementById('cancelModal').addEventListener('click', closePlayerModal);
-      document.getElementById('confirmAddPlayer').addEventListener('click', addPlayerFromModal);
-
-      // 전투 생성
-      document.getElementById('btnCreate').addEventListener('click', async () => {
-        try {
-          const mode = document.getElementById('mode').value;
-          const response = await fetch('/api/battles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
-          });
-          
-          const battle = await response.json();
-          if (response.ok) {
-            document.getElementById('battleId').value = battle.id;
-            document.getElementById('btnLinks').disabled = false;
-            console.log('전투 생성 완료:', battle);
-            fetchBattleStatus();
-          } else {
-            alert('전투 생성 실패: ' + battle.error);
-          }
-        } catch (error) {
-          console.error('전투 생성 오류:', error);
-          alert('전투 생성 중 오류가 발생했습니다.');
-        }
-      });
-
-      // 링크 생성
-      document.getElementById('btnLinks').addEventListener('click', async () => {
-        const battleId = document.getElementById('battleId').value;
-        if (!battleId) return alert('전투 ID가 없습니다.');
-
-        try {
-          const response = await fetch(`/api/admin/battles/${battleId}/links`, {
-            method: 'POST'
-          });
-          
-          const data = await response.json();
-          if (response.ok) {
-            const baseUrl = window.location.origin;
-            
-            document.getElementById('adminUrl').textContent = `${baseUrl}/admin?battle=${battleId}&token=${data.adminToken}`;
-            document.getElementById('playerUrl').textContent = `${baseUrl}/play?battle=${battleId}&token=${data.playerToken}`;
-            document.getElementById('spectUrl').textContent = `${baseUrl}/watch?battle=${battleId}&token=${data.spectatorToken}`;
-            
-            document.getElementById('urlSection').classList.remove('hidden');
-            console.log('링크 생성 완료:', data);
-          } else {
-            alert('링크 생성 실패: ' + data.error);
-          }
-        } catch (error) {
-          console.error('링크 생성 오류:', error);
-          alert('링크 생성 중 오류가 발생했습니다.');
-        }
-      });
-
-      // 상태 갱신
-      document.getElementById('btnFetch').addEventListener('click', fetchBattleStatus);
-
-      // 전투 시작
-      document.getElementById('btnStart').addEventListener('click', async () => {
-        const battleId = document.getElementById('battleId').value;
-        if (!battleId) return alert('전투 ID가 없습니다.');
-
-        try {
-          const response = await fetch(`/api/admin/battles/${battleId}/start`, {
-            method: 'POST'
-          });
-          
-          const data = await response.json();
-          if (response.ok) {
-            console.log('전투 시작:', data);
-            fetchBattleStatus();
-          } else {
-            alert('전투 시작 실패: ' + data.error);
-          }
-        } catch (error) {
-          console.error('전투 시작 오류:', error);
-          alert('전투 시작 중 오류가 발생했습니다.');
-        }
-      });
-
-      // 강제 종료
-      document.getElementById('btnForceEnd').addEventListener('click', async () => {
-        const battleId = document.getElementById('battleId').value;
-        if (!battleId) return alert('전투 ID가 없습니다.');
-        if (!confirm('정말로 전투를 강제 종료하시겠습니까?')) return;
-
-        try {
-          const response = await fetch(`/api/admin/battles/${battleId}/end`, {
-            method: 'POST'
-          });
-          
-          const data = await response.json();
-          if (response.ok) {
-            console.log('전투 강제 종료:', data);
-            fetchBattleStatus();
-          } else {
-            alert('전투 종료 실패: ' + data.error);
-          }
-        } catch (error) {
-          console.error('전투 종료 오류:', error);
-          alert('전투 종료 중 오류가 발생했습니다.');
-        }
-      });
-
-      // 전투 삭제
-      document.getElementById('btnDelete').addEventListener('click', async () => {
-        const battleId = document.getElementById('battleId').value;
-        if (!battleId) return alert('전투 ID가 없습니다.');
-        if (!confirm('정말로 전투를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
-
-        try {
-          const response = await fetch(`/api/battles/${battleId}`, {
-            method: 'DELETE'
-          });
-          
-          if (response.ok) {
-            console.log('전투 삭제 완료');
-            document.getElementById('battleId').value = '';
-            document.getElementById('urlSection').classList.add('hidden');
-            updateUI(null);
-            alert('전투가 삭제되었습니다.');
-          } else {
-            const data = await response.json();
-            alert('전투 삭제 실패: ' + data.error);
-          }
-        } catch (error) {
-          console.error('전투 삭제 오류:', error);
-          alert('전투 삭제 중 오류가 발생했습니다.');
-        }
-      });
-
-      // 채팅 전송
-      document.getElementById('btnSendChat').addEventListener('click', sendChat);
-      document.getElementById('chatInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendChat();
-      });
-
-      // 채팅 지우기
-      document.getElementById('btnClearChat').addEventListener('click', () => {
-        document.getElementById('chatArea').innerHTML = '';
-      });
-
-      // 성능 정보
-      document.getElementById('btnPerformance').addEventListener('click', async () => {
-        try {
-          const response = await fetch('/api/health');
-          const data = await response.json();
-          alert(`서버 상태: ${data.status}\n업타임: ${data.uptime}\n메모리 사용량: ${data.memory}`);
-        } catch (error) {
-          console.error('성능 정보 조회 오류:', error);
-          alert('성능 정보를 조회할 수 없습니다.');
-        }
-      });
-
-      // URL 클릭 복사
-      document.querySelectorAll('.code-display').forEach(el => {
-        el.addEventListener('click', () => {
-          navigator.clipboard.writeText(el.textContent).then(() => {
-            el.style.backgroundColor = 'rgba(201, 169, 110, 0.2)';
-            setTimeout(() => {
-              el.style.backgroundColor = '';
-            }, 500);
-          }).catch(() => {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = el.textContent;
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-              document.execCommand('copy');
-            } catch (err) {
-              console.error('복사 실패:', err);
-            }
-            document.body.removeChild(textArea);
-          });
-        });
-      });
-
-      // 승자 지정
-      document.getElementById('btnWinner').addEventListener('click', () => {
-        if (!currentBattle || !currentBattle.teams) {
-          return alert('전투 데이터가 없습니다.');
-        }
-
-        const phoenixHp = (currentBattle.teams.phoenix || [])
-          .reduce((sum, p) => sum + (p.hp || 0), 0);
-        const deathHp = (currentBattle.teams.death || [])
-          .reduce((sum, p) => sum + (p.hp || 0), 0);
-
-        let winner;
-        if (phoenixHp > deathHp) {
-          winner = '불사조 기사단';
-        } else if (deathHp > phoenixHp) {
-          winner = '죽음을 먹는자들';
-        } else {
-          winner = '무승부';
-        }
-
-        alert(`현재 HP 합계:\n불사조 기사단: ${phoenixHp}\n죽음을 먹는자들: ${deathHp}\n\n결과: ${winner} 승리`);
-      });
+    // 헬퍼 함수들
+    function getStateText(state) {
+      const stateMap = {
+        'waiting': '대기중',
+        'active': '진행중',
+        'paused': '일시정지',
+        'ended': '종료됨'
+      };
+      return stateMap[state] || '알수없음';
     }
 
-    // 초기화
+    function getMaxPlayers(mode) {
+      const modeMap = {
+        '1v1': 2,
+        '2v2': 4,
+        '3v3': 6,
+        '4v4': 8
+      };
+      return modeMap[mode] || 0;
+    }
+
+    // 페이지 로드 시 초기화
     document.addEventListener('DOMContentLoaded', () => {
-      connectToServer();
-      setupEventListeners();
-      
-      // URL에서 전투 ID 추출
-      const params = new URLSearchParams(window.location.search);
-      const battleId = params.get('battle');
-      if (battleId) {
-        document.getElementById('battleId').value = battleId;
-        document.getElementById('btnLinks').disabled = false;
-        fetchBattleStatus();
+      // URL 파라미터 확인
+      const urlParams = new URLSearchParams(window.location.search);
+      const battleParam = urlParams.get('battle');
+      const tokenParam = urlParams.get('token');
+
+      if (battleParam && tokenParam) {
+        elements.battleId.value = battleParam;
+        addLog('URL에서 전투 정보를 감지했습니다.');
+        
+        // 자동으로 전투 정보 조회
+        setTimeout(() => {
+          fetchBattleState();
+        }, 1000);
+      }
+
+      addLog('PYXIS 전투 관리석이 시작되었습니다.');
+    });
+
+    // 페이지 새로고침 시 확인
+    window.addEventListener('beforeunload', (e) => {
+      if (currentBattle && currentBattle.state === 'active') {
+        e.preventDefault();
+        e.returnValue = '진행 중인 전투가 있습니다. 정말로 페이지를 닫으시겠습니까?';
       }
     });
   </script>
