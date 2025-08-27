@@ -3,7 +3,7 @@ const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
-const BattleEngine = require("./src/services/BattleEngine"); // ✅ 수정된 경로
+const BattleEngine = require("./src/services/BattleEngine"); // ✅ 경로 수정
 
 const app = express();
 const httpServer = createServer(app);
@@ -48,18 +48,41 @@ app.get("/api/battles/:id", (req, res) => {
 io.on("connection", socket => {
   console.log("[소켓 연결]", socket.id);
 
-  // 플레이어 인증
+  // ---------------- 플레이어 인증 ----------------
   socket.on("playerAuth", ({ battleId, otp, playerId }) => {
     const battle = engine.getBattle(battleId);
     if (!battle || battle.otps.player !== otp) {
-      return socket.emit("authError", "인증 실패");
+      return socket.emit("authError", "잘못된 플레이어 OTP");
     }
     socket.join(battleId);
-    socket.emit("authSuccess", { battle });
-    console.log(`[플레이어 인증] battleId=${battleId}, playerId=${playerId}`);
+    engine.updatePlayerConnection(battleId, playerId, true);
+    socket.emit("authSuccess", { role: "player", battle });
+    console.log(`[플레이어 인증] battle=${battleId}, player=${playerId}`);
   });
 
-  // 플레이어 행동
+  // ---------------- 관리자 인증 ----------------
+  socket.on("adminAuth", ({ battleId, otp }) => {
+    const battle = engine.getBattle(battleId);
+    if (!battle || battle.otps.admin !== otp) {
+      return socket.emit("authError", "잘못된 관리자 OTP");
+    }
+    socket.join(battleId);
+    socket.emit("authSuccess", { role: "admin", battle });
+    console.log(`[관리자 인증] battle=${battleId}`);
+  });
+
+  // ---------------- 관전자 인증 ----------------
+  socket.on("spectatorAuth", ({ battleId, otp, name }) => {
+    const battle = engine.getBattle(battleId);
+    if (!battle || battle.otps.spectator !== otp) {
+      return socket.emit("authError", "잘못된 관전자 OTP");
+    }
+    socket.join(battleId);
+    socket.emit("authSuccess", { role: "spectator", battle });
+    console.log(`[관전자 인증] battle=${battleId}, name=${name || "관전자"}`);
+  });
+
+  // ---------------- 플레이어 액션 ----------------
   socket.on("playerAction", ({ battleId, playerId, action }) => {
     try {
       const result = engine.executeAction(battleId, playerId, action);
@@ -70,16 +93,18 @@ io.on("connection", socket => {
     }
   });
 
-  // 채팅
+  // ---------------- 채팅 ----------------
   socket.on("chatMessage", ({ battleId, sender, message }) => {
+    if (!message || !message.trim()) return;
     const battle = engine.getBattle(battleId);
     if (!battle) return;
-    engine.addChatMessage(battleId, sender, message);
+    engine.addChatMessage(battleId, sender, message.trim());
     io.to(battleId).emit("battleUpdate", engine.getBattle(battleId));
   });
 
   socket.on("disconnect", () => {
     console.log("[소켓 해제]", socket.id);
+    // 연결 끊김 상태는 BattleEngine.updatePlayerConnection 에서 관리 가능
   });
 });
 
