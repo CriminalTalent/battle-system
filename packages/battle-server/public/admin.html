@@ -651,8 +651,33 @@
     </section>
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
+    let socket;
     let currentBattle = null;
+
+    // 서버 연결
+    function connectToServer() {
+      socket = io();
+      
+      socket.on('connect', () => {
+        console.log('서버 연결 성공');
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('서버 연결 해제');
+      });
+      
+      socket.on('battleUpdate', (battle) => {
+        console.log('전투 상태 업데이트:', battle);
+        currentBattle = battle;
+        updateUI(battle);
+      });
+      
+      socket.on('chatMessage', (data) => {
+        addChatMessage(data);
+      });
+    }
 
     // UI 업데이트
     function updateUI(battle) {
@@ -733,9 +758,9 @@
     }
 
     // 모달에서 플레이어 추가
-    function addPlayerFromModal() {
+    async function addPlayerFromModal() {
       const battleId = document.getElementById('battleId').value;
-      if (!battleId) return alert('먼저 전투를 생성해주세요!');
+      if (!battleId) return alert('전투 ID가 없습니다.');
 
       const name = document.getElementById('modalPlayerName').value.trim();
       if (!name) return alert('캐릭터 이름을 입력해주세요.');
@@ -753,26 +778,59 @@
         dittany: parseInt(document.getElementById('modalDittany').value) || 0
       };
 
-      // 테스트용 플레이어 추가
-      const newPlayer = {
-        name: name,
-        team: team,
-        stats: stats,
-        items: items,
-        hp: 100,
-        maxHp: 100,
-        alive: true
-      };
+      try {
+        const response = await fetch(`/api/battles/${battleId}/players`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, team, stats, items })
+        });
 
-      if (!currentBattle.teams[team]) {
-        currentBattle.teams[team] = [];
+        const data = await response.json();
+        if (response.ok) {
+          console.log('플레이어 추가 완료:', data);
+          closePlayerModal();
+          fetchBattleStatus();
+        } else {
+          alert('플레이어 추가 실패: ' + data.error);
+        }
+      } catch (error) {
+        console.error('플레이어 추가 오류:', error);
+        alert('플레이어 추가 중 오류가 발생했습니다.');
       }
+    }
+
+    // 전투 상태 조회
+    async function fetchBattleStatus() {
+      const battleId = document.getElementById('battleId').value;
+      if (!battleId) return;
+
+      try {
+        const battle = await response.json();
+        
+        if (response.ok) {
+          currentBattle = battle;
+          updateUI(battle);
+        } else {
+          console.error('전투 상태 조회 실패:', battle.error);
+        }
+      } catch (error) {
+        console.error('전투 상태 조회 오류:', error);
+      }
+    }
+
+    // 채팅 전송
+    function sendChat() {
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
       
-      currentBattle.teams[team].push(newPlayer);
-      
-      closePlayerModal();
-      updateUI(currentBattle);
-      alert(`${name}이(가) ${team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는자들'}에 추가되었습니다!`);
+      if (message && socket) {
+        socket.emit('chatMessage', {
+          message: message,
+          senderType: 'admin',
+          sender: 'Admin'
+        });
+        input.value = '';
+      }
     }
 
     // 이벤트 리스너 등록
@@ -783,15 +841,222 @@
       document.getElementById('cancelModal').addEventListener('click', closePlayerModal);
       document.getElementById('confirmAddPlayer').addEventListener('click', addPlayerFromModal);
 
-      // 전투 생성 (테스트용)
-      document.getElementById('btnCreate').addEventListener('click', () => {
-        const mode = document.getElementById('mode').value;
-        const battle = {
-          id: 'test_' + Date.now(),
-          mode: mode,
-          phase: 'setup',
-          teams: { phoenix: [], death: [] }
-        };
-        
-        document.getElementById('battleId').value = battle.id;
-        document.getElementById('btnLinks').
+      // 전투 생성
+      document.getElementById('btnCreate').addEventListener('click', async () => {
+        try {
+          const mode = document.getElementById('mode').value;
+          const response = await fetch('/api/battles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          
+          const battle = await response.json();
+          if (response.ok) {
+            document.getElementById('battleId').value = battle.id;
+            document.getElementById('btnLinks').disabled = false;
+            console.log('전투 생성 완료:', battle);
+            fetchBattleStatus();
+          } else {
+            alert('전투 생성 실패: ' + battle.error);
+          }
+        } catch (error) {
+          console.error('전투 생성 오류:', error);
+          alert('전투 생성 중 오류가 발생했습니다.');
+        }
+      });
+
+      // 링크 생성
+      document.getElementById('btnLinks').addEventListener('click', async () => {
+        const battleId = document.getElementById('battleId').value;
+        if (!battleId) return alert('전투 ID가 없습니다.');
+
+        try {
+          const response = await fetch(`/api/admin/battles/${battleId}/links`, {
+            method: 'POST'
+          });
+          
+          const data = await response.json();
+          if (response.ok) {
+            const baseUrl = window.location.origin;
+            
+            document.getElementById('adminUrl').textContent = `${baseUrl}/admin?battle=${battleId}&token=${data.adminToken}`;
+            document.getElementById('playerUrl').textContent = `${baseUrl}/play?battle=${battleId}&token=${data.playerToken}`;
+            document.getElementById('spectUrl').textContent = `${baseUrl}/watch?battle=${battleId}&token=${data.spectatorToken}`;
+            
+            document.getElementById('urlSection').classList.remove('hidden');
+            console.log('링크 생성 완료:', data);
+          } else {
+            alert('링크 생성 실패: ' + data.error);
+          }
+        } catch (error) {
+          console.error('링크 생성 오류:', error);
+          alert('링크 생성 중 오류가 발생했습니다.');
+        }
+      });
+
+      // 상태 갱신
+      document.getElementById('btnFetch').addEventListener('click', fetchBattleStatus);
+
+      // 전투 시작
+      document.getElementById('btnStart').addEventListener('click', async () => {
+        const battleId = document.getElementById('battleId').value;
+        if (!battleId) return alert('전투 ID가 없습니다.');
+
+        try {
+          const response = await fetch(`/api/admin/battles/${battleId}/start`, {
+            method: 'POST'
+          });
+          
+          const data = await response.json();
+          if (response.ok) {
+            console.log('전투 시작:', data);
+            fetchBattleStatus();
+          } else {
+            alert('전투 시작 실패: ' + data.error);
+          }
+        } catch (error) {
+          console.error('전투 시작 오류:', error);
+          alert('전투 시작 중 오류가 발생했습니다.');
+        }
+      });
+
+      // 강제 종료
+      document.getElementById('btnForceEnd').addEventListener('click', async () => {
+        const battleId = document.getElementById('battleId').value;
+        if (!battleId) return alert('전투 ID가 없습니다.');
+        if (!confirm('정말로 전투를 강제 종료하시겠습니까?')) return;
+
+        try {
+          const response = await fetch(`/api/admin/battles/${battleId}/end`, {
+            method: 'POST'
+          });
+          
+          const data = await response.json();
+          if (response.ok) {
+            console.log('전투 강제 종료:', data);
+            fetchBattleStatus();
+          } else {
+            alert('전투 종료 실패: ' + data.error);
+          }
+        } catch (error) {
+          console.error('전투 종료 오류:', error);
+          alert('전투 종료 중 오류가 발생했습니다.');
+        }
+      });
+
+      // 전투 삭제
+      document.getElementById('btnDelete').addEventListener('click', async () => {
+        const battleId = document.getElementById('battleId').value;
+        if (!battleId) return alert('전투 ID가 없습니다.');
+        if (!confirm('정말로 전투를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+
+        try {
+          const response = await fetch(`/api/battles/${battleId}`, {
+            method: 'DELETE'
+          });
+          
+          if (response.ok) {
+            console.log('전투 삭제 완료');
+            document.getElementById('battleId').value = '';
+            document.getElementById('urlSection').classList.add('hidden');
+            updateUI(null);
+            alert('전투가 삭제되었습니다.');
+          } else {
+            const data = await response.json();
+            alert('전투 삭제 실패: ' + data.error);
+          }
+        } catch (error) {
+          console.error('전투 삭제 오류:', error);
+          alert('전투 삭제 중 오류가 발생했습니다.');
+        }
+      });
+
+      // 채팅 전송
+      document.getElementById('btnSendChat').addEventListener('click', sendChat);
+      document.getElementById('chatInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendChat();
+      });
+
+      // 채팅 지우기
+      document.getElementById('btnClearChat').addEventListener('click', () => {
+        document.getElementById('chatArea').innerHTML = '';
+      });
+
+      // 성능 정보
+      document.getElementById('btnPerformance').addEventListener('click', async () => {
+        try {
+          const response = await fetch('/api/health');
+          const data = await response.json();
+          alert(`서버 상태: ${data.status}\n업타임: ${data.uptime}\n메모리 사용량: ${data.memory}`);
+        } catch (error) {
+          console.error('성능 정보 조회 오류:', error);
+          alert('성능 정보를 조회할 수 없습니다.');
+        }
+      });
+
+      // URL 클릭 복사
+      document.querySelectorAll('.code-display').forEach(el => {
+        el.addEventListener('click', () => {
+          navigator.clipboard.writeText(el.textContent).then(() => {
+            el.style.backgroundColor = 'rgba(201, 169, 110, 0.2)';
+            setTimeout(() => {
+              el.style.backgroundColor = '';
+            }, 500);
+          }).catch(() => {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = el.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+              document.execCommand('copy');
+            } catch (err) {
+              console.error('복사 실패:', err);
+            }
+            document.body.removeChild(textArea);
+          });
+        });
+      });
+
+      // 승자 지정
+      document.getElementById('btnWinner').addEventListener('click', () => {
+        if (!currentBattle || !currentBattle.teams) {
+          return alert('전투 데이터가 없습니다.');
+        }
+
+        const phoenixHp = (currentBattle.teams.phoenix || [])
+          .reduce((sum, p) => sum + (p.hp || 0), 0);
+        const deathHp = (currentBattle.teams.death || [])
+          .reduce((sum, p) => sum + (p.hp || 0), 0);
+
+        let winner;
+        if (phoenixHp > deathHp) {
+          winner = '불사조 기사단';
+        } else if (deathHp > phoenixHp) {
+          winner = '죽음을 먹는자들';
+        } else {
+          winner = '무승부';
+        }
+
+        alert(`현재 HP 합계:\n불사조 기사단: ${phoenixHp}\n죽음을 먹는자들: ${deathHp}\n\n결과: ${winner} 승리`);
+      });
+    }
+
+    // 초기화
+    document.addEventListener('DOMContentLoaded', () => {
+      connectToServer();
+      setupEventListeners();
+      
+      // URL에서 전투 ID 추출
+      const params = new URLSearchParams(window.location.search);
+      const battleId = params.get('battle');
+      if (battleId) {
+        document.getElementById('battleId').value = battleId;
+        document.getElementById('btnLinks').disabled = false;
+        fetchBattleStatus();
+      }
+    });
+  </script>
+</body>
+</html>
