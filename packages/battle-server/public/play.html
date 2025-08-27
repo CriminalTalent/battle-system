@@ -66,7 +66,7 @@ let socket = null;
 let battleId = null;
 let playerId = null;
 
-function joinBattle() {
+async function joinBattle() {
   const name = document.getElementById("playerName").value.trim();
   battleId = document.getElementById("battleId").value.trim();
   const otp = document.getElementById("otp").value.trim();
@@ -77,18 +77,36 @@ function joinBattle() {
     return;
   }
 
+  // 1. REST API로 플레이어 추가
+  const res = await fetch(`/api/battles/${battleId}/players`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      team,
+      stats: { attack: 2, defense: 2, agility: 2, luck: 2 }
+    })
+  });
+
+  const data = await res.json();
+  if (!data.success) {
+    alert("플레이어 등록 실패: " + data.error);
+    return;
+  }
+
+  playerId = data.player.id;
+
+  // 2. 소켓 연결 및 인증
   socket = io({ transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
     console.log("소켓 연결됨", socket.id);
 
-    // 플레이어 인증
     socket.emit("playerAuth", { battleId, otp, playerId });
   });
 
   socket.on("authSuccess", data => {
     console.log("인증 성공", data);
-    playerId = data.player?.id; // 서버에서 player 정보 주입 가능
     document.getElementById("authScreen").classList.add("hidden");
     document.getElementById("battleScreen").classList.remove("hidden");
     renderBattle(data.battle);
