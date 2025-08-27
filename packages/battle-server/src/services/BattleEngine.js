@@ -1,221 +1,291 @@
-// packages/battle-server/services/BattleEngine.js
-const crypto = require("crypto");
+// packages/battle-server/src/services/BattleEngine.js
+const crypto = require('crypto');
 
 class BattleEngine {
   constructor() {
     this.battles = new Map();
-    this.turnTimers = new Map();
   }
 
-  static BASE_HP = 100;
-  static STAT_MIN = 1;
-  static STAT_MAX = 5;
-  static TURN_TIMEOUT = 5 * 60 * 1000; // 5분
-  static MAX_TURNS = 50;
-
-  static ITEM_INFO = {
-    "공격 보정기": { type: "attack_buff", effect: { attack: 1.5 }, duration: 1 },
-    "방어 보정기": { type: "defense_buff", effect: { defense: 1.5 }, duration: 1 },
-    "디터니": { type: "heal", effect: { heal: 10 } }
-  };
-
-  /** 주사위 굴림 (1~20) */
-  rollDice() {
-    return Math.floor(Math.random() * 20) + 1;
+  // 전투 개수 조회
+  getBattleCount() {
+    return this.battles.size;
   }
 
-  /** OTP 생성 */
+  // OTP 생성
   generateOTP() {
     return Math.random().toString(36).substr(2, 8).toUpperCase();
   }
 
-  /** 스탯 정규화 */
-  normalizeStats(stats = {}) {
-    return {
-      attack: Math.min(Math.max(stats.attack ?? 2, BattleEngine.STAT_MIN), BattleEngine.STAT_MAX),
-      defense: Math.min(Math.max(stats.defense ?? 2, BattleEngine.STAT_MIN), BattleEngine.STAT_MAX),
-      agility: Math.min(Math.max(stats.agility ?? 2, BattleEngine.STAT_MIN), BattleEngine.STAT_MAX),
-      luck: Math.min(Math.max(stats.luck ?? 2, BattleEngine.STAT_MIN), BattleEngine.STAT_MAX),
+  // 전투 생성
+  createBattle(mode = '1v1', adminId = null) {
+    const id = crypto.randomBytes(16).toString('hex');
+    const configs = {
+      '1v1': { playersPerTeam: 1 },
+      '2v2': { playersPerTeam: 2 },
+      '3v3': { playersPerTeam: 3 },
+      '4v4': { playersPerTeam: 4 }
     };
-  }
-
-  /** 전투 생성 */
-  createBattle(mode = "1v1", adminId = null) {
-    const id = crypto.randomBytes(16).toString("hex");
-    const config = { "1v1":1, "2v2":2, "3v3":3, "4v4":4 }[mode] || 1;
+    const config = configs[mode] || configs['1v1'];
 
     const battle = {
       id,
       mode,
-      status: "waiting", // waiting, ongoing, ended
+      status: 'waiting',
       createdAt: Date.now(),
       adminId,
       teams: {
-        team1: { name: "불사조 기사단", players: [] },
-        team2: { name: "죽음을 먹는자들", players: [] }
+        team1: { name: '불사조 기사단', players: [] },
+        team2: { name: '죽음을 먹는자들', players: [] }
       },
-      config: { playersPerTeam: config },
+      currentTeam: null,
+      roundNumber: 1,
+      turnNumber: 1,
+      turnStartTime: null,
+      battleLog: [],
+      chatLog: [],
+      config,
+      winner: null,
+      endReason: null,
       otps: {
         admin: this.generateOTP(),
         player: this.generateOTP(),
         spectator: this.generateOTP()
-      },
-      currentTeam: null,
-      turnNumber: 1,
-      roundNumber: 1,
-      turnStartTime: null,
-      battleLog: [],
-      chatLog: [],
-      winner: null,
-      endReason: null
+      }
     };
 
     this.battles.set(id, battle);
+    this.addBattleLog(id, 'system', `[전투생성] 모드: ${mode}`);
     return battle;
   }
 
-  /** 플레이어 추가 */
-  addPlayer(battleId, playerData) {
+  // 전투 가져오기
+  getBattle(id) {
+    return this.battles.get(id);
+  }
+
+  // 플레이어 추가
+  addPlayer(battleId, { name, team, stats, inventory = [], imageUrl = '' }) {
     const battle = this.battles.get(battleId);
-    if (!battle) throw new Error("존재하지 않는 전투");
-    if (battle.status !== "waiting") throw new Error("이미 시작됨");
+    if (!battle) throw new Error('존재하지 않는 전투');
+    if (battle.status !== 'waiting') throw new Error('이미 시작된 전투');
 
-    const { name, team, stats, inventory = [], imageUrl = "" } = playerData;
-    if (!["team1", "team2"].includes(team)) throw new Error("잘못된 팀");
-
+    if (!['team1', 'team2'].includes(team)) throw new Error('잘못된 팀');
     const targetTeam = battle.teams[team];
-    if (targetTeam.players.length >= battle.config.playersPerTeam) {
-      throw new Error("팀 인원 초과");
-    }
+    if (targetTeam.players.length >= battle.config.playersPerTeam) throw new Error('해당 팀 가득 참');
 
-    // 이름 중복 체크
-    if ([...battle.teams.team1.players, ...battle.teams.team2.players].some(p => p.name === name)) {
-      throw new Error("중복 이름");
-    }
+    // 중복 이름 체크
+    const allPlayers = [...battle.teams.team1.players, ...battle.teams.team2.players];
+    if (allPlayers.some(p => p.name === name)) throw new Error('중복된 이름');
 
     const player = {
-      id: crypto.randomBytes(8).toString("hex"),
+      id: crypto.randomBytes(8).toString('hex'),
       name,
       team,
       stats: this.normalizeStats(stats),
       inventory,
       imageUrl,
-      hp: BattleEngine.BASE_HP,
-      maxHp: BattleEngine.BASE_HP,
+      hp: 100,
+      maxHp: 100,
       alive: true,
       hasActed: false,
+      isReady: false,
       isDefending: false,
       isDodging: false,
       buffs: {}
     };
 
     targetTeam.players.push(player);
-    this.addBattleLog(battleId, "system", `${player.name}이 ${targetTeam.name}에 참가`);
+    this.addBattleLog(battleId, 'system', `${player.name}이 ${targetTeam.name}에 참가`);
     return player;
   }
 
-  /** 전투 시작 */
-  startBattle(battleId) {
-    const battle = this.battles.get(battleId);
-    if (!battle) throw new Error("전투 없음");
-    if (battle.status !== "waiting") throw new Error("이미 시작됨");
+  // 스탯 정규화
+  normalizeStats(stats = {}) {
+    const clamp = (val) => Math.max(1, Math.min(5, val || 2));
+    return {
+      attack: clamp(stats.attack),
+      defense: clamp(stats.defense),
+      agility: clamp(stats.agility),
+      luck: clamp(stats.luck)
+    };
+  }
 
-    battle.status = "ongoing";
-    battle.turnStartTime = Date.now();
+  // 전투 시작
+  startBattle(battleId) {
+    const battle = this.getBattle(battleId);
+    if (!battle) throw new Error('전투 없음');
+    if (battle.status !== 'waiting') throw new Error('이미 시작됨');
+
     this.determineFirstTeam(battle);
-    this.addBattleLog(battleId, "system", "전투 시작!");
+    battle.status = 'ongoing';
+    battle.turnStartTime = Date.now();
+    this.addBattleLog(battleId, 'system', '전투 시작!');
     return battle;
   }
 
-  /** 선공 결정 */
+  // 선공 결정
   determineFirstTeam(battle) {
-    const team1Total = battle.teams.team1.players.reduce((s, p) => s + p.stats.agility + this.rollDice(), 0);
-    const team2Total = battle.teams.team2.players.reduce((s, p) => s + p.stats.agility + this.rollDice(), 0);
+    const roll = () => Math.floor(Math.random() * 20) + 1;
+    const team1Total = battle.teams.team1.players.reduce((s, p) => s + p.stats.agility + roll(), 0);
+    const team2Total = battle.teams.team2.players.reduce((s, p) => s + p.stats.agility + roll(), 0);
 
-    if (team1Total > team2Total) battle.currentTeam = "team1";
-    else if (team2Total > team1Total) battle.currentTeam = "team2";
-    else this.determineFirstTeam(battle); // 동점이면 다시
+    if (team1Total > team2Total) {
+      battle.currentTeam = 'team1';
+      this.addBattleLog(battle.id, 'system', `${battle.teams.team1.name} 선공`);
+    } else if (team2Total > team1Total) {
+      battle.currentTeam = 'team2';
+      this.addBattleLog(battle.id, 'system', `${battle.teams.team2.name} 선공`);
+    } else {
+      this.addBattleLog(battle.id, 'system', '동점! 재굴림');
+      this.determineFirstTeam(battle);
+    }
   }
 
-  /** 액션 실행 */
+  // 액션 실행
   executeAction(battleId, playerId, action) {
-    const battle = this.battles.get(battleId);
-    const player = this.findPlayer(battle, playerId);
-    if (!battle || !player) throw new Error("잘못된 요청");
+    const battle = this.getBattle(battleId);
+    if (!battle || battle.status !== 'ongoing') throw new Error('진행 중 아님');
 
+    const player = this.findPlayer(battle, playerId);
+    if (!player || !player.alive) throw new Error('행동 불가');
+    if (player.team !== battle.currentTeam) throw new Error('턴 아님');
+    if (player.hasActed) throw new Error('이미 행동');
+
+    let result;
     switch (action.type) {
-      case "attack": return this.executeAttack(battle, player, action.targetId);
-      case "defend": return this.executeDefend(battle, player);
-      case "dodge": return this.executeDodge(battle, player);
-      case "item": return this.executeItem(battle, player, action.itemType, action.targetId);
-      case "pass": return this.executePass(battle, player);
-      default: throw new Error("알 수 없는 액션");
+      case 'attack':
+        result = this.attack(battle, player, action.targetId);
+        break;
+      case 'defend':
+        result = this.defend(battle, player);
+        break;
+      case 'dodge':
+        result = this.dodge(battle, player);
+        break;
+      case 'item':
+        result = this.useItem(battle, player, action.itemType, action.targetId);
+        break;
+      case 'pass':
+        result = { action: 'pass' };
+        this.addBattleLog(battle.id, 'action', `${player.name} 패스`);
+        break;
+      default:
+        throw new Error('알 수 없는 액션');
     }
+
+    player.hasActed = true;
+    return result;
   }
 
-  executeAttack(battle, attacker, targetId) {
+  // 공격
+  attack(battle, attacker, targetId) {
     const target = this.findPlayer(battle, targetId);
-    if (!target || !target.alive) throw new Error("대상 없음");
+    if (!target || !target.alive) throw new Error('대상 없음');
 
-    let attackPower = attacker.stats.attack + this.rollDice();
-    if (attacker.buffs.attack_buff) attackPower = Math.floor(attackPower * 1.5);
+    let dmg = attacker.stats.attack + this.rollDice(20);
+    if (attacker.buffs.attack_buff) dmg = Math.floor(dmg * 1.5);
 
-    let damage = attackPower;
     if (target.isDefending) {
-      damage = Math.max(1, attackPower - target.stats.defense);
+      let def = target.stats.defense;
+      if (target.buffs.defense_buff) def = Math.floor(def * 1.5);
+      dmg = Math.max(1, dmg - def);
     }
 
-    if (this.rollDice() >= 20 - Math.floor(attacker.stats.luck / 2)) damage *= 2;
+    const crit = this.rollDice(20) >= 20 - Math.floor(attacker.stats.luck / 2);
+    if (crit) dmg *= 2;
 
-    target.hp = Math.max(0, target.hp - damage);
+    target.hp = Math.max(0, target.hp - dmg);
     if (target.hp === 0) target.alive = false;
 
-    this.addBattleLog(battle.id, "action", `${attacker.name} -> ${target.name} ${damage} 데미지`);
-    return { damage, targetHp: target.hp };
+    this.addBattleLog(battle.id, 'action', `${attacker.name} → ${target.name} ${dmg} 피해`);
+    return { damage: dmg, crit, targetAlive: target.alive };
   }
 
-  executeDefend(battle, player) {
+  defend(battle, player) {
     player.isDefending = true;
-    this.addBattleLog(battle.id, "action", `${player.name} 방어`);
+    this.addBattleLog(battle.id, 'action', `${player.name} 방어`);
+    return { action: 'defend' };
   }
 
-  executeDodge(battle, player) {
+  dodge(battle, player) {
     player.isDodging = true;
-    this.addBattleLog(battle.id, "action", `${player.name} 회피 준비`);
+    this.addBattleLog(battle.id, 'action', `${player.name} 회피`);
+    return { action: 'dodge' };
   }
 
-  executeItem(battle, player, itemType, targetId) {
-    if (!BattleEngine.ITEM_INFO[itemType]) throw new Error("아이템 없음");
-    const item = BattleEngine.ITEM_INFO[itemType];
+  useItem(battle, player, itemType, targetId) {
+    const idx = player.inventory.indexOf(itemType);
+    if (idx === -1) throw new Error('아이템 없음');
+    player.inventory.splice(idx, 1);
 
-    if (item.type === "heal") {
+    if (itemType === '디터니') {
       const target = targetId ? this.findPlayer(battle, targetId) : player;
-      target.hp = Math.min(target.maxHp, target.hp + item.effect.heal);
-      this.addBattleLog(battle.id, "action", `${player.name} → ${target.name} HP +${item.effect.heal}`);
-    } else {
-      player.buffs[item.type] = true;
-      this.addBattleLog(battle.id, "action", `${player.name} ${itemType} 사용`);
+      if (!target) throw new Error('대상 없음');
+      target.hp = Math.min(target.maxHp, target.hp + 10);
+      this.addBattleLog(battle.id, 'action', `${player.name} → ${target.name} HP +10`);
+      return { action: 'heal', target: target.name };
     }
+
+    if (itemType === '공격 보정기') {
+      player.buffs.attack_buff = true;
+      this.addBattleLog(battle.id, 'action', `${player.name} 공격력 버프`);
+      return { action: 'attack_buff' };
+    }
+
+    if (itemType === '방어 보정기') {
+      player.buffs.defense_buff = true;
+      this.addBattleLog(battle.id, 'action', `${player.name} 방어력 버프`);
+      return { action: 'defense_buff' };
+    }
+
+    throw new Error('알 수 없는 아이템');
   }
 
-  executePass(battle, player) {
-    this.addBattleLog(battle.id, "action", `${player.name} 턴 넘김`);
+  // 유틸
+  rollDice(max = 20) {
+    return Math.floor(Math.random() * max) + 1;
   }
 
-  /** 로그 */
+  findPlayer(battle, id) {
+    return [...battle.teams.team1.players, ...battle.teams.team2.players].find(p => p.id === id);
+  }
+
   addBattleLog(battleId, type, message) {
-    const battle = this.battles.get(battleId);
+    const battle = this.getBattle(battleId);
     if (!battle) return;
     battle.battleLog.push({ type, message, timestamp: Date.now() });
     if (battle.battleLog.length > 100) battle.battleLog.shift();
   }
 
-  findPlayer(battle, playerId) {
-    return [...battle.teams.team1.players, ...battle.teams.team2.players].find(p => p.id === playerId);
+  addChatMessage(battleId, sender, message, senderType = 'player') {
+    const battle = this.getBattle(battleId);
+    if (!battle) return;
+    battle.chatLog.push({ sender, message, senderType, timestamp: Date.now() });
+    if (battle.chatLog.length > 50) battle.chatLog.shift();
   }
 
-  getBattle(battleId) {
-    return this.battles.get(battleId);
+  // 인증
+  adminAuth(battleId, otp) {
+    const battle = this.getBattle(battleId);
+    if (!battle) return { success: false, message: '전투 없음' };
+    if (battle.otps.admin !== otp) return { success: false, message: 'OTP 불일치' };
+    return { success: true, battle };
+  }
+
+  playerAuth(battleId, otp, playerId) {
+    const battle = this.getBattle(battleId);
+    if (!battle) return { success: false, message: '전투 없음' };
+    if (battle.otps.player !== otp) return { success: false, message: 'OTP 불일치' };
+    const player = this.findPlayer(battle, playerId);
+    if (!player) return { success: false, message: '플레이어 없음' };
+    return { success: true, battle, player };
+  }
+
+  spectatorAuth(battleId, otp, name) {
+    const battle = this.getBattle(battleId);
+    if (!battle) return { success: false, message: '전투 없음' };
+    if (battle.otps.spectator !== otp) return { success: false, message: 'OTP 불일치' };
+    return { success: true, battle, spectator: { name } };
   }
 }
 
