@@ -70,7 +70,95 @@
 
     .subtitle { font-size: 1.4rem; color:#adb5bd; font-weight:300; letter-spacing:2px; }
 
-    /* 카드, 버튼, 상태, 채팅 등 CSS 전부 원본 유지 */
+    /* 카드 */
+    .card {
+      background: rgba(26, 35, 50, 0.8);
+      border: 1px solid rgba(201, 169, 110, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .card-title {
+      font-size: 1.6rem;
+      color: #c9a96e;
+      margin-bottom: 16px;
+      font-weight: 500;
+      border-bottom: 1px solid rgba(201,169,110,0.2);
+      padding-bottom: 8px;
+    }
+
+    /* 버튼 */
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: #c9a96e;
+      color: #0a0e1a;
+      transition: all 0.2s ease;
+    }
+    .btn:hover { background: #d4b982; }
+    .btn:disabled { background: #555; color: #aaa; cursor: not-allowed; }
+    .btn-secondary { background: #495057; color: #f8f9fa; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-warning { background: #ffc107; color: black; }
+    .btn-danger { background: #dc3545; color: white; }
+
+    /* 입력 & 선택 */
+    .form-input, .form-select, .chat-input {
+      width: 100%; padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #1a2332;
+      color: #f8f9fa;
+    }
+
+    .form-label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #c9a96e; }
+
+    /* 레이아웃 */
+    .form-grid { display: grid; gap: 12px; }
+    .form-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .status-card {
+      background: #1a2332;
+      border: 1px solid rgba(201,169,110,0.2);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    .status-label { font-size: 0.85rem; color: #adb5bd; }
+    .status-value { font-size: 1.2rem; margin-top: 4px; }
+
+    .team-info { display: flex; gap: 20px; margin-top: 20px; }
+    .team-card {
+      flex: 1; background: #1a2332; border-radius: 12px; padding: 12px;
+      border: 1px solid rgba(201,169,110,0.2);
+    }
+    .team-name { font-size: 1.2rem; font-weight: bold; color: #c9a96e; margin-bottom: 8px; }
+    .player-card { padding: 6px; border-bottom: 1px solid #333; }
+    .player-name { font-weight: bold; }
+    .player-stats { font-size: 0.8rem; color: #adb5bd; }
+
+    .action-log, .chat-area {
+      background: #0a0e1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+      height: 150px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+    }
+    .chat-controls { display: flex; gap: 8px; margin-top: 10px; }
+    .chat-input { flex: 1; }
   </style>
 </head>
 <body>
@@ -151,8 +239,199 @@
 
   <script src="https://cdn.socket.io/4.7.0/socket.io.min.js"></script>
   <script>
-    /* ---- JS (전투 생성, 링크, 소켓, 상태 업데이트, 리셋 등 모든 코드) ---- */
-    // (지금 올려주신 버전 그대로 사용하시면 됩니다)
+    // === JS 전문 (전투 생성, 링크, 소켓, 상태, 채팅 등) ===
+    let currentBattle = null;
+    let socket = null;
+    let isAuthenticated = false;
+
+    const elements = {
+      battleId: document.getElementById('battleId'),
+      mode: document.getElementById('mode'),
+      statusId: document.getElementById('statusId'),
+      statusMode: document.getElementById('statusMode'),
+      statusState: document.getElementById('statusState'),
+      statusPlayers: document.getElementById('statusPlayers'),
+      statusTurn: document.getElementById('statusTurn'),
+      statusCurrentTeam: document.getElementById('statusCurrentTeam'),
+      urlSection: document.getElementById('urlSection'),
+      adminUrl: document.getElementById('adminUrl'),
+      playerUrl: document.getElementById('playerUrl'),
+      spectUrl: document.getElementById('spectUrl'),
+      phoenixPlayers: document.getElementById('phoenixPlayers'),
+      deathPlayers: document.getElementById('deathPlayers'),
+      actionLog: document.getElementById('actionLog'),
+      chatArea: document.getElementById('chatArea'),
+      chatInput: document.getElementById('chatInput'),
+      btnCreate: document.getElementById('btnCreate'),
+      btnLinks: document.getElementById('btnLinks'),
+      btnFetch: document.getElementById('btnFetch'),
+      btnStart: document.getElementById('btnStart'),
+      btnPause: document.getElementById('btnPause'),
+      btnEnd: document.getElementById('btnEnd'),
+      btnReset: document.getElementById('btnReset'),
+      btnSendChat: document.getElementById('btnSendChat')
+    };
+
+    // === 이벤트 리스너 등록 ===
+    elements.btnCreate.addEventListener('click', createBattle);
+    elements.btnLinks.addEventListener('click', generateLinks);
+    elements.btnFetch.addEventListener('click', fetchBattleState);
+    elements.btnStart.addEventListener('click', startBattle);
+    elements.btnPause.addEventListener('click', pauseBattle);
+    elements.btnEnd.addEventListener('click', endBattle);
+    elements.btnReset.addEventListener('click', resetBattle);
+    elements.btnSendChat.addEventListener('click', sendChat);
+    elements.chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
+    elements.adminUrl.addEventListener('click', () => copyToClipboard(elements.adminUrl.textContent));
+    elements.playerUrl.addEventListener('click', () => copyToClipboard(elements.playerUrl.textContent));
+    elements.spectUrl.addEventListener('click', () => copyToClipboard(elements.spectUrl.textContent));
+
+    // === 전투 생성 ===
+    async function createBattle() {
+      try {
+        const response = await fetch('/api/battles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: elements.mode.value })
+        });
+        const result = await response.json();
+        if (result.success && result.battle) {
+          currentBattle = result.battle;
+          elements.battleId.value = result.battle.id;
+          elements.btnLinks.disabled = false;
+          updateStatus();
+          addLog('전투가 생성되었습니다: ' + result.battle.id);
+        } else { alert('전투 생성 실패: ' + result.error); }
+      } catch (error) {
+        console.error('전투 생성 오류:', error); alert('전투 생성 중 오류 발생');
+      }
+    }
+
+    // === 링크 생성 ===
+    async function generateLinks() {
+      if (!currentBattle) return;
+      try {
+        const response = await fetch(`/api/admin/battles/${currentBattle.id}/links`, { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+          const baseUrl = window.location.origin;
+          elements.adminUrl.textContent = `${baseUrl}/admin?battle=${currentBattle.id}&token=${result.otps.admin}`;
+          elements.playerUrl.textContent = `${baseUrl}/play?battle=${currentBattle.id}&token=${result.otps.player}`;
+          elements.spectUrl.textContent = `${baseUrl}/watch?battle=${currentBattle.id}&token=${result.otps.spectator}`;
+          elements.urlSection.classList.remove('hidden');
+          addLog('OTP 링크가 생성되었습니다.');
+          connectSocket(result.otps.admin);
+        } else { alert('링크 생성 실패: ' + result.error); }
+      } catch (error) {
+        console.error('링크 생성 오류:', error); alert('링크 생성 중 오류 발생');
+      }
+    }
+
+    // === 소켓 연결 ===
+    function connectSocket(adminOtp) {
+      if (socket) socket.disconnect();
+      socket = io();
+      socket.on('connect', () => { socket.emit('adminAuth', { battleId: currentBattle.id, otp: adminOtp }); });
+      socket.on('authSuccess', () => { isAuthenticated = true; elements.btnStart.disabled = false; addLog('관리자 인증 성공'); });
+      socket.on('authError', (data) => { isAuthenticated = false; addLog('인증 실패: ' + data.message); });
+      socket.on('battleUpdate', (battleData) => { currentBattle = battleData; updateStatus(); updatePlayerLists(); });
+      socket.on('chatMessage', (data) => { addChatMessage(`${data.player || '익명'}: ${data.message}`); });
+      socket.on('actionResult', (data) => { addLog(`${data.player || '시스템'}: ${data.action} - ${data.result}`); });
+      socket.on('disconnect', () => { isAuthenticated = false; addLog('서버 연결이 끊어졌습니다.'); });
+    }
+
+    // === 상태 갱신 ===
+    async function fetchBattleState() {
+      if (!elements.battleId.value) return;
+      try {
+        const response = await fetch(`/api/battles/${elements.battleId.value}`);
+        const result = await response.json();
+        if (result.success) {
+          currentBattle = result.battle; updateStatus(); updatePlayerLists();
+          addLog('전투 상태가 갱신되었습니다.');
+        } else { alert('전투 조회 실패: ' + result.error); }
+      } catch (error) { console.error('상태 갱신 오류:', error); alert('상태 갱신 오류 발생'); }
+    }
+
+    // === 전투 제어 ===
+    function startBattle() { if (socket && isAuthenticated && currentBattle) { socket.emit('startBattle', { battleId: currentBattle.id }); addLog('전투 시작 요청'); } }
+    function pauseBattle() { if (socket && isAuthenticated && currentBattle) { socket.emit('pauseBattle', { battleId: currentBattle.id }); addLog('전투 일시정지 요청'); } }
+    async function endBattle() {
+      if (!currentBattle) return;
+      if (!confirm('정말 종료하시겠습니까?')) return;
+      try {
+        const response = await fetch(`/api/admin/battles/${currentBattle.id}/end`, { method: 'POST' });
+        const result = await response.json();
+        if (result.success) { addLog('전투가 강제 종료되었습니다.'); }
+        else { alert('전투 종료 실패: ' + result.error); }
+      } catch (error) { console.error('전투 종료 오류:', error); alert('전투 종료 중 오류 발생'); }
+    }
+    function resetBattle() {
+      if (!confirm('전투를 초기화하시겠습니까?')) return;
+      currentBattle = null; elements.battleId.value = ''; elements.urlSection.classList.add('hidden');
+      elements.btnLinks.disabled = true; elements.btnStart.disabled = true; elements.btnPause.disabled = true; elements.btnEnd.disabled = true; elements.btnReset.disabled = true;
+      if (socket) { socket.disconnect(); socket = null; }
+      updateStatus(); elements.phoenixPlayers.innerHTML = '<div class="status-label">플레이어 없음</div>'; elements.deathPlayers.innerHTML = '<div class="status-label">플레이어 없음</div>';
+      addLog('전투가 초기화되었습니다.');
+    }
+
+    // === 채팅 ===
+    function sendChat() {
+      const message = elements.chatInput.value.trim();
+      if (!message || !socket || !isAuthenticated || !currentBattle) return;
+      socket.emit('adminMessage', { battleId: currentBattle.id, message });
+      addChatMessage(`관리자: ${message}`); elements.chatInput.value = '';
+    }
+
+    // === 상태/플레이어 UI 업데이트 ===
+    function updateStatus() {
+      if (!currentBattle) {
+        elements.statusId.textContent = '-'; elements.statusMode.textContent = '-'; elements.statusState.textContent = '준비중';
+        elements.statusPlayers.textContent = '0/0'; elements.statusTurn.textContent = '0'; elements.statusCurrentTeam.textContent = '-'; return;
+      }
+      elements.statusId.textContent = currentBattle.id;
+      elements.statusMode.textContent = currentBattle.mode;
+      elements.statusState.textContent = getStateText(currentBattle.state);
+      elements.statusPlayers.textContent = `${currentBattle.players.length}/${getMaxPlayers(currentBattle.mode)}`;
+      elements.statusTurn.textContent = currentBattle.turn || 0;
+      elements.statusCurrentTeam.textContent = currentBattle.currentTeam || '-';
+    }
+    function updatePlayerLists() {
+      if (!currentBattle) return;
+      updateTeamPlayerList(elements.phoenixPlayers, currentBattle.players.filter(p => p.team === 'phoenix'));
+      updateTeamPlayerList(elements.deathPlayers, currentBattle.players.filter(p => p.team === 'death'));
+    }
+    function updateTeamPlayerList(container, players) {
+      if (players.length === 0) { container.innerHTML = '<div class="status-label">플레이어 없음</div>'; return; }
+      container.innerHTML = players.map(p => `
+        <div class="player-card">
+          <div class="player-name">${p.name || '무명'}</div>
+          <div class="player-stats">
+            HP: ${p.hp ?? 0}/100 | 공격: ${p.attack ?? 0} | 방어: ${p.defense ?? 0} | 민첩: ${p.agility ?? 0} | 행운: ${p.luck ?? 0}
+          </div>
+        </div>`).join('');
+    }
+
+    // === 로그 & 채팅 출력 ===
+    function addLog(message) { const t = new Date().toLocaleTimeString(); elements.actionLog.innerHTML += `[${t}] ${message}<br>`; elements.actionLog.scrollTop = elements.actionLog.scrollHeight; }
+    function addChatMessage(message) { const t = new Date().toLocaleTimeString(); elements.chatArea.innerHTML += `[${t}] ${message}<br>`; elements.chatArea.scrollTop = elements.chatArea.scrollHeight; }
+
+    // === 유틸 ===
+    async function copyToClipboard(text) { try { await navigator.clipboard.writeText(text); addLog('URL 복사 완료'); } catch { addLog('복사 실패'); } }
+    function getStateText(s) { return ({waiting:'대기중',active:'진행중',paused:'일시정지',ended:'종료됨'})[s] || '알수없음'; }
+    function getMaxPlayers(mode) { return ({'1v1':2,'2v2':4,'3v3':6,'4v4':8})[mode] || 0; }
+
+    // === 초기화 ===
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const battleParam = urlParams.get('battle'), tokenParam = urlParams.get('token');
+      if (battleParam) { elements.battleId.value = battleParam; addLog('URL에서 전투 감지'); setTimeout(fetchBattleState, 1000); }
+      if (battleParam && tokenParam) connectSocket(tokenParam);
+      addLog('PYXIS 전투 관리석이 시작되었습니다.');
+    });
+    window.addEventListener('beforeunload', (e) => {
+      if (currentBattle && currentBattle.state === 'active') { e.preventDefault(); e.returnValue = '진행 중 전투가 있습니다. 닫으시겠습니까?'; }
+    });
   </script>
 </body>
 </html>
