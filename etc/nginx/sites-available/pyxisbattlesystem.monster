@@ -1,16 +1,32 @@
+# --- HTTP: 모두 HTTPS로 리다이렉트 ---
 server {
     listen 80;
     listen [::]:80;
     server_name pyxisbattlesystem.monster;
+    return 301 https://$host$request_uri;
+}
 
-    # 표준 웹 루트
-    root   /var/www/battle-system;
-    index  index.html;
+# --- HTTPS: 메인 사이트 ---
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name pyxisbattlesystem.monster;
+
+    # SSL (Let's Encrypt 기본 경로)
+    ssl_certificate     /etc/letsencrypt/live/pyxisbattlesystem.monster/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pyxisbattlesystem.monster/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_trusted_certificate /etc/letsencrypt/live/pyxisbattlesystem.monster/chain.pem;
 
     # 보안/기본 헤더
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # 정적 루트
+    root   /var/www/battle-system;
+    index  index.html;
 
     # 정적 캐시
     location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
@@ -20,7 +36,7 @@ server {
         try_files $uri =404;
     }
 
-    # SPA 라우팅: 파일/디렉터리 없으면 index.html
+    # SPA 라우팅
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -30,9 +46,10 @@ server {
     location = /play  { try_files /play.html  =404; }
     location = /watch { try_files /watch.html =404; }
 
-    # ✅ /api/admin → /admin 내부 라우트로 전달
+    # ✅ 방법 A: /api/admin/**  ->  (백엔드) /admin/**
+    #    프론트는 /api/admin/... 로 호출, 백엔드는 /admin/... 라우트만 가짐
     location /api/admin/ {
-        proxy_pass http://127.0.0.1:3001/admin/;
+        proxy_pass http://127.0.0.1:3001/admin/;  # 뒤의 / 로 /api/admin 프리픽스 제거
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -44,9 +61,9 @@ server {
         proxy_send_timeout 300;
     }
 
-    # API: /api 프리픽스 보존
+    # 일반 API: /api/** 프리픽스 유지
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:3001;  # 원본 URI 그대로 전달
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -58,7 +75,7 @@ server {
         proxy_send_timeout 300;
     }
 
-    # Socket.IO(WebSocket)
+    # Socket.IO (WebSocket)
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
