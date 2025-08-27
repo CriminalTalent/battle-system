@@ -3,9 +3,8 @@ server {
     listen [::]:80;
     server_name pyxisbattlesystem.monster;
 
-    # 실제 정적 파일 경로 (현재 적용 상태에 맞춤)
-    # 필요 시 /var/www/battle-system/public 로 변경하세요.
-    root   /root/battle-system/packages/battle-server/public;
+    # 표준 웹 루트로 변경
+    root   /var/www/battle-system;
     index  index.html;
 
     # 보안/기본 헤더
@@ -13,7 +12,7 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
-    # 정적 캐시 (필요시 조정)
+    # 정적 캐시 (원하면 기간 조정)
     location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
         access_log off;
         expires 1y;
@@ -21,14 +20,19 @@ server {
         try_files $uri =404;
     }
 
-    # SPA 라우팅(정적 우선, 없으면 index.html)
+    # 메인: 있는 파일/디렉터리 우선, 없으면 SPA index.html
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # ---- API 프록시 (/api 프리픽스 보존 — 문제 근본차단용) ----
-    # 업스트림으로 현재 요청 경로 전체(/api 포함)를 그대로 전달
+    # 단일 파일 라우팅 (직접 명시: 403/500 회피)
+    location = /admin { try_files /admin.html =404; }
+    location = /play  { try_files /play.html  =404; }
+    location = /watch { try_files /watch.html =404; }
+
+    # ---- API 프록시 (/api 프리픽스 보존) ----
     location /api/ {
+        # /api 포함한 전체 경로를 그대로 업스트림으로 전달
         proxy_pass http://127.0.0.1:3001$request_uri;
 
         proxy_http_version 1.1;
@@ -42,7 +46,7 @@ server {
     }
 
     # ---- Socket.IO (WebSocket) ----
-    # /etc/nginx/nginx.conf 의 map $http_upgrade $connection_upgrade 필요
+    # /etc/nginx/nginx.conf 에 map $http_upgrade $connection_upgrade 선언돼 있어야 함
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -56,12 +60,10 @@ server {
 
         proxy_read_timeout 300;
         proxy_send_timeout 300;
-        proxy_buffering off;  # 실시간 전송
+        proxy_buffering off;
     }
 
-    # 에러 페이지 (SPA 환경에서는 404도 index로 폴백)
-    error_page 404 /index.html;
-
+    # 에러 페이지(404를 index로 강제 전환하지 않음: 루프 방지)
     error_page 500 502 503 504 /50x.html;
     location = /50x.html { root /usr/share/nginx/html; }
 
