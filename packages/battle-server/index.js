@@ -15,9 +15,155 @@ app.use(express.static(path.join(__dirname, "public")));
 // ========================
 // BattleEngine 클래스
 // ========================
-// ... [⚠️ 기존 BattleEngine 클래스 전체는 수정 없이 그대로 유지] ...
+class BattleEngine {
+  constructor() {
+    this.battles = new Map();
+  }
 
-// ⚠️ BattleEngine 클래스 전체는 그대로 사용하세요. 중간 생략 없이 포함됨
+  createBattle(mode = "1v1", adminId = null) {
+    const battleId = crypto.randomBytes(4).toString("hex");
+    const otps = {
+      admin: crypto.randomBytes(3).toString("hex"),
+      players: [],
+      spectators: crypto.randomBytes(2).toString("hex"),
+    };
+
+    const battle = {
+      id: battleId,
+      mode,
+      status: "ready",
+      adminId,
+      otps,
+      players: [],
+      spectators: [],
+      turn: 0,
+      chat: [],
+    };
+
+    const maxPlayers = mode === "1v1" ? 2 : 4;
+    for (let i = 0; i < maxPlayers; i++) {
+      const playerId = crypto.randomBytes(2).toString("hex");
+      const playerOTP = crypto.randomBytes(3).toString("hex");
+      battle.players.push({
+        id: playerId,
+        otp: playerOTP,
+        name: `플레이어${i + 1}`,
+        hp: 100,
+        mp: 50,
+        status: "idle",
+        connected: false,
+      });
+      otps.players.push(playerOTP);
+    }
+
+    this.battles.set(battleId, battle);
+    return battle;
+  }
+
+  getBattle(battleId) {
+    return this.battles.get(battleId);
+  }
+
+  adminAuth(battleId, otp) {
+    const battle = this.getBattle(battleId);
+    if (!battle || battle.otps.admin !== otp) {
+      return { success: false, message: "관리자 인증 실패" };
+    }
+    return { success: true, battle };
+  }
+
+  playerAuth(battleId, playerId, otp) {
+    const battle = this.getBattle(battleId);
+    if (!battle) return { success: false, message: "전투 없음" };
+    const player = battle.players.find((p) => p.id === playerId && p.otp === otp);
+    if (!player) return { success: false, message: "플레이어 인증 실패" };
+    return { success: true, battle, player };
+  }
+
+  spectatorAuth(battleId, otp, name) {
+    const battle = this.getBattle(battleId);
+    if (!battle || battle.otps.spectators !== otp) {
+      return { success: false, message: "관전자 인증 실패" };
+    }
+    battle.spectators.push(name);
+    return { success: true, battle };
+  }
+
+  executeAction(battleId, playerId, action) {
+    const battle = this.getBattle(battleId);
+    if (!battle) throw new Error("전투 없음");
+
+    const player = battle.players.find((p) => p.id === playerId);
+    if (!player) throw new Error("플레이어 없음");
+
+    switch (action.type) {
+      case "attack":
+        this.attack(battle, playerId);
+        break;
+      case "defend":
+        this.defend(player);
+        break;
+      case "dodge":
+        this.dodge(player);
+        break;
+      case "useItem":
+        this.useItem(player, action.item);
+        break;
+      default:
+        throw new Error("알 수 없는 행동");
+    }
+
+    battle.turn += 1;
+  }
+
+  attack(battle, attackerId) {
+    const attacker = battle.players.find((p) => p.id === attackerId);
+    const target = battle.players.find((p) => p.id !== attackerId);
+    if (!target) return;
+
+    const damage = Math.floor(Math.random() * 20) + 5;
+    target.hp = Math.max(0, target.hp - damage);
+    attacker.status = "attacking";
+  }
+
+  defend(player) {
+    player.status = "defending";
+  }
+
+  dodge(player) {
+    player.status = "dodging";
+  }
+
+  useItem(player, item) {
+    if (item === "heal") {
+      player.hp = Math.min(100, player.hp + 20);
+    }
+  }
+
+  addChatMessage(battleId, sender, message, role = "system") {
+    const battle = this.getBattle(battleId);
+    if (!battle) return;
+    battle.chat.push({
+      sender,
+      message,
+      role,
+      timestamp: Date.now(),
+    });
+  }
+
+  findPlayer(battle, playerId) {
+    return battle.players.find((p) => p.id === playerId);
+  }
+
+  updatePlayerConnection(battleId, playerId, connected) {
+    const battle = this.getBattle(battleId);
+    if (!battle) return;
+    const player = this.findPlayer(battle, playerId);
+    if (player) {
+      player.connected = connected;
+    }
+  }
+}
 
 // ========================
 // BattleEngine 인스턴스 생성
