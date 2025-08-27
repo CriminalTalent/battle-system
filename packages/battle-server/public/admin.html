@@ -7,6 +7,7 @@
   <link rel="icon" href="data:," /> <!-- favicon 404 억제 -->
   <script src="/socket.io/socket.io.js"></script>
   <style>
+    :root { color-scheme: dark; }
     body { font-family: Arial, sans-serif; background:#0f1419; color:#f5e6b8; margin:0; padding:20px; }
     h1 { color:#e5c88a; }
     .hidden { display:none; }
@@ -14,11 +15,13 @@
     input,button,select{ padding:10px; margin:5px 0; width:100%; border-radius:5px;
       border:1px solid #c8a882; background:#1a1f26; color:#f5e6b8; }
     button{ cursor:pointer; background:#c8a882; color:#0a0f1a; font-weight:bold; }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
     .battle-card{ border:1px solid #444; margin:10px 0; padding:10px; border-radius:8px; }
     .log,.chat{ background:#1a1f26; padding:10px; height:200px; overflow-y:auto; font-size:14px; }
     .row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     @media (max-width:720px){ .row{ grid-template-columns:1fr; } }
     a { color:#e5c88a; word-break:break-all; }
+    .small { font-size:12px; opacity:.85; }
   </style>
 </head>
 <body>
@@ -36,6 +39,7 @@
     </select>
     <button id="btnCreate">전투 생성</button>
   </div>
+  <div id="createHint" class="small"></div>
 
   <!-- (옵션) 전투 목록: 서버에 /api/battles가 없으면 자동 폴백 -->
   <h2>전투 목록</h2>
@@ -63,6 +67,8 @@
 </div>
 
 <script>
+'use strict';
+
 let selectedBattleId = null;
 let socket = null;
 let adminOtp = null;
@@ -92,9 +98,9 @@ function renderLinks(battleId, otps) {
   const linksDiv = $("#links");
   adminOtp = otps.admin;
   linksDiv.innerHTML = `
-    <div>관리자: <a href="${links.adminUrl}" target="_blank">${links.adminUrl}</a></div>
-    <div>플레이어: <a href="${links.playerUrl}" target="_blank">${links.playerUrl}</a></div>
-    <div>관전자: <a href="${links.spectatorUrl}" target="_blank">${links.spectatorUrl}</a></div>
+    <div>관리자: <a href="${links.adminUrl}" target="_blank">${links.adminUrl}</a> <button class="small" onclick="navigator.clipboard.writeText('${links.adminUrl}')">복사</button></div>
+    <div>플레이어: <a href="${links.playerUrl}" target="_blank">${links.playerUrl}</a> <button class="small" onclick="navigator.clipboard.writeText('${links.playerUrl}')">복사</button></div>
+    <div>관전자: <a href="${links.spectatorUrl}" target="_blank">${links.spectatorUrl}</a> <button class="small" onclick="navigator.clipboard.writeText('${links.spectatorUrl}')">복사</button></div>
   `;
 }
 
@@ -116,7 +122,6 @@ function renderBattle(battle) {
   ).join("<br>");
   chatDiv.scrollTop = chatDiv.scrollHeight;
 
-  // 가능하면 otps도 갱신 표시
   if (battle.otps) renderLinks(battle.id, battle.otps);
 }
 
@@ -127,7 +132,6 @@ async function getBattle(battleId) {
 }
 
 async function tryListBattles() {
-  // 서버에 /api/battles가 없을 수도 있으니 실패해도 조용히 넘어감
   try {
     const r = await fetch('/api/battles');
     if (!r.ok) return;
@@ -150,7 +154,12 @@ async function tryListBattles() {
 }
 
 async function createBattle() {
+  const btn = $("#btnCreate");
+  const hint = $("#createHint");
   try {
+    btn.disabled = true;
+    hint.textContent = "전투 생성 중...";
+
     const sel = $("#battleMode");
     const mode = (sel && sel.value) ? sel.value : '1v1';
 
@@ -160,30 +169,30 @@ async function createBattle() {
       body: JSON.stringify({ mode })
     });
 
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw new Error(`Invalid JSON: ${text}`); }
+
     // 2xx 모두 성공(201 포함)
-    if (!res.ok) {
-      const text = await res.text().catch(()=>'');
-      throw new Error(`HTTP ${res.status} ${res.statusText} ${text}`);
-    }
-
-    const data = await res.json().catch(async()=>{
-      const raw = await res.text();
-      throw new Error(`Invalid JSON: ${raw}`);
-    });
-
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} ${text}`);
     if (!data?.id) throw new Error(`No id in response: ${JSON.stringify(data)}`);
 
-    // 생성 직후 상태 반영
     selectedBattleId = data.id;
     $("#battleManager").classList.remove("hidden");
-    renderBattle(data);                 // 로그/정보 표시
-    if (data.otps) renderLinks(data.id, data.otps); // 링크 표시
-    connectSocket();                    // 소켓 인증 연결
+    renderBattle(data);
+    if (data.otps) renderLinks(data.id, data.otps);
+    connectSocket();
+
+    hint.textContent = "";
     alert(`전투 생성 성공: ${data.id}`);
   } catch (e) {
     const msg = e?.message || String(e);
     console.error('createBattle error:', e);
+    hint.textContent = "";
     alert(`전투 생성 실패: ${msg}`);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -192,10 +201,8 @@ async function selectBattle(battleId) {
     selectedBattleId = battleId;
     $("#battleManager").classList.remove("hidden");
 
-    // 최근 상태 조회
     const data = await getBattle(battleId);
     renderBattle(data);
-
     connectSocket();
   } catch (e) {
     alert(`전투 선택 실패: ${e.message}`);
@@ -212,7 +219,7 @@ function connectSocket() {
 
   socket.on("connect", () => {
     console.log("소켓 연결됨 (관리자)", socket.id);
-    // ✅ 스코프 문제 수정: selectedBattleId 사용
+    // 스코프 문제 방지: selectedBattleId 사용
     socket.emit("adminAuth", { battleId: selectedBattleId, otp: adminOtp });
   });
   socket.on("authSuccess", data => {
@@ -256,7 +263,7 @@ async function endBattle() {
 
 async function regenerateLinks() {
   if (!selectedBattleId) return;
-  // 1) 있으면 공식 재발급 엔드포인트 사용
+  // 1) 공식 재발급 엔드포인트 시도
   try {
     const r = await fetch(`/api/admin/battles/${encodeURIComponent(selectedBattleId)}/links`, { method:"POST" });
     if (r.ok) {
@@ -273,7 +280,7 @@ async function regenerateLinks() {
     }
   } catch(_) {}
 
-  // 2) 폴백: 현재 배틀 상태에서 otps 읽어와 재표시
+  // 2) 폴백: 현재 배틀 상태에서 otps 표시
   try {
     const data = await getBattle(selectedBattleId);
     if (data?.otps) {
