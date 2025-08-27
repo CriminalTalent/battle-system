@@ -12,17 +12,11 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
-    # 파비콘(없으면 204로 빠르게 종료)
-    location = /favicon.ico { try_files /favicon.ico =204; access_log off; log_not_found off; }
-
-    # 워드프레스 스캐너/봇 차단(선택)
-    location ~* ^/(wp-admin|wordpress|wp-login\.php|xmlrpc\.php) { return 444; }
-
     # 정적 캐시
     location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
         access_log off;
         expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cache-Control "public, immutable";
         try_files $uri =404;
     }
 
@@ -36,9 +30,9 @@ server {
     location = /play  { try_files /play.html  =404; }
     location = /watch { try_files /watch.html =404; }
 
-    # ---- API: /api 프리픽스 보존(요청 URI 전체 전달) ----
-    location /api/ {
-        proxy_pass http://127.0.0.1:3001$request_uri;
+    # ✅ /api/admin → /admin 내부 라우트로 전달
+    location /api/admin/ {
+        proxy_pass http://127.0.0.1:3001/admin/;
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -50,8 +44,21 @@ server {
         proxy_send_timeout 300;
     }
 
-    # ---- Socket.IO (WebSocket) ----
-    # /etc/nginx/nginx.conf 에 map $http_upgrade $connection_upgrade 선언되어 있어야 합니다.
+    # API: /api 프리픽스 보존
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    # Socket.IO(WebSocket)
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
