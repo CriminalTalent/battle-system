@@ -2,13 +2,22 @@ server {
     listen 80;
     server_name pyxisbattlesystem.monster;
 
-    root /root/battle-system/packages/battle-server/public;
+    root /var/www/battle-system;
     index index.html;
 
-    # 정적 파일 캐싱
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
+    # admin → admin.html
+    location /admin {
+        try_files $uri /admin.html;
+    }
+
+    # play → play.html
+    location /play {
+        try_files $uri /play.html;
+    }
+
+    # watch → watch.html
+    location /watch {
+        try_files $uri /watch.html;
     }
 
     # API 프록시
@@ -18,10 +27,6 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
     }
 
     # Socket.IO 프록시
@@ -31,24 +36,5 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
-
-    # SPA 라우팅
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    error_page 404 /index.html;
-
-    error_page 500 502 503 504 /50x.html;
-    location = /50x.html {
-        root /usr/share/nginx/html;
-    }
-
-    # 보안
-    location ~ /\. { deny all; }
-    location ~ ~$ { deny all; }
 }
