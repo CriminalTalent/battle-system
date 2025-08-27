@@ -1,28 +1,35 @@
 server {
     listen 80;
     listen [::]:80;
-
     server_name pyxisbattlesystem.monster;
 
     root /var/www/battle-system;
     index index.html;
 
-    location = /admin {
-        alias /var/www/battle-system/admin.html;
-    }
-
-    location = /play {
-        alias /var/www/battle-system/play.html;
-    }
-
-    location = /watch {
-        alias /var/www/battle-system/watch.html;
-    }
-
+    # 기본 루트 요청 처리
     location / {
         try_files $uri $uri/ =404;
     }
 
+    # 관리자 페이지
+    location = /admin {
+        root /var/www/battle-system;
+        try_files /admin.html =404;
+    }
+
+    # 플레이어 페이지
+    location = /play {
+        root /var/www/battle-system;
+        try_files /play.html =404;
+    }
+
+    # 관전자 페이지
+    location = /watch {
+        root /var/www/battle-system;
+        try_files /watch.html =404;
+    }
+
+    # API 프록시
     location /api/ {
         proxy_pass http://127.0.0.1:3001/;
         proxy_http_version 1.1;
@@ -31,6 +38,7 @@ server {
         proxy_set_header Host $host;
     }
 
+    # Socket.IO 프록시
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
