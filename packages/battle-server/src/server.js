@@ -1,6 +1,6 @@
 // packages/battle-server/src/server.js
 // Express + Socket.IO 기반 API 서버 (Nginx 프록시 대상: :3001)
-// 필요 라우트 포함: /api/health, /api/battles, /api/battles/:id, /api/battles/:id/players
+// 필요 라우트: /api/health, /api/battles, /api/battles/:id, /api/battles/:id/players
 // 관리자 전용: /api/admin/battles/:id/links, /api/admin/battles/:id/end
 
 const path = require('path');
@@ -13,13 +13,16 @@ const { Server } = require('socket.io');
 const BattleEngine = require('./services/BattleEngine');
 
 const app = express();
+app.set('trust proxy', true); // Nginx 뒤에서 https 링크 생성 정확히
 const server = http.createServer(app);
 const io = new Server(server, {
-  // 필요 시 도메인 제한 가능
   cors: { origin: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+  path: '/socket.io/', // Nginx 프록시와 일치하도록 명시
 });
 
 const PORT = process.env.PORT || 3001;
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''); // 선택
+
 const battleEngine = new BattleEngine();
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -36,11 +39,14 @@ app.use(express.static(path.join(__dirname, '../public')));
 // 유틸
 // ───────────────────────────────────────────────────────────────────────────────
 function baseUrlFromReq(req) {
-  return `${req.protocol}://${req.get('host')}`;
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.get('host');
+  return `${proto}://${host}`;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// 헬스체크
+/** 헬스체크 */
 // ───────────────────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
@@ -51,7 +57,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-// 배틀 생성 / 조회 / 참여
+/** 배틀 생성 / 조회 / 참여 */
 // ───────────────────────────────────────────────────────────────────────────────
 
 // 배틀 생성
@@ -60,7 +66,7 @@ app.post('/api/battles', (req, res) => {
   try {
     const { mode = '1v1', adminId = null } = req.body || {};
     const battle = battleEngine.createBattle(mode, adminId);
-    return res.status(201).json(battle);
+    return res.status(201).json(battle); // 생성: 201
   } catch (e) {
     console.error('[POST /api/battles] error', e);
     return res.status(500).json({ error: 'internal_error' });
@@ -90,13 +96,16 @@ app.post('/api/battles/:id/players', (req, res) => {
     const battle = battleEngine.getBattle(id);
     if (!battle) return res.status(404).json({ error: 'battle_not_found', id });
 
-    // BattleEngine에 명시적 메소드가 없다면 players 배열에 최소 정보 기록
     if (!Array.isArray(battle.players)) battle.players = [];
     const joined = {
       id: playerId || `p_${Date.now()}`,
       name: name || 'anonymous',
       role,
       joinedAt: Date.now(),
+      hp: 100,
+      mp: 50,
+      status: 'idle',
+      connected: false,
     };
     battle.players.push(joined);
 
@@ -108,7 +117,7 @@ app.post('/api/battles/:id/players', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-// 관리자용: 링크 생성 / 종료
+/** 관리자용: 링크 생성 / 종료 */
 // ───────────────────────────────────────────────────────────────────────────────
 
 // 링크/OTP 반환 (프런트 admin.html이 호출)
@@ -120,13 +129,17 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
       return res.status(404).json({ error: 'battle_not_found', id });
     }
     const baseUrl = baseUrlFromReq(req);
+    const adminOtp = battle.otps.admin;
+    const playerOtp = battle.otps.player ?? (Array.isArray(battle.otps.players) ? battle.otps.players[0] : undefined);
+    const spectOtp = battle.otps.spectator ?? battle.otps.spectators;
+
     return res.json({
       id,
-      otps: battle.otps, // { admin, player, spectator }
+      otps: battle.otps, // { admin, player, spectator } (+ 호환 키)
       urls: {
-        admin:     `${baseUrl}/admin?battle=${id}&token=${battle.otps.admin}`,
-        player:    `${baseUrl}/play?battle=${id}&token=${battle.otps.player}`,
-        spectator: `${baseUrl}/watch?battle=${id}&token=${battle.otps.spectator}`,
+        admin:     `${baseUrl}/admin?battle=${id}&token=${adminOtp}`,
+        player:    `${baseUrl}/play?battle=${id}&token=${playerOtp}`,
+        spectator: `${baseUrl}/watch?battle=${id}&token=${spectOtp}`,
       },
     });
   } catch (e) {
@@ -139,12 +152,8 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
 app.post('/api/admin/battles/:id/end', (req, res) => {
   try {
     const { id } = req.params;
-    const exists = !!battleEngine.getBattle(id);
-    if (!exists) {
-      return res.status(404).json({ error: 'battle_not_found', id });
-    }
-    // BattleEngine은 내부 Map 사용
-    battleEngine.battles.delete(id);
+    const ok = battleEngine.endBattle(id, 'admin_end');
+    if (!ok) return res.status(404).json({ error: 'battle_not_found', id });
     return res.json({ ok: true, ended: id });
   } catch (e) {
     console.error('[POST /api/admin/battles/:id/end] error', e);
@@ -153,9 +162,11 @@ app.post('/api/admin/battles/:id/end', (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Socket.IO
+/** Socket.IO */
 // ───────────────────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
+  socket.role = null;
+
   // 관리자 인증 (admin.html에서 emit)
   socket.on('adminAuth', ({ battleId, otp }) => {
     try {
@@ -185,9 +196,12 @@ io.on('connection', (socket) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-// 서버 시작
+/** 서버 시작 */
 // ───────────────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
   console.log(`Battle server listening on http://localhost:${PORT}`);
   console.log(`관리자 페이지(정적): http://localhost:${PORT}/admin.html`);
 });
+
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
