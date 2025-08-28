@@ -1,35 +1,91 @@
-# --- HTTP: 모두 HTTPS로 리다이렉트 ---
+# ====== 공통: HTTP 블록(보통 /etc/nginx/nginx.conf 에 넣지만, 사이트 파일에 둬도 됨) ======
+# WebSocket 업그레이드 헬퍼
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+# ====== 1) HTTP: 모두 HTTPS로 리다이렉트, 단 ACME는 예외 ======
 server {
     listen 80;
     listen [::]:80;
     server_name pyxisbattlesystem.monster;
-    return 301 https://$host$request_uri;
+
+    # ACME(HTTP-01) 갱신용 경로 예외 처리 (certbot --webroot 사용 시)
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    # 나머지는 전부 HTTPS로 301
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 
-# --- HTTPS: 메인 사이트 ---
+# ====== 2) HTTPS: 메인 사이트 ======
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name pyxisbattlesystem.monster;
 
-    # SSL (Let's Encrypt 기본 경로)
+    # ---- SSL (Let's Encrypt) ----
     ssl_certificate     /etc/letsencrypt/live/pyxisbattlesystem.monster/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/pyxisbattlesystem.monster/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_trusted_certificate /etc/letsencrypt/live/pyxisbattlesystem.monster/chain.pem;
 
-    # 보안/기본 헤더
+    # ---- 보안/기본 헤더 ----
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
+    # CSP: 필요 스펙만 허용 (socket.io / wss 포함)
+    add_header Content-Security-Policy "
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src https://fonts.gstatic.com 'self';
+      img-src 'self' data: blob:;
+      connect-src 'self' https://pyxisbattlesystem.monster wss://pyxisbattlesystem.monster;
+      base-uri 'self';
+      frame-ancestors 'self'
+    " always;
+
+    # ---- 압축/캐시 ----
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
+    gzip_vary on;
+
+    # (선택) 브로틀리 모듈이 있을 때만 적용됨
+    brotli on;
+    brotli_comp_level 5;
+    brotli_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
+
+    etag on;
+    if_modified_since exact;
+
+    # 업로드/본문 제한(.env MAX_FILE_SIZE=5MB와 맞춤)
+    client_max_body_size 5m;
+
     # 정적 루트
     root   /var/www/battle-system;
     index  index.html;
 
-    # 정적 캐시
-    location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+    # ---- 정적 캐시 ----
+    # HTML은 캐시 금지 (SPA 라우팅에서 최신 반영)
+    location ~* \.(?:html)$ {
+        expires -1;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";
+        try_files $uri =404;
+    }
+
+    # 정적 자원은 1년 + immutable
+    location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|otf)$ {
         access_log off;
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -46,9 +102,12 @@ server {
     location = /play  { try_files /play.html  =404; }
     location = /watch { try_files /watch.html =404; }
 
-    # ✅ /api/admin/**  -> 백엔드도 /api/admin/** 로 전달 (프리픽스 유지)
-    location /api/admin/ {
-        proxy_pass http://127.0.0.1:3001;  # 원본 URI 그대로 전달
+    # ---- 백엔드 프록시 공통 설정 ----
+    set $backend "http://127.0.0.1:3001";
+
+    # 일반 API: /api/** (프리픽스 유지)
+    location /api/ {
+        proxy_pass $backend;      # trailing slash 없음 → 원본 URI 유지
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -60,9 +119,9 @@ server {
         proxy_send_timeout 300;
     }
 
-    # 일반 API: /api/** 프리픽스 유지
-    location /api/ {
-        proxy_pass http://127.0.0.1:3001;  # 원본 URI 그대로 전달
+    # 관리자 API: /api/admin/** (프리픽스 유지)
+    location /api/admin/ {
+        proxy_pass $backend;
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -76,11 +135,11 @@ server {
 
     # Socket.IO (WebSocket)
     location /socket.io/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass $backend;
         proxy_http_version 1.1;
 
         proxy_set_header Upgrade           $http_upgrade;
-        proxy_set_header Connection        "upgrade";
+        proxy_set_header Connection        $connection_upgrade;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
