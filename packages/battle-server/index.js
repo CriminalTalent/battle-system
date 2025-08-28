@@ -1,34 +1,26 @@
 // packages/battle-server/index.js
-// Express + Socket.IO battle server (single entry)
-// - Fixed team names: "불사조 기사단" / "죽음을 먹는 자들"
-// - Admin can build roster with stats/items and copy per-player join links
-// - Player can auth by (battleId + player OTP + name) => server matches player by name
-// - Spectator OTP + free name
-// - File upload endpoint for player avatar (local file -> URL)
-// - Team chat channel support ("all" / "team")
+// 서버 엔트리: Express + Socket.IO
+// - 팀 이름 고정 ("불사조 기사단" / "죽음을 먹는 자들")
+// - 플레이어는 이름으로 인증 가능 (playerAuthByName)
+// - 관전자 OTP 별도
+// - 팀 채팅(channel: 'team'|'all')
+// - 아바타(로컬 업로드) dataURL 업데이트 이벤트 처리(updateAvatar)
 
 const path = require('path');
-const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
 const { Server } = require('socket.io');
 
 const BattleEngine = require('./src/services/BattleEngine');
 
-// ──────────────────────────────────────────────────────────────
-// ENV
-// ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 
-// ──────────────────────────────────────────────────────────────
 const app = express();
 app.set('trust proxy', true);
-
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: CORS_ORIGIN === '*' ? true : CORS_ORIGIN.split(',') },
@@ -37,40 +29,23 @@ const io = new Server(server, {
 
 const engine = new BattleEngine();
 
-// ──────────────────────────────────────────────────────────────
-// Middleware
-// ──────────────────────────────────────────────────────────────
+// ───────────── Middlewares
 app.use(cors({ origin: CORS_ORIGIN === '*' ? '*' : CORS_ORIGIN.split(',') }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Static
+// static
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir, { extensions: ['html'] }));
 
-// File uploads
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-app.use('/uploads', express.static(uploadDir));
-
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
-  filename: (_, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const base = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    cb(null, `avatar-${base}${ext || '.png'}`);
-  },
-});
-const upload = multer({ storage });
-
-// Pretty routes
-app.get('/', (_req, res) => res.redirect('/admin'));
+// pretty paths
+app.get('/', (req, res) => res.redirect('/admin'));
 app.get(['/admin', '/play', '/watch'], (req, res) => {
   const page = (req.path.replace('/', '') || 'admin') + '.html';
   res.sendFile(path.join(publicDir, page));
 });
 
-// Utils
+// utils
 function baseUrlFromReq(req) {
   if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -82,22 +57,18 @@ function broadcast(battleId) {
   if (b) io.to(battleId).emit('battleUpdate', b);
 }
 
-// ──────────────────────────────────────────────────────────────
-// Health
-// ──────────────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) => {
+// health
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: Date.now(),
     battles: engine.getBattleCount(),
-    connections: io.engine.clientsCount,
+    connections: io.engine.clientsCount
   });
 });
 
-// ──────────────────────────────────────────────────────────────
-// Battles
-// ──────────────────────────────────────────────────────────────
-app.get('/api/battles', (_req, res) => {
+// battles list
+app.get('/api/battles', (req, res) => {
   try {
     const rows = [];
     for (const [, b] of engine.battles) {
@@ -105,9 +76,7 @@ app.get('/api/battles', (_req, res) => {
         id: b.id,
         mode: b.mode,
         status: b.status,
-        playerCount:
-          (b.teams?.team1?.players?.length || 0) +
-          (b.teams?.team2?.players?.length || 0),
+        playerCount: (b.teams?.team1?.players?.length || 0) + (b.teams?.team2?.players?.length || 0),
         createdAt: b.createdAt,
       });
     }
@@ -119,104 +88,74 @@ app.get('/api/battles', (_req, res) => {
   }
 });
 
+// battle create
 app.post('/api/battles', (req, res) => {
   try {
     const { mode = '1v1', adminId = null } = req.body || {};
     const battle = engine.createBattle(mode, adminId);
-
     const baseUrl = baseUrlFromReq(req);
-    const adminOtp = battle.otps?.admin || '';
-    const playerOtp = battle.otps?.player || '';
-    const spectatorOtp = battle.otps?.spectator || '';
-
+    const { admin = '', player = '', spectator = '' } = battle.otps || {};
     return res.status(201).json({
       battle,
       urls: {
-        admin: `${baseUrl}/admin?battle=${encodeURIComponent(
-          battle.id
-        )}&token=${encodeURIComponent(adminOtp)}`,
-        player: `${baseUrl}/play?battle=${encodeURIComponent(
-          battle.id
-        )}&token=${encodeURIComponent(playerOtp)}`,
-        spectator: `${baseUrl}/watch?battle=${encodeURIComponent(
-          battle.id
-        )}&token=${encodeURIComponent(spectatorOtp)}`,
+        admin:     `${baseUrl}/admin?battle=${encodeURIComponent(battle.id)}&token=${encodeURIComponent(admin)}`,
+        player:    `${baseUrl}/play?battle=${encodeURIComponent(battle.id)}&token=${encodeURIComponent(player)}`,
+        spectator: `${baseUrl}/watch?battle=${encodeURIComponent(battle.id)}&token=${encodeURIComponent(spectator)}`,
       },
     });
   } catch (e) {
     console.error('[POST /api/battles] error', e);
-    res.status(500).json({ error: 'internal_error' });
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
+// battle get
 app.get('/api/battles/:id', (req, res) => {
   try {
     const b = engine.getBattle(req.params.id);
     if (!b) return res.status(404).json({ error: 'battle_not_found' });
-    res.json(b);
+    return res.json(b);
   } catch (e) {
     console.error('[GET /api/battles/:id] error', e);
-    res.status(500).json({ error: 'internal_error' });
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
+// add player (admin roster add)
 app.post('/api/battles/:id/players', (req, res) => {
   try {
     const { id } = req.params;
+    const b = engine.getBattle(id);
+    if (!b) return res.status(404).json({ error: 'battle_not_found' });
+
     const { name, team, stats, inventory = [], imageUrl = '' } = req.body || {};
     const player = engine.addPlayer(id, { name, team, stats, inventory, imageUrl });
+
     broadcast(id);
-    res.status(201).json({ ok: true, success: true, battleId: id, player });
+    return res.status(201).json({ ok: true, battleId: id, player });
   } catch (e) {
-    res.status(400).json({ ok: false, error: e.message || 'bad_request' });
+    console.error('[POST /api/battles/:id/players] error', e);
+    return res.status(400).json({ ok: false, error: e.message || 'bad_request' });
   }
 });
 
+// remove player
 app.delete('/api/battles/:id/players/:playerId', (req, res) => {
   try {
     const { id, playerId } = req.params;
     const result = engine.removePlayer(id, playerId);
     if (result.success) {
       broadcast(id);
-      res.json({ ok: true, success: true });
-    } else {
-      res.status(404).json({ ok: false, error: result.message || 'not_found' });
+      return res.json({ ok: true });
     }
+    return res.status(404).json({ ok: false, error: result.message || 'player_not_found' });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    console.error('[DELETE /api/battles/:id/players/:playerId] error', e);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 });
 
-// Update player's avatar after auth
-app.patch('/api/battles/:id/players/:playerId/avatar', (req, res) => {
-  try {
-    const { id, playerId } = req.params;
-    const { imageUrl } = req.body || {};
-    const b = engine.getBattle(id);
-    if (!b) return res.status(404).json({ ok: false, error: 'battle_not_found' });
-    const p = engine.findPlayer(b, playerId);
-    if (!p) return res.status(404).json({ ok: false, error: 'player_not_found' });
-    p.imageUrl = imageUrl || '';
-    engine.addBattleLog(id, 'system', `${p.name} 아바타 업데이트`);
-    broadcast(id);
-    res.json({ ok: true, player: p });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: 'internal_error' });
-  }
-});
-
-// Upload avatar file
-app.post('/api/uploads/avatar', upload.single('avatar'), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'no_file' });
-    const url = `/uploads/${req.file.filename}`;
-    res.json({ ok: true, url });
-  } catch (e) {
-    res.status(500).json({ error: 'internal_error' });
-  }
-});
-
-// Admin helpers
+// admin links
 app.post('/api/admin/battles/:id/links', (req, res) => {
   try {
     const { id } = req.params;
@@ -224,93 +163,77 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
     if (!b) return res.status(404).json({ error: 'battle_not_found' });
 
     const baseUrl = baseUrlFromReq(req);
-    const adminOtp = b.otps?.admin || '';
-    const playerOtp = b.otps?.player || '';
-    const spectatorOtp = b.otps?.spectator || '';
+    const { admin = '', player = '', spectator = '' } = b.otps || {};
 
-    const players = [
-      ...(b.teams?.team1?.players || []),
-      ...(b.teams?.team2?.players || []),
-    ];
-    const playerLinks = players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      team: p.team,
-      url: `${baseUrl}/play?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(
-        playerOtp
-      )}&name=${encodeURIComponent(p.name)}&pid=${encodeURIComponent(p.id)}`,
-    }));
+    const playerLinks = [];
+    const allPlayers = [ ...(b.teams?.team1?.players||[]), ...(b.teams?.team2?.players||[]) ];
+    allPlayers.forEach(p => {
+      playerLinks.push({
+        id: p.id,
+        name: p.name,
+        team: p.team,
+        url: `${baseUrl}/play?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(player)}&name=${encodeURIComponent(p.name)}&pid=${encodeURIComponent(p.id)}`
+      });
+    });
 
-    res.json({
-      id,
-      otps: b.otps,
+    return res.json({
+      id, otps: b.otps,
       urls: {
-        admin: `${baseUrl}/admin?battle=${encodeURIComponent(
-          id
-        )}&token=${encodeURIComponent(adminOtp)}`,
-        player: `${baseUrl}/play?battle=${encodeURIComponent(
-          id
-        )}&token=${encodeURIComponent(playerOtp)}`,
-        spectator: `${baseUrl}/watch?battle=${encodeURIComponent(
-          id
-        )}&token=${encodeURIComponent(spectatorOtp)}`,
+        admin:     `${baseUrl}/admin?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(admin)}`,
+        player:    `${baseUrl}/play?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(player)}`,
+        spectator: `${baseUrl}/watch?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(spectator)}`
       },
-      playerLinks,
+      playerLinks
     });
   } catch (e) {
-    res.status(500).json({ error: 'internal_error' });
+    console.error('[POST /api/admin/battles/:id/links] error', e);
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
+// start/pause/end
 app.post('/api/admin/battles/:id/start', (req, res) => {
   try {
     const b = engine.startBattle(req.params.id);
     broadcast(req.params.id);
-    res.json({ ok: true, battle: b });
+    return res.json({ ok: true, battle: b });
   } catch (e) {
-    const msg = e.message || '';
-    if (msg.includes('전투 없음')) return res.status(404).json({ ok: false, error: 'battle_not_found' });
-    res.status(400).json({ ok: false, error: msg || 'bad_request' });
+    if (String(e.message||'').includes('전투 없음'))
+      return res.status(404).json({ ok:false, error:'battle_not_found' });
+    return res.status(400).json({ ok:false, error:e.message||'bad_request' });
   }
 });
-
 app.post('/api/admin/battles/:id/pause', (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id;
     const b = engine.getBattle(id);
-    if (!b) return res.status(404).json({ ok: false, error: 'battle_not_found' });
+    if (!b) return res.status(404).json({ ok:false, error:'battle_not_found' });
     if (b.status === 'ongoing') {
-      b.status = 'paused';
-      engine.addBattleLog(id, 'system', '전투 일시정지');
+      b.status = 'paused'; engine.addBattleLog(id, 'system', '전투 일시정지');
     } else if (b.status === 'paused') {
-      b.status = 'ongoing';
-      engine.addBattleLog(id, 'system', '전투 재개');
+      b.status = 'ongoing'; engine.addBattleLog(id, 'system', '전투 재개');
     } else {
-      return res.status(400).json({ ok: false, error: `cannot_pause_from_${b.status}` });
+      return res.status(400).json({ ok:false, error:`cannot_pause_from_${b.status}` });
     }
     broadcast(id);
-    res.json({ ok: true, battle: b });
+    res.json({ ok:true, battle:b });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    console.error('[pause] error', e); res.status(500).json({ ok:false, error:'internal_error' });
   }
 });
-
 app.post('/api/admin/battles/:id/end', (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id;
     const b = engine.getBattle(id);
-    if (!b) return res.status(404).json({ ok: false, error: 'battle_not_found' });
+    if (!b) return res.status(404).json({ ok:false, error:'battle_not_found' });
     engine.endBattle(id, null, '관리자 종료');
-    broadcast(id);
-    res.json({ ok: true, ended: id });
+    res.json({ ok:true, ended:id });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    console.error('[end] error', e); res.status(500).json({ ok:false, error:'internal_error' });
   }
 });
 
-// ──────────────────────────────────────────────────────────────
-// Socket.IO
-// ──────────────────────────────────────────────────────────────
+// ───────────── Socket.IO
 io.on('connection', (socket) => {
   socket.role = null;
   socket.battleId = null;
@@ -318,90 +241,73 @@ io.on('connection', (socket) => {
   socket.playerTeam = null;
   socket.spectatorName = null;
 
-  const roomAll = (id) => id;
-  const roomAdmin = (id) => `${id}-admin`;
-  const roomTeam = (id, team) => `${id}-team-${team}`;
+  const roomAll  = (id) => id;
+  const roomAdmin= (id) => `${id}-admin`;
+  const roomTeam = (id,t) => `${id}-team-${t}`;
 
   // Admin auth
   socket.on('adminAuth', ({ battleId, otp }) => {
-    try {
+    try{
       const result = engine.adminAuth(battleId, otp);
-      if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
-
-      socket.join(roomAll(battleId));
-      socket.join(roomAdmin(battleId));
-      socket.join(roomTeam(battleId, 'team1'));
-      socket.join(roomTeam(battleId, 'team2'));
-
-      socket.role = 'admin';
-      socket.battleId = battleId;
-      socket.emit('authSuccess', { role: 'admin', battle: result.battle });
-    } catch (e) {
-      socket.emit('authError', 'internal_error');
-    }
+      if(!result?.success) return socket.emit('authError', result?.message || '인증 실패');
+      socket.join(roomAll(battleId)); socket.join(roomAdmin(battleId));
+      socket.join(roomTeam(battleId,'team1')); socket.join(roomTeam(battleId,'team2'));
+      socket.role='admin'; socket.battleId=battleId;
+      socket.emit('authSuccess', { role:'admin', battle:result.battle });
+    }catch(e){ console.error('adminAuth',e); socket.emit('authError','internal_error'); }
   });
 
-  // Player auth (by id or by name)
+  // Player auth (by id or name)
   socket.on('playerAuth', ({ battleId, otp, playerId, playerName }) => {
-    try {
-      let result;
-      if (playerId) result = engine.playerAuth(battleId, otp, playerId);
-      else if (playerName) result = engine.playerAuthByName(battleId, otp, playerName);
-      else return socket.emit('authError', '플레이어 ID 또는 이름이 필요합니다');
-
-      if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
+    try{
+      const result = playerId
+        ? engine.playerAuth(battleId, otp, playerId)
+        : engine.playerAuthByName(battleId, otp, playerName);
+      if(!result?.success) return socket.emit('authError', result?.message || '인증 실패');
 
       const player = result.player;
-      socket.join(roomAll(battleId));
-      socket.join(roomTeam(battleId, player.team));
-
-      socket.role = 'player';
-      socket.battleId = battleId;
-      socket.playerId = player.id;
-      socket.playerTeam = player.team;
-
-      socket.emit('authSuccess', { role: 'player', battle: result.battle, player });
+      socket.join(roomAll(battleId)); socket.join(roomTeam(battleId, player.team));
+      socket.role='player'; socket.battleId=battleId; socket.playerId=player.id; socket.playerTeam=player.team;
+      socket.emit('authSuccess', { role:'player', battle:result.battle, player });
       broadcast(battleId);
-    } catch (e) {
-      socket.emit('authError', 'internal_error');
-    }
+    }catch(e){ console.error('playerAuth',e); socket.emit('authError','internal_error'); }
   });
 
   // Spectator auth
   socket.on('spectatorAuth', ({ battleId, otp, spectatorName }) => {
-    try {
+    try{
       const result = engine.spectatorAuth(battleId, otp, spectatorName || '관전자');
-      if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
-
+      if(!result?.success) return socket.emit('authError', result?.message || '인증 실패');
       socket.join(roomAll(battleId));
-
-      socket.role = 'spectator';
-      socket.battleId = battleId;
-      socket.spectatorName = spectatorName || '관전자';
-      socket.emit('authSuccess', { role: 'spectator', battle: result.battle });
-    } catch (e) {
-      socket.emit('authError', 'internal_error');
-    }
+      socket.role='spectator'; socket.battleId=battleId; socket.spectatorName=spectatorName || '관전자';
+      socket.emit('authSuccess', { role:'spectator', battle:result.battle });
+    }catch(e){ console.error('spectatorAuth',e); socket.emit('authError','internal_error'); }
   });
 
   // Player action
   socket.on('playerAction', ({ battleId, playerId, action }) => {
-    try {
+    try{
       engine.executeAction(battleId, playerId, action);
       broadcast(battleId);
       socket.emit('actionSuccess');
-    } catch (e) {
-      socket.emit('actionError', e.message || 'action_failed');
-    }
+    }catch(e){ socket.emit('actionError', e.message || 'action_failed'); }
   });
 
-  // Chat (all roles)
+  // Avatar update (base64 dataURL)
+  socket.on('updateAvatar', ({ battleId, playerId, dataUrl }) => {
+    try{
+      if(!battleId || !playerId || !dataUrl) return;
+      engine.setPlayerAvatar(battleId, playerId, dataUrl);
+      broadcast(battleId);
+    }catch(e){ console.error('[updateAvatar]', e); }
+  });
+
+  // Chat
   socket.on('chatMessage', ({ message, channel }) => {
-    try {
-      if (!socket.battleId || !message) return;
+    try{
+      if(!socket.battleId || !message) return;
       const bId = socket.battleId;
       const chan = channel === 'team' ? 'team' : 'all';
-
       let sender = '알 수 없음';
       let senderType = socket.role || 'system';
 
@@ -416,38 +322,44 @@ io.on('connection', (socket) => {
       }
 
       const entry = {
-        sender,
-        senderType,
-        message,
-        channel: chan,
-        team: chan === 'team' ? socket.playerTeam : null,
-        timestamp: Date.now(),
+        sender, senderType, message, channel: chan, team: chan==='team' ? socket.playerTeam : null, timestamp: Date.now()
       };
       engine.addChatMessage(bId, entry);
 
-      const payload = {
-        sender: entry.sender,
-        senderType: entry.senderType,
-        message: entry.message,
-        channel: entry.channel,
-        timestamp: entry.timestamp,
-        team: entry.team || null,
-      };
-
-      if (chan === 'team' && socket.role === 'player' && socket.playerTeam) {
-        io.to(roomTeam(bId, socket.playerTeam)).emit('chatMessage', payload);
-        io.to(roomAdmin(bId)).emit('chatMessage', payload);
+      if (chan==='team' && socket.role==='player' && socket.playerTeam) {
+        io.to(roomTeam(bId, socket.playerTeam)).emit('chatMessage', entry);
+        io.to(roomAdmin(bId)).emit('chatMessage', entry);
       } else {
-        io.to(roomAll(bId)).emit('chatMessage', payload);
+        io.to(roomAll(bId)).emit('chatMessage', entry);
       }
       broadcast(bId);
-    } catch (e) {
-      socket.emit('chatError', 'internal_error');
-    }
+    }catch(e){ console.error('[chatMessage]', e); socket.emit('chatError','internal_error'); }
   });
 
+  // Cheer (spectator quick)
+  socket.on('cheerMessage', ({ message }) => {
+    try{
+      if(!socket.battleId || socket.role!=='spectator') return;
+      const allowed = ['힘내!','지지마!','이길 수 있어!','포기하지 마!','화이팅!','대박!','힘내라!','멋지다!','포기하지마!'];
+      if(!allowed.includes(message)) return socket.emit('chatError','허용되지 않은 응원 메시지입니다');
+
+      const entry = {
+        sender: socket.spectatorName || '관전자',
+        senderType:'spectator',
+        message:`[응원] ${message}`,
+        channel:'all',
+        team:null,
+        timestamp:Date.now(),
+      };
+      engine.addChatMessage(socket.battleId, entry);
+      io.to(roomAll(socket.battleId)).emit('chatMessage', entry);
+      broadcast(socket.battleId);
+    }catch(e){ console.error('[cheerMessage]', e); }
+  });
+
+  // Disconnect
   socket.on('disconnect', () => {
-    try {
+    try{
       if (socket.role === 'player' && socket.battleId && socket.playerId) {
         const b = engine.getBattle(socket.battleId);
         if (b) {
@@ -455,13 +367,15 @@ io.on('connection', (socket) => {
           broadcast(socket.battleId);
         }
       }
-    } catch (_) {}
+    }catch(_){}
   });
 });
 
-// ──────────────────────────────────────────────────────────────
+// start
 server.listen(PORT, HOST, () => {
   console.log(`Battle server listening on http://${HOST}:${PORT}`);
   console.log(`Static root: ${publicDir}`);
-  console.log(`Access pages: /admin /play /watch`);
+  console.log(`Pages: /admin /play /watch`);
 });
+process.on('unhandledRejection', (e)=>console.error('[unhandledRejection]',e));
+process.on('uncaughtException', (e)=>console.error('[uncaughtException]',e));
