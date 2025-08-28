@@ -1,113 +1,187 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Pyxis 관리자</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <meta charset="utf-8">
+  <title>Pyxis - 전투 관리자</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --deep-navy: #0a0f1a;
       --navy: #0f1419;
-      --gold: #f9d976;
-      --gold-deep: #cba135;
-      --gold-soft: #f3ce7d;
-      --text-primary: #fff2d9;
+      --navy-light: #1a1f26;
+      --navy-lighter: #2a3441;
+      --gold: #e5c88a;
+      --gold-light: #f5e6b8;
+      --gold-dark: #c8a882;
+      --gold-accent: #d4c39a;
+
+      --text-primary: #f5e6b8;
       --text-secondary: #d4c39a;
+      --text-muted: #8b7355;
+
+      --border: rgba(229, 200, 138, 0.2);
+      --border-light: rgba(229, 200, 138, 0.1);
+      --border-hover: rgba(229, 200, 138, 0.4);
+
+      --glass: rgba(26, 31, 38, 0.85);
       --glass-dark: rgba(15, 20, 25, 0.9);
-      --glass-light: rgba(255, 255, 255, 0.05);
-      --border-light: rgba(255, 215, 130, 0.1);
-      --border-bright: rgba(255, 215, 130, 0.4);
+      --glass-light: rgba(42, 52, 65, 0.6);
+
+      --success: #27ae60;
+      --warning: #f39c12;
+      --danger: #e74c3c;
+      --info: #3498db;
+
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5);
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-lg: 16px;
     }
 
     * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
     }
 
-    html, body {
+    body {
       font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, var(--deep-navy), var(--navy));
+      background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 40%, var(--navy-light) 100%);
       color: var(--text-primary);
       min-height: 100vh;
+      line-height: 1.6;
       overflow-x: hidden;
     }
 
     .container {
       max-width: 1400px;
       margin: 0 auto;
-      padding: 3rem 1.5rem;
+      padding: 2rem;
     }
 
-    .logo {
-      font-family: 'Cinzel', serif;
-      font-size: 4rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--gold), var(--gold-soft), var(--gold));
-      background-size: 300% 300%;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: shimmerRotate 6s linear infinite;
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-
-    @keyframes shimmerRotate {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    .subtitle {
-      text-align: center;
-      font-size: 1.25rem;
-      color: var(--text-secondary);
-      margin-bottom: 2rem;
-    }
-
-    .card {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
-      backdrop-filter: blur(10px);
+    .header {
+      background: var(--glass-dark);
       border: 1px solid var(--border-light);
-      border-radius: 12px;
+      border-radius: var(--radius-lg);
       padding: 2rem;
       margin-bottom: 2rem;
-      box-shadow: 0 0 10px rgba(255, 215, 130, 0.05);
+      text-align: center;
       position: relative;
       overflow: hidden;
     }
 
-    .card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: linear-gradient(
-        120deg,
-        rgba(255, 215, 130, 0) 30%,
-        rgba(255, 215, 130, 0.2) 50%,
-        rgba(255, 215, 130, 0) 70%
-      );
-      transform: rotate(30deg);
-      animation: sheen 6s infinite linear;
-      pointer-events: none;
+    .logo {
+      font-family: 'Cinzel', serif;
+      font-size: 3.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 50%, var(--gold) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(229, 200, 138, 0.3);
     }
 
-    @keyframes sheen {
-      0% { transform: translateX(-100%) rotate(30deg); }
-      100% { transform: translateX(100%) rotate(30deg); }
+    .subtitle {
+      font-size: 1.25rem;
+      color: var(--text-secondary);
+      margin-top: 1rem;
+    }
+
+    .status-badge {
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--warning);
+      margin-right: 8px;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      margin-bottom: 1.5rem;
     }
 
     .card-title {
-      font-family: 'Cinzel', serif;
-      font-size: 1.75rem;
-      margin-bottom: 1rem;
+      font-size: 1.5rem;
+      font-weight: 600;
       color: var(--gold);
+      margin-bottom: 0.5rem;
     }
 
+    .fade-in {
+      animation: fadeIn 0.4s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      color: var(--deep-navy);
+      border: 1px solid var(--gold);
+      padding: 0.6rem 1.2rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .btn:hover {
+      background: var(--gold-light);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-secondary {
+      background: var(--glass-dark);
+      color: var(--text-secondary);
+      border-color: var(--border-hover);
+    }
+
+    .btn-secondary:hover {
+      background: var(--glass-light);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
     .form-group {
       margin-bottom: 1rem;
     }
@@ -115,473 +189,525 @@
     .form-label {
       display: block;
       margin-bottom: 0.5rem;
-      color: var(--text-secondary);
+      color: var(--gold-accent);
+      font-weight: 500;
     }
 
     .form-input, .form-select {
       width: 100%;
-      padding: 0.75rem 1rem;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
       background: var(--glass-light);
       border: 1px solid var(--border-light);
       color: var(--text-primary);
-      border-radius: 8px;
       font-size: 1rem;
-      transition: border 0.3s ease;
+      transition: border 0.2s ease;
     }
 
     .form-input:focus, .form-select:focus {
-      border-color: var(--gold);
+      border: 1px solid var(--gold);
       outline: none;
-      box-shadow: 0 0 0 2px rgba(255, 215, 130, 0.3);
     }
 
-    .btn {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--gold-deep), var(--gold));
-      color: #111;
-      font-weight: 600;
-      padding: 0.75rem 1.5rem;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    }
-
-    .btn:hover {
-      box-shadow: 0 0 12px rgba(255, 215, 130, 0.4);
-    }
-
-    .btn-block {
-      width: 100%;
+    .grid {
+      display: grid;
+      gap: 1.5rem;
     }
 
     .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     }
 
-    .hidden {
-      display: none !important;
+    .grid-3 {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     }
 
+    .pill {
+      display: inline-block;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.8rem;
+      border-radius: 9999px;
+      color: white;
+    }
+
+    .pill.waiting {
+      background-color: var(--info);
+    }
+
+    .pill.active {
+      background-color: var(--success);
+    }
+
+    .pill.ended {
+      background-color: var(--danger);
+    }
+
+    .log-container {
+      max-height: 300px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+
+    .log-entry {
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+      border-bottom: 1px solid var(--border-light);
+      padding-bottom: 4px;
+    }
+
+    .log-time {
+      color: var(--text-muted);
+      margin-right: 6px;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .modal-content {
+      background: var(--glass-dark);
+      padding: 2rem;
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 500px;
+      border: 1px solid var(--border-light);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: var(--gold);
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-light);
+      text-align: left;
+      color: var(--text-primary);
+    }
+
+    th {
+      color: var(--text-secondary);
+    }
+
+    .btn-sm {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+    }
+
+    .text-muted {
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1 class="logo">Pyxis</h1>
-    <p class="subtitle">전투 시스템 관리자 패널</p>
-    <!-- 인증 카드 -->
-    <div class="card" id="authCard">
-      <h2 class="card-title">관리자 인증</h2>
+    <header class="header fade-in">
+      <h1 class="logo">Pyxis</h1>
+      <p class="subtitle">실시간 전투 관리 시스템</p>
+      <div class="status-badge">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="serverStatus">서버 연결 중...</span>
+      </div>
+    </header>
+
+    <!-- 인증 화면 -->
+    <section id="authScreen" class="card fade-in">
+      <div class="card-header">
+        <h2 class="card-title">관리자 인증</h2>
+      </div>
       <div class="form-group">
         <label class="form-label" for="battleId">전투 ID</label>
-        <input class="form-input" id="battleId" type="text" placeholder="전투 ID를 입력하세요" />
+        <input type="text" id="battleId" class="form-input" placeholder="전투 ID를 입력하세요">
       </div>
       <div class="form-group">
         <label class="form-label" for="adminOtp">관리자 OTP</label>
-        <input class="form-input" id="adminOtp" type="text" placeholder="OTP를 입력하세요" />
+        <input type="text" id="adminOtp" class="form-input" placeholder="관리자 OTP를 입력하세요">
       </div>
-      <button class="btn btn-block" id="btnAuth">인증하기</button>
-    </div>
-
-    <!-- 관리자 제어 섹션 -->
-    <div id="adminSection" class="hidden">
-      <div class="grid-2">
-        <!-- 전투 생성 -->
-        <div class="card">
-          <h2 class="card-title">새 전투 생성</h2>
-          <div class="form-group">
-            <label class="form-label" for="battleMode">전투 모드</label>
-            <select class="form-select" id="battleMode">
-              <option value="1v1">1 vs 1</option>
-              <option value="2v2">2 vs 2</option>
-              <option value="3v3">3 vs 3</option>
-              <option value="4v4">4 vs 4</option>
-            </select>
-          </div>
-          <button class="btn btn-block" id="btnCreateBattle">전투 생성</button>
-        </div>
-
-        <!-- 링크 복사 -->
-        <div class="card">
-          <h2 class="card-title">링크 복사</h2>
-          <div class="form-group">
-            <label class="form-label">관리자</label>
-            <input class="form-input" id="adminLink" readonly />
-          </div>
-          <div class="form-group">
-            <label class="form-label">팀 1</label>
-            <input class="form-input" id="team1Link" readonly />
-          </div>
-          <div class="form-group">
-            <label class="form-label">팀 2</label>
-            <input class="form-input" id="team2Link" readonly />
-          </div>
-          <div class="form-group">
-            <label class="form-label">관전자</label>
-            <input class="form-input" id="spectatorLink" readonly />
-          </div>
-          <button class="btn btn-block" id="btnGenerateLinks">링크 생성</button>
-        </div>
+      <button id="btnAuth" class="btn" style="width: 100%;">관리자 인증</button>
+      <div class="alert alert-info" style="margin-top: 1rem;">
+        관리자 OTP는 전투 생성 시 자동 발급됩니다.<br>인증 후 전체 패널이 열립니다.
       </div>
-      <!-- 전투 상태 & 제어 -->
-      <div class="grid-2" style="margin-top: 2rem;">
-        <!-- 현재 전투 정보 -->
-        <div class="card" id="currentBattleCard">
-          <h2 class="card-title">현재 전투 정보</h2>
-          <div id="currentBattleInfo">
-            <p class="text-muted">전투를 선택하거나 생성하세요.</p>
+    </section>
+    <!-- 관리자 화면 -->
+    <section id="adminScreen" class="hidden">
+      <!-- 전투 생성 -->
+      <div class="grid grid-2">
+        <div class="card fade-in">
+          <div class="card-header">
+            <h2 class="card-title">전투 생성</h2>
+          </div>
+          <div class="card-content">
+            <div class="form-group">
+              <label class="form-label" for="battleMode">전투 모드</label>
+              <select id="battleMode" class="form-select">
+                <option value="1v1">1 vs 1</option>
+                <option value="2v2">2 vs 2</option>
+                <option value="3v3">3 vs 3</option>
+                <option value="4v4">4 vs 4</option>
+              </select>
+            </div>
+            <button id="btnCreateBattle" class="btn btn-primary" style="width: 100%;">전투 생성</button>
           </div>
         </div>
 
-        <!-- 전투 제어 -->
-        <div class="card">
-          <h2 class="card-title">전투 제어</h2>
-          <button class="btn btn-success btn-block" id="btnStartBattle" disabled>전투 시작</button>
-          <button class="btn btn-warning btn-block" id="btnPauseBattle" disabled>일시정지</button>
-          <button class="btn btn-danger btn-block" id="btnEndBattle" disabled>전투 종료</button>
-          <button class="btn btn-outline btn-block" id="btnRefreshBattles">전투 목록 새로고침</button>
+        <div class="card fade-in">
+          <div class="card-header">
+            <h2 class="card-title">현재 전투 정보</h2>
+          </div>
+          <div class="card-content" id="currentBattleInfo">
+            <p class="text-muted">전투를 선택하거나 생성 후 인증하세요.</p>
+          </div>
         </div>
       </div>
 
-      <!-- 전투 목록 테이블 -->
-      <div class="card" style="margin-top: 2rem;">
-        <h2 class="card-title">전투 목록</h2>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>모드</th>
-              <th>상태</th>
-              <th>플레이어</th>
-              <th>생성 시간</th>
-              <th>작업</th>
-            </tr>
-          </thead>
-          <tbody id="battlesTableBody">
-            <tr>
-              <td colspan="6" style="text-align:center; color: var(--text-muted);">
-                로딩 중...
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 실시간 로그 -->
-      <div class="grid-2" style="margin-top: 2rem;">
-        <div class="card">
-          <h2 class="card-title">전투 로그</h2>
-          <div class="log-box" id="battleLog">
-            <div class="log-entry">[시스템] 관리자 페이지 로드됨</div>
+      <!-- 전투 제어 -->
+      <div class="grid grid-3">
+        <div class="card fade-in">
+          <div class="card-header">
+            <h2 class="card-title">전투 제어</h2>
           </div>
-          <button class="btn btn-outline btn-sm" id="btnClearLog" style="margin-top: 1rem;">로그 지우기</button>
-        </div>
-
-        <!-- 액션 히스토리 -->
-        <div class="card">
-          <h2 class="card-title">플레이어 액션 히스토리</h2>
-          <div class="log-box" id="actionHistory">
-            <div class="log-entry">[시스템] 기록 대기 중...</div>
+          <div class="card-content">
+            <button id="btnStartBattle" class="btn btn-success" disabled>전투 시작</button>
+            <button id="btnPauseBattle" class="btn btn-warning" disabled>일시 정지</button>
+            <button id="btnEndBattle" class="btn btn-danger" disabled>전투 종료</button>
           </div>
         </div>
+
+        <div class="card fade-in">
+          <div class="card-header">
+            <h2 class="card-title">링크 관리</h2>
+          </div>
+          <div class="card-content">
+            <button id="btnGenerateLinks" class="btn btn-primary" disabled>링크 생성</button>
+            <button id="btnRefreshOtp" class="btn btn-secondary" disabled>OTP 갱신</button>
+          </div>
+        </div>
+
+        <div class="card fade-in">
+          <div class="card-header">
+            <h2 class="card-title">연결 상태</h2>
+          </div>
+          <div class="card-content" id="connectionStats">
+            <div style="display: flex; justify-content: space-between;">
+              <span>플레이어:</span>
+              <span id="playerCount">0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>관전자:</span>
+              <span id="spectatorCount">0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>관리자:</span>
+              <span id="adminCount">1</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <!-- 전투 목록 -->
+      <div class="card fade-in" style="margin-top: 2rem;">
+        <div class="card-header">
+          <h2 class="card-title">전투 목록</h2>
+          <button id="btnRefreshBattles" class="btn btn-secondary btn-sm" style="float: right;">새로고침</button>
+        </div>
+        <div class="card-content">
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>모드</th>
+                  <th>상태</th>
+                  <th>플레이어</th>
+                  <th>생성 시간</th>
+                  <th>작업</th>
+                </tr>
+              </thead>
+              <tbody id="battlesTableBody">
+                <tr><td colspan="6" style="text-align:center;">로딩 중...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- 플레이어 목록 (팀별 정렬) -->
+      <div class="card fade-in" style="margin-top: 2rem;">
+        <div class="card-header">
+          <h2 class="card-title">플레이어 목록</h2>
+        </div>
+        <div class="card-content" id="playerList">
+          <div class="team-group" id="team1Players">
+            <h3 class="team-title">불사조 기사단</h3>
+            <ul class="player-list"></ul>
+          </div>
+          <div class="team-group" id="team2Players">
+            <h3 class="team-title">죽음을 먹는 자들</h3>
+            <ul class="player-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 실시간 로그 / 감사 추적 -->
+      <div class="card fade-in" style="margin-top: 2rem;">
+        <div class="card-header">
+          <h2 class="card-title">전투 로그 / 관리자 감사</h2>
+          <button id="btnClearLog" class="btn btn-secondary btn-sm" style="float: right;">로그 초기화</button>
+        </div>
+        <div class="card-content log-area" id="battleLog">
+          <div class="log-entry">
+            <span class="log-time">[시스템]</span>
+            <span class="log-system">관리자 패널이 로드되었습니다.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 링크 복사 모달 -->
+      <div id="linkModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title">링크 복사</h3>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('linkModal').classList.add('hidden')">닫기</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">관리자 링크</label>
+              <input type="text" id="adminLink" class="form-input" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">팀 1 플레이어 링크</label>
+              <input type="text" id="team1Link" class="form-input" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">팀 2 플레이어 링크</label>
+              <input type="text" id="team2Link" class="form-input" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">관전자 링크</label>
+              <input type="text" id="spectatorLink" class="form-input" readonly>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 <script>
-  'use strict';
+'use strict';
 
-  const qs = (s) => document.querySelector(s);
-  const qsa = (s) => document.querySelectorAll(s);
+const qs = (s) => document.querySelector(s);
+const qsa = (s) => document.querySelectorAll(s);
 
-  let socket;
-  let currentBattleId = '';
+let currentBattleId = '';
+let socket;
 
-  const battleIdInput = qs('#battleId');
-  const otpInput = qs('#adminOtp');
-  const btnAuth = qs('#btnAuth');
-  const authScreen = qs('#authScreen');
-  const adminScreen = qs('#adminScreen');
+const serverStatus = qs('#serverStatus');
+const battleIdInput = qs('#battleId');
+const otpInput = qs('#adminOtp');
+const btnAuth = qs('#btnAuth');
+const authSection = qs('#authScreen');
+const adminSection = qs('#adminScreen');
+const btnCreate = qs('#btnCreateBattle');
+const battleMode = qs('#battleMode');
+const currentBattleInfo = qs('#currentBattleInfo');
+const btnStart = qs('#btnStartBattle');
+const btnPause = qs('#btnPauseBattle');
+const btnEnd = qs('#btnEndBattle');
+const btnLinks = qs('#btnGenerateLinks');
+const btnRefresh = qs('#btnRefreshBattles');
+const btnClearLog = qs('#btnClearLog');
+const battleLog = qs('#battleLog');
 
-  const currentBattleInfo = qs('#currentBattleInfo');
-  const btnStart = qs('#btnStartBattle');
-  const btnPause = qs('#btnPauseBattle');
-  const btnEnd = qs('#btnEndBattle');
-  const btnRefresh = qs('#btnRefreshBattles');
-  const btnClearLog = qs('#btnClearLog');
-  const logBox = qs('#battleLog');
-  const actionHistory = qs('#actionHistory');
+const modal = qs('#linkModal');
+const adminLink = qs('#adminLink');
+const team1Link = qs('#team1Link');
+const team2Link = qs('#team2Link');
+const spectatorLink = qs('#spectatorLink');
 
-  const battlesTable = qs('#battlesTableBody');
+const team1Players = qs('#team1Players ul');
+const team2Players = qs('#team2Players ul');
 
-  function log(message) {
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
-    logBox.appendChild(entry);
-    logBox.scrollTop = logBox.scrollHeight;
+// 인증
+btnAuth.addEventListener('click', async () => {
+  const id = battleIdInput.value.trim();
+  const otp = otpInput.value.trim();
+
+  if (!id || !otp) {
+    alert('전투 ID와 OTP를 입력하세요.');
+    return;
   }
 
-  function recordAction(text) {
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.innerHTML = `<span>${new Date().toLocaleTimeString()}</span> - ${text}`;
-    actionHistory.appendChild(entry);
-    actionHistory.scrollTop = actionHistory.scrollHeight;
-  }
-
-  async function fetchBattle(id) {
+  try {
     const res = await fetch(`/api/battles/${id}`);
-    if (!res.ok) throw new Error('전투 정보 조회 실패');
-    return res.json();
-  }
+    if (!res.ok) throw new Error();
 
-  btnAuth.addEventListener('click', async () => {
-    const id = battleIdInput.value.trim();
-    const otp = otpInput.value.trim();
+    socket = io({ path: '/socket.io/' });
+    socket.emit('adminAuth', { battleId: id, otp });
 
-    if (!id || !otp) return alert('전투 ID와 OTP를 입력하세요.');
-
-    try {
-      await fetchBattle(id);
-      socket = io({ path: '/socket.io/' });
-
-      socket.emit('adminAuth', { battleId: id, otp });
-
-      socket.on('authSuccess', (data) => {
-        currentBattleId = id;
-        authScreen.classList.add('hidden');
-        adminScreen.classList.remove('hidden');
-        updateCurrentBattle(data.battle);
-        log('관리자 인증 성공');
-      });
-
-      socket.on('authError', () => {
-        alert('인증 실패');
-      });
-
-      socket.on('battleUpdate', updateCurrentBattle);
-      socket.on('chatMessage', ({ message }) => recordAction(`💬 ${message.sender}: ${message.message}`));
-      socket.on('playerAction', ({ playerId, action }) => {
-        recordAction(`🗡️ ${playerId} - ${action}`);
-      });
-
-    } catch (err) {
-      alert('전투를 찾을 수 없습니다.');
-    }
-  });
-
-  btnStart.addEventListener('click', () => control('start'));
-  btnPause.addEventListener('click', () => control('pause'));
-  btnEnd.addEventListener('click', () => control('end'));
-  btnClearLog.addEventListener('click', () => logBox.innerHTML = '');
-  btnRefresh.addEventListener('click', refreshBattles);
-
-  async function control(cmd) {
-    if (!currentBattleId) return;
-    await fetch(`/api/admin/battles/${currentBattleId}/${cmd}`, { method: 'POST' });
-    log(`전투 ${cmd} 명령 전송`);
-  }
-
-  async function refreshBattles() {
-    const res = await fetch('/api/battles');
-    const data = await res.json();
-
-    battlesTable.innerHTML = data.battles.map(b => `
-      <tr>
-        <td>${b.id.slice(0, 8)}...</td>
-        <td>${b.mode}</td>
-        <td>${b.status}</td>
-        <td>${b.playerCount}</td>
-        <td>${new Date(b.createdAt).toLocaleString()}</td>
-        <td><button onclick="selectBattle('${b.id}')">선택</button></td>
-      </tr>
-    `).join('');
-  }
-
-  window.selectBattle = (id) => {
-    battleIdInput.value = id;
-    alert('전투 ID가 입력되었습니다. OTP를 입력하세요.');
-  };
-
-  function updateCurrentBattle(battle) {
-    currentBattleInfo.innerHTML = `
-      <p><strong>ID:</strong> ${battle.id}</p>
-      <p><strong>모드:</strong> ${battle.mode}</p>
-      <p><strong>상태:</strong> ${battle.status}</p>
-      <p><strong>플레이어 수:</strong> ${battle.playerCount}</p>
-    `;
-
-    btnStart.disabled = false;
-    btnPause.disabled = false;
-    btnEnd.disabled = false;
-    log(`전투 상태 업데이트됨 (${battle.status})`);
-  }
-
-  // 자동 파라미터 인증
-  window.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('battle');
-    const otp = urlParams.get('token');
-
-    if (id && otp) {
-      battleIdInput.value = id;
-      otpInput.value = otp;
-      btnAuth.click();
-    }
-  });
-</script>
-<script>
-  'use strict';
-
-  const qs = (s) => document.querySelector(s);
-  const qsa = (s) => document.querySelectorAll(s);
-
-  let socket;
-  let currentBattleId = '';
-
-  const battleIdInput = qs('#battleId');
-  const otpInput = qs('#adminOtp');
-  const btnAuth = qs('#btnAuth');
-  const authScreen = qs('#authScreen');
-  const adminScreen = qs('#adminScreen');
-
-  const currentBattleInfo = qs('#currentBattleInfo');
-  const btnStart = qs('#btnStartBattle');
-  const btnPause = qs('#btnPauseBattle');
-  const btnEnd = qs('#btnEndBattle');
-  const btnRefresh = qs('#btnRefreshBattles');
-  const btnClearLog = qs('#btnClearLog');
-  const logBox = qs('#battleLog');
-  const actionHistory = qs('#actionHistory');
-
-  const battlesTable = qs('#battlesTableBody');
-
-  function log(message) {
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
-    logBox.appendChild(entry);
-    logBox.scrollTop = logBox.scrollHeight;
-  }
-
-  function recordAction(text) {
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.innerHTML = `<span>${new Date().toLocaleTimeString()}</span> - ${text}`;
-    actionHistory.appendChild(entry);
-    actionHistory.scrollTop = actionHistory.scrollHeight;
-  }
-
-  async function fetchBattle(id) {
-    const res = await fetch(`/api/battles/${id}`);
-    if (!res.ok) throw new Error('전투 정보 조회 실패');
-    return res.json();
-  }
-
-  btnAuth.addEventListener('click', async () => {
-    const id = battleIdInput.value.trim();
-    const otp = otpInput.value.trim();
-
-    if (!id || !otp) return alert('전투 ID와 OTP를 입력하세요.');
-
-    try {
-      await fetchBattle(id);
-      socket = io({ path: '/socket.io/' });
-
-      socket.emit('adminAuth', { battleId: id, otp });
-
-      socket.on('authSuccess', (data) => {
-        currentBattleId = id;
-        authScreen.classList.add('hidden');
-        adminScreen.classList.remove('hidden');
-        updateCurrentBattle(data.battle);
-        log('관리자 인증 성공');
-      });
-
-      socket.on('authError', () => {
-        alert('인증 실패');
-      });
-
-      socket.on('battleUpdate', updateCurrentBattle);
-      socket.on('chatMessage', ({ message }) => recordAction(`💬 ${message.sender}: ${message.message}`));
-      socket.on('playerAction', ({ playerId, action }) => {
-        recordAction(`🗡️ ${playerId} - ${action}`);
-      });
-
-    } catch (err) {
-      alert('전투를 찾을 수 없습니다.');
-    }
-  });
-
-  btnStart.addEventListener('click', () => control('start'));
-  btnPause.addEventListener('click', () => control('pause'));
-  btnEnd.addEventListener('click', () => control('end'));
-  btnClearLog.addEventListener('click', () => logBox.innerHTML = '');
-  btnRefresh.addEventListener('click', refreshBattles);
-
-  async function control(cmd) {
-    if (!currentBattleId) return;
-    await fetch(`/api/admin/battles/${currentBattleId}/${cmd}`, { method: 'POST' });
-    log(`전투 ${cmd} 명령 전송`);
-  }
-
-  async function refreshBattles() {
-    const res = await fetch('/api/battles');
-    const data = await res.json();
-
-    battlesTable.innerHTML = data.battles.map(b => `
-      <tr>
-        <td>${b.id.slice(0, 8)}...</td>
-        <td>${b.mode}</td>
-        <td>${b.status}</td>
-        <td>${b.playerCount}</td>
-        <td>${new Date(b.createdAt).toLocaleString()}</td>
-        <td><button onclick="selectBattle('${b.id}')">선택</button></td>
-      </tr>
-    `).join('');
-  }
-
-  window.selectBattle = (id) => {
-    battleIdInput.value = id;
-    alert('전투 ID가 입력되었습니다. OTP를 입력하세요.');
-  };
-
-  function updateCurrentBattle(battle) {
-    currentBattleInfo.innerHTML = `
-      <p><strong>ID:</strong> ${battle.id}</p>
-      <p><strong>모드:</strong> ${battle.mode}</p>
-      <p><strong>상태:</strong> ${battle.status}</p>
-      <p><strong>플레이어 수:</strong> ${battle.playerCount}</p>
-    `;
-
-    btnStart.disabled = false;
-    btnPause.disabled = false;
-    btnEnd.disabled = false;
-    log(`전투 상태 업데이트됨 (${battle.status})`);
-  }
-
-  // 자동 파라미터 인증
-  window.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('battle');
-    const otp = urlParams.get('token');
-
-    if (id && otp) {
-      battleIdInput.value = id;
-      otpInput.value = otp;
-      btnAuth.click();
-    }
-  });
-</script>
-  <!-- 링크 복사 모달 닫기 처리 -->
-  <script>
-    document.querySelectorAll('.btn-secondary[onclick]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('onclick').match(/['"](.*?)['"]/)[1];
-        document.getElementById(targetId).classList.add('hidden');
-      });
+    socket.on('authSuccess', (data) => {
+      currentBattleId = id;
+      authSection.classList.add('hidden');
+      adminSection.classList.remove('hidden');
+      updateCurrentBattle(data.battle);
+      updatePlayers(data.battle.players);
+      log('관리자 인증 성공');
     });
-  </script>
+
+    socket.on('authError', () => alert('인증 실패'));
+
+    socket.on('battleUpdate', (data) => {
+      updateCurrentBattle(data);
+      updatePlayers(data.players);
+    });
+
+    socket.on('chat-message', (msg) => {
+      log(`[채팅] ${msg.sender}: ${msg.message}`);
+    });
+
+    socket.on('action-log', (entry) => {
+      log(`[액션] ${entry.player} → ${entry.action} (${entry.target || ''})`);
+    });
+
+  } catch {
+    alert('전투를 찾을 수 없습니다.');
+  }
+});
+
+// 전투 생성
+btnCreate.addEventListener('click', async () => {
+  const res = await fetch('/api/battles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: battleMode.value })
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    battleIdInput.value = data.battle.id;
+    otpInput.value = data.battle.otps.admin;
+    alert('전투 생성됨. 인증을 진행해주세요.');
+  } else {
+    alert('생성 실패');
+  }
+});
+
+// 제어
+btnStart.addEventListener('click', () => control('start'));
+btnPause.addEventListener('click', () => control('pause'));
+btnEnd.addEventListener('click', () => control('end'));
+
+async function control(type) {
+  if (!currentBattleId) return alert('인증이 필요합니다');
+  await fetch(`/api/admin/battles/${currentBattleId}/${type}`, { method: 'POST' });
+  log(`전투 ${type} 명령 전송`);
+}
+
+// 링크
+btnLinks.addEventListener('click', async () => {
+  if (!currentBattleId) return alert('전투 ID 없음');
+
+  const res = await fetch(`/api/admin/battles/${currentBattleId}/links`, { method: 'POST' });
+  const data = await res.json();
+
+  adminLink.value = data.urls.admin;
+  team1Link.value = data.urls.team1;
+  team2Link.value = data.urls.team2;
+  spectatorLink.value = data.urls.spectator;
+
+  modal.classList.remove('hidden');
+});
+
+// 목록 새로고침
+btnRefresh.addEventListener('click', async () => {
+  const res = await fetch('/api/battles');
+  const data = await res.json();
+
+  const tbody = document.getElementById('battlesTableBody');
+  tbody.innerHTML = data.battles.map(b => `
+    <tr>
+      <td>${b.id.slice(0, 8)}...</td>
+      <td>${b.mode}</td>
+      <td>${b.status}</td>
+      <td>${b.playerCount}</td>
+      <td>${new Date(b.createdAt).toLocaleString()}</td>
+      <td><button onclick="selectBattle('${b.id}')">선택</button></td>
+    </tr>
+  `).join('');
+});
+
+window.selectBattle = (id) => {
+  battleIdInput.value = id;
+  alert('전투 ID가 입력되었습니다. OTP를 입력하세요.');
+};
+
+btnClearLog.addEventListener('click', () => battleLog.innerHTML = '');
+
+// 업데이트 함수들
+function updateCurrentBattle(battle) {
+  currentBattleInfo.innerHTML = `
+    <p>ID: ${battle.id}</p>
+    <p>모드: ${battle.mode}</p>
+    <p>상태: ${battle.status}</p>
+    <p>플레이어 수: ${battle.playerCount}</p>
+  `;
+}
+
+function updatePlayers(players = []) {
+  team1Players.innerHTML = '';
+  team2Players.innerHTML = '';
+  players.forEach(p => {
+    const li = document.createElement('li');
+    li.textContent = `${p.name} (${p.hp} HP)`;
+    if (p.team === 1) {
+      team1Players.appendChild(li);
+    } else {
+      team2Players.appendChild(li);
+    }
+  });
+}
+
+function log(message) {
+  const entry = document.createElement('div');
+  entry.classList.add('log-entry');
+  const time = new Date().toLocaleTimeString();
+  entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+  battleLog.appendChild(entry);
+  battleLog.scrollTop = battleLog.scrollHeight;
+}
+
+// 초기 상태
+(async () => {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    serverStatus.textContent = data.status === 'OK' ? '온라인' : '오프라인';
+  } catch {
+    serverStatus.textContent = '연결 실패';
+  }
+})();
+</script>
 </body>
 </html>
