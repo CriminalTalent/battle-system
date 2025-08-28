@@ -1,46 +1,27 @@
 {
   "name": "battle-system",
   "version": "2.0.0",
-  "description": "실시간 멀티플레이어 턴제 전투 시스템 - 민첩성 기반 이니셔티브, Socket.IO 실시간 동기화, 전술적 아이템 시스템",
+  "description": "실시간 멀티플레이어 턴제 전투 시스템 (Express + Socket.IO)",
   "private": true,
-  "workspaces": [
-    "packages/battle-server"
-  ],
+  "workspaces": ["packages/battle-server"],
   "scripts": {
+    "setup": "npm install",
     "dev": "npm --workspace packages/battle-server run dev",
     "start": "npm --workspace packages/battle-server run start",
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "lint": "eslint \"packages/*/src/**/*.{js,jsx}\" \"packages/battle-server/*.js\"",
-    "lint:fix": "eslint \"packages/*/src/**/*.{js,jsx}\" \"packages/battle-server/*.js\" --fix",
-    "format": "prettier --write \"packages/*/src/**/*.{js,jsx,ts,tsx,json,md}\" \"packages/battle-server/*.js\"",
-    "clean": "rimraf packages/*/node_modules packages/*/build packages/*/dist node_modules",
-
-    "setup": "npm install && npm install --workspaces",
-    "dev:server": "npm --workspace packages/battle-server run dev",
-    "start:server": "npm --workspace packages/battle-server run start",
-
-    "docker:build": "docker compose build",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
-
-    "deploy": "pm2 restart battle-server --update-env && pm2 save",
-    "pm2:start": "pm2 start ecosystem.config.js",
-    "pm2:stop": "pm2 stop ecosystem.config.js",
-    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:start": "pm2 start ecosystem.config.js --only battle-server --sticky && pm2 save",
+    "pm2:restart": "pm2 restart battle-server --update-env",
+    "pm2:stop": "pm2 stop battle-server",
     "pm2:logs": "pm2 logs battle-server",
     "pm2:status": "pm2 status",
-
-    "health": "curl http://localhost:3001/api/health || echo 'Server not running'",
-    "update-github": "chmod +x scripts/update-github.sh && ./scripts/update-github.sh"
+    "health": "curl -fsS http://127.0.0.1:3001/api/health || echo 'Server not running'",
+    "lint": "eslint \"packages/battle-server/src/**/*.js\" \"packages/battle-server/*.js\"",
+    "lint:fix": "eslint \"packages/battle-server/src/**/*.js\" \"packages/battle-server/*.js\" --fix",
+    "format": "prettier --write \"packages/battle-server/**/*.{js,json,md}\"",
+    "clean": "rimraf node_modules packages/*/node_modules"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-react": "^7.34.1",
-    "eslint-plugin-react-hooks": "^4.6.2",
     "prettier": "^3.2.5",
     "rimraf": "^5.0.5"
   },
@@ -54,21 +35,14 @@
   },
   "keywords": [
     "battle-system",
-    "team-battle",
-    "realtime",
-    "multiplayer",
     "socket.io",
     "express",
     "turn-based",
-    "initiative",
-    "agility-based",
-    "tactical",
+    "realtime",
+    "multiplayer",
     "pvp",
     "korean",
-    "websocket",
-    "game-engine",
-    "pm2",
-    "docker"
+    "pm2"
   ],
   "author": {
     "name": "CriminalTalent",
