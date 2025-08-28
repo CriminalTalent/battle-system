@@ -102,12 +102,10 @@
   'use strict';
 
   const $ = (s)=>document.querySelector(s);
-  const originBase = location.origin;
 
   let socket = null;
   let battleId = null;
   let playerId = null;
-  let playerOtp = null;
   let pollTimer = null;
 
   // ─────────────────────────────────────────────────────────────────
@@ -196,7 +194,6 @@
     }
 
     battleId = bid;
-    playerOtp = otp;
 
     // 플레이어 등록 REST (서버 응답 형태를 넓게 수용)
     let payload;
@@ -220,10 +217,9 @@
     // 가능한 키에서 playerId 추출
     playerId = payload?.player?.id || payload?.playerId || payload?.id || null;
     if(!playerId){
-      // 일부 서버는 바로 전투 상태를 반환하지 않고 단순 ok만 줄 수 있음 → 전투 재조회로 보완
+      // 일부 서버는 전투 상태를 반환하지 않고 단순 ok만 줄 수 있으므로, 전투 재조회로 보완
       try{
         const fresh = await getBattle(battleId);
-        // 이름 일치 플레이어를 찾아서 id 확보 시도
         const all = [...(fresh.teams?.team1?.players||[]), ...(fresh.teams?.team2?.players||[])];
         const found = all.find(p => (p.name||'') === name);
         if(found) playerId = found.id;
@@ -234,74 +230,42 @@
       return;
     }
 
-    // 소켓 연결
+    // 소켓 연결 (현재 서버는 플레이어 전용 소켓 이벤트가 없으므로, 수신 전용으로만 연결)
     connectSocket();
-    showBattle();
 
-    // 최초 상태 표시
+    // 화면 전환 및 상태 표시
+    showBattle();
     try{ renderBattle(await getBattle(battleId)); }catch{}
-    // 폴백 폴링 시작(서버가 battleUpdate를 안 보내는 경우 대비)
+
+    // 폴백 폴링 시작(서버가 battleUpdate를 보내지 않는 경우 대비)
     startPolling();
   }
 
   function connectSocket(){
     try{
       if(socket){ try{ socket.disconnect(); }catch{} socket=null; }
-      socket = io({transports:['websocket','polling']});
+      // 서버 설정과 동일한 경로 사용 (nginx와 일치)
+      socket = io({ path:'/socket.io/', transports:['websocket','polling'] });
 
-      socket.on('connect', ()=>{
-        // 서버가 playerAuth를 지원하는 경우
-        try{
-          socket.emit('playerAuth', { battleId, otp: playerOtp, playerId });
-        }catch{}
-      });
-
-      socket.on('authSuccess', (data)=>{
-        if(data?.battle) renderBattle(data.battle);
-      });
-      socket.on('authError', (msg)=>{
-        console.warn('인증 실패:', msg);
-      });
-
-      socket.on('battleUpdate', (battle)=>{
-        renderBattle(battle);
-      });
-
-      socket.on('actionError', (msg)=> alert(`행동 실패: ${msg}`));
-
-      socket.on('connect_error', (err)=>{
-        console.warn('소켓 연결 오류:', err?.message || err);
-      });
+      // 서버가 플레이어 관련 이벤트를 제공하지 않아도 오류 없이 대기
+      socket.on('battleUpdate', (battle)=>{ renderBattle(battle); });
+      socket.on('connect_error', (err)=>{ console.warn('소켓 연결 오류:', err?.message || err); });
     }catch(e){
       console.warn('소켓 초기화 실패:', e?.message || e);
     }
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 액션
+  // 액션 (현재 서버 미구현 안내)
   // ─────────────────────────────────────────────────────────────────
-  function sendActionViaSocket(action){
-    if(!socket || socket.disconnected){
-      alert('실시간 액션이 비활성화되어 있습니다. 서버의 소켓 핸들러를 확인하세요.');
-      return;
-    }
-    socket.emit('playerAction', { battleId, playerId, action });
+  function notImplemented(){
+    alert('현재 서버에 플레이어 행동 API/소켓이 구현되어 있지 않습니다.\n관리자 페이지에서 전투만 관리할 수 있습니다.');
   }
-
-  async function doAttack(){
-    const targetId = prompt('공격 대상의 플레이어 ID를 입력하세요.');
-    if(!targetId) return;
-    sendActionViaSocket({ type:'attack', targetId });
-  }
-  function doDefend(){ sendActionViaSocket({ type:'defend' }); }
-  function doDodge(){  sendActionViaSocket({ type:'dodge'  }); }
-  function doItem(){
-    const itemType = prompt('아이템 이름을 입력하세요 (공격 보정기, 방어 보정기, 디터니)');
-    if(!itemType) return;
-    const targetId = prompt('아이템 대상 플레이어 ID(자기 자신 사용이면 비워두기)');
-    sendActionViaSocket({ type:'item', itemType, targetId: targetId || undefined });
-  }
-  function doPass(){   sendActionViaSocket({ type:'pass'   }); }
+  function doAttack(){ notImplemented(); }
+  function doDefend(){ notImplemented(); }
+  function doDodge(){  notImplemented(); }
+  function doItem(){   notImplemented(); }
+  function doPass(){   notImplemented(); }
 
   // ─────────────────────────────────────────────────────────────────
   // 바인딩 / 부트
@@ -320,7 +284,7 @@
     if(p.name)   $('#playerName').value = p.name;
     if(p.team && (p.team==='team1' || p.team==='team2')) $('#teamSelect').value = p.team;
 
-    // 쿼리에 battle과 token과 name이 있으면 자동 참가 시도(사용자 편의)
+    // 쿼리에 battle과 token과 name이 있으면 자동 참가 시도
     if($('#battleId').value && $('#otp').value && $('#playerName').value){
       joinBattle();
     }
