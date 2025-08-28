@@ -46,10 +46,9 @@ server {
     location = /play  { try_files /play.html  =404; }
     location = /watch { try_files /watch.html =404; }
 
-    # ✅ 방법 A: /api/admin/**  ->  (백엔드) /admin/**
-    #    프론트는 /api/admin/... 로 호출, 백엔드는 /admin/... 라우트만 가짐
+    # ✅ /api/admin/**  -> 백엔드도 /api/admin/** 로 전달 (프리픽스 유지)
     location /api/admin/ {
-        proxy_pass http://127.0.0.1:3001/admin/;  # 뒤의 / 로 /api/admin 프리픽스 제거
+        proxy_pass http://127.0.0.1:3001;  # 원본 URI 그대로 전달
         proxy_http_version 1.1;
 
         proxy_set_header Host              $host;
@@ -80,12 +79,12 @@ server {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
 
-        proxy_set_header Upgrade            $http_upgrade;
-        proxy_set_header Connection         $connection_upgrade;
-        proxy_set_header Host               $host;
-        proxy_set_header X-Real-IP          $remote_addr;
-        proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto  $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
 
         proxy_read_timeout 300;
         proxy_send_timeout 300;
