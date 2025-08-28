@@ -16,117 +16,45 @@
       --radius: 12px;
       --font-serif: 'Cinzel', serif;
     }
-
-    * {
-      box-sizing: border-box;
+    *{ box-sizing: border-box; }
+    body{
+      margin:0; padding:0; background:var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;
+      color:var(--ink);
     }
-
-    body {
-      margin: 0;
-      padding: 0;
-      background: var(--bg);
-      font-family: system-ui, sans-serif;
-      color: var(--ink);
+    .container{ max-width:1200px; margin:auto; padding:20px; }
+    header{
+      font-family:var(--font-serif); font-size:32px; text-align:center; margin-bottom:16px;
+      background:linear-gradient(to right,#d8c278,#ffe5a2);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
     }
-
-    .container {
-      max-width: 1200px;
-      margin: auto;
-      padding: 20px;
+    .status-panel{
+      background:var(--panel); padding:16px; border-radius:var(--radius);
+      display:flex; justify-content:space-between; gap:20px;
+      border:1px solid var(--line); margin-bottom:20px;
     }
-
-    header {
-      font-family: var(--font-serif);
-      font-size: 32px;
-      text-align: center;
-      margin-bottom: 16px;
-      background: linear-gradient(to right, #d8c278, #ffe5a2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+    .status-panel div{ flex:1; font-size:14px; }
+    .board{ display:grid; grid-template-columns:1fr 2fr 1fr; gap:20px; }
+    .team-column{
+      background:var(--panel); padding:16px; border-radius:var(--radius);
+      border:1px solid var(--line);
     }
-
-    .status-panel {
-      background: var(--panel);
-      padding: 16px;
-      border-radius: var(--radius);
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-      border: 1px solid var(--line);
-      margin-bottom: 20px;
+    .team-column h3{ font-family:var(--font-serif); margin-bottom:12px; }
+    .team-member{ padding:6px 0; border-bottom:1px solid var(--line); }
+    .log-box{
+      background:var(--panel); padding:16px; height:280px; overflow-y:auto;
+      font-size:13px; border:1px solid var(--line); border-radius:var(--radius);
+      white-space:pre-wrap; line-height:1.4;
     }
-
-    .status-panel div {
-      flex: 1;
-      font-size: 14px;
+    .action-panel{ display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+    .action-panel button{
+      flex:1 1 45%; padding:12px; border-radius:var(--radius);
+      background:var(--accent); color:#000; font-weight:bold; border:none; cursor:pointer;
+      transition:all .2s ease;
     }
-
-    .board {
-      display: grid;
-      grid-template-columns: 1fr 2fr 1fr;
-      gap: 20px;
-    }
-
-    .team-column {
-      background: var(--panel);
-      padding: 16px;
-      border-radius: var(--radius);
-      border: 1px solid var(--line);
-    }
-
-    .team-column h3 {
-      font-family: var(--font-serif);
-      margin-bottom: 12px;
-    }
-
-    .team-member {
-      padding: 6px 0;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .log-box {
-      background: var(--panel);
-      padding: 16px;
-      height: 280px;
-      overflow-y: auto;
-      font-size: 13px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-    }
-
-    .action-panel {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 16px;
-    }
-
-    .action-panel button {
-      flex: 1 1 45%;
-      padding: 12px;
-      border-radius: var(--radius);
-      background: var(--accent);
-      color: #000;
-      font-weight: bold;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .action-panel button:hover {
-      background: #ffdd95;
-    }
-
-    .muted {
-      font-size: 12px;
-      color: var(--ink-dim);
-    }
-
-    @media(max-width: 800px) {
-      .board {
-        grid-template-columns: 1fr;
-      }
-    }
+    .action-panel button:hover{ background:#ffdd95; }
+    .muted{ font-size:12px; color:var(--ink-dim); }
+    @media(max-width: 800px){ .board{ grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -154,6 +82,7 @@
           <button id="btnItem">아이템</button>
           <button id="btnPass">턴 넘기기</button>
         </div>
+        <p class="muted" id="statusMsg"></p>
       </div>
 
       <div class="team-column" id="team2Panel">
@@ -161,408 +90,178 @@
         <div id="team2Players"></div>
       </div>
     </div>
-<script>
-(() => {
-  'use strict';
-
-  const $ = (s) => document.querySelector(s);
-  let socket = null;
-  let battleId = null;
-  let playerId = null;
-  let pollTimer = null;
-  let turnDeadline = null;
-
-  // ──────────────────────────────
-  // 유틸
-  // ──────────────────────────────
-  function escapeHtml(s = '') {
-    return s.replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m]));
-  }
-
-  function qs() {
-    const p = new URLSearchParams(location.search);
-    return {
-      battle: p.get('battle') || p.get('battleId') || p.get('b'),
-      token: p.get('token') || p.get('otp') || p.get('code') || p.get('t'),
-      name: p.get('name') || p.get('n'),
-      team: p.get('team') || p.get('tm')
-    };
-  }
-
-  async function getBattle(id) {
-    const r = await fetch(`/api/battles/${encodeURIComponent(id)}`);
-    if (!r.ok) throw new Error(`GET /api/battles/${id} → ${r.status}`);
-    return r.json();
-  }
-
-  function startPolling() {
-    stopPolling();
-    pollTimer = setInterval(async () => {
-      if (!battleId) return;
-      try {
-        renderBattle(await getBattle(battleId));
-      } catch {}
-    }, 3000);
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  }
-
-  // ──────────────────────────────
-  // 렌더링
-  // ──────────────────────────────
-  function renderBattle(b) {
-    if (!b) return;
-
-    $('#battleStatus').textContent = b.status || '-';
-    $('#currentTeam').textContent = b.currentTeam || '-';
-
-    const now = Date.now();
-    const deadline = b.turnDeadline || null;
-    if (deadline) {
-      turnDeadline = new Date(deadline).getTime();
-      updateTimer();
-    }
-
-    // 팀 1
-    $('#team1Players').innerHTML = (b.teams?.team1?.players || [])
-      .map(p =>
-        `<div class="team-member">${escapeHtml(p.name)} - HP: ${p.hp}/${p.maxHp} ${p.alive === false ? '(사망)' : ''}</div>`
-      ).join('');
-
-    // 팀 2
-    $('#team2Players').innerHTML = (b.teams?.team2?.players || [])
-      .map(p =>
-        `<div class="team-member">${escapeHtml(p.name)} - HP: ${p.hp}/${p.maxHp} ${p.alive === false ? '(사망)' : ''}</div>`
-      ).join('');
-
-    // 로그
-    $('#logBox').innerHTML = (b.battleLog || [])
-      .map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${escapeHtml(e.message)}`)
-      .join('<br>');
-
-    $('#logBox').scrollTop = $('#logBox').scrollHeight;
-  }
-
-  function updateTimer() {
-    if (!turnDeadline) return;
-    const remaining = Math.max(0, turnDeadline - Date.now());
-    const sec = Math.floor(remaining / 1000);
-    const min = Math.floor(sec / 60);
-    const remSec = sec % 60;
-    $('#turnTimer').textContent = `${min}:${remSec.toString().padStart(2, '0')}`;
-    if (remaining > 0) {
-      requestAnimationFrame(updateTimer);
-    }
-  }
-<script>
-(() => {
-  'use strict';
-
-  const $ = (s) => document.querySelector(s);
-  let socket = null;
-  let battleId = null;
-  let playerId = null;
-  let pollTimer = null;
-  let turnDeadline = null;
-
-  // ──────────────────────────────
-  // 유틸
-  // ──────────────────────────────
-  function escapeHtml(s = '') {
-    return s.replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m]));
-  }
-
-  function qs() {
-    const p = new URLSearchParams(location.search);
-    return {
-      battle: p.get('battle') || p.get('battleId') || p.get('b'),
-      token: p.get('token') || p.get('otp') || p.get('code') || p.get('t'),
-      name: p.get('name') || p.get('n'),
-      team: p.get('team') || p.get('tm')
-    };
-  }
-
-  async function getBattle(id) {
-    const r = await fetch(`/api/battles/${encodeURIComponent(id)}`);
-    if (!r.ok) throw new Error(`GET /api/battles/${id} → ${r.status}`);
-    return r.json();
-  }
-
-  function startPolling() {
-    stopPolling();
-    pollTimer = setInterval(async () => {
-      if (!battleId) return;
-      try {
-        renderBattle(await getBattle(battleId));
-      } catch {}
-    }, 3000);
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-  }
-
-  // ──────────────────────────────
-  // 렌더링
-  // ──────────────────────────────
-  function renderBattle(b) {
-    if (!b) return;
-
-    $('#battleStatus').textContent = b.status || '-';
-    $('#currentTeam').textContent = b.currentTeam || '-';
-
-    const now = Date.now();
-    const deadline = b.turnDeadline || null;
-    if (deadline) {
-      turnDeadline = new Date(deadline).getTime();
-      updateTimer();
-    }
-
-    // 팀 1
-    $('#team1Players').innerHTML = (b.teams?.team1?.players || [])
-      .map(p =>
-        `<div class="team-member">${escapeHtml(p.name)} - HP: ${p.hp}/${p.maxHp} ${p.alive === false ? '(사망)' : ''}</div>`
-      ).join('');
-
-    // 팀 2
-    $('#team2Players').innerHTML = (b.teams?.team2?.players || [])
-      .map(p =>
-        `<div class="team-member">${escapeHtml(p.name)} - HP: ${p.hp}/${p.maxHp} ${p.alive === false ? '(사망)' : ''}</div>`
-      ).join('');
-
-    // 로그
-    $('#logBox').innerHTML = (b.battleLog || [])
-      .map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${escapeHtml(e.message)}`)
-      .join('<br>');
-
-    $('#logBox').scrollTop = $('#logBox').scrollHeight;
-  }
-
-  function updateTimer() {
-    if (!turnDeadline) return;
-    const remaining = Math.max(0, turnDeadline - Date.now());
-    const sec = Math.floor(remaining / 1000);
-    const min = Math.floor(sec / 60);
-    const remSec = sec % 60;
-    $('#turnTimer').textContent = `${min}:${remSec.toString().padStart(2, '0')}`;
-    if (remaining > 0) {
-      requestAnimationFrame(updateTimer);
-    }
-  }
-<body>
-  <div class="container">
-    <!-- PYXIS 로고 -->
-    <div class="logo">⚔ PYXIS 전투 아레나</div>
-
-    <!-- 전투 상태 패널 -->
-    <div class="status-panel">
-      <div id="gamePhase">단계: -</div>
-      <div id="currentTeam">현재 팀: -</div>
-      <div id="timer">남은 시간: -</div>
-      <div id="winner">승자: -</div>
-    </div>
-
-    <!-- 인증 화면 -->
-    <div id="authScreen">
-      <div class="row">
-        <input type="text" id="playerName" placeholder="플레이어 이름">
-        <select id="teamSelect">
-          <option value="team1">불사조 기사단</option>
-          <option value="team2">죽음을 먹는자들</option>
-        </select>
-      </div>
-      <div class="row">
-        <input type="text" id="battleId" placeholder="전투 ID">
-        <input type="text" id="otp" placeholder="플레이어 OTP">
-      </div>
-      <button id="btnJoin">전투 참가</button>
-      <div class="muted">URL 쿼리로도 자동 채워집니다 (battle, token, name, team)</div>
-    </div>
-
-    <!-- 전투 화면 -->
-    <div id="battleBoard" class="hidden">
-      <div class="battle-layout">
-        <!-- 왼쪽: 팀 1 -->
-        <div class="team-panel" id="team1Panel">
-          <h3>불사조 기사단</h3>
-          <div id="team1Players"></div>
-          <div class="action-buttons">
-            <button id="actAttack">공격</button>
-            <button id="actDefend">방어</button>
-            <button id="actDodge">회피</button>
-            <button id="actItem">아이템</button>
-            <button id="actPass">턴 넘기기</button>
-          </div>
-        </div>
-
-        <!-- 중앙: 로그/채팅 -->
-        <div class="center-panel">
-          <h3>전투 로그</h3>
-          <div id="log" class="log"></div>
-          <h3>채팅</h3>
-          <div id="chat" class="chat"></div>
-          <div class="row">
-            <input type="text" id="chatInput" placeholder="메시지 입력">
-            <button id="btnSendChat">보내기</button>
-          </div>
-        </div>
-
-        <!-- 오른쪽: 팀 2 -->
-        <div class="team-panel" id="team2Panel">
-          <h3>죽음을 먹는 자들</h3>
-          <div id="team2Players"></div>
-          <div class="action-buttons">
-            <button id="actAttack">공격</button>
-            <button id="actDefend">방어</button>
-            <button id="actDodge">회피</button>
-            <button id="actItem">아이템</button>
-            <button id="actPass">턴 넘기기</button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
-</body>
+
 <script>
 (() => {
-  'use strict';
+  // ===== 유틸 =====
   const $ = (s) => document.querySelector(s);
+  const koTime = (ts) =>
+    new Date(ts).toLocaleTimeString('ko-KR', { hour12:false });
 
+  function escapeHtml(s = '') {
+    return String(s).replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  // ===== 상태 =====
   let socket = null;
   let battleId = null;
   let playerId = null;
-  let playerName = null;
-  let playerTeam = null;
+  let turnDeadlineMs = null;
 
-  // 전투 상태 렌더링
-  function renderBattle(battle) {
-    if (!battle) return;
-
-    $('#gamePhase').textContent = battle.status || '대기 중';
-    $('#currentTeam').textContent = battle.currentTeam || '-';
-    $('#timer').textContent = battle.remainingTime || '00:00';
-    $('#winner').textContent = battle.winner || '-';
-
-    const team1Div = $('#team1Players');
-    const team2Div = $('#team2Players');
-    team1Div.innerHTML = '';
-    team2Div.innerHTML = '';
-
-    (battle.teams?.team1?.players || []).forEach(p => {
-      const el = document.createElement('div');
-      el.textContent = `${p.name} (HP: ${p.hp}) ${!p.alive ? '[사망]' : ''}`;
-      team1Div.appendChild(el);
-    });
-    (battle.teams?.team2?.players || []).forEach(p => {
-      const el = document.createElement('div');
-      el.textContent = `${p.name} (HP: ${p.hp}) ${!p.alive ? '[사망]' : ''}`;
-      team2Div.appendChild(el);
-    });
-
-    const logDiv = $('#log');
-    logDiv.innerHTML = (battle.battleLog || [])
-      .map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.message}`)
-      .join('<br>');
-    logDiv.scrollTop = logDiv.scrollHeight;
-
-    const chatDiv = $('#chat');
-    chatDiv.innerHTML = (battle.chatLog || [])
-      .map(c => `[${new Date(c.timestamp).toLocaleTimeString()}] ${c.sender}: ${c.message}`)
-      .join('<br>');
-    chatDiv.scrollTop = chatDiv.scrollHeight;
+  // 서버가 /api 프리픽스를 쓰는지 자동 판별해 두 경로 모두 시도
+  const API_PREFIXES = ['/api', ''];
+  async function tryFetchJson(method, path, body) {
+    let lastText = '';
+    for (const prefix of API_PREFIXES) {
+      try {
+        const res = await fetch(prefix + path, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const text = await res.text();
+        if (res.ok) return text ? JSON.parse(text) : {};
+        lastText = text;
+      } catch (e) {
+        lastText = e.message;
+      }
+    }
+    throw new Error(`${method} ${path} 실패: ${lastText}`);
   }
 
-  // 소켓 연결
+  function setMsg(msg) { $('#statusMsg').textContent = msg || ''; }
+
+  // ===== 렌더링 =====
+  function updateTimer() {
+    if (!turnDeadlineMs) return;
+    const remaining = Math.max(0, turnDeadlineMs - Date.now());
+    const sec = Math.floor(remaining / 1000);
+    const min = Math.floor(sec / 60);
+    const remSec = String(sec % 60).padStart(2, '0');
+    $('#turnTimer').textContent = `${min}:${remSec}`;
+    if (remaining > 0) requestAnimationFrame(updateTimer);
+  }
+
+  function renderPlayers(sidePlayers = [], mountSel) {
+    const html = sidePlayers.map(p => {
+      const hp = `${p.hp ?? '-'} / ${p.maxHp ?? '-'}`;
+      const dead = p.alive === false ? ' (사망)' : '';
+      return `<div class="team-member">${escapeHtml(p.name)} - HP: ${hp}${dead}</div>`;
+    }).join('');
+    $(mountSel).innerHTML = html || `<div class="muted">등록된 플레이어 없음</div>`;
+  }
+
+  function renderLog(events = []) {
+    const html = events.map(e => {
+      const t = koTime(e.timestamp || Date.now());
+      return `[${t}] ${escapeHtml(e.message || '')}`;
+    }).join('\n');
+    const box = $('#logBox');
+    box.textContent = html || '전투 로그 없음';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderBattle(b) {
+    if (!b) return;
+    $('#battleStatus').textContent = b.status ?? '-';
+    $('#currentTeam').textContent = b.currentTeam ?? '-';
+
+    if (b.turnDeadline) {
+      turnDeadlineMs = new Date(b.turnDeadline).getTime();
+      updateTimer();
+    }
+
+    const t1 = b.teams?.team1?.players ?? b.team1?.players ?? [];
+    const t2 = b.teams?.team2?.players ?? b.team2?.players ?? [];
+    renderPlayers(t1, '#team1Players');
+    renderPlayers(t2, '#team2Players');
+
+    renderLog(b.battleLog || []);
+  }
+
+  // ===== 소켓 =====
   function connectSocket() {
-    socket = io({ path: '/socket.io/', transports: ['websocket', 'polling'] });
+    if (socket && socket.connected) return;
+
+    // 경로 커스텀 필요 시: io({ path: '/socket.io' })
+    socket = io(); // 기본 경로 사용
     socket.on('connect', () => {
+      setMsg('서버 연결됨');
       socket.emit('playerAuth', { battleId, playerId });
     });
-    socket.on('authSuccess', (data) => {
-      if (data?.battle) renderBattle(data.battle);
-    });
+    socket.on('disconnect', () => setMsg('서버 연결 끊김'));
     socket.on('battleUpdate', renderBattle);
-    socket.on('connect_error', err => console.warn('소켓 오류:', err));
+    socket.on('error', (e) => setMsg(`소켓 오류: ${e?.message || e}`));
   }
 
-  // 채팅 전송
-  function sendChat() {
-    const msg = $('#chatInput').value.trim();
-    if (msg && socket) {
-      socket.emit('chatMessage', { message: msg });
-      $('#chatInput').value = '';
+  function sendAction(action) {
+    if (!socket || !socket.connected) {
+      setMsg('아직 서버와 연결되지 않았습니다.');
+      return;
+    }
+    if (!battleId || !playerId) {
+      setMsg('배틀 참가 정보가 없습니다.');
+      return;
+    }
+    socket.emit('playerAction', { battleId, playerId, action });
+  }
+
+  // ===== 참가 =====
+  async function joinBattle() {
+    const url = new URLSearchParams(location.search);
+    battleId = url.get('battle');
+    const name = url.get('name') || '플레이어';
+    const team = url.get('team') || 'team1';
+
+    if (!battleId) {
+      setMsg('쿼리에 ?battle=배틀ID 가 필요합니다.');
+      return;
+    }
+
+    // 새로고침 중복 참가 방지
+    const cacheKey = `px_player_${battleId}_${name}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed?.playerId) {
+          playerId = parsed.playerId;
+          setMsg('기존 세션으로 재접속합니다.');
+          connectSocket();
+          return;
+        }
+      } catch {}
+    }
+
+    try {
+      const resp = await tryFetchJson('POST', `/battles/${encodeURIComponent(battleId)}/players`, {
+        name, team,
+        stats: { attack: 2, defense: 2, agility: 2, luck: 2 }
+      });
+      playerId = resp?.player?.id || resp?.id || resp?.playerId;
+      if (!playerId) throw new Error('playerId 획득 실패');
+      localStorage.setItem(cacheKey, JSON.stringify({ playerId, name, team }));
+      setMsg('배틀 참가 완료');
+      connectSocket();
+    } catch (e) {
+      setMsg(String(e.message || e));
+      alert('참가 실패: ' + (e.message || e));
     }
   }
 
-  // 액션 실행
-  function sendAction(action) {
-    if (!socket || !battleId || !playerId) return;
-    socket.emit('playerAction', {
-      battleId,
-      playerId,
-      action
-    });
-  }
-
-  // 초기 입장 처리
-  function joinBattle() {
-    const url = new URLSearchParams(location.search);
-    battleId = url.get('battle') || '';
-    playerName = url.get('name') || '플레이어';
-    playerTeam = url.get('team') || 'team1';
-
-    fetch(`/api/battles/${battleId}/players`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: playerName,
-        team: playerTeam,
-        stats: { attack: 2, defense: 2, agility: 2, luck: 2 }
-      })
-    }).then(res => res.json())
-      .then(data => {
-        playerId = data.player?.id;
-        if (!playerId) {
-          alert('플레이어 등록 실패');
-          return;
-        }
-        $('#battleBoard').classList.remove('hidden');
-        connectSocket();
-      }).catch(err => {
-        alert('서버 오류: ' + err.message);
-      });
-  }
-
-  // 이벤트 바인딩
+  // ===== 이벤트 바인딩 =====
   window.onload = () => {
     joinBattle();
-    $('#btnSendChat').onclick = sendChat;
-    $('#actAttack').onclick = () => sendAction('attack');
-    $('#actDefend').onclick = () => sendAction('defend');
-    $('#actDodge').onclick = () => sendAction('dodge');
-    $('#actItem').onclick = () => sendAction('item');
-    $('#actPass').onclick = () => sendAction('pass');
+    $('#btnAttack').onclick = () => sendAction('attack');
+    $('#btnDefend').onclick = () => sendAction('defend');
+    $('#btnDodge').onclick = () => sendAction('dodge');
+    $('#btnItem').onclick   = () => sendAction('item');
+    $('#btnPass').onclick   = () => sendAction('pass');
   };
 })();
 </script>
+</body>
 </html>
