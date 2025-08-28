@@ -1,75 +1,348 @@
 <!doctype html>
-</div>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Pyxis - 관전자</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
 
-<div class="card" id="watchCard" style="display:none">
-<div class="teams" id="teams"></div>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
 
+  <!-- 공용 테마 & 파비콘 (관리자/플레이어와 동일) -->
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/assets/pyxis-theme.css">
 
-<div class="chat" id="chat"></div>
-<div class="flex" style="margin-top:8px">
-<button class="btn" data-p="a">응원합니다</button>
-<button class="btn" data-p="b">침착하게</button>
-<button class="btn" data-p="c">멋진 한 수 기대합니다</button>
-<button class="btn" data-p="d">집중하세요</button>
-</div>
-</div>
-</div>
+  <style>
+    /* 페이지 전용 보조 스타일만 추가 */
+    .layout { display:grid; grid-template-columns: 1fr 1.2fr 1fr; gap:16px }
+    @media (max-width: 1024px){ .layout { grid-template-columns: 1fr } }
 
+    .team-col .title { margin-bottom:10px }
+    .center-col .title { display:flex; align-items:center; justify-content:space-between }
 
-<script>
-const qs = new URLSearchParams(location.search);
-const $ = (s)=>document.querySelector(s);
-let socket=null; let roster=[]; let battleId=null; let spectatorToken=null;
+    .log { height: 46vh; min-height:260px; overflow:auto }
+    .chatlog { height: 220px; overflow:auto }
+    @media (max-width: 1024px){ .log { height: 34vh } }
 
+    .chatbox { display:flex; gap:8px; margin-top:8px }
 
-function renderTeams(){
-const left = roster.filter(p=>p.team==='team1');
-const right = roster.filter(p=>p.team==='team2');
-$('#teams').innerHTML = `
-<div class="teamBox">
-<div class="tag">불사조 기사단</div>
-${left.map(p=>`<div style="margin-top:8px">• <b>${p.name}</b></div>`).join('')||'<div class="muted" style="margin-top:8px">빈 팀</div>'}
-</div>
-<div class="teamBox">
-<div class="tag">죽음을 먹는 자들</div>
-${right.map(p=>`<div style="margin-top:8px">• <b>${p.name}</b></div>`).join('')||'<div class="muted" style="margin-top:8px">빈 팀</div>'}
-</div>`;
-}
+    .cheers { display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:8px }
+    @media (max-width: 520px){ .cheers { grid-template-columns: repeat(2,minmax(0,1fr)) } }
 
+    /* 팀/플레이어 카드는 공용 테마 클래스 재사용 + 약간만 보완 */
+    .player-card .pc-meta { font-size:12px; color:var(--text-dim) }
 
-function addMsg(t){ const d=document.createElement('div'); d.textContent=t; $('#chat').appendChild(d); $('#chat').scrollTop=99999; }
+    /* 핀 공지 */
+    .pin { margin-bottom:12px }
+    .pin .badge { font-size:12px; padding:2px 8px; border-radius:999px; background:var(--gold-20); color:var(--ink); border:1px solid var(--gold-30); margin-right:6px }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 헤더 -->
+    <section class="hero">
+      <h1 class="hero-title">Pyxis 관전 모드</h1>
+      <div class="muted" id="serverLine">서버 상태 확인 중...</div>
+    </section>
 
+    <!-- 상태 바 -->
+    <div class="status">
+      <div class="item">전투 상태: <b id="bStatus">-</b></div>
+      <div class="item">라운드/턴: <b id="bRT">-</b></div>
+      <div class="item">현재 팀: <b id="bTeam">-</b></div>
+      <div class="item">관전자: <b id="specName">-</b></div>
+    </div>
 
-function connect(){
-socket = io();
-socket.on('connect', ()=>{ socket.emit('spectatorAuth',{ battleId, token: spectatorToken, name: $('#spectatorName').value.trim() }); });
-socket.on('authError', e=> alert('인증 실패: '+(e?.code||'')) );
-socket.on('authSuccess', p=>{ roster=p.roster||[]; renderTeams(); $('#loginCard').style.display='none'; $('#watchCard').style.display='block'; });
-socket.on('battleUpdate', ({ roster:r })=>{ roster=r||[]; renderTeams(); });
-socket.on('chatMessage', (m)=> addMsg(`[플레이어] ${m.from}: ${m.text}`));
-socket.on('cheerMessage', (m)=> addMsg(`[관전자] ${m.from}: ${m.text}`));
-}
+    <!-- 핀 공지(관리자 [공지] 최신글 고정) -->
+    <div id="pinWrap" class="notice pin hidden">
+      <div class="notice-title"><span class="badge">공지</span><span id="pinTitle">관리자 공지</span></div>
+      <div id="pinBody" class="notice-body"></div>
+    </div>
 
+    <!-- 인증 카드 -->
+    <section id="authCard" class="card">
+      <div class="title">전투 관전 입장</div>
+      <div class="row">
+        <div>
+          <div class="muted">전투 ID</div>
+          <input id="inpBattle" class="input" placeholder="battle id" />
+        </div>
+        <div>
+          <div class="muted">관전자 OTP</div>
+          <input id="inpOtp" class="input" placeholder="spectator otp" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <div class="muted">이름(선택)</div>
+          <input id="inpName" class="input" placeholder="관전자 이름" />
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:8px">
+          <button id="btnJoin" class="btn" style="width: 100%">입장</button>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnPrefill" class="btn-ghost">URL로 자동입력</button>
+      </div>
+      <div class="muted" style="margin-top:6px">URL 파라미터: <code>?battle=...&token=...&name=...</code></div>
+    </section>
 
-$('#joinBtn').onclick = ()=>{
-battleId = $('#battleId').value.trim();
-spectatorToken = $('#spectatorToken').value.trim();
-if(!battleId||!spectatorToken) return alert('Battle ID / Spectator Token');
-connect();
-};
+    <!-- 관전 레이아웃 -->
+    <div id="main" class="hidden layout">
+      <!-- 좌: 팀1 -->
+      <div class="team-col">
+        <div class="title">팀 1</div>
+        <div id="team1"></div>
+      </div>
 
+      <!-- 중앙: 전투 로그 + 채팅 -->
+      <div class="center-col">
+        <section class="card">
+          <div class="title">
+            <span>전투 로그</span>
+            <span id="turnHint" class="muted" style="font-size:12px">-</span>
+          </div>
+          <div id="battleLog" class="log"></div>
+        </section>
 
-document.addEventListener('click',(e)=>{
-const b=e.target.closest('button[data-p]'); if(!b||!socket) return;
-socket.emit('cheerMessage',{ preset: b.dataset.p });
-});
+        <section class="card">
+          <div class="title">채팅</div>
+          <div id="chatLog" class="chatlog"></div>
+          <div class="chatbox">
+            <input id="chatInput" class="input" placeholder="응원 메시지 또는 채팅 입력" />
+            <button id="btnSendChat" class="btn">보내기</button>
+          </div>
+          <div class="muted" style="margin-top:6px">관리자 메시지는 하이라이트로 표시됩니다.</div>
+        </section>
 
+        <section class="card">
+          <div class="title">빠른 응원</div>
+          <div class="cheers">
+            <!-- 서버 허용 목록과 동일하게 구성 -->
+            <button class="btn" data-cheer="힘내!">힘내!</button>
+            <button class="btn" data-cheer="지지마!">지지마!</button>
+            <button class="btn" data-cheer="이길 수 있어!">이길 수 있어!</button>
+            <button class="btn" data-cheer="포기하지 마!">포기하지 마!</button>
+            <button class="btn" data-cheer="화이팅!">화이팅!</button>
+            <button class="btn" data-cheer="대박!">대박!</button>
+          </div>
+          <div class="muted" style="margin-top:8px">허용된 문구만 응원으로 전송됩니다.</div>
+        </section>
+      </div>
 
-if(qs.get('battle')) $('#battleId').value = qs.get('battle');
-if(qs.get('token')) $('#spectatorToken').value = qs.get('token');
-if(qs.get('name')) $('#spectatorName').value = qs.get('name');
-if($('#battleId').value && $('#spectatorToken').value){ battleId=$('#battleId').value; spectatorToken=$('#spectatorToken').value; connect(); }
-</script>
+      <!-- 우: 팀2 -->
+      <div class="team-col">
+        <div class="title">팀 2</div>
+        <div id="team2"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const $ = (s)=>document.querySelector(s);
+
+      // Elements
+      const serverLine = $('#serverLine');
+      const bStatus = $('#bStatus'), bRT = $('#bRT'), bTeam = $('#bTeam'), specNameEl = $('#specName');
+      const pinWrap = $('#pinWrap'), pinTitle = $('#pinTitle'), pinBody = $('#pinBody');
+
+      const authCard = $('#authCard'), main = $('#main');
+      const inpBattle = $('#inpBattle'), inpOtp = $('#inpOtp'), inpName = $('#inpName');
+      const btnJoin = $('#btnJoin'), btnPrefill = $('#btnPrefill');
+
+      const team1Div = $('#team1'), team2Div = $('#team2');
+      const battleLog = $('#battleLog'), chatLog = $('#chatLog'), chatInput = $('#chatInput'), btnSendChat = $('#btnSendChat');
+      const turnHint = $('#turnHint');
+
+      // State
+      let socket = null;
+      let battleId = null;
+      let spectOtp = null;
+      let spectName = '관전자';
+      let battle = null;
+
+      // Utils
+      function qs(){
+        const p = new URLSearchParams(location.search);
+        return {
+          battle: p.get('battle') || p.get('b'),
+          token: p.get('token') || p.get('otp') || p.get('t'),
+          name: p.get('name') || p.get('n'),
+        };
+      }
+      function fmtTime(ts){ try{ return new Date(ts).toLocaleTimeString(); } catch { return '-'; } }
+      function esc(s=''){ return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) }
+      function setServerLine(ok,msg){ serverLine.textContent = ok? `서버 OK · ${msg||''}` : `서버 오류 · ${msg||''}`; serverLine.className = ok? 'muted':'pill'; }
+      function hpPct(p){ if(!p) return 0; return Math.max(0, Math.min(100, Math.round((p.hp / p.maxHp)*100))) }
+
+      // Render
+      function renderBattle(b){
+        battle = b;
+        if(!b) return;
+
+        // 상태바
+        bStatus.textContent = b.status || '-';
+        bTeam.textContent = b.currentTeam || '-';
+        bRT.textContent = `${b.roundNumber ?? '-'} / ${b.turnNumber ?? '-'}`;
+        turnHint.textContent = b.status === 'ongoing'
+          ? `현재 팀: ${b.currentTeam || '-'}`
+          : (b.status === 'waiting' ? '대기 중' : '종료');
+
+        // 핀 공지: 관리자 [공지] 최신
+        const adminNotice = (b.chatLog||[]).slice().reverse().find(m => (m.senderType==='admin') && (m.message||'').trim().startsWith('[공지]'));
+        if(adminNotice){
+          pinWrap.classList.remove('hidden');
+          pinBody.textContent = adminNotice.message.replace(/^\[공지\]\s*/,'');
+        } else {
+          pinWrap.classList.add('hidden');
+        }
+
+        // 팀 렌더
+        drawTeam(b.teams?.team1, team1Div);
+        drawTeam(b.teams?.team2, team2Div);
+
+        // 로그
+        battleLog.innerHTML = (b.battleLog||[]).map(e=>{
+          const cls = e.type === 'system' ? 'll admin' : 'll';
+          return `<div class="${cls}"><span class="t">${fmtTime(e.timestamp)}</span>${esc(e.message||'')}</div>`;
+        }).join('');
+        battleLog.scrollTop = battleLog.scrollHeight;
+
+        // 채팅
+        chatLog.innerHTML = (b.chatLog||[]).map(c=>{
+          const tag = c.senderType==='admin' ? '<span class="tag tag-admin">ADMIN</span>' : '<span class="tag">CHAT</span>';
+          return `<div class="msg"><span class="t">${fmtTime(c.timestamp)}</span>${tag} <b>${esc(c.sender||'-')}</b>: ${esc(c.message||'')}</div>`;
+        }).join('');
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+
+      function drawTeam(team, mount){
+        if(!team){ mount.innerHTML = '<div class="muted">팀 없음</div>'; return; }
+        const players = team.players || [];
+        mount.innerHTML = players.map(p=>{
+          const pct = hpPct(p);
+          const ringStyle = `--hp:${pct}; --avatar:url('${esc(p.imageUrl||'')}')`;
+          return `
+            <div class="player-card">
+              <div class="pc-head">
+                <div class="pc-name">${esc(p.name||'플레이어')}${p.alive===false?' <span class="pill">사망</span>':''}</div>
+                <div class="pc-meta">${p.alive!==false? `HP ${p.hp}/${p.maxHp}` : '행동 불가'}</div>
+              </div>
+              <div class="pc-body">
+                <div class="pc-ring" style="${ringStyle}">
+                  <div class="pc-ring-inner"></div>
+                </div>
+                <div class="pc-hp">
+                  <div class="hpbar"><div class="fill" style="--hpPct:${pct}%;"></div></div>
+                  <div class="pct">${pct}%</div>
+                </div>
+                <div class="pc-stats">
+                  <div><b>ATK</b> ${p.stats?.attack ?? '-'}</div>
+                  <div><b>DEF</b> ${p.stats?.defense ?? '-'}</div>
+                  <div><b>AGI</b> ${p.stats?.agility ?? '-'}</div>
+                  <div><b>LUCK</b> ${p.stats?.luck ?? '-'}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 채팅
+      btnSendChat.onclick = ()=>{
+        const msg = chatInput.value.trim();
+        if(!msg) return;
+        if(!socket) return alert('연결되지 않았습니다.');
+        socket.emit('chatMessage', { message: msg });
+        chatInput.value = '';
+      };
+
+      // 빠른 응원
+      document.addEventListener('click', (e)=>{
+        const el = e.target;
+        if(!(el instanceof HTMLElement)) return;
+        if(el.matches('.cheers .btn')){
+          const phrase = el.getAttribute('data-cheer');
+          if(!phrase || !socket) return;
+          socket.emit('cheerMessage', { message: phrase });
+        }
+      });
+
+      // 서버 헬스
+      fetch('/api/health').then(r=>r.json()).then(j=>{
+        setServerLine(true, `활성 전투: ${j.battles}`);
+      }).catch(()=> setServerLine(false, '헬스 체크 실패'));
+
+      // 인증/입장
+      btnPrefill.onclick = ()=>{
+        const p = qs();
+        if(p.battle) inpBattle.value = p.battle;
+        if(p.token)  inpOtp.value = p.token;
+        if(p.name)   inpName.value = p.name;
+      };
+
+      btnJoin.onclick = async ()=>{
+        const id = inpBattle.value.trim();
+        const otp = inpOtp.value.trim();
+        const name = (inpName.value.trim() || '관전자');
+
+        if(!id || !otp){ alert('전투 ID와 OTP를 입력하세요.'); return; }
+
+        battleId = id;
+        spectOtp = otp;
+        spectName = name;
+        specNameEl.textContent = spectName;
+
+        // 초기 상태 한번 표시
+        try{
+          const b = await (await fetch(`/api/battles/${encodeURIComponent(battleId)}`)).json();
+          renderBattle(b);
+        }catch(_){}
+
+        connectSocket();
+        authCard.classList.add('hidden');
+        main.classList.remove('hidden');
+      };
+
+      // 소켓
+      function connectSocket(){
+        if(socket){ try{ socket.disconnect(); }catch{} socket=null; }
+        socket = io({ path:'/socket.io/', transports:['websocket','polling'] });
+
+        socket.on('connect', ()=>{
+          socket.emit('spectatorAuth', { battleId, otp: spectOtp, spectatorName: spectName });
+        });
+
+        socket.on('authSuccess', ({ battle: b })=>{
+          renderBattle(b);
+        });
+
+        socket.on('authError', (msg)=>{
+          alert('관전자 인증 실패: ' + (msg||''));
+        });
+
+        socket.on('battleUpdate', (b)=> renderBattle(b));
+
+        socket.on('chatError', (msg)=> alert('응원 전송 실패: ' + (msg||'')));
+
+        socket.on('connect_error', (e)=> console.warn('socket error', e?.message||e));
+      }
+
+      // 부팅: 쿼리 자동반영(있으면)
+      (function boot(){
+        const p = qs();
+        if(p.battle) inpBattle.value = p.battle;
+        if(p.token)  inpOtp.value = p.token;
+        if(p.name)   inpName.value = p.name;
+      })();
+
+    })();
+  </script>
 </body>
 </html>
