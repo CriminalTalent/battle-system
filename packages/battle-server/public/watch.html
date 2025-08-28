@@ -89,7 +89,7 @@
     <h3>응원</h3>
     <div class="row">
       <button data-cheer="힘내!">힘내!</button>
-      <button data-cheer="지지 마!">지지 마!</button>
+      <button data-cheer="지지마!">지지마!</button>
     </div>
     <div class="row">
       <button data-cheer="이길 수 있어!">이길 수 있어!</button>
@@ -123,7 +123,9 @@
   }
 
   function escapeHtml(s=''){
-    return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&gt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    return s.replace(/[&<>"']/g, m=>({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[m]));
   }
 
   async function getBattle(id){
@@ -201,7 +203,7 @@
     battleId = bid;
     spectatorOtp = otp;
 
-    // 소켓 인증 시도 (서버가 미구현이어도 관전은 폴백 폴링으로 동작)
+    // 소켓 인증 시도 (서버 미구현이어도 폴링으로 동작)
     connectSocket();
     showWatch();
 
@@ -213,7 +215,7 @@
   function connectSocket(){
     try{
       if(socket){ try{ socket.disconnect(); }catch{} socket=null; }
-      socket = io({transports:['websocket','polling']});
+      socket = io({ path:'/socket.io/', transports:['websocket','polling'] });
 
       socket.on('connect', ()=>{
         try{
