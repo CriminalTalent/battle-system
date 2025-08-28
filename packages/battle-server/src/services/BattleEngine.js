@@ -1,3 +1,4 @@
+// packages/battle-server/src/services/BattleEngine.js
 const crypto = require("crypto");
 
 class BattleEngine {
@@ -5,14 +6,15 @@ class BattleEngine {
     this.battles = new Map();
   }
 
-  // 전투 개수 조회
+  // 전투 개수
   getBattleCount() {
     return this.battles.size;
   }
 
   // OTP 생성
-  generateOTP() {
-    return Math.random().toString(36).substr(2, 8).toUpperCase();
+  generateOTP(len = 8) {
+    // 기존 방식 유지(대소문자 섞임 방지 위해 대문자화)
+    return Math.random().toString(36).slice(2, 2 + len).toUpperCase();
   }
 
   // 전투 생성
@@ -25,55 +27,63 @@ class BattleEngine {
       "4v4": { playersPerTeam: 4 },
     };
     const config = configs[mode] || configs["1v1"];
+    const now = Date.now();
 
     const battle = {
       id,
       mode,
       status: "waiting",
-      createdAt: Date.now(),
+      createdAt: now,
       adminId,
       teams: {
         team1: { name: "불사조 기사단", players: [] },
         team2: { name: "죽음을 먹는자들", players: [] },
       },
+      // 서버 라우트에서 직접 push하는 배열(호환용)
+      players: [],
+      spectators: [],
+
       currentTeam: null,
       roundNumber: 1,
       turnNumber: 1,
       turnStartTime: null,
-      battleLog: [],
+      battleLog: [{ type: "system", message: `[전투생성] 모드: ${mode}`, timestamp: now }],
       chatLog: [],
       config,
       winner: null,
       endReason: null,
+
+      // 단수/복수 키 동시 제공(서버의 링크 생성 로직 호환)
       otps: {
         admin: this.generateOTP(),
         player: this.generateOTP(),
+        players: [this.generateOTP(), this.generateOTP()],
         spectator: this.generateOTP(),
+        spectators: this.generateOTP(),
       },
     };
 
     this.battles.set(id, battle);
-    this.addBattleLog(id, "system", `[전투생성] 모드: ${mode}`);
     return battle;
   }
 
-  // 전투 가져오기
+  // 전투 조회
   getBattle(id) {
     return this.battles.get(id);
   }
 
-  // 플레이어 추가
+  // 플레이어 추가(팀 기반)
   addPlayer(battleId, { name, team, stats, inventory = [], imageUrl = "" }) {
     const battle = this.battles.get(battleId);
     if (!battle) throw new Error("존재하지 않는 전투");
     if (battle.status !== "waiting") throw new Error("이미 시작된 전투");
-
     if (!["team1", "team2"].includes(team)) throw new Error("잘못된 팀");
+
     const targetTeam = battle.teams[team];
     if (targetTeam.players.length >= battle.config.playersPerTeam)
       throw new Error("해당 팀 가득 참");
 
-    // 중복 이름 체크
+    // 중복 이름 방지
     const allPlayers = [
       ...battle.teams.team1.players,
       ...battle.teams.team2.players,
@@ -98,17 +108,16 @@ class BattleEngine {
     };
 
     targetTeam.players.push(player);
-    this.addBattleLog(
-      battleId,
-      "system",
-      `${player.name}이 ${targetTeam.name}에 참가`
-    );
+    // 호환용 배열에도 넣어줌(서버 라우트에서 참조할 수 있음)
+    battle.players.push(player);
+
+    this.addBattleLog(battleId, "system", `${player.name}이 ${targetTeam.name}에 참가`);
     return player;
   }
 
   // 스탯 정규화
   normalizeStats(stats = {}) {
-    const clamp = (val) => Math.max(1, Math.min(5, val || 2));
+    const clamp = (v) => Math.max(1, Math.min(5, v ?? 2));
     return {
       attack: clamp(stats.attack),
       defense: clamp(stats.defense),
@@ -130,46 +139,59 @@ class BattleEngine {
     return battle;
   }
 
-  // 전투 종료
-  endBattle(battleId, winner = null, reason = "") {
+  /**
+   * 전투 종료
+   * - 서버는 endBattle(id, 'admin_end') 형태로 호출 → 이를 'reason'으로 인식해야 함
+   * - 기존 호환( winner/ reason )도 유지
+   * 반환: 성공 시 true, 전투 없음 false
+   */
+  endBattle(battleId, winnerOrReason = null, maybeReason = "") {
     const battle = this.getBattle(battleId);
-    if (!battle) throw new Error("전투 없음");
+    if (!battle) return false;
+
+    let winner = null;
+    let reason = "";
+
+    // 두 번째 인자가 'team1'/'team2'처럼 승자일 수도, 그냥 종료사유일 수도 있음
+    const isTeamKey = (v) => v === "team1" || v === "team2";
+
+    if (typeof winnerOrReason === "string" && !maybeReason && !isTeamKey(winnerOrReason)) {
+      // endBattle(id, "some_reason")
+      winner = null;
+      reason = winnerOrReason;
+    } else {
+      // endBattle(id, winner, reason)
+      winner = winnerOrReason || null;
+      reason = maybeReason || (winner ? `${winner} 승리` : "전투 종료");
+    }
 
     battle.status = "ended";
     battle.winner = winner;
-    battle.endReason = reason || "전투 종료";
+    battle.endReason = reason;
     battle.endedAt = Date.now();
 
-    if (winner) {
-      const winnerTeam = battle.teams[winner];
-      this.addBattleLog(
-        battleId,
-        "system",
-        `${winnerTeam ? winnerTeam.name : winner} 팀 승리!`
-      );
+    if (winner && isTeamKey(winner)) {
+      const team = battle.teams[winner];
+      this.addBattleLog(battleId, "system", `${team ? team.name : winner} 팀 승리!`);
     } else {
       this.addBattleLog(battleId, "system", reason || "무승부");
     }
 
-    return battle;
+    // 서버 계약: 종료 시 메모리에서 제거
+    this.battles.delete(battleId);
+    return true;
   }
 
   // 선공 결정
   determineFirstTeam(battle) {
     const roll = () => Math.floor(Math.random() * 20) + 1;
-    const team1Total = battle.teams.team1.players.reduce(
-      (s, p) => s + p.stats.agility + roll(),
-      0
-    );
-    const team2Total = battle.teams.team2.players.reduce(
-      (s, p) => s + p.stats.agility + roll(),
-      0
-    );
+    const t1 = battle.teams.team1.players.reduce((s, p) => s + p.stats.agility + roll(), 0);
+    const t2 = battle.teams.team2.players.reduce((s, p) => s + p.stats.agility + roll(), 0);
 
-    if (team1Total > team2Total) {
+    if (t1 > t2) {
       battle.currentTeam = "team1";
       this.addBattleLog(battle.id, "system", `${battle.teams.team1.name} 선공`);
-    } else if (team2Total > team1Total) {
+    } else if (t2 > t1) {
       battle.currentTeam = "team2";
       this.addBattleLog(battle.id, "system", `${battle.teams.team2.name} 선공`);
     } else {
@@ -181,8 +203,7 @@ class BattleEngine {
   // 액션 실행
   executeAction(battleId, playerId, action) {
     const battle = this.getBattle(battleId);
-    if (!battle || battle.status !== "ongoing")
-      throw new Error("진행 중 아님");
+    if (!battle || battle.status !== "ongoing") throw new Error("진행 중 아님");
 
     const player = this.findPlayer(battle, playerId);
     if (!player || !player.alive) throw new Error("행동 불가");
@@ -201,12 +222,7 @@ class BattleEngine {
         result = this.dodge(battle, player);
         break;
       case "item":
-        result = this.useItem(
-          battle,
-          player,
-          action.itemType,
-          action.targetId
-        );
+        result = this.useItem(battle, player, action.itemType, action.targetId);
         break;
       case "pass":
         result = { action: "pass" };
@@ -234,18 +250,13 @@ class BattleEngine {
       dmg = Math.max(1, dmg - def);
     }
 
-    const crit =
-      this.rollDice(20) >= 20 - Math.floor(attacker.stats.luck / 2);
+    const crit = this.rollDice(20) >= 20 - Math.floor(attacker.stats.luck / 2);
     if (crit) dmg *= 2;
 
     target.hp = Math.max(0, target.hp - dmg);
     if (target.hp === 0) target.alive = false;
 
-    this.addBattleLog(
-      battle.id,
-      "action",
-      `${attacker.name} → ${target.name} ${dmg} 피해`
-    );
+    this.addBattleLog(battle.id, "action", `${attacker.name} → ${target.name} ${dmg} 피해`);
     return { damage: dmg, crit, targetAlive: target.alive };
   }
 
@@ -270,11 +281,7 @@ class BattleEngine {
       const target = targetId ? this.findPlayer(battle, targetId) : player;
       if (!target) throw new Error("대상 없음");
       target.hp = Math.min(target.maxHp, target.hp + 10);
-      this.addBattleLog(
-        battle.id,
-        "action",
-        `${player.name} → ${target.name} HP +10`
-      );
+      this.addBattleLog(battle.id, "action", `${player.name} → ${target.name} HP +10`);
       return { action: "heal", target: target.name };
     }
 
@@ -309,34 +316,28 @@ class BattleEngine {
     const battle = this.getBattle(battleId);
     if (!battle) return;
     battle.battleLog.push({ type, message, timestamp: Date.now() });
-    if (battle.battleLog.length > 100) battle.battleLog.shift();
+    if (battle.battleLog.length > 200) battle.battleLog.shift();
   }
 
   addChatMessage(battleId, sender, message, senderType = "player") {
     const battle = this.getBattle(battleId);
     if (!battle) return;
-    battle.chatLog.push({
-      sender,
-      message,
-      senderType,
-      timestamp: Date.now(),
-    });
-    if (battle.chatLog.length > 50) battle.chatLog.shift();
+    battle.chatLog.push({ sender, message, senderType, timestamp: Date.now() });
+    if (battle.chatLog.length > 200) battle.chatLog.shift();
   }
 
   // 인증
   adminAuth(battleId, otp) {
     const battle = this.getBattle(battleId);
     if (!battle) return { success: false, message: "전투 없음" };
-    if (battle.otps.admin !== otp)
-      return { success: false, message: "OTP 불일치" };
+    if (battle.otps.admin !== otp) return { success: false, message: "OTP 불일치" };
     return { success: true, battle };
   }
 
   playerAuth(battleId, otp, playerId) {
     const battle = this.getBattle(battleId);
     if (!battle) return { success: false, message: "전투 없음" };
-    if (battle.otps.player !== otp)
+    if (battle.otps.player !== otp && !battle.otps.players?.includes(otp))
       return { success: false, message: "OTP 불일치" };
     const player = this.findPlayer(battle, playerId);
     if (!player) return { success: false, message: "플레이어 없음" };
@@ -346,7 +347,7 @@ class BattleEngine {
   spectatorAuth(battleId, otp, name) {
     const battle = this.getBattle(battleId);
     if (!battle) return { success: false, message: "전투 없음" };
-    if (battle.otps.spectator !== otp)
+    if (battle.otps.spectator !== otp && battle.otps.spectators !== otp)
       return { success: false, message: "OTP 불일치" };
     return { success: true, battle, spectator: { name } };
   }
