@@ -5,7 +5,9 @@
  * Pyxis Battle Server (Express + Socket.IO)
  * - .env 지원 (PORT, HOST, PUBLIC_BASE_URL, CORS_ORIGIN, MAX_FILE_SIZE)
  * - Nginx 프록시 호환 (app.set('trust proxy', true), socket path '/socket.io/')
- * - API/소켓 계약: 기존 엔진(BattleEngine)과 100% 호환
+ * - 정적 단일 라우팅 보강: /admin(.html), /play(.html), /watch(.html)
+ * - /api/battles 리스트 추가 (admin UI 새로고침용)
+ * - 팀 전용 채팅 (/t 접두사) + 관리자 열람
  */
 
 require('dotenv').config();
@@ -24,7 +26,7 @@ const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE || '5mb').toLowerCase().replace('mb', 'mb'); // normalize
+const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE || '5mb').toLowerCase();
 
 // ───────────────────────────────────────────────────────────
 // App / Server / Socket.IO
@@ -32,7 +34,7 @@ const MAX_FILE_SIZE = (process.env.MAX_FILE_SIZE || '5mb').toLowerCase().replace
 const app = express();
 app.set('trust proxy', true); // Behind Nginx/Proxy → trust X-Forwarded-Proto/Host
 
-// CORS: '*'면 간단 허용, 그 외엔 화이트리스트 + credentials
+// CORS
 const corsMiddleware =
   CORS_ORIGIN === '*'
     ? cors()
@@ -44,7 +46,20 @@ const corsMiddleware =
 app.use(corsMiddleware);
 app.use(express.json({ limit: MAX_FILE_SIZE }));
 app.use(express.urlencoded({ extended: true, limit: MAX_FILE_SIZE }));
+
+// 정적 파일 서빙 (public 폴더)
 app.use(express.static(path.join(__dirname, '../public')));
+
+// 단일 파일 라우팅 보강 (직접 링크용)
+app.get(['/admin', '/admin.html'], (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/admin.html'))
+);
+app.get(['/play', '/play.html'], (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/play.html'))
+);
+app.get(['/watch', '/watch.html'], (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/watch.html'))
+);
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -54,6 +69,18 @@ const io = new Server(server, {
       ? { origin: true, methods: ['GET', 'POST'] }
       : { origin: CORS_ORIGIN.split(',').map((s) => s.trim()), credentials: true },
 });
+
+// (선택) 클러스터 어댑터/스티키 지원: 패키지가 없으면 무시
+try {
+  const { createAdapter } = require('@socket.io/cluster-adapter');
+  const { setupWorker } = require('@socket.io/sticky');
+  io.adapter(createAdapter());
+  setupWorker(io);
+  // 콘솔에 표시만
+  console.log('[socket.io] cluster-adapter + sticky enabled');
+} catch {
+  // 로컬/싱글 프로세스 또는 웹소켓 단독 전송일 경우 문제 없음
+}
 
 // ───────────────────────────────────────────────────────────
 // Engine & helpers
@@ -80,10 +107,32 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────
-// Battles CRUD (minimal)
+// Battles: list / create / get / join
 // ───────────────────────────────────────────────────────────
 
-// Create battle
+// 전투 목록 (admin UI 새로고침용)
+app.get('/api/battles', (_req, res) => {
+  try {
+    const arr =
+      engine.battles && typeof engine.battles.values === 'function'
+        ? Array.from(engine.battles.values())
+        : [];
+    const battles = arr.map((b) => ({
+      id: b.id,
+      mode: b.mode,
+      status: b.status,
+      playerCount:
+        (b.teams?.team1?.players?.length || 0) + (b.teams?.team2?.players?.length || 0),
+      createdAt: b.createdAt || Date.now(),
+    }));
+    res.json({ battles });
+  } catch (e) {
+    console.error('[GET /api/battles] error', e);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// 배틀 생성
 // body: { mode?: "1v1"|"2v2"|"3v3"|"4v4", adminId?: string }
 app.post('/api/battles', (req, res) => {
   try {
@@ -96,7 +145,7 @@ app.post('/api/battles', (req, res) => {
   }
 });
 
-// Get battle
+// 배틀 조회
 app.get('/api/battles/:id', (req, res) => {
   try {
     const { id } = req.params;
@@ -109,7 +158,7 @@ app.get('/api/battles/:id', (req, res) => {
   }
 });
 
-// Join (player)
+// 플레이어 참여 (play.html이 호출)
 // body: { name, team: "team1"|"team2", stats?, inventory?, imageUrl? }
 app.post('/api/battles/:id/players', (req, res) => {
   try {
@@ -198,14 +247,15 @@ io.on('connection', (socket) => {
   socket.battleId = null;
   socket.playerId = null;
   socket.spectatorName = null;
+  socket.playerTeam = null; // team1 | team2
 
-  // Admin auth
+  // 관리자 인증
   socket.on('adminAuth', ({ battleId, otp }) => {
     try {
       const result = engine.adminAuth(battleId, otp);
       if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
-      socket.join(battleId);
-      socket.join(`${battleId}-admin`);
+      socket.join(battleId);                 // 공용 룸
+      socket.join(`${battleId}-admin`);      // 관리자 룸
       socket.role = 'admin';
       socket.battleId = battleId;
       socket.emit('authSuccess', { role: 'admin', battle: result.battle });
@@ -215,18 +265,30 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player auth
+  // 플레이어 인증
   // payload: { battleId, otp, playerId }
   socket.on('playerAuth', ({ battleId, otp, playerId }) => {
     try {
       const result = engine.playerAuth(battleId, otp, playerId);
       if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
-      socket.join(battleId);
+
+      const battle = result.battle;
+      const p = result.player;
+      const teamKey = p?.team || null;
+
+      socket.join(battleId);                            // 공용 룸
+      if (teamKey) socket.join(`${battleId}-team-${teamKey}`); // 팀 룸
+
       socket.role = 'player';
       socket.battleId = battleId;
       socket.playerId = playerId;
-      engine.updatePlayerConnection?.(battleId, playerId, true);
-      socket.emit('authSuccess', { role: 'player', battle: result.battle, player: result.player });
+      socket.playerTeam = teamKey;
+
+      if (typeof engine.updatePlayerConnection === 'function') {
+        engine.updatePlayerConnection(battleId, playerId, true);
+      }
+
+      socket.emit('authSuccess', { role: 'player', battle, player: p });
       broadcast(battleId);
     } catch (e) {
       console.error('[socket playerAuth] error', e);
@@ -234,13 +296,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Spectator auth
+  // 관전자 인증
   // payload: { battleId, otp, spectatorName }
   socket.on('spectatorAuth', ({ battleId, otp, spectatorName }) => {
     try {
       const result = engine.spectatorAuth(battleId, otp, spectatorName || '관전자');
       if (!result?.success) return socket.emit('authError', result?.message || '인증 실패');
-      socket.join(battleId);
+      socket.join(battleId); // 공용 룸
       socket.role = 'spectator';
       socket.battleId = battleId;
       socket.spectatorName = spectatorName || '관전자';
@@ -251,7 +313,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Player action
+  // 플레이어 액션
   // payload: { battleId, playerId, action: { type, ... } }
   socket.on('playerAction', ({ battleId, playerId, action }) => {
     try {
@@ -263,24 +325,42 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Chat (all roles)
+  // 채팅 (팀 전용 /t 지원, 관리자는 항상 열람)
   socket.on('chatMessage', ({ message }) => {
-    if (!socket.battleId || !message) return;
+    if (!socket.battleId || !message || typeof message !== 'string') return;
+
+    const b = engine.getBattle(socket.battleId);
+    if (!b) return;
+
     let sender = '알 수 없음';
     if (socket.role === 'player') {
-      const b = engine.getBattle(socket.battleId);
-      const p = b && engine.findPlayer(b, socket.playerId);
+      const p = engine.findPlayer(b, socket.playerId);
       sender = p ? p.name : '플레이어';
     } else if (socket.role === 'spectator') {
       sender = socket.spectatorName || '관전자';
     } else if (socket.role === 'admin') {
       sender = '관리자';
     }
-    engine.addChatMessage(socket.battleId, sender, message, socket.role || 'system');
+
+    // 팀 채팅: "/t " 또는 "/T "
+    const isTeamChat = /^\/t\s+/i.test(message);
+    if (isTeamChat && socket.role === 'player' && socket.playerTeam) {
+      const clean = message.replace(/^\/t\s+/i, '').slice(0, 500);
+      engine.addChatMessage(socket.battleId, sender, clean, 'team');
+
+      // 같은 팀 + 관리자에게만 전송
+      io.to(`${socket.battleId}-team-${socket.playerTeam}`).emit('battleUpdate', engine.getBattle(socket.battleId));
+      io.to(`${socket.battleId}-admin`).emit('battleUpdate', engine.getBattle(socket.battleId));
+      return;
+    }
+
+    // 일반 채팅
+    const clean = String(message).slice(0, 500);
+    engine.addChatMessage(socket.battleId, sender, clean, socket.role || 'system');
     broadcast(socket.battleId);
   });
 
-  // Cheer (spectators only, allowlist)
+  // 관전자 응원 (허용 리스트만)
   socket.on('cheerMessage', ({ message }) => {
     if (!socket.battleId || socket.role !== 'spectator') return;
     const allowed = ['힘내!', '지지마!', '이길 수 있어!', '포기하지 마!', '화이팅!', '대박!'];
@@ -289,6 +369,7 @@ io.on('connection', (socket) => {
     broadcast(socket.battleId);
   });
 
+  // 관리자 브로드캐스트
   socket.on('adminMessage', ({ battleId, message }) => {
     if (socket.role !== 'admin') return;
     io.to(`${battleId}-admin`).emit('adminBroadcast', { message, at: Date.now() });
@@ -297,7 +378,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     try {
       if (socket.role === 'player' && socket.battleId && socket.playerId) {
-        engine.updatePlayerConnection?.(socket.battleId, socket.playerId, false);
+        if (typeof engine.updatePlayerConnection === 'function') {
+          engine.updatePlayerConnection(socket.battleId, socket.playerId, false);
+        }
         broadcast(socket.battleId);
       }
     } catch (_) {}
@@ -309,5 +392,5 @@ io.on('connection', (socket) => {
 // ───────────────────────────────────────────────────────────
 server.listen(PORT, HOST, () => {
   console.log(`Battle server listening on http://${HOST}:${PORT}`);
-  console.log(`관리자 페이지(정적): http://${HOST}:${PORT}/admin.html`);
+  console.log(`정적 페이지: /admin.html /play.html /watch.html`);
 });
