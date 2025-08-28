@@ -2,287 +2,330 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>전투 관전자</title>
+  <title>Pyxis 전투 관전자</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <!-- Nginx가 /socket.io/ 경로를 :3001로 프록시해야 WebSocket이 정상 동작합니다 -->
   <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500&family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    :root{
-      --bg:#0f1419; --ink:#f5e6b8; --ink-dim:#cbbd98; --panel:#1a1f26; --line:#39424d;
-      --accent:#c8a882; --accent-ink:#0a0f1a; --radius:10px;
+    :root {
+      --bg: #0e1013;
+      --panel: rgba(26, 29, 35, 0.7);
+      --glass-light: rgba(255, 255, 255, 0.05);
+      --ink: #f5e6b8;
+      --ink-dim: #cbbd98;
+      --accent: #c8a882;
+      --accent-ink: #0e1013;
+      --line: #3b3f45;
+      --radius: 12px;
     }
-    *{box-sizing:border-box}
-    body{
-      font-family: Arial, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg); color: var(--ink);
-      margin: 0; padding: 20px;
+    * {
+      box-sizing: border-box;
     }
-    h1,h2,h3{color:#e5c88a;margin:0 0 12px}
-    .hidden{display:none}
-    .container{max-width:880px;margin:auto}
-    input, button{
-      padding: 12px; margin: 6px 0; width: 100%;
-      border-radius: var(--radius); border: 1px solid var(--accent);
-      background: var(--panel); color: var(--ink);
+    body {
+      background: linear-gradient(to bottom right, #0e1013, #1a1f26);
+      color: var(--ink);
+      font-family: 'Inter', system-ui, sans-serif;
+      margin: 0;
+      padding: 24px;
+    }
+    h1, h2, h3 {
+      font-family: 'Cinzel', serif;
+      color: var(--accent);
+      margin: 0 0 12px;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin: 6px 0;
+      border-radius: var(--radius);
+      border: 1px solid var(--accent);
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 15px;
       outline: none;
     }
-    input:focus{ box-shadow: 0 0 0 3px rgba(200,168,130,.2); }
-    button{ cursor:pointer; background: var(--accent); color: var(--accent-ink); font-weight:700 }
-    button:disabled{ opacity:.6; cursor:not-allowed }
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .team{ border:1px solid var(--line); margin:10px 0; padding:12px; border-radius:12px; background:#13181f }
-    .log,.chat{ background: var(--panel); padding:12px; height:220px; overflow-y:auto; font-size:14px; border:1px solid var(--line); border-radius:12px }
-    .muted{ color: var(--ink-dim); font-size: 12px }
-    .sep{height:1px;background:linear-gradient(90deg,transparent,#25303a,transparent);margin:12px 0}
+    input:focus {
+      box-shadow: 0 0 0 3px rgba(200, 168, 130, 0.2);
+    }
+    button {
+      background: linear-gradient(145deg, #c8a882, #b7976d);
+      color: var(--accent-ink);
+      font-weight: bold;
+      transition: all 0.2s ease;
+    }
+    button:hover {
+      filter: brightness(1.05);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .hidden {
+      display: none;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--glass-light);
+      border-radius: var(--radius);
+      padding: 16px;
+      backdrop-filter: blur(8px);
+      box-shadow: inset 0 1px 0 var(--glass-light);
+      margin-bottom: 20px;
+    }
+    .team {
+      border: 1px solid var(--line);
+      background: #13181f;
+      padding: 12px;
+      border-radius: var(--radius);
+    }
+    .log, .chat {
+      background: var(--panel);
+      padding: 12px;
+      height: 220px;
+      overflow-y: auto;
+      font-size: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .muted {
+      color: var(--ink-dim);
+      font-size: 13px;
+    }
+    .sep {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #39424d, transparent);
+      margin: 24px 0;
+    }
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+    .chat-entry {
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+    .chat-entry time {
+      font-size: 12px;
+      color: var(--ink-dim);
+      margin-right: 8px;
+    }
+    .chat-entry strong {
+      color: var(--accent);
+    }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>관전자 모드</h1>
+  <h1>관전자 보기</h1>
 
   <!-- 인증 화면 -->
-  <div id="authScreen">
+  <div id="authScreen" class="card">
+    <h2>전투 입장</h2>
     <div class="row">
       <div>
-        <label for="spectatorName" class="muted">관전자 이름</label>
-        <input type="text" id="spectatorName" placeholder="이름(선택)">
+        <label for="spectatorName" class="muted">이름 (선택)</label>
+        <input type="text" id="spectatorName" placeholder="관전자 이름">
       </div>
       <div>
         <label for="battleId" class="muted">전투 ID</label>
         <input type="text" id="battleId" placeholder="전투 ID">
       </div>
     </div>
-
     <div class="row">
       <div>
         <label for="otp" class="muted">관전자 OTP</label>
-        <input type="text" id="otp" placeholder="관전자 OTP">
+        <input type="text" id="otp" placeholder="OTP 입력">
       </div>
-      <div>
-        <label class="muted">&nbsp;</label>
-        <button id="btnJoin">관전 시작</button>
+      <div style="display:flex;align-items:flex-end">
+        <button id="btnJoin">입장</button>
       </div>
     </div>
-    <div class="muted">URL 쿼리(battle, token, name)로도 자동 채움됩니다.</div>
+    <p class="muted">URL 쿼리(battle, token, name)로도 자동 인식됩니다.</p>
   </div>
 
   <div class="sep"></div>
 
   <!-- 관전 화면 -->
   <div id="watchScreen" class="hidden">
-    <h2>전투 상황</h2>
-    <div id="battleStatus" class="muted">-</div>
-
-    <h3>팀 현황</h3>
-    <div id="teams"></div>
-
-    <h3>전투 로그</h3>
-    <div id="log" class="log"></div>
-
-    <h3>채팅</h3>
-    <div id="chat" class="chat"></div>
-    <div class="row">
-      <input type="text" id="chatInput" placeholder="메시지 입력">
-      <button id="btnSendChat">보내기</button>
+    <div class="card">
+      <h2>전투 상태</h2>
+      <div id="battleStatus" class="pill">-</div>
     </div>
 
-    <h3>응원</h3>
-    <div class="row">
-      <button data-cheer="힘내!">힘내!</button>
-      <button data-cheer="지지마!">지지마!</button>
+    <div class="card">
+      <h3>팀 현황</h3>
+      <div id="teams"></div>
     </div>
-    <div class="row">
-      <button data-cheer="이길 수 있어!">이길 수 있어!</button>
-      <button data-cheer="화이팅!">화이팅!</button>
+    <div class="card">
+      <h3>전투 로그</h3>
+      <div id="log" class="log"></div>
+    </div>
+
+    <div class="card">
+      <h3>실시간 채팅</h3>
+      <div id="chat" class="chat"></div>
+      <div class="row">
+        <input type="text" id="chatInput" placeholder="응원 메시지 입력">
+        <button id="btnSendChat">보내기</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>응원</h3>
+      <div class="row">
+        <button class="cheer-btn" data-cheer="힘내라!">힘내라!</button>
+        <button class="cheer-btn" data-cheer="멋지다!">멋지다!</button>
+      </div>
+      <div class="row">
+        <button class="cheer-btn" data-cheer="이길 수 있어!">이길 수 있어!</button>
+        <button class="cheer-btn" data-cheer="포기하지마!">포기하지마!</button>
+      </div>
     </div>
   </div>
 </div>
-
 <script>
 (() => {
-  'use strict';
-
-  const $ = (s)=>document.querySelector(s);
-
+  const $ = (s) => document.querySelector(s);
   let socket = null;
   let battleId = null;
-  let spectatorName = '관전자';
   let spectatorOtp = null;
-  let pollTimer = null;
+  let spectatorName = "관전자";
 
-  // ────────────────────────────────────────────────────────────────
-  // 유틸
-  // ────────────────────────────────────────────────────────────────
-  function qs(){
+  function qs() {
     const p = new URLSearchParams(location.search);
     return {
-      battle: p.get('battle') || p.get('battleId') || p.get('b'),
-      token:  p.get('token')  || p.get('otp') || p.get('code') || p.get('t'),
-      name:   p.get('name')   || p.get('n')
+      battle: p.get("battle") || p.get("b"),
+      token: p.get("token") || p.get("otp") || p.get("t"),
+      name: p.get("name") || p.get("n"),
     };
   }
 
-  function escapeHtml(s=''){
-    return s.replace(/[&<>"']/g, m=>({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  function escapeHtml(s = "") {
+    return s.replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[m]));
   }
 
-  async function getBattle(id){
+  function show(id) {
+    $("#authScreen").classList.add("hidden");
+    $("#watchScreen").classList.add("hidden");
+    document.getElementById(id).classList.remove("hidden");
+  }
+
+  async function getBattle(id) {
     const r = await fetch(`/api/battles/${encodeURIComponent(id)}`);
-    if(!r.ok) throw new Error(`GET /api/battles/${id} -> ${r.status}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }
 
-  function showAuth(){
-    $('#authScreen').classList.remove('hidden');
-    $('#watchScreen').classList.add('hidden');
-  }
-  function showWatch(){
-    $('#authScreen').classList.add('hidden');
-    $('#watchScreen').classList.remove('hidden');
-  }
+  function renderBattle(b) {
+    if (!b) return;
 
-  function startPolling(){
-    stopPolling();
-    pollTimer = setInterval(async ()=>{
-      if(!battleId) return;
-      try { renderBattle(await getBattle(battleId)); } catch {}
-    }, 3000);
-  }
-  function stopPolling(){
-    if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
-  }
+    $("#battleStatus").textContent =
+      `상태: ${b.status || "-"} | 라운드: ${b.roundNumber ?? "-"} | 턴: ${b.turnNumber ?? "-"} | 현재 팀: ${b.currentTeam ?? "-"}`;
 
-  // ────────────────────────────────────────────────────────────────
-  // 렌더링
-  // ────────────────────────────────────────────────────────────────
-  function renderBattle(b){
-    if(!b) return;
-    $('#battleStatus').textContent =
-      `상태: ${b.status || '-'} | 라운드: ${b.roundNumber ?? '-'} | 턴: ${b.turnNumber ?? '-'} | 현재 팀: ${b.currentTeam ?? '-'}`;
-
-    const teamsDiv = $('#teams');
-    teamsDiv.innerHTML = '';
-    for(const key of ['team1','team2']){
+    const teamsDiv = $("#teams");
+    teamsDiv.innerHTML = "";
+    for (const key of ["team1", "team2"]) {
       const team = b.teams?.[key];
-      const div = document.createElement('div');
-      div.className = 'team';
+      const div = document.createElement("div");
+      div.className = "team";
       const players = (team?.players || [])
-        .map(p => `<div>${escapeHtml(p.name || '플레이어')} (HP: ${p.hp ?? '-'} / ${p.maxHp ?? '-'}) ${p.alive === false ? '(사망)' : ''}</div>`)
-        .join('');
+        .map((p) => `<div>${escapeHtml(p.name || "플레이어")} (HP: ${p.hp ?? "-"} / ${p.maxHp ?? "-"}) ${p.alive === false ? "(사망)" : ""}</div>`)
+        .join("");
       div.innerHTML = `<h4>${escapeHtml(team?.name || key)}</h4>${players || '<div class="muted">플레이어 없음</div>'}`;
       teamsDiv.appendChild(div);
     }
 
-    const logDiv = $('#log');
+    const logDiv = $("#log");
     logDiv.innerHTML = (b.battleLog || [])
-      .map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${escapeHtml(e.message)}`)
-      .join('<br>');
+      .map((e) => `[${new Date(e.timestamp).toLocaleTimeString()}] ${escapeHtml(e.message)}`)
+      .join("<br>");
     logDiv.scrollTop = logDiv.scrollHeight;
 
-    const chatDiv = $('#chat');
+    const chatDiv = $("#chat");
     chatDiv.innerHTML = (b.chatLog || [])
-      .map(c => `[${new Date(c.timestamp).toLocaleTimeString()}] ${escapeHtml(c.sender)} (${escapeHtml(c.senderType)}): ${escapeHtml(c.message)}`)
-      .join('<br>');
+      .map((c) => `[${new Date(c.timestamp).toLocaleTimeString()}] ${escapeHtml(c.sender)}: ${escapeHtml(c.message)}`)
+      .join("<br>");
     chatDiv.scrollTop = chatDiv.scrollHeight;
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // 참가 / 소켓
-  // ────────────────────────────────────────────────────────────────
-  async function joinBattle(){
-    spectatorName = ($('#spectatorName').value.trim()) || '관전자';
-    const bid  = $('#battleId').value.trim();
-    const otp  = $('#otp').value.trim();
+  async function joinBattle() {
+    const bid = $("#battleId").value.trim();
+    const otp = $("#otp").value.trim();
+    spectatorName = $("#spectatorName").value.trim() || "관전자";
 
-    if(!bid || !otp){
-      alert('전투 ID와 OTP를 입력하세요.');
-      return;
-    }
+    if (!bid || !otp) return alert("전투 ID와 OTP를 입력하세요.");
+
     battleId = bid;
     spectatorOtp = otp;
 
-    // 소켓 인증 시도 (서버 미구현이어도 폴링으로 동작)
     connectSocket();
-    showWatch();
+    show("watchScreen");
 
-    // 초기 상태 표시 + 폴링 시작
-    try{ renderBattle(await getBattle(battleId)); }catch{}
-    startPolling();
+    try { renderBattle(await getBattle(battleId)); } catch (e) {}
   }
 
-  function connectSocket(){
-    try{
-      if(socket){ try{ socket.disconnect(); }catch{} socket=null; }
-      socket = io({ path:'/socket.io/', transports:['websocket','polling'] });
+  function connectSocket() {
+    if (socket) { try { socket.disconnect(); } catch {} }
+    socket = io({ path: "/socket.io/", transports: ["websocket", "polling"] });
 
-      socket.on('connect', ()=>{
-        try{
-          socket.emit('spectatorAuth', { battleId, otp: spectatorOtp, spectatorName });
-        }catch{}
-      });
+    socket.on("connect", () => {
+      socket.emit("spectatorAuth", { battleId, otp: spectatorOtp, spectatorName });
+    });
 
-      socket.on('authSuccess', (data)=>{
-        if(data?.battle) renderBattle(data.battle);
-      });
-      socket.on('authError', (msg)=>{
-        console.warn('관전자 인증 실패:', msg);
-      });
+    socket.on("authSuccess", (data) => {
+      if (data?.battle) renderBattle(data.battle);
+    });
 
-      socket.on('battleUpdate', (battle)=>{
-        renderBattle(battle);
-      });
+    socket.on("battleUpdate", (battle) => {
+      renderBattle(battle);
+    });
 
-      socket.on('connect_error', (err)=>{
-        console.warn('소켓 연결 오류:', err?.message || err);
-      });
-    }catch(e){
-      console.warn('소켓 초기화 실패:', e?.message || e);
-    }
+    socket.on("connect_error", (err) => {
+      console.warn("소켓 연결 오류:", err?.message || err);
+    });
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // 채팅/응원 (서버 미구현 시 경고)
-  // ────────────────────────────────────────────────────────────────
-  function sendChat(){
-    const msg = $('#chatInput').value.trim();
-    if(!msg) return;
-    if(!socket || socket.disconnected){
-      alert('실시간 채팅이 비활성화되어 있습니다. 서버 소켓 핸들러를 확인하세요.');
-      return;
-    }
-    socket.emit('chatMessage', { message: msg });
-    $('#chatInput').value = '';
+  function sendChat() {
+    const msg = $("#chatInput").value.trim();
+    if (!msg) return;
+    if (!socket || socket.disconnected) return alert("채팅이 비활성화되어 있습니다.");
+    socket.emit("chatMessage", { message: msg });
+    $("#chatInput").value = "";
   }
 
-  function sendCheer(message){
-    if(!socket || socket.disconnected){
-      alert('실시간 응원이 비활성화되어 있습니다. 서버 소켓 핸들러를 확인하세요.');
-      return;
-    }
-    socket.emit('cheerMessage', { message });
+  function sendCheer(message) {
+    if (!socket || socket.disconnected) return alert("응원이 비활성화되어 있습니다.");
+    socket.emit("cheerMessage", { message });
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // 바인딩 / 부트
-  // ────────────────────────────────────────────────────────────────
-  $('#btnJoin').onclick = joinBattle;
-  $('#btnSendChat').onclick = sendChat;
-  document.querySelectorAll('button[data-cheer]').forEach(b=>{
-    b.onclick = ()=> sendCheer(b.getAttribute('data-cheer'));
+  $("#btnJoin").onclick = joinBattle;
+  $("#btnSendChat").onclick = sendChat;
+  document.querySelectorAll(".cheer-btn").forEach((btn) => {
+    btn.onclick = () => sendCheer(btn.dataset.cheer);
   });
 
-  (function boot(){
+  (function boot() {
     const p = qs();
-    if(p.battle) $('#battleId').value = p.battle;
-    if(p.token)  $('#otp').value      = p.token;
-    if(p.name)   $('#spectatorName').value = p.name;
-
-    // 쿼리에 battle과 token이 있으면 자동 참가 시도
-    if($('#battleId').value && $('#otp').value){
-      joinBattle();
-    }
+    if (p.battle) $("#battleId").value = p.battle;
+    if (p.token) $("#otp").value = p.token;
+    if (p.name) $("#spectatorName").value = p.name;
+    if ($("#battleId").value && $("#otp").value) joinBattle();
   })();
 })();
 </script>
