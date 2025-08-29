@@ -1,13 +1,15 @@
 // packages/battle-server/index.js
-// Express + Socket.IO 서버
-// - 관리자 채팅 가능 / 관전자 채팅 불가(응원 프리셋만)
-// - 관전자 OTP 30분, 플레이어 OTP 30분, 관리자 OTP 60분
+// Express + Socket.IO 서버 (관리자 채팅 가능 / 관전자 채팅 불가, 응원 프리셋만)
+// - 관전자/플레이어 OTP 30분, 관리자 OTP 60분
 // - 아바타 업로드 검증(<=300KB, data:image/*;base64)
-// - 상태 브로드캐스트 스로틀(빠른 반영)
-// - 1v1 / 2v2 / 3v3 / 4v4 지원
-// - 한쪽 전멸 즉시 종료, 총 시간 1시간
-// - /admin, /admin.html, /play(.html), /watch(.html) 명시 매핑
-// - [FIX] httpServer/io 중복 선언 제거
+// - 1v1 / 2v2 / 3v3 / 4v4 지원, 한쪽 전멸 즉시 종료, 총 시간 1시간
+// - 정적 라우트: /admin(.html), /play(.html), /watch(.html)
+// - [호환] 전투 생성 엔드포인트 다수 허용: POST
+//     /api/battles
+//     /api/admin/battles
+//     /api/battle
+//     /api/admin/battle
+//   (JSON / x-www-form-urlencoded / querystring 모두 지원)
 
 const path = require('path');
 const fs = require('fs');
@@ -17,13 +19,31 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 
-const { BattleEngine } = require('./src/services/BattleEngine');
+// BattleEngine 로딩(기본/이름 내보내기 모두 지원)
+let BE = null;
+try { BE = require('./src/services/BattleEngine'); } catch (e) {
+  console.error('BattleEngine 로드 실패:', e && (e.stack || e.message || e));
+}
+const BattleEngine =
+  (typeof BE === 'function') ? BE :
+  (BE && typeof BE.BattleEngine === 'function') ? BE.BattleEngine :
+  null;
+if (!BattleEngine) {
+  throw new Error('BattleEngine를 찾을 수 없습니다. ./src/services/BattleEngine 내보내기 확인');
+}
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || '0.0.0.0';
 
 const app = express();
 app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: true })); // 폼 전송 호환
+
+// 간단 요청 로거(원인 추적용)
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // CORS
 const ALLOW = (process.env.CORS_ORIGIN || '*')
@@ -62,7 +82,7 @@ app.get('/play.html', (req, res) => send(res, 'play.html'));
 app.get('/watch', (req, res) => send(res, 'watch.html'));
 app.get('/watch.html', (req, res) => send(res, 'watch.html'));
 
-// 루트: admin.html 있으면 /admin, 없으면 /play
+// 루트
 app.get('/', (req, res) => {
   const hasAdmin = fs.existsSync(path.join(pubDir, 'admin.html'));
   return res.redirect(hasAdmin ? '/admin' : '/play');
@@ -75,6 +95,15 @@ function now() { return Date.now(); }
 function genId(len = 12) { return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0, len); }
 function genOTP(len = 24) { return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0, len); }
 function minutes(n) { return n * 60 * 1000; }
+
+const MODE_CONFIG = {
+  '1v1': { playersPerTeam: 1 },
+  '2v2': { playersPerTeam: 2 },
+  '3v3': { playersPerTeam: 3 },
+  '4v4': { playersPerTeam: 4 },
+};
+function safeMode(m) { return MODE_CONFIG[m] ? m : '1v1'; }
+function room(bid) { return `battle:${bid}`; }
 
 function sanitizePublicBattle(b) {
   const players = {};
@@ -90,12 +119,10 @@ function sanitizePublicBattle(b) {
     id: b.id, mode: b.mode, status: b.status,
     createdAt: b.createdAt, startedAt: b.startedAt || null, endsAt: b.endsAt || null,
     teams: b.teams, players,
-    turn: b.engine.getTurnPublic(),
+    turn: b.engine.getTurnPublic ? b.engine.getTurnPublic() : null,
     chat: b.chat.slice(-200)
   };
 }
-
-function room(bid) { return `battle:${bid}`; }
 
 function emitState(io, b) {
   if (b._emitScheduled) return;
@@ -105,14 +132,6 @@ function emitState(io, b) {
     io.to(room(b.id)).emit('state', sanitizePublicBattle(b));
   }, 10);
 }
-
-const MODE_CONFIG = {
-  '1v1': { playersPerTeam: 1 },
-  '2v2': { playersPerTeam: 2 },
-  '3v3': { playersPerTeam: 3 },
-  '4v4': { playersPerTeam: 4 },
-};
-function safeMode(m) { return MODE_CONFIG[m] ? m : '1v1'; }
 
 function createBattle(mode = '2v2') {
   const id = `battle_${genId(12)}`;
@@ -141,6 +160,7 @@ function createBattle(mode = '2v2') {
     _emitScheduled: false,
   };
 
+  // 엔진 인스턴스(콜백 제공)
   b.engine = new BattleEngine(b, {
     onResolve: (logs) => {
       if (Array.isArray(logs) && logs.length) {
@@ -167,28 +187,43 @@ function findBattleOr404(req, res) {
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: now() }));
 
-// 배틀 생성
-app.post('/api/battles', (req, res) => {
-  const { mode } = req.body || {};
-  const b = createBattle(mode || '2v2');
+// ------------------------
+// 전투 생성(호환 라우트 묶음)
+// ------------------------
+function extractMode(req) {
+  // JSON/폼/쿼리 어디서든 mode를 허용
+  return (req.body && req.body.mode) || req.query.mode || undefined;
+}
+function createBattleResponse(req, res) {
+  const mode = extractMode(req) || '2v2';
+  const b = createBattle(mode);
   res.json({
     ok: true,
     battle: sanitizePublicBattle(b),
     otps: { admin: b.tokens.admin.token, spectator: b.tokens.spectator.token },
     urls: {
       admin: absoluteUrl(req, `/admin?battle=${b.id}&token=${b.tokens.admin.token}`),
-      watch: absoluteUrl(req, `/watch?battle=${b.id}&token=${b.tokens.spectator.token}&name=관전자`),
+      watch: absoluteUrl(req, `/watch?battle=${b.id}&token=${b.tokens.spectator.token}&name=${encodeURIComponent('관전자')}`),
     },
   });
-});
+}
+// 신규 사양
+app.post('/api/battles', createBattleResponse);
+// 구형/관리자 사양 호환
+app.post('/api/admin/battles', createBattleResponse);
+app.post('/api/battle', createBattleResponse);
+app.post('/api/admin/battle', createBattleResponse);
 
 // 플레이어 추가(대기중)
 app.post('/api/battles/:id/players', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
   if (b.status !== 'waiting') return res.status(400).json({ error: 'already_started' });
 
-  const { name, team, stats, inventory } = req.body || {};
-  if (!name || !team || !stats) return res.status(400).json({ error: 'invalid_payload' });
+  const { name, team } = req.body || {};
+  const stats = (req.body && req.body.stats) || {};
+  const inventory = Array.isArray(req.body && req.body.inventory) ? req.body.inventory : [];
+
+  if (!name || !team) return res.status(400).json({ error: 'invalid_payload' });
   if (!['team1','team2'].includes(team)) return res.status(400).json({ error: 'invalid_team' });
 
   // 이름 중복 금지
@@ -212,7 +247,7 @@ app.post('/api/battles/:id/players', (req, res) => {
       agility: clampInt(stats.agility, 1, 5),
       luck: clampInt(stats.luck, 1, 5),
     },
-    inventory: Array.isArray(inventory) ? inventory.slice(0, 10) : [],
+    inventory: inventory.slice(0, 10),
     avatar: null,
   };
 
@@ -251,7 +286,7 @@ app.post('/api/admin/battles/:id/start', (req, res) => {
   b.status = 'ongoing';
   b.startedAt = b.startedAt || now();
   b.endsAt = b.startedAt + b.maxDurationMs;
-  b.engine.onStart();
+  if (typeof b.engine.onStart === 'function') b.engine.onStart();
   emitState(io, b);
   res.json({ ok: true, battle: sanitizePublicBattle(b) });
 });
@@ -267,7 +302,7 @@ app.post('/api/admin/battles/:id/pause', (req, res) => {
 app.post('/api/admin/battles/:id/end', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
   b.status = 'ended';
-  b.engine.forceEnd('관리자 종료');
+  if (b.engine && typeof b.engine.forceEnd === 'function') b.engine.forceEnd('관리자 종료');
   emitState(io, b);
   res.json({ ok: true });
 });
@@ -292,9 +327,7 @@ app.use((err, req, res, next) => {
   res.status(500).send('Internal Server Error');
 });
 
-// ------------------------
-// Socket.IO (단일 선언)
-// ------------------------
+// Socket.IO
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   path: '/socket.io/',
@@ -316,12 +349,15 @@ io.on('connection', (socket) => {
       } else if (role === 'spectator') {
         authed = token === b.tokens.spectator.token && b.tokens.spectator.exp > now();
       } else if (role === 'player') {
-        const rec = Object.entries(b.tokens.players).find(([, v]) => v.exp > now() && b.players[v.pid]);
-        if (rec) { authed = true; linkedPid = rec[1].pid; }
-        if (authed && name && b.players[linkedPid] && b.players[linkedPid].name !== name) authed = false;
-        if (!authed && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
+        // 토큰 직접 매칭
+        if (token && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
           linkedPid = b.tokens.players[token].pid;
-          if (name && b.players[linkedPid] && b.players[linkedPid].name === name) authed = true;
+          authed = !!b.players[linkedPid];
+        }
+        // 혹시 구형 클라이언트가 name만 보내는 경우(관리자 발급 링크 없이)
+        if (!authed && name) {
+          const entry = Object.entries(b.tokens.players).find(([, v]) => v.exp > now() && b.players[v.pid] && b.players[v.pid].name === name);
+          if (entry) { linkedPid = entry[1].pid; authed = true; }
         }
       }
       if (!authed) return ack && ack({ ok: false, error: 'auth_failed' });
@@ -397,7 +433,7 @@ io.on('connection', (socket) => {
     if (b.status !== 'ongoing') return ack && ack({ ok: false, error: 'invalid_state' });
 
     const { kind, targetId, itemName } = payload || {};
-    const result = b.engine.chooseAction(a.pid, { kind, targetId, itemName });
+    const result = b.engine.chooseAction ? b.engine.chooseAction(a.pid, { kind, targetId, itemName }) : { ok: false, error: 'engine_missing' };
     if (!result.ok) return ack && ack(result);
 
     emitState(io, b);
@@ -438,4 +474,6 @@ function validateAndApplyAvatar(player, dataUrl) {
 // 서버 시작
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
+  console.log(`Static root: ${pubDir}`);
+  console.log('Access pages: /admin  /play  /watch');
 });
