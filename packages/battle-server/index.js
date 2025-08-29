@@ -1,33 +1,46 @@
-// index.js - Battle Server Entry
+// packages/battle-server/index.js
+// Battle Server Entry (fixed routes for /admin, /play, /watch)
+
 const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
-const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
 
 // 채팅 모듈
 const { initChat } = require('./src/socket/chat');
 
-// Express app
+// ================== App / Static ==================
 const app = express();
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+app.use(express.static(PUBLIC_DIR, { index: false, maxAge: '1h' })); // /admin 등의 명시 라우트로만 진입
+
+// HTML 페이지 라우트 (중요: /admin, /play, /watch 를 파일에 매핑)
+const sendPublic = (file, res) => res.sendFile(path.join(PUBLIC_DIR, file));
+app.get('/', (_req, res) => sendPublic('admin.html', res));
+app.get('/admin', (_req, res) => sendPublic('admin.html', res));
+app.get('/play', (_req, res) => sendPublic('play.html', res));
+app.get('/watch', (_req, res) => sendPublic('watch.html', res));
 
 // ================ Storage ==================
 const battles = {}; // in-memory 전투 관리
 
 // ================== Utils ==================
 function newId(prefix) {
-  return prefix + '_' + Math.random().toString(36).substr(2, 9);
+  return `${prefix}_${Math.random().toString(36).slice(2, 11)}`;
 }
-function now() {
-  return Date.now();
-}
+const now = () => Date.now();
 
-// ================== Multer ==================
-const upload = multer({ dest: path.join(__dirname, 'uploads/') });
+// ================== Multer (아바타 업로드) ==================
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const upload = multer({ dest: uploadDir });
+
 app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
   try {
     const { id } = req.params;
@@ -47,7 +60,7 @@ app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
 // 전투 생성
 app.post('/api/admin/battles', (req, res) => {
   try {
-    const { mode } = req.body;
+    const { mode } = req.body || {};
     if (!mode) return res.json({ ok: false, message: 'mode 필요' });
 
     const battleId = newId('battle');
@@ -57,7 +70,7 @@ app.post('/api/admin/battles', (req, res) => {
       createdAt: now(),
       teamA: { name: '불사조 기사단', players: [] },
       teamB: { name: '죽음을 먹는 자들', players: [] },
-      otp: { players: {}, spectator: { value: newId('spec') } },
+      otp: { players: {}, spectator: { value: newId('spec') } }, // spectator token 보장
       state: 'created'
     };
 
@@ -75,7 +88,9 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
     const b = battles[id];
     if (!b) return res.status(404).json({ ok: false, message: '전투 없음' });
 
-    const base = process.env.BASE_URL || 'http://localhost:3001';
+    const base = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+    // 샘플 플레이어용 링크 1개 (실전은 플레이어별로 발급/저장하세요)
     const playUrl = new URL('/play', base);
     playUrl.searchParams.set('battle', b.id);
     playUrl.searchParams.set('token', newId('pTok'));
@@ -84,7 +99,6 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
 
     const watchUrl = new URL('/watch', base);
     watchUrl.searchParams.set('battle', b.id);
-    // spectator token 안정적으로
     const specTok = (b.otp && b.otp.spectator && b.otp.spectator.value) || '';
     watchUrl.searchParams.set('token', specTok);
 
@@ -129,7 +143,7 @@ app.post('/api/admin/battles/:id/end', (req, res) => {
 });
 
 // ================== Health Check ==================
-app.get('/api/health', (req, res) => res.json({ ok: true, ts: now() }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, ts: now() }));
 
 // ================== HTTP/Socket.io ==================
 const httpServer = http.createServer(app);
@@ -140,7 +154,7 @@ const io = new Server(httpServer, {
   allowEIO3: true
 });
 
-// 채팅 초기화
+// 채팅 초기화 (파일로 로그 적재)
 initChat(io, {
   pushChat: (battleId, entry) => {
     try {
@@ -158,6 +172,6 @@ initChat(io, {
 const PORT = Number(process.env.PORT || 3001);
 httpServer.listen(PORT, () => {
   console.log(`Battle server on http://0.0.0.0:${PORT}`);
-  console.log(`Static root: ${path.join(__dirname, 'public')}`);
+  console.log(`Static root: ${PUBLIC_DIR}`);
   console.log('Access pages: /admin  /play  /watch');
 });
