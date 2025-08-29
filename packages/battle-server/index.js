@@ -91,7 +91,7 @@ function normalizeInventory(inv) {
   const out = {};
   if (!inv) return out;
   const add = (name, qty) => {
-    if (!ALLOWED_ITEMS.has(name)) return;           // 필터
+    if (!ALLOWED_ITEMS.has(name)) return;
     const q = Math.max(0, Math.floor(Number(qty || 1)));
     if (q > 0) out[name] = (out[name] || 0) + q;
   };
@@ -251,7 +251,7 @@ app.post('/api/battles/:id/players', (req, res) => {
       agility: clampInt(stats.agility, 1, 5),
       luck: clampInt(stats.luck, 1, 5),
     },
-    inventory: normalizeInventory(invRaw), // 허용 아이템만 반영
+    inventory: normalizeInventory(invRaw),
     avatar: null,
     _buffs: {}
   };
@@ -467,6 +467,11 @@ function validateAndApplyAvatar(player, dataUrl) {
 }
 
 // 서버 시작
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  path: '/socket.io/',
+  cors: { origin: ALLOW.includes('*') ? true : ALLOW, credentials: true },
+});
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
   console.log(`Static root: ${pubDir}`);
