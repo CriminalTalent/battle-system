@@ -1,474 +1,352 @@
-// packages/battle-server/index.js
-// Express + Socket.IO 서버
-// - 관리자 채팅 가능 / 관전자 채팅 불가(응원 프리셋만)
-// - OTP: 관리자 60분, 관전자 30분, 플레이어 30분
-// - 아바타 업로드 검증(<=300KB, data:image/*;base64)
-// - 모드: 1v1 / 2v2 / 3v3 / 4v4
-// - 정적 라우트: /admin(.html), /play(.html), /watch(.html)
-// - 전투 생성 엔드포인트 호환: POST /api/battles, /api/admin/battles, /api/battle, /api/admin/battle
+/**
+ * PYXIS Battle Server
+ * - Express + Socket.IO
+ * - BattleEngine 인터페이스에 맞춘 API/소켓 엔드포인트
+ *
+ * ENV:
+ *   PORT=3001
+ *   HOST=0.0.0.0
+ *   CORS_ORIGIN="https://admin.example,https://game.example"  // 없으면 *
+ *   PUBLIC_BASE_URL="https://game.example"                    // 절대 URL 생성용
+ */
 
 const path = require('path');
-const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
-const crypto = require('crypto');
+const BattleEngine = require('./src/services/BattleEngine');
 
-// BattleEngine 로드(기본/이름 내보내기 둘 다 지원)
-let BE = null;
-try { BE = require('./src/services/BattleEngine'); } catch (e) {
-  console.error('BattleEngine 로드 실패:', e && (e.stack || e.message || e));
-}
-const BattleEngine =
-  (typeof BE === 'function') ? BE :
-  (BE && typeof BE.BattleEngine === 'function') ? BE.BattleEngine :
-  null;
-if (!BattleEngine) throw new Error('BattleEngine를 찾을 수 없습니다. ./src/services/BattleEngine 확인');
-
-const PORT = Number(process.env.PORT || 3001);
+// -------------------------------
+// Bootstrap
+// -------------------------------
+const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 
 const app = express();
-app.use(express.json({ limit: '512kb' }));
-app.use(express.urlencoded({ extended: true }));
 
-// 간단 로거
-app.use((req, res, next) => {
+// 본문 한도 (아바타 base64 등을 고려해 넉넉히)
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+// CORS
+const allowOrigins = (process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (allowOrigins.includes('*')) return cb(null, true);
+      if (!origin) return cb(null, true);
+      cb(null, allowOrigins.includes(origin));
+    },
+    credentials: true,
+  })
+);
+
+// 간단한 요청 로깅
+app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// CORS
-const ALLOW = (process.env.CORS_ORIGIN || '*')
-  .split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    if (ALLOW.includes('*') || ALLOW.includes(origin)) return cb(null, true);
-    return cb(new Error('CORS blocked'), false);
-  },
-  credentials: true
-}));
+// 엔진(프로세스 단일 인스턴스)
+const engine = new BattleEngine();
 
-// 정적 파일
-const pubDir = path.join(__dirname, 'public');
-app.use(express.static(pubDir, { fallthrough: true }));
-const send = (res, file) => res.sendFile(path.join(pubDir, file));
-app.get('/', (req, res) => {
-  const hasAdmin = fs.existsSync(path.join(pubDir, 'admin.html'));
-  res.redirect(hasAdmin ? '/admin' : '/play');
+// -------------------------------
+// Helpers
+// -------------------------------
+function baseUrlFrom(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  const host = req.get('host');
+  return `${proto}://${host}`;
+}
+function ok(res, json) {
+  res.status(200).json(Object.assign({ ok: true }, json || {}));
+}
+function bad(res, code, message) {
+  res.status(code || 400).json({ ok: false, message: String(message || 'error') });
+}
+function requireBattle(id) {
+  const b = engine.getBattle(id);
+  if (!b) {
+    const err = new Error('전투 없음');
+    err.code = 404;
+    throw err;
+  }
+  return b;
+}
+
+// -------------------------------
+// API
+// -------------------------------
+
+// Health
+app.get('/api/health', (_req, res) => ok(res, { ts: Date.now() }));
+
+// 전투 생성 (관리자)
+app.post('/api/admin/battles', (req, res) => {
+  try {
+    const mode = String(req.body?.mode || '1v1');
+    const b = engine.createBattle(mode);
+    const base = baseUrlFrom(req);
+
+    const adminUrl = new URL(base);
+    adminUrl.pathname = '/admin';
+    adminUrl.searchParams.set('battle', b.id);
+    adminUrl.searchParams.set('token', b.otp.admin);
+
+    const watchUrl = new URL(base);
+    watchUrl.pathname = '/watch';
+    watchUrl.searchParams.set('battle', b.id);
+    watchUrl.searchParams.set('token', b.otp.spectator.value);
+    watchUrl.searchParams.set('name', '관전자');
+
+    ok(res, {
+      battle: engine.getPublicState(b.id),
+      otps: { admin: b.otp.admin, spectator: b.otp.spectator.value },
+      urls: { admin: adminUrl.toString(), watch: watchUrl.toString() },
+    });
+  } catch (e) {
+    bad(res, 400, e.message);
+  }
 });
-app.get('/admin', (req, res) => send(res, 'admin.html'));
-app.get('/admin.html', (req, res) => send(res, 'admin.html'));
-app.get('/play', (req, res) => send(res, 'play.html'));
-app.get('/play.html', (req, res) => send(res, 'play.html'));
-app.get('/watch', (req, res) => send(res, 'watch.html'));
-app.get('/watch.html', (req, res) => send(res, 'watch.html'));
 
-// 인메모리 저장소
-const battles = new Map();
-
-function now() { return Date.now(); }
-function genId(len = 12) { return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0, len); }
-function genOTP(len = 24) { return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0, len); }
-function minutes(n) { return n * 60 * 1000; }
-
-const MODE_CONFIG = {
-  '1v1': { playersPerTeam: 1 },
-  '2v2': { playersPerTeam: 2 },
-  '3v3': { playersPerTeam: 3 },
-  '4v4': { playersPerTeam: 4 },
-};
-function safeMode(m) { return MODE_CONFIG[m] ? m : '1v1'; }
-function room(bid) { return `battle:${bid}`; }
-
-// 허용 아이템(3종)
-const ALLOWED_ITEMS = new Set(['디터니','공격 보정기','방어 보정기']);
-
-// 인벤토리 표준화: 다양한 입력을 {이름:수량} 맵으로 변환(허용 아이템만 반영)
-function normalizeInventory(inv) {
-  const out = {};
-  if (!inv) return out;
-  const add = (name, qty) => {
-    if (!ALLOWED_ITEMS.has(name)) return;
-    const q = Math.max(0, Math.floor(Number(qty || 1)));
-    if (q > 0) out[name] = (out[name] || 0) + q;
-  };
-  if (Array.isArray(inv)) {
-    for (const it of inv) {
-      if (!it) continue;
-      if (typeof it === 'string') add(it, 1);
-      else if (typeof it === 'object' && it.name) add(it.name, it.qty || 1);
-    }
-  } else if (typeof inv === 'object') {
-    for (const k of Object.keys(inv)) add(k, inv[k]);
-  }
-  return out;
-}
-
-// 공개 상태로 가공
-function sanitizePublicBattle(b) {
-  const players = {};
-  for (const pid of Object.keys(b.players)) {
-    const p = b.players[pid];
-    players[pid] = {
-      id: p.id, name: p.name, team: p.team,
-      hp: p.hp, maxHp: p.maxHp, alive: p.alive,
-      stats: p.stats,
-      inventory: { ...(p.inventory || {}) },
-      avatar: p.avatar || null
-    };
-  }
-  return {
-    id: b.id, mode: b.mode, status: b.status,
-    createdAt: b.createdAt, startedAt: b.startedAt || null, endsAt: b.endsAt || null,
-    teams: b.teams, players,
-    turn: b.engine.getTurnPublic ? b.engine.getTurnPublic() : null,
-    chat: b.chat.slice(-300)
-  };
-}
-
-function emitState(io, b) {
-  if (b._emitScheduled) return;
-  b._emitScheduled = true;
-  setTimeout(() => {
-    b._emitScheduled = false;
-    io.to(room(b.id)).emit('state', sanitizePublicBattle(b));
-  }, 10);
-}
-
-function createBattle(mode = '2v2') {
-  const id = `battle_${genId(12)}`;
-  const adminOTP = genOTP(24);
-  const spectatorOTP = genOTP(24);
-  const m = safeMode(mode);
-
-  const b = {
-    id,
-    mode: m,
-    config: MODE_CONFIG[m],
-    status: 'waiting',
-    createdAt: now(),
-    startedAt: null,
-    endsAt: null,
-    maxDurationMs: 60 * 60 * 1000,
-    teams: { team1: '불사조 기사단', team2: '죽음을 먹는 자들' },
-    players: {},
-    chat: [],
-    tokens: {
-      admin: { token: adminOTP, exp: now() + minutes(60) },
-      spectator: { token: spectatorOTP, exp: now() + minutes(30) },
-      players: {}, // token -> { pid, exp }
-    },
-    engine: null,
-    _emitScheduled: false,
-  };
-
-  // 엔진 인스턴스
-  b.engine = new BattleEngine(b, {
-    onResolve: (logs) => {
-      if (Array.isArray(logs) && logs.length) {
-        for (const line of logs) b.chat.push({ type: 'system', ts: now(), text: line });
-      }
-    },
-    onEnd: (reason) => {
-      if (b.status !== 'ended') {
-        b.status = 'ended';
-        b.chat.push({ type: 'system', ts: now(), text: `전투 종료: ${reason}` });
-      }
-    },
-  });
-
-  battles.set(id, b);
-  return b;
-}
-
-function findBattleOr404(req, res) {
-  const b = battles.get(req.params.id);
-  if (!b) { res.status(404).json({ error: 'battle_not_found' }); return null; }
-  return b;
-}
-
-app.get('/api/health', (req, res) => res.json({ ok: true, ts: now() }));
-
-// 전투 생성(호환 라우트)
-function extractMode(req) {
-  return (req.body && req.body.mode) || req.query.mode || undefined;
-}
-function absoluteUrl(req, p) {
-  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-  return base + p;
-}
-function createBattleResponse(req, res) {
-  const mode = extractMode(req) || '2v2';
-  const b = createBattle(mode);
-  res.json({
-    ok: true,
-    battle: sanitizePublicBattle(b),
-    otps: { admin: b.tokens.admin.token, spectator: b.tokens.spectator.token },
-    urls: {
-      admin: absoluteUrl(req, `/admin?battle=${b.id}&token=${b.tokens.admin.token}`),
-      watch: absoluteUrl(req, `/watch?battle=${b.id}&token=${b.tokens.spectator.token}&name=${encodeURIComponent('관전자')}`),
-    },
-  });
-}
-app.post('/api/battles', createBattleResponse);
-app.post('/api/admin/battles', createBattleResponse);
-app.post('/api/battle', createBattleResponse);
-app.post('/api/admin/battle', createBattleResponse);
-
-// 플레이어 추가(대기중에만)
+// 플레이어 추가
 app.post('/api/battles/:id/players', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-  if (b.status !== 'waiting') return res.status(400).json({ error: 'already_started' });
-
-  const { name, team } = req.body || {};
-  const stats = (req.body && req.body.stats) || {};
-  const invRaw = (req.body && req.body.inventory) || {};
-
-  if (!name || !team) return res.status(400).json({ error: 'invalid_payload' });
-  if (!['team1','team2'].includes(team)) return res.status(400).json({ error: 'invalid_team' });
-
-  // 이름 중복 금지
-  for (const pid of Object.keys(b.players)) {
-    if (b.players[pid].name === name) return res.status(400).json({ error: 'duplicate_name' });
+  try {
+    const id = String(req.params.id || '');
+    requireBattle(id);
+    const payload = {
+      name: req.body?.name,
+      team: req.body?.team,
+      stats: req.body?.stats,
+      inventory: req.body?.inventory,
+      imageUrl: req.body?.imageUrl || '',
+    };
+    const r = engine.addPlayer(id, payload);
+    ok(res, r);
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
   }
-  // 팀 수용 제한
-  const maxTeam = b.config.playersPerTeam;
-  const teamCount = Object.values(b.players).filter(p => p.team === team).length;
-  if (teamCount >= maxTeam) return res.status(400).json({ error: 'team_full' });
-
-  const pid = `p_${genId(10)}`;
-  b.players[pid] = {
-    id: pid,
-    name,
-    team,
-    hp: 100, maxHp: 100, alive: true,
-    stats: {
-      attack: clampInt(stats.attack, 1, 5),
-      defense: clampInt(stats.defense, 1, 5),
-      agility: clampInt(stats.agility, 1, 5),
-      luck: clampInt(stats.luck, 1, 5),
-    },
-    inventory: normalizeInventory(invRaw),
-    avatar: null,
-    _buffs: {}
-  };
-
-  emitState(io, b);
-  res.json({ ok: true, player: b.players[pid] });
 });
 
-// 플레이어별 링크(OTP 발급)
+// 플레이어 삭제(대기중에만)
+app.delete('/api/battles/:id/players/:pid', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const pid = String(req.params.pid || '');
+    requireBattle(id);
+    ok(res, engine.removePlayer(id, pid));
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
+  }
+});
+
+// 플레이어별 링크 생성 (관리자)
+// 반드시 :id를 req.params.id에서 읽는다.
 app.post('/api/admin/battles/:id/links', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-
-  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-  const playerLinks = [];
-  for (const pid of Object.keys(b.players)) {
-    const p = b.players[pid];
-    const token = genOTP(24);
-    b.tokens.players[token] = { pid, exp: now() + minutes(30) };
-    const url = `${base}/play?battle=${b.id}&token=${token}&name=${encodeURIComponent(p.name)}&pid=${pid}`;
-    playerLinks.push({ pid, name: p.name, url, token });
+  try {
+    const id = String(req.params.id || '');
+    requireBattle(id);
+    const base = baseUrlFrom(req);
+    const r = engine.generatePlayerLinks(id, base);
+    ok(res, r);
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
   }
-  res.json({
-    ok: true,
-    urls: {
-      player: `${base}/play`,
-      watch: `${base}/watch?battle=${b.id}&token=${b.tokens.spectator.token}`,
-    },
-    playerLinks,
-  });
 });
 
-// 전투 제어
+// 전투 시작/일시정지/종료
 app.post('/api/admin/battles/:id/start', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-  if (!['waiting','paused'].includes(b.status)) return res.status(400).json({ error: 'invalid_state' });
-  b.status = 'ongoing';
-  b.startedAt = b.startedAt || now();
-  b.endsAt = b.startedAt + b.maxDurationMs;
-  if (typeof b.engine.onStart === 'function') b.engine.onStart();
-  emitState(io, b);
-  res.json({ ok: true, battle: sanitizePublicBattle(b) });
+  try {
+    const id = String(req.params.id || '');
+    requireBattle(id);
+    ok(res, engine.startBattle(id));
+    // 상태 브로드캐스트
+    io.to(`battle:${id}`).emit('state', engine.getPublicState(id));
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
+  }
 });
-
 app.post('/api/admin/battles/:id/pause', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-  if (b.status !== 'ongoing') return res.status(400).json({ error: 'invalid_state' });
-  b.status = 'paused';
-  emitState(io, b);
-  res.json({ ok: true });
+  try {
+    const id = String(req.params.id || '');
+    requireBattle(id);
+    ok(res, engine.pauseBattle(id));
+    io.to(`battle:${id}`).emit('state', engine.getPublicState(id));
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
+  }
 });
-
 app.post('/api/admin/battles/:id/end', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-  b.status = 'ended';
-  if (b.engine && typeof b.engine.forceEnd === 'function') b.engine.forceEnd('관리자 종료');
-  emitState(io, b);
-  res.json({ ok: true });
+  try {
+    const id = String(req.params.id || '');
+    requireBattle(id);
+    ok(res, engine.endBattle(id));
+    io.to(`battle:${id}`).emit('state', engine.getPublicState(id));
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
+  }
 });
 
-// 아바타 업로드(HTTP)
-app.post('/api/battles/:id/players/:pid/avatar', (req, res) => {
-  const b = findBattleOr404(req, res); if (!b) return;
-  const { pid } = req.params;
-  const p = b.players[pid]; if (!p) return res.status(404).json({ error: 'player_not_found' });
-
-  const { dataUrl } = req.body || {};
-  const ok = validateAndApplyAvatar(p, dataUrl);
-  if (!ok.ok) return res.status(400).json({ error: ok.error });
-
-  emitState(io, b);
-  res.json({ ok: true });
+// 아바타 업로드(선택) — 현재 플레이어 화면에서는 사용 안하지만 엔드포인트 유지
+app.post('/api/battles/:id/avatar', (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const pid = String(req.body?.pid || '');
+    const dataUrl = String(req.body?.dataUrl || '');
+    requireBattle(id);
+    ok(res, engine.setPlayerAvatar(id, pid, dataUrl));
+    io.to(`battle:${id}`).emit('state', engine.getPublicState(id));
+  } catch (e) {
+    bad(res, e.code || 400, e.message);
+  }
 });
 
-// 에러 핸들러
-app.use((err, req, res, next) => {
-  console.error('[Express Error]', err && (err.stack || err.message || err));
-  res.status(500).send('Internal Server Error');
-});
+// -------------------------------
+// Static
+// -------------------------------
+const pubRoot = path.join(__dirname, 'public');
+app.use(express.static(pubRoot, { index: false }));
 
-// 서버/소켓: 여기서 단 한 번만 생성
+app.get('/', (_req, res) => res.redirect('/admin'));
+app.get('/admin', (_req, res) => res.sendFile(path.join(pubRoot, 'admin.html')));
+app.get('/admin.html', (_req, res) => res.sendFile(path.join(pubRoot, 'admin.html')));
+app.get('/play', (_req, res) => res.sendFile(path.join(pubRoot, 'play.html')));
+app.get('/play.html', (_req, res) => res.sendFile(path.join(pubRoot, 'play.html')));
+app.get('/watch', (_req, res) => res.sendFile(path.join(pubRoot, 'watch.html')));
+app.get('/watch.html', (_req, res) => res.sendFile(path.join(pubRoot, 'watch.html')));
+
+// -------------------------------
+// Socket.IO
+// -------------------------------
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   path: '/socket.io/',
-  cors: { origin: ALLOW.includes('*') ? true : ALLOW, credentials: true },
+  cors: { origin: allowOrigins.includes('*') ? true : allowOrigins, credentials: true },
 });
 
 io.on('connection', (socket) => {
-  socket._auth = { ok: false };
+  socket.role = 'guest';
+  socket.battleId = null;
+  socket.pid = null;
 
-  socket.on('auth', (payload, ack) => {
+  // 인증
+  socket.on('auth', (payload, cb) => {
     try {
-      const { battle, token, role, name } = payload || {};
-      const b = battles.get(battle);
-      if (!b) return ack && ack({ ok: false, error: 'battle_not_found' });
+      const role = String(payload?.role || '');
+      const id = String(payload?.battle || '');
+      const token = String(payload?.token || '');
+      const name = String(payload?.name || '');
 
-      let authed = false; let linkedPid = null;
+      requireBattle(id);
+
       if (role === 'admin') {
-        authed = token === b.tokens.admin.token && b.tokens.admin.exp > now();
-      } else if (role === 'spectator') {
-        authed = token === b.tokens.spectator.token && b.tokens.spectator.exp > now();
-      } else if (role === 'player') {
-        if (token && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
-          linkedPid = b.tokens.players[token].pid;
-          authed = !!b.players[linkedPid];
-        }
-        if (!authed && name) {
-          const entry = Object.entries(b.tokens.players)
-            .find(([, v]) => v.exp > now() && b.players[v.pid] && b.players[v.pid].name === name);
-          if (entry) { linkedPid = entry[1].pid; authed = true; }
-        }
+        const r = engine.adminAuth(id, token);
+        if (!r.ok) return cb && cb({ ok: false, error: r.message || '인증 실패' });
+        socket.role = 'admin';
+        socket.battleId = id;
+        socket.join(`battle:${id}`);
+        return cb && cb({ ok: true, state: r.state });
       }
-      if (!authed) return ack && ack({ ok: false, error: 'auth_failed' });
 
-      socket._auth = { ok: true, role, battle: battle, pid: linkedPid || null, name: name || null };
-      socket.join(room(battle));
+      if (role === 'spectator') {
+        const r = engine.spectatorAuth(id, token, name);
+        if (!r.ok) return cb && cb({ ok: false, error: r.message || '인증 실패' });
+        socket.role = 'spectator';
+        socket.battleId = id;
+        socket.join(`battle:${id}`);
+        return cb && cb({ ok: true, state: r.state });
+      }
 
-      if (role !== 'spectator') b.chat.push({ type: 'system', ts: now(), text: `${role === 'admin' ? '관리자' : (name || '플레이어')} 접속` });
-      emitState(io, b);
-      ack && ack({ ok: true, state: sanitizePublicBattle(b) });
+      if (role === 'player') {
+        const r = engine.playerAuthByName(id, token, name);
+        if (!r.ok) return cb && cb({ ok: false, error: r.message || '인증 실패' });
+        socket.role = 'player';
+        socket.battleId = id;
+        socket.pid = r.selfPid || null;
+        socket.join(`battle:${id}`);
+        return cb && cb({ ok: true, state: r.state, selfPid: r.selfPid || null });
+      }
+
+      return cb && cb({ ok: false, error: '역할 불명' });
     } catch (e) {
-      console.error('[auth handler error]', e);
-      ack && ack({ ok: false, error: 'auth_exception' });
+      return cb && cb({ ok: false, error: e.message || '인증 실패' });
     }
   });
 
-  // 관리자/플레이어 채팅 허용, 관전자 불가
-  socket.on('chatMessage', (payload) => {
-    const a = socket._auth; if (!a.ok) return;
-    const b = battles.get(a.battle); if (!b) return;
-    if (a.role === 'spectator') { socket.emit('chatError', '관전자는 채팅을 보낼 수 없습니다'); return; }
-    const { message, channel } = payload || {};
-    if (!message || typeof message !== 'string') return;
-    const msg = {
-      type: 'chat', ts: now(),
-      from: a.role === 'admin' ? '관리자' : (a.name || '플레이어'),
-      channel: channel === 'team' ? 'team' : 'all',
-      text: message.slice(0, 500),
-      pid: a.pid || null, role: a.role,
-    };
-    b.chat.push(msg);
-    io.to(room(b.id)).emit('chat', msg);
+  // 채팅(관리자/플레이어만 허용)
+  socket.on('chatMessage', (data, cb) => {
+    try {
+      if (!socket.battleId) throw new Error('인증되지 않음');
+      if (socket.role === 'spectator') throw new Error('관전자는 채팅 불가');
+
+      const channel = data?.channel === 'team' ? 'team' : 'all';
+      const text = String(data?.message || '').trim();
+      if (!text) throw new Error('메시지 없음');
+
+      engine.pushChat(socket.battleId, {
+        type: 'chat',
+        from: data?.from || (socket.role === 'admin' ? '관리자' : '플레이어'),
+        channel,
+        text,
+      });
+      io.to(`battle:${socket.battleId}`).emit('chat', {
+        type: 'chat',
+        from: data?.from || (socket.role === 'admin' ? '관리자' : '플레이어'),
+        channel,
+        text,
+        ts: Date.now(),
+      });
+      cb && cb({ ok: true });
+    } catch (e) {
+      socket.emit('chatError', e.message || '채팅 오류');
+      cb && cb({ ok: false, error: e.message });
+    }
   });
 
-  // 관전자 응원(프리셋만)
-  socket.on('cheer', (payload) => {
-    const a = socket._auth; if (!a.ok) return;
-    const b = battles.get(a.battle); if (!b) return;
-    if (a.role !== 'spectator') return;
-    const allowed = ['힘내!', '지지마!', '이길 수 있어!', '포기하지 마!'];
-    const { text } = payload || {};
-    if (!allowed.includes(text)) return;
-    const msg = { type: 'cheer', ts: now(), from: a.name || '관전자', text };
-    b.chat.push(msg);
-    io.to(room(b.id)).emit('chat', msg);
+  // 응원(관전자/누구나 사용 가능하지만 UI는 관전자에만 노출)
+  socket.on('cheer', (data, cb) => {
+    try {
+      if (!socket.battleId) throw new Error('인증되지 않음');
+      const text = String(data?.text || '').trim();
+      if (!text) throw new Error('메시지 없음');
+      engine.pushChat(socket.battleId, { type: 'cheer', from: '관전자', text });
+      io.to(`battle:${socket.battleId}`).emit('chat', { type: 'cheer', from: '관전자', text, ts: Date.now() });
+      cb && cb({ ok: true });
+    } catch (e) {
+      cb && cb({ ok: false, error: e.message });
+    }
   });
 
-  // 아바타(소켓)
-  socket.on('uploadAvatar', (payload, ack) => {
-    const a = socket._auth; if (!a.ok) return ack && ack({ ok: false, error: 'unauthorized' });
-    if (a.role !== 'player' || !a.pid) return ack && ack({ ok: false, error: 'not_player' });
-    const b = battles.get(a.battle); if (!b) return ack && ack({ ok: false, error: 'battle_not_found' });
-    const p = b.players[a.pid]; if (!p) return ack && ack({ ok: false, error: 'player_not_found' });
-
-    const { dataUrl } = payload || {};
-    const ok = validateAndApplyAvatar(p, dataUrl);
-    if (!ok.ok) return ack && ack({ ok: false, error: ok.error });
-
-    emitState(io, b);
-    ack && ack({ ok: true });
+  // 플레이어 행동
+  socket.on('playerAction', (data, cb) => {
+    try {
+      if (!socket.battleId || socket.role !== 'player') throw new Error('플레이어 인증 필요');
+      const id = socket.battleId;
+      const pid = socket.pid;
+      const r = engine.playerAction(id, pid, data || {});
+      io.to(`battle:${id}`).emit('state', engine.getPublicState(id));
+      cb && cb({ ok: true, state: r.state });
+    } catch (e) {
+      cb && cb({ ok: false, error: e.message });
+    }
   });
 
-  // 액션 선택
-  socket.on('chooseAction', (payload, ack) => {
-    const a = socket._auth; if (!a.ok) return ack && ack({ ok: false, error: 'unauthorized' });
-    if (a.role !== 'player' || !a.pid) return ack && ack({ ok: false, error: 'not_player' });
-
-    const b = battles.get(a.battle); if (!b) return ack && ack({ ok: false, error: 'battle_not_found' });
-    if (b.status !== 'ongoing') return ack && ack({ ok: false, error: 'invalid_state' });
-
-    const { kind, targetId, itemName } = payload || {};
-    const result = b.engine.chooseAction ? b.engine.chooseAction(a.pid, { kind, targetId, itemName }) : { ok: false, error: 'engine_missing' };
-    if (!result.ok) return ack && ack(result);
-
-    emitState(io, b);
-    ack && ack({ ok: true, pending: result.pending });
-    if (result.resolved) emitState(io, b);
-  });
-
-  socket.on('requestState', (payload, ack) => {
-    const a = socket._auth; if (!a.ok) return;
-    const b = battles.get(a.battle); if (!b) return;
-    ack && ack({ ok: true, state: sanitizePublicBattle(b) });
+  socket.on('disconnect', () => {
+    // no-op
   });
 });
 
-// 유틸
-function clampInt(v, min, max) {
-  const n = Math.floor(Number(v || 0));
-  return Math.min(Math.max(n, min), max);
-}
-function validateAndApplyAvatar(player, dataUrl) {
-  if (typeof dataUrl !== 'string') return { ok: false, error: 'invalid_data' };
-  if (!dataUrl.startsWith('data:image/')) return { ok: false, error: 'invalid_mime' };
-  const comma = dataUrl.indexOf(','); if (comma === -1) return { ok: false, error: 'invalid_data' };
-  const b64 = dataUrl.slice(comma + 1);
-  try {
-    const buf = Buffer.from(b64, 'base64');
-    if (!buf || !buf.length) return { ok: false, error: 'invalid_base64' };
-    if (buf.length > 300 * 1024) return { ok: false, error: 'too_large' };
-  } catch { return { ok: false, error: 'invalid_base64' }; }
-  player.avatar = dataUrl;
-  return { ok: true };
-}
-
-// 서버 시작(한 번만)
+// -------------------------------
+// Start
+// -------------------------------
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
-  console.log(`Static root: ${pubDir}`);
-  console.log('Access pages: /admin  /play  /watch');
+  console.log(`Static root: ${pubRoot}`);
+  console.log(`Access pages: /admin  /play  /watch`);
 });
