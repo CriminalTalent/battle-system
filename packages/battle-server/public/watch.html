@@ -9,776 +9,177 @@
 <link href="/assets/pyxis-theme.css" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <style>
-/* 관전자 전용 스타일 */
-.spectator-header{
-  position:relative; 
-  padding:28px 16px 10px; 
-  overflow:hidden;
-}
-
+/* 관전자 전용 스타일 (디자인 유지) */
+.spectator-header{ position:relative; padding:28px 16px 10px; overflow:hidden; }
 .spectator-header::before{
-  content:''; 
-  position:absolute; 
-  inset:-45% -18% auto -18%; 
-  height:380px;
+  content:''; position:absolute; inset:-45% -18% auto -18%; height:380px;
   background:
-    conic-gradient(from 0deg at 50% 50%, 
-      rgba(201,169,110,.22) 0deg, 
-      rgba(201,169,110,.06) 45deg, 
-      rgba(201,169,110,.18) 90deg, 
-      rgba(201,169,110,.04) 135deg,
-      rgba(201,169,110,.22) 180deg, 
-      rgba(201,169,110,.06) 225deg,
-      rgba(201,169,110,.18) 270deg, 
-      rgba(201,169,110,.04) 315deg,
-      rgba(201,169,110,.22) 360deg
-    ),
+    conic-gradient(from 0deg at 50% 50%, rgba(201,169,110,.22) 0deg, rgba(201,169,110,.06) 45deg, rgba(201,169,110,.18) 90deg, rgba(201,169,110,.04) 135deg, rgba(201,169,110,.22) 180deg, rgba(201,169,110,.06) 225deg, rgba(201,169,110,.18) 270deg, rgba(201,169,110,.04) 315deg, rgba(201,169,110,.22) 360deg),
     radial-gradient(circle at 70% 30%, rgba(201,169,110,.15), transparent 60%),
     radial-gradient(circle at 30% 70%, rgba(201,169,110,.12), transparent 50%);
-  filter:blur(55px);
-  animation:spectatorOrbit 60s linear infinite;
-  opacity:.8;
-  pointer-events:none;
-  z-index:-1;
+  filter:blur(55px); animation:spectatorOrbit 60s linear infinite; opacity:.8; pointer-events:none; z-index:-1;
 }
-
-@keyframes spectatorOrbit{
-  0%{transform:rotate(0deg) scale(1)}
-  25%{transform:rotate(90deg) scale(1.05)}
-  50%{transform:rotate(180deg) scale(.98)}
-  75%{transform:rotate(270deg) scale(1.08)}
-  100%{transform:rotate(360deg) scale(1)}
-}
-
+@keyframes spectatorOrbit{ 0%{transform:rotate(0deg) scale(1)} 25%{transform:rotate(90deg) scale(1.05)} 50%{transform:rotate(180deg) scale(.98)} 75%{transform:rotate(270deg) scale(1.08)} 100%{transform:rotate(360deg) scale(1)} }
 .spectator-brand{
-  font-family:var(--serif); 
-  font-weight:900; 
-  letter-spacing:.07em;
-  font-size:34px; 
-  display:inline-block;
-  background:linear-gradient(135deg, 
-    var(--gold-bright) 0%, 
-    var(--gold-shimmer) 20%, 
-    var(--gold) 40%, 
-    var(--gold-light) 60%,
-    var(--gold-shimmer) 80%,
-    var(--gold-bright) 100%
-  );
-  background-size:400% 400%;
-  -webkit-background-clip:text; 
-  background-clip:text; 
-  -webkit-text-fill-color:transparent;
-  animation:spectatorShine 4s ease-in-out infinite;
-  position:relative;
+  font-family:var(--serif); font-weight:900; letter-spacing:.07em; font-size:34px; display:inline-block;
+  background:linear-gradient(135deg, var(--gold-bright) 0%, var(--gold-shimmer) 20%, var(--gold) 40%, var(--gold-light) 60%, var(--gold-shimmer) 80%, var(--gold-bright) 100%);
+  background-size:400% 400%; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  animation:spectatorShine 4s ease-in-out infinite; position:relative;
 }
-
-@keyframes spectatorShine{
-  0%,100%{background-position:0% 50%; filter:brightness(1)}
-  50%{background-position:100% 50%; filter:brightness(1.15)}
-}
-
+@keyframes spectatorShine{ 0%,100%{background-position:0% 50%; filter:brightness(1)} 50%{background-position:100% 50%; filter:brightness(1.15)} }
 .spectator-brand::after{
-  content:'관전자';
-  position:absolute;
-  top:-7px;
-  right:-50px;
-  font-size:11px;
-  font-weight:700;
-  color:var(--text);
-  background:linear-gradient(135deg, rgba(52,152,219,.2), rgba(52,152,219,.1));
-  border:1px solid rgba(52,152,219,.5);
-  border-radius:999px;
-  padding:3px 10px;
-  letter-spacing:.01em;
+  content:'관전자'; position:absolute; top:-7px; right:-50px; font-size:11px; font-weight:700; color:var(--text);
+  background:linear-gradient(135deg, rgba(52,152,219,.2), rgba(52,152,219,.1)); border:1px solid rgba(52,152,219,.5); border-radius:999px; padding:3px 10px; letter-spacing:.01em;
 }
 
-.spectator-stage{
-  display:grid; 
-  grid-template-columns:280px 1fr 280px; 
-  gap:18px; 
-  padding:16px 20px;
-  max-width:1500px;
-  margin:0 auto;
-}
-
-@media (max-width:1300px){
-  .spectator-stage{
-    grid-template-columns:1fr;
-    gap:14px;
-  }
-}
+.spectator-stage{ display:grid; grid-template-columns:280px 1fr 280px; gap:18px; padding:16px 20px; max-width:1500px; margin:0 auto; }
+@media (max-width:1300px){ .spectator-stage{ grid-template-columns:1fr; gap:14px; } }
 
 /* 인증 섹션 */
 .auth-section{
-  background:linear-gradient(145deg, 
-    rgba(52,152,219,.08) 0%, 
-    rgba(16,21,35,.85) 30%, 
-    rgba(26,32,44,.75) 100%
-  );
-  border:2px solid rgba(52,152,219,.6);
-  border-radius:var(--radius);
-  padding:24px;
-  text-align:center;
-  backdrop-filter:var(--blur-strong);
-  box-shadow:
-    var(--shadow-deep),
-    inset 0 2px 0 rgba(52,152,219,.15);
-  position:relative;
-  overflow:hidden;
+  background:linear-gradient(145deg, rgba(52,152,219,.08) 0%, rgba(16,21,35,.85) 30%, rgba(26,32,44,.75) 100%);
+  border:2px solid rgba(52,152,219,.6); border-radius:var(--radius); padding:24px; text-align:center; backdrop-filter:var(--blur-strong);
+  box-shadow:var(--shadow-deep), inset 0 2px 0 rgba(52,152,219,.15); position:relative; overflow:hidden;
 }
+.auth-section::before{ content:''; position:absolute; inset:0; background:linear-gradient(135deg, rgba(52,152,219,.1), transparent 40%, rgba(52,152,219,.05)); opacity:.6; }
+.auth-title{ font-family:var(--serif); font-size:26px; font-weight:800; color:#5DADE2; margin-bottom:18px; position:relative; text-shadow:0 2px 8px rgba(52,152,219,.3); }
+.auth-form{ display:grid; gap:14px; max-width:420px; margin:0 auto; position:relative; }
+.auth-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:600px){ .auth-row{ grid-template-columns:1fr; } }
 
-.auth-section::before{
-  content:'';
-  position:absolute;
-  inset:0;
-  background:linear-gradient(135deg, 
-    rgba(52,152,219,.1), 
-    transparent 40%, 
-    rgba(52,152,219,.05)
-  );
-  opacity:.6;
-}
-
-.auth-title{
-  font-family:var(--serif);
-  font-size:26px;
-  font-weight:800;
-  color:#5DADE2;
-  margin-bottom:18px;
-  position:relative;
-  text-shadow:0 2px 8px rgba(52,152,219,.3);
-}
-
-.auth-form{
-  display:grid;
-  gap:14px;
-  max-width:420px;
-  margin:0 auto;
-  position:relative;
-}
-
-.auth-row{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-
-@media (max-width:600px){
-  .auth-row{
-    grid-template-columns:1fr;
-  }
-}
-
-/* 중앙 섹션 */
-.center-section{
-  display:grid; 
-  grid-template-rows:auto 1fr auto; 
-  gap:16px;
-  min-height:650px;
-}
-
-/* 전투 상황판 */
+/* 중앙 섹션 / 전투 상황판 */
+.center-section{ display:grid; grid-template-rows:auto 1fr auto; gap:16px; min-height:650px; }
 .battle-status{
-  background:linear-gradient(145deg, 
-    rgba(16,21,35,.9), 
-    rgba(26,32,44,.85)
-  );
-  border:1px solid var(--border-2);
-  border-radius:16px;
-  padding:20px;
-  backdrop-filter:var(--blur-medium);
-  box-shadow:var(--shadow-medium), var(--shadow-inset);
-  position:relative;
+  background:linear-gradient(145deg, rgba(16,21,35,.9), rgba(26,32,44,.85));
+  border:1px solid var(--border-2); border-radius:16px; padding:20px; backdrop-filter:var(--blur-medium);
+  box-shadow:var(--shadow-medium), var(--shadow-inset); position:relative;
 }
-
-.battle-status::after{
-  content:'';
-  position:absolute;
-  top:0;
-  left:24px;
-  right:24px;
-  height:1px;
-  background:linear-gradient(90deg, 
-    transparent, 
-    rgba(201,169,110,.5), 
-    transparent
-  );
-}
-
-.status-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:16px;
-}
-
-.battle-title{
-  font-family:var(--serif);
-  font-size:24px;
-  font-weight:800;
-  color:var(--gold-bright);
-  text-shadow:0 2px 8px rgba(201,169,110,.3);
-}
-
-.battle-mode{
-  font-size:14px;
-  color:var(--text-dim);
-  font-weight:600;
-  padding:6px 14px;
-  background:rgba(201,169,110,.1);
-  border:1px solid rgba(201,169,110,.3);
-  border-radius:999px;
-  letter-spacing:.02em;
-}
-
+.battle-status::after{ content:''; position:absolute; top:0; left:24px; right:24px; height:1px; background:linear-gradient(90deg, transparent, rgba(201,169,110,.5), transparent); }
+.status-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.battle-title{ font-family:var(--serif); font-size:24px; font-weight:800; color:var(--gold-bright); text-shadow:0 2px 8px rgba(201,169,110,.3); }
+.battle-mode{ font-size:14px; color:var(--text-dim); font-weight:600; padding:6px 14px; background:rgba(201,169,110,.1); border:1px solid rgba(201,169,110,.3); border-radius:999px; letter-spacing:.02em; }
 .current-turn{
-  text-align:center;
-  font-size:18px;
-  font-weight:700;
-  color:var(--text);
-  padding:12px 20px;
-  background:linear-gradient(135deg, 
-    rgba(201,169,110,.12), 
-    rgba(201,169,110,.08)
-  );
-  border:1px solid rgba(201,169,110,.25);
-  border-radius:12px;
-  position:relative;
-  animation:turnGlow 3s ease-in-out infinite;
+  text-align:center; font-size:18px; font-weight:700; color:var(--text); padding:12px 20px;
+  background:linear-gradient(135deg, rgba(201,169,110,.12), rgba(201,169,110,.08)); border:1px solid rgba(201,169,110,.25);
+  border-radius:12px; position:relative; animation:turnGlow 3s ease-in-out infinite;
 }
-
-@keyframes turnGlow{
-  0%,100%{box-shadow:0 4px 12px rgba(201,169,110,.15)}
-  50%{box-shadow:0 6px 20px rgba(201,169,110,.25), 0 0 0 1px rgba(201,169,110,.2)}
-}
+@keyframes turnGlow{ 0%,100%{box-shadow:0 4px 12px rgba(201,169,110,.15)} 50%{box-shadow:0 6px 20px rgba(201,169,110,.25), 0 0 0 1px rgba(201,169,110,.2)} }
 
 /* 전투 아레나 */
 .battle-arena{
-  position:relative; 
-  min-height:320px; 
-  display:flex; 
-  align-items:flex-end; 
-  justify-content:center;
-  border:2px solid var(--border-1); 
-  border-radius:18px;
+  position:relative; min-height:320px; display:flex; align-items:flex-end; justify-content:center;
+  border:2px solid var(--border-1); border-radius:18px;
   background:
     radial-gradient(circle at 25% 15%, rgba(201,169,110,.1), transparent 50%),
     radial-gradient(circle at 75% 85%, rgba(201,169,110,.08), transparent 50%),
     linear-gradient(180deg, rgba(5,20,38,.95), rgba(7,28,48,.98), rgba(10,33,56,.95));
-  overflow:hidden;
-  backdrop-filter:var(--blur-light);
+  overflow:hidden; backdrop-filter:var(--blur-light);
 }
-
 .arena-character{
-  position:absolute; 
-  bottom:0; 
-  width:42%; 
-  max-width:280px; 
-  aspect-ratio:3/4; 
-  background:linear-gradient(135deg, var(--midnight), var(--navy-mist)) center/cover no-repeat; 
-  border:2px solid var(--border-1);
-  border-radius:14px 14px 0 0; 
-  box-shadow:
-    0 16px 40px rgba(0,0,0,.6),
-    inset 0 2px 0 rgba(255,255,255,.04);
-  transition:all .5s cubic-bezier(.4,0,.2,1);
-  filter:brightness(.85);
+  position:absolute; bottom:0; width:42%; max-width:280px; aspect-ratio:3/4;
+  background:linear-gradient(135deg, var(--midnight), var(--navy-mist)) center/cover no-repeat; border:2px solid var(--border-1);
+  border-radius:14px 14px 0 0; box-shadow:0 16px 40px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.04);
+  transition:all .5s cubic-bezier(.4,0,.2,1); filter:brightness(.85);
 }
-
-.arena-character.left{
-  left:10%;
-}
-
-.arena-character.right{
-  right:10%;
-}
-
+.arena-character.left{ left:10%; }
+.arena-character.right{ right:10%; }
 .arena-character.active{
-  transform:translateY(-6px) scale(1.02);
-  border-color:var(--gold-bright);
-  filter:brightness(1.1);
-  box-shadow:
-    0 20px 50px rgba(0,0,0,.7),
-    0 0 0 3px rgba(201,169,110,.5),
-    0 0 20px rgba(201,169,110,.3),
-    inset 0 2px 0 rgba(255,255,255,.1);
+  transform:translateY(-6px) scale(1.02); border-color:var(--gold-bright); filter:brightness(1.1);
+  box-shadow:0 20px 50px rgba(0,0,0,.7), 0 0 0 3px rgba(201,169,110,.5), 0 0 20px rgba(201,169,110,.3), inset 0 2px 0 rgba(255,255,255,.1);
   animation:championGlow 4s ease-in-out infinite;
 }
-
 @keyframes championGlow{
-  0%,100%{box-shadow:
-    0 20px 50px rgba(0,0,0,.7),
-    0 0 0 3px rgba(201,169,110,.5),
-    0 0 20px rgba(201,169,110,.3),
-    inset 0 2px 0 rgba(255,255,255,.1)
-  }
-  50%{box-shadow:
-    0 20px 50px rgba(0,0,0,.7),
-    0 0 0 4px rgba(201,169,110,.7),
-    0 0 30px rgba(201,169,110,.5),
-    inset 0 2px 0 rgba(255,255,255,.15)
-  }
+  0%,100%{box-shadow:0 20px 50px rgba(0,0,0,.7), 0 0 0 3px rgba(201,169,110,.5), 0 0 20px rgba(201,169,110,.3), inset 0 2px 0 rgba(255,255,255,.1)}
+  50%{box-shadow:0 20px 50px rgba(0,0,0,.7), 0 0 0 4px rgba(201,169,110,.7), 0 0 30px rgba(201,169,110,.5), inset 0 2px 0 rgba(255,255,255,.15)}
 }
-
-.arena-nameplate{
-  position:absolute; 
-  top:16px; 
-  left:16px; 
-  right:16px; 
-  display:flex; 
-  justify-content:space-between; 
-  align-items:center;
-  font-weight:800; 
-  color:var(--gold-bright);
-  z-index:2;
-}
-
+.arena-nameplate{ position:absolute; top:16px; left:16px; right:16px; display:flex; justify-content:space-between; align-items:center; font-weight:800; color:var(--gold-bright); z-index:2; }
 .arena-stats{
-  position:absolute; 
-  bottom:16px; 
-  left:16px; 
-  right:16px; 
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(80px,1fr));
-  gap:12px;
-  color:var(--text); 
-  font-size:14px;
-  font-weight:600;
-  background:rgba(10,33,56,.95); 
-  border:1px solid var(--border-1); 
-  border-radius:12px; 
-  padding:14px 16px;
-  backdrop-filter:var(--blur-medium);
-  box-shadow:var(--shadow-soft);
+  position:absolute; bottom:16px; left:16px; right:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(80px,1fr)); gap:12px; color:var(--text); font-size:14px; font-weight:600;
+  background:rgba(10,33,56,.95); border:1px solid var(--border-1); border-radius:12px; padding:14px 16px; backdrop-filter:var(--blur-medium); box-shadow:var(--shadow-soft);
 }
-
-.arena-stat{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:4px;
-}
-
-.arena-stat-label{
-  color:var(--text-muted);
-  font-size:11px;
-  letter-spacing:.02em;
-}
-
-.arena-stat-value{
-  color:var(--gold-bright);
-  font-weight:800;
-  font-size:16px;
-}
+.arena-stat{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.arena-stat-label{ color:var(--text-muted); font-size:11px; letter-spacing:.02em; }
+.arena-stat-value{ color:var(--gold-bright); font-weight:800; font-size:16px; }
 
 /* 팀 패널 */
-.team-panel{
-  display:flex; 
-  flex-direction:column; 
-  gap:14px;
-}
-
+.team-panel{ display:flex; flex-direction:column; gap:14px; }
 .team-header{
-  text-align:center;
-  font-family:var(--serif);
-  font-weight:800;
-  font-size:17px;
-  color:var(--gold-bright);
-  padding:12px 16px;
-  background:linear-gradient(135deg, 
-    rgba(201,169,110,.15), 
-    rgba(201,169,110,.08)
-  );
-  border:1px solid rgba(201,169,110,.3);
-  border-radius:14px;
-  position:relative;
-  text-shadow:0 1px 4px rgba(201,169,110,.4);
+  text-align:center; font-family:var(--serif); font-weight:800; font-size:17px; color:var(--gold-bright);
+  padding:12px 16px; background:linear-gradient(135deg, rgba(201,169,110,.15), rgba(201,169,110,.08));
+  border:1px solid rgba(201,169,110,.3); border-radius:14px; position:relative; text-shadow:0 1px 4px rgba(201,169,110,.4);
 }
+.team-header::before{ content:''; position:absolute; top:0; left:25%; right:25%; height:1px; background:linear-gradient(90deg, transparent, var(--gold-bright), transparent); }
+.team-header.phoenix{ background:linear-gradient(135deg, rgba(231,76,60,.12), rgba(231,76,60,.06)); border-color:rgba(231,76,60,.4); color:#FF6B6B; }
+.team-header.death-eater{ background:linear-gradient(135deg, rgba(46,125,50,.12), rgba(46,125,50,.06)); border-color:rgba(46,125,50,.4); color:#66BB6A; }
 
-.team-header::before{
-  content:'';
-  position:absolute;
-  top:0;
-  left:25%;
-  right:25%;
-  height:1px;
-  background:linear-gradient(90deg, 
-    transparent, 
-    var(--gold-bright), 
-    transparent
-  );
-}
-
-.team-header.phoenix{
-  background:linear-gradient(135deg, 
-    rgba(231,76,60,.12), 
-    rgba(231,76,60,.06)
-  );
-  border-color:rgba(231,76,60,.4);
-  color:#FF6B6B;
-}
-
-.team-header.death-eater{
-  background:linear-gradient(135deg, 
-    rgba(46,125,50,.12), 
-    rgba(46,125,50,.06)
-  );
-  border-color:rgba(46,125,50,.4);
-  color:#66BB6A;
-}
-
-/* 스펙테이터 유닛 */
+/* 유닛 카드 */
 .spectator-unit{
-  display:flex; 
-  gap:14px; 
-  align-items:center; 
-  border:1px solid var(--border-1); 
-  border-radius:14px; 
-  padding:12px; 
-  background:rgba(16,21,35,.8);
-  transition:all .3s ease;
-  position:relative;
+  display:flex; gap:14px; align-items:center; border:1px solid var(--border-1); border-radius:14px; padding:12px; background:rgba(16,21,35,.8);
+  transition:all .3s ease; position:relative;
 }
-
-.spectator-unit::before{
-  content:'';
-  position:absolute;
-  inset:0;
-  background:linear-gradient(135deg, 
-    transparent, 
-    rgba(201,169,110,.04), 
-    transparent
-  );
-  opacity:0;
-  transition:opacity .3s ease;
-  border-radius:inherit;
-}
-
-.spectator-unit:hover{
-  border-color:var(--border-2);
-  transform:translateY(-1px);
-  box-shadow:var(--shadow-soft);
-}
-
-.spectator-unit:hover::before{
-  opacity:1;
-}
-
-.spectator-unit.current-actor{
-  border-color:var(--gold);
-  background:rgba(201,169,110,.1);
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px rgba(201,169,110,.3);
-  animation:activeSpectatorUnit 3s ease-in-out infinite;
-}
-
+.spectator-unit::before{ content:''; position:absolute; inset:0; background:linear-gradient(135deg, transparent, rgba(201,169,110,.04), transparent); opacity:0; transition:opacity .3s ease; border-radius:inherit; }
+.spectator-unit:hover{ border-color:var(--border-2); transform:translateY(-1px); box-shadow:var(--shadow-soft); }
+.spectator-unit:hover::before{ opacity:1; }
+.spectator-unit.current-actor{ border-color:var(--gold); background:rgba(201,169,110,.1); box-shadow:var(--shadow-soft), 0 0 0 1px rgba(201,169,110,.3); animation:activeSpectatorUnit 3s ease-in-out infinite; }
 @keyframes activeSpectatorUnit{
-  0%,100%{box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px rgba(201,169,110,.3)
-  }
-  50%{box-shadow:
-    var(--shadow-soft),
-    0 0 0 2px rgba(201,169,110,.5),
-    0 0 16px rgba(201,169,110,.2)
-  }
+  0%,100%{box-shadow:var(--shadow-soft), 0 0 0 1px rgba(201,169,110,.3)}
+  50%{box-shadow:var(--shadow-soft), 0 0 0 2px rgba(201,169,110,.5), 0 0 16px rgba(201,169,110,.2)}
 }
+.spectator-unit.defeated{ opacity:.6; filter:grayscale(.7); border-style:dashed; }
+.spectator-avatar{ width:52px; height:52px; border-radius:10px; background:linear-gradient(135deg, var(--midnight), var(--navy-mist)) center/cover no-repeat; border:2px solid var(--border-1); position:relative; overflow:hidden; }
+.spectator-avatar::after{ content:''; position:absolute; inset:0; background:linear-gradient(135deg, transparent 20%, rgba(201,169,110,.08) 80%); opacity:.8; }
+.spectator-info{ flex:1; min-width:0; }
+.spectator-name{ font-weight:800; color:var(--text); margin-bottom:6px; font-size:15px; }
+.spectator-name.defeated::after{ content:' (패배)'; color:var(--text-muted); font-weight:400; font-size:13px; }
+.spectator-hp{ height:8px; background:rgba(26,31,42,.9); border-radius:4px; overflow:hidden; margin:6px 0; position:relative; box-shadow:inset 0 1px 3px rgba(0,0,0,.3); }
+.spectator-hp::after{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(255,255,255,.15), transparent 40%); pointer-events:none; }
+.spectator-hp-bar{ display:block; height:100%; background:linear-gradient(90deg, var(--gold-dark), var(--gold-bright)); transition:width .6s cubic-bezier(.4,0,.2,1); position:relative; box-shadow:0 0 6px rgba(201,169,110,.4); }
+.spectator-details{ font-size:12px; color:var(--text-muted); line-height:1.4; }
 
-.spectator-unit.defeated{
-  opacity:.6;
-  filter:grayscale(.7);
-  border-style:dashed;
-}
-
-.spectator-avatar{
-  width:52px; 
-  height:52px; 
-  border-radius:10px; 
-  background:linear-gradient(135deg, var(--midnight), var(--navy-mist)) center/cover no-repeat; 
-  border:2px solid var(--border-1);
-  position:relative;
-  overflow:hidden;
-}
-
-.spectator-avatar::after{
-  content:'';
-  position:absolute;
-  inset:0;
-  background:linear-gradient(135deg, 
-    transparent 20%, 
-    rgba(201,169,110,.08) 80%
-  );
-  opacity:.8;
-}
-
-.spectator-info{
-  flex:1;
-  min-width:0;
-}
-
-.spectator-name{
-  font-weight:800;
-  color:var(--text);
-  margin-bottom:6px;
-  font-size:15px;
-}
-
-.spectator-name.defeated::after{
-  content:' (패배)';
-  color:var(--text-muted);
-  font-weight:400;
-  font-size:13px;
-}
-
-.spectator-hp{
-  height:8px;
-  background:rgba(26,31,42,.9);
-  border-radius:4px;
-  overflow:hidden;
-  margin:6px 0;
-  position:relative;
-  box-shadow:inset 0 1px 3px rgba(0,0,0,.3);
-}
-
-.spectator-hp::after{
-  content:'';
-  position:absolute;
-  inset:0;
-  background:linear-gradient(90deg, 
-    rgba(255,255,255,.15), 
-    transparent 40%
-  );
-  pointer-events:none;
-}
-
-.spectator-hp-bar{
-  display:block;
-  height:100%;
-  background:linear-gradient(90deg, var(--gold-dark), var(--gold-bright));
-  transition:width .6s cubic-bezier(.4,0,.2,1);
-  position:relative;
-  box-shadow:0 0 6px rgba(201,169,110,.4);
-}
-
-.spectator-details{
-  font-size:12px;
-  color:var(--text-muted);
-  line-height:1.4;
-}
-
-/* 응원 섹션 */
-.cheer-section{
-  background:linear-gradient(135deg, 
-    rgba(46,204,113,.08), 
-    rgba(26,32,44,.8)
-  );
-  border:1px solid rgba(46,204,113,.3);
-  border-radius:14px;
-  padding:16px;
-  margin-bottom:14px;
-}
-
-.cheer-title{
-  font-weight:700;
-  color:#58D68D;
-  margin-bottom:12px;
-  text-align:center;
-  font-size:16px;
-}
-
-.cheer-buttons{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:8px;
-  margin-bottom:12px;
-}
-
+/* 응원 & 로그 */
+.cheer-section{ background:linear-gradient(135deg, rgba(46,204,113,.08), rgba(26,32,44,.8)); border:1px solid rgba(46,204,113,.3); border-radius:14px; padding:16px; margin-bottom:14px; }
+.cheer-title{ font-weight:700; color:#58D68D; margin-bottom:12px; text-align:center; font-size:16px; }
+.cheer-buttons{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:12px; }
 .cheer-btn{
-  padding:8px 12px;
-  font-size:13px;
-  font-weight:600;
-  border-radius:20px;
-  border:1px solid rgba(46,204,113,.4);
-  background:linear-gradient(135deg, 
-    rgba(46,204,113,.15), 
-    rgba(46,204,113,.08)
-  );
-  color:#58D68D;
-  cursor:pointer;
-  transition:all .3s ease;
+  padding:8px 12px; font-size:13px; font-weight:600; border-radius:20px; border:1px solid rgba(46,204,113,.4);
+  background:linear-gradient(135deg, rgba(46,204,113,.15), rgba(46,204,113,.08)); color:#58D68D; cursor:pointer; transition:all .3s ease;
 }
+.cheer-btn:hover{ transform:translateY(-1px); border-color:rgba(46,204,113,.6); background:linear-gradient(135deg, rgba(46,204,113,.25), rgba(46,204,113,.15)); box-shadow:0 4px 12px rgba(46,204,113,.2); }
+.cheer-btn.witty{ border-color:rgba(230,126,34,.5); background:linear-gradient(135deg, rgba(230,126,34,.15), rgba(230,126,34,.08)); color:#F39C12; font-size:12px; font-weight:700; letter-spacing:-.01em; }
+.cheer-btn.witty:hover{ border-color:rgba(230,126,34,.7); background:linear-gradient(135deg, rgba(230,126,34,.25), rgba(230,126,34,.15)); box-shadow:0 4px 12px rgba(230,126,34,.2); transform:translateY(-1px) scale(1.02); }
 
-.cheer-btn:hover{
-  transform:translateY(-1px);
-  border-color:rgba(46,204,113,.6);
-  background:linear-gradient(135deg, 
-    rgba(46,204,113,.25), 
-    rgba(46,204,113,.15)
-  );
-  box-shadow:0 4px 12px rgba(46,204,113,.2);
-}
+.spectator-log{ background:rgba(8,28,49,.95); border:1px solid var(--border-1); border-radius:14px; padding:16px; height:220px; overflow-y:auto; font-size:13px; line-height:1.5; backdrop-filter:var(--blur-light); box-shadow:inset 0 3px 10px rgba(0,0,0,.4); }
+.spectator-log-entry{ display:flex; gap:10px; align-items:baseline; margin-bottom:8px; padding:6px 10px; border-radius:8px; transition:background .2s ease; }
+.spectator-log-entry:hover{ background:rgba(201,169,110,.06); }
+.spectator-log-entry .time{ font-size:11px; color:var(--text-muted); min-width:50px; font-weight:600; }
+.spectator-log-entry .content{ flex:1; color:var(--text-dim); }
+.spectator-log-entry.battle-action .content{ color:var(--text); font-weight:600; }
+.spectator-log-entry.system-message .content{ color:var(--gold-bright); font-weight:700; }
+.spectator-log-entry.cheer .content{ color:#58D68D; font-weight:600; }
 
-.cheer-btn.witty{
-  border-color:rgba(230,126,34,.5);
-  background:linear-gradient(135deg, 
-    rgba(230,126,34,.15), 
-    rgba(230,126,34,.08)
-  );
-  color:#F39C12;
-  font-size:12px;
-  font-weight:700;
-  letter-spacing:-.01em;
-}
-
-.cheer-btn.witty:hover{
-  border-color:rgba(230,126,34,.7);
-  background:linear-gradient(135deg, 
-    rgba(230,126,34,.25), 
-    rgba(230,126,34,.15)
-  );
-  box-shadow:0 4px 12px rgba(230,126,34,.2);
-  transform:translateY(-1px) scale(1.02);
-}
-
-/* 관전 로그 */
-.spectator-log{
-  background:rgba(8,28,49,.95);
-  border:1px solid var(--border-1);
-  border-radius:14px;
-  padding:16px;
-  height:220px;
-  overflow-y:auto;
-  font-size:13px;
-  line-height:1.5;
-  backdrop-filter:var(--blur-light);
-  box-shadow:inset 0 3px 10px rgba(0,0,0,.4);
-}
-
-.spectator-log-entry{
-  display:flex;
-  gap:10px;
-  align-items:baseline;
-  margin-bottom:8px;
-  padding:6px 10px;
-  border-radius:8px;
-  transition:background .2s ease;
-}
-
-.spectator-log-entry:hover{
-  background:rgba(201,169,110,.06);
-}
-
-.spectator-log-entry .time{
-  font-size:11px;
-  color:var(--text-muted);
-  min-width:50px;
-  font-weight:600;
-}
-
-.spectator-log-entry .content{
-  flex:1;
-  color:var(--text-dim);
-}
-
-.spectator-log-entry.battle-action .content{
-  color:var(--text);
-  font-weight:600;
-}
-
-.spectator-log-entry.system-message .content{
-  color:var(--gold-bright);
-  font-weight:700;
-}
-
-.spectator-log-entry.cheer .content{
-  color:#58D68D;
-  font-weight:600;
-}
-
-/* 스크롤바 스타일링 */
-.spectator-log::-webkit-scrollbar{
-  width:8px;
-}
-
-.spectator-log::-webkit-scrollbar-track{
-  background:rgba(10,15,26,.8);
-  border-radius:4px;
-}
-
-.spectator-log::-webkit-scrollbar-thumb{
-  background:linear-gradient(to bottom, var(--gold), var(--gold-dark));
-  border-radius:4px;
-  border:1px solid rgba(0,0,0,.2);
-}
-
-.spectator-log::-webkit-scrollbar-thumb:hover{
-  background:linear-gradient(to bottom, var(--gold-bright), var(--gold));
-}
-
-/* 숨김 헬퍼 */
-.hide{
-  display:none !important;
-}
-
-/* 로딩 효과 */
-.loading{
-  opacity:.7;
-  pointer-events:none;
-  position:relative;
-}
-
-.loading::after{
-  content:'';
-  position:absolute;
-  inset:0;
-  background:linear-gradient(90deg, 
-    transparent, 
-    rgba(52,152,219,.15), 
-    transparent
-  );
-  animation:spectatorShimmer 2s infinite;
-  border-radius:inherit;
-}
-
-@keyframes spectatorShimmer{
-  0%{transform:translateX(-100%)}
-  100%{transform:translateX(100%)}
-}
-
-/* 모바일 최적화 */
+/* 스크롤바/헬퍼/로딩/모바일 */
+.spectator-log::-webkit-scrollbar{ width:8px; }
+.spectator-log::-webkit-scrollbar-track{ background:rgba(10,15,26,.8); border-radius:4px; }
+.spectator-log::-webkit-scrollbar-thumb{ background:linear-gradient(to bottom, var(--gold), var(--gold-dark)); border-radius:4px; border:1px solid rgba(0,0,0,.2); }
+.spectator-log::-webkit-scrollbar-thumb:hover{ background:linear-gradient(to bottom, var(--gold-bright), var(--gold)); }
+.hide{ display:none !important; }
+.loading{ opacity:.7; pointer-events:none; position:relative; }
+.loading::after{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, transparent, rgba(52,152,219,.15), transparent); animation:spectatorShimmer 2s infinite; border-radius:inherit; }
+@keyframes spectatorShimmer{ 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 @media (max-width:768px){
-  .cheer-buttons{
-    grid-template-columns:1fr;
-  }
-  
-  .arena-stats{
-    grid-template-columns:repeat(2,1fr);
-  }
-  
-  .auth-row{
-    grid-template-columns:1fr;
-  }
+  .cheer-buttons{ grid-template-columns:1fr; }
+  .arena-stats{ grid-template-columns:repeat(2,1fr); }
+  .auth-row{ grid-template-columns:1fr; }
 }
-
-/* 접근성 개선 */
+/* 접근성 */
 @media (prefers-reduced-motion: reduce){
-  .spectator-header::before,
-  .spectator-brand,
-  .turnGlow,
-  .championGlow,
-  .activeSpectatorUnit,
-  .activeSpectatorUnit{
-    animation:none;
-  }
+  .spectator-header::before, .spectator-brand, .turnGlow, .championGlow, .activeSpectatorUnit{ animation:none; }
 }
 </style>
 </head>
 <body>
 <header class="spectator-header">
-  <div class="wrap">
-    <div class="spectator-brand">Pyxis</div>
-  </div>
+  <div class="wrap"><div class="spectator-brand">Pyxis</div></div>
 </header>
 
 <main class="wrap spectator-stage">
@@ -788,9 +189,9 @@
     <div id="phoenixTeam"></div>
   </aside>
 
-  <!-- 중앙: 메인 관전 영역 -->
+  <!-- 중앙 -->
   <section class="center-section">
-    <!-- 인증 폼 (URL 파라미터 없을 때 표시) -->
+    <!-- 인증 폼 -->
     <div class="card auth-section" id="authSection" style="display:none">
       <div class="auth-title">전투 관전</div>
       <div class="auth-form">
@@ -824,7 +225,7 @@
       <div class="current-turn" id="currentTurn">전투가 시작되지 않았습니다</div>
     </div>
 
-    <!-- 전투 아레나 -->
+    <!-- 아레나 -->
     <div class="card battle-arena">
       <div class="arena-nameplate">
         <div id="arenaLeftInfo">-</div>
@@ -835,7 +236,7 @@
       <div class="arena-stats" id="arenaStats" style="display:none"></div>
     </div>
 
-    <!-- 응원 & 관전 로그 -->
+    <!-- 응원 & 로그 -->
     <div class="card">
       <div class="cheer-section">
         <div class="cheer-title">응원하기 - <span style="color:var(--gold); font-weight:800;" id="spectatorNameDisplay">관전자</span></div>
@@ -866,494 +267,248 @@
 <script>
 (function(){
   'use strict';
-  
-  // DOM 요소 참조
   const $ = id => document.getElementById(id);
-  
-  // 인증 요소
-  const authSection = $('authSection');
-  const authBattleId = $('authBattleId');
-  const authToken = $('authToken');
-  const authSpectatorName = $('authSpectatorName');
-  const authJoinBtn = $('authJoinBtn');
-  
-  // 전투 상황
-  const battleTitle = $('battleTitle');
-  const battleMode = $('battleMode');
-  const currentTurn = $('currentTurn');
-  
+
+  // 인증
+  const authSection=$('authSection'), authBattleId=$('authBattleId'), authToken=$('authToken'), authSpectatorName=$('authSpectatorName'), authJoinBtn=$('authJoinBtn');
+
+  // 상황판
+  const battleTitle=$('battleTitle'), battleMode=$('battleMode'), currentTurn=$('currentTurn');
+
   // 아레나
-  const arenaLeftInfo = $('arenaLeftInfo');
-  const arenaRightInfo = $('arenaRightInfo');
-  const arenaLeftChar = $('arenaLeftChar');
-  const arenaRightChar = $('arenaRightChar');
-  const arenaStats = $('arenaStats');
-  
+  const arenaLeftInfo=$('arenaLeftInfo'), arenaRightInfo=$('arenaRightInfo');
+  const arenaLeftChar=$('arenaLeftChar'), arenaRightChar=$('arenaRightChar'), arenaStats=$('arenaStats');
+
   // 팀 패널
-  const phoenixTeam = $('phoenixTeam');
-  const deathEaterTeam = $('deathEaterTeam');
-  
+  const phoenixTeam=$('phoenixTeam'), deathEaterTeam=$('deathEaterTeam');
+
   // 로그
-  const spectatorLog = $('spectatorLog');
+  const spectatorLog=$('spectatorLog');
+  const spectatorNameDisplay = $('spectatorNameDisplay');
 
-  // 게임 상태
-  const socket = io({ path: '/socket.io/' });
-  let gameState = null;
-  let spectatorName = '관전자';
-  let isAuthenticated = false;
+  // 소켓/상태
+  const socket = io({ transports:['websocket','polling'], reconnection:true, reconnectionAttempts:Infinity, path:'/socket.io/' });
+  let state=null, joined=false, spectatorName='관전자', currentBattleId=null;
 
-  // 유틸리티 함수
-  const formatTime = timestamp => {
-    try {
-      return new Date(timestamp).toLocaleTimeString([], { hour12: false });
-    } catch {
-      return '--:--:--';
+  // 유틸
+  const fmtTime = t => { try{ return new Date(t).toLocaleTimeString([], {hour12:false}); } catch{ return '--:--:--'; } };
+  const teamName = key => (key==='A'||key==='team1') ? '불사조 기사단' : '죽음을 먹는 자들';
+  const hpPct = p => !p ? 0 : Math.max(0, Math.min(100, Math.round((p.hp / (p.maxHp||100)) * 100)));
+  const curActorId = () => state?.turn?.pending?.[0] || state?.turn?.actor || null;
+  const curPlayer = () => { const id = curActorId(); return id && state?.players ? state.players[id] : null; };
+
+  // 로그
+  const addLog = (content, type='info')=>{
+    const row=document.createElement('div'); row.className=`spectator-log-entry ${type}`;
+    const t=document.createElement('span'); t.className='time'; t.textContent=fmtTime(Date.now());
+    const c=document.createElement('span'); c.className='content'; c.textContent=content;
+    row.appendChild(t); row.appendChild(c); spectatorLog.appendChild(row); spectatorLog.scrollTop=spectatorLog.scrollHeight;
+  };
+
+  // 카드
+  const unitCard = (p)=>{
+    const el=document.createElement('div'); el.className=`spectator-unit ${curActorId()===p.id?'current-actor':''} ${p.alive===false?'defeated':''}`; el.dataset.playerId=p.id;
+    const av=document.createElement('div'); av.className='spectator-avatar'; if(p.avatar) av.style.backgroundImage=`url(${p.avatar})`;
+    const info=document.createElement('div'); info.className='spectator-info';
+    const name=document.createElement('div'); name.className=`spectator-name ${p.alive===false?'defeated':''}`; name.textContent=p.name;
+    const hp=document.createElement('div'); hp.className='spectator-hp'; const bar=document.createElement('span'); bar.className='spectator-hp-bar'; bar.style.width=`${hpPct(p)}%`; hp.appendChild(bar);
+    const s=p.stats||{attack:p.atk, defense:p.def, agility:p.agi, luck:p.luk};
+    const det=document.createElement('div'); det.className='spectator-details';
+    det.innerHTML = `HP: ${p.hp}/${p.maxHp||100}<br>공격 ${s.attack??p.atk} · 방어 ${s.defense??p.def}<br>민첩 ${s.agility??p.agi} · 행운 ${s.luck??p.luk}`;
+    info.appendChild(name); info.appendChild(hp); info.appendChild(det);
+    el.appendChild(av); el.appendChild(info); return el;
+  };
+
+  // 렌더
+  const renderStatus = ()=>{
+    if(!state){ battleTitle.textContent='전투 대기중'; battleMode.textContent='-'; currentTurn.textContent='전투가 시작되지 않았습니다'; return; }
+    const st = state.status==='waiting'?'대기중':(state.status==='ongoing'?'진행중':'종료됨');
+    battleTitle.textContent=`전투 ${st}`;
+    battleMode.textContent = state.mode || '-';
+    const p = curPlayer();
+    if(p && state.status==='ongoing'){ currentTurn.textContent = `${p.name}의 차례 (${teamName(p.team)})`; }
+    else if(state.status==='ended'){
+      if(state.winner){ currentTurn.textContent = `${teamName(state.winner)} 승리!`; }
+      else{ currentTurn.textContent='전투 종료'; }
+    }else{
+      currentTurn.textContent='플레이어들을 기다리는 중...';
     }
   };
 
-  const getTeamDisplayName = teamKey => {
-    return teamKey === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들';
-  };
-
-  const calculateHpPercent = player => {
-    if (!player) return 0;
-    return Math.max(0, Math.min(100, Math.round((player.hp / player.maxHp) * 100)));
-  };
-
-  const getCurrentActor = () => {
-    if (!gameState?.turn?.pending?.length) return null;
-    return gameState.turn.pending[0];
-  };
-
-  const getCurrentPlayer = () => {
-    const actorId = getCurrentActor();
-    return actorId ? gameState.players[actorId] : null;
-  };
-
-  // 로그 추가 함수
-  const addSpectatorLogEntry = (content, type = 'info') => {
-    const entry = document.createElement('div');
-    entry.className = `spectator-log-entry ${type}`;
-    
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'time';
-    timeSpan.textContent = formatTime(Date.now());
-    
-    const contentSpan = document.createElement('span');
-    contentSpan.className = 'content';
-    contentSpan.textContent = content;
-    
-    entry.appendChild(timeSpan);
-    entry.appendChild(contentSpan);
-    spectatorLog.appendChild(entry);
-    spectatorLog.scrollTop = spectatorLog.scrollHeight;
-  };
-
-  // 플레이어 카드 생성
-  const createSpectatorUnit = player => {
-    const unit = document.createElement('div');
-    unit.className = `spectator-unit ${getCurrentActor() === player.id ? 'current-actor' : ''} ${!player.alive ? 'defeated' : ''}`;
-    unit.dataset.playerId = player.id;
-    
-    const avatar = document.createElement('div');
-    avatar.className = 'spectator-avatar';
-    if (player.avatar) {
-      avatar.style.backgroundImage = `url(${player.avatar})`;
-    }
-    
-    const info = document.createElement('div');
-    info.className = 'spectator-info';
-    
-    const name = document.createElement('div');
-    name.className = `spectator-name ${!player.alive ? 'defeated' : ''}`;
-    name.textContent = player.name;
-    
-    const hp = document.createElement('div');
-    hp.className = 'spectator-hp';
-    const hpBar = document.createElement('span');
-    hpBar.className = 'spectator-hp-bar';
-    hpBar.style.width = `${calculateHpPercent(player)}%`;
-    hp.appendChild(hpBar);
-    
-    const details = document.createElement('div');
-    details.className = 'spectator-details';
-    details.innerHTML = `
-      HP: ${player.hp}/${player.maxHp}<br>
-      공격 ${player.stats.attack} · 방어 ${player.stats.defense}<br>
-      민첩 ${player.stats.agility} · 행운 ${player.stats.luck}
-    `;
-    
-    info.appendChild(name);
-    info.appendChild(hp);
-    info.appendChild(details);
-    
-    unit.appendChild(avatar);
-    unit.appendChild(info);
-    
-    return unit;
-  };
-
-  // UI 업데이트 함수들
-  const updateBattleStatus = () => {
-    if (!gameState) {
-      battleTitle.textContent = '전투 대기중';
-      battleMode.textContent = '-';
-      currentTurn.textContent = '전투가 시작되지 않았습니다';
-      return;
-    }
-    
-    const statusText = gameState.status === 'waiting' ? '대기중' : 
-                       gameState.status === 'ongoing' ? '진행중' : '종료됨';
-    
-    battleTitle.textContent = `전투 ${statusText}`;
-    battleMode.textContent = gameState.mode || '-';
-    
-    const currentPlayer = getCurrentPlayer();
-    if (currentPlayer && gameState.status === 'ongoing') {
-      currentTurn.textContent = `${currentPlayer.name}의 차례 (${getTeamDisplayName(currentPlayer.team)})`;
-    } else if (gameState.status === 'ended') {
-      const winner = gameState.winner;
-      if (winner) {
-        currentTurn.textContent = `${getTeamDisplayName(winner)} 승리!`;
-      } else {
-        currentTurn.textContent = '전투 종료';
-      }
-    } else {
-      currentTurn.textContent = '플레이어들을 기다리는 중...';
-    }
-  };
-
-  const updateArena = () => {
-    const currentPlayer = getCurrentPlayer();
-    
-    if (currentPlayer) {
-      // 아레나 정보 업데이트
-      arenaLeftInfo.textContent = currentPlayer.team === 'team1' ? 
-        `${currentPlayer.name}의 차례` : '';
-      arenaRightInfo.textContent = currentPlayer.team === 'team2' ? 
-        `${currentPlayer.name}의 차례` : '';
-      
-      // 캐릭터 초상화 표시
-      if (currentPlayer.avatar) {
-        if (currentPlayer.team === 'team1') {
-          arenaLeftChar.style.display = 'block';
-          arenaLeftChar.style.backgroundImage = `url(${currentPlayer.avatar})`;
-          arenaLeftChar.classList.add('active');
-          arenaRightChar.classList.remove('active');
-        } else {
-          arenaRightChar.style.display = 'block';
-          arenaRightChar.style.backgroundImage = `url(${currentPlayer.avatar})`;
-          arenaRightChar.classList.add('active');
-          arenaLeftChar.classList.remove('active');
+  const renderArena = ()=>{
+    const p = curPlayer();
+    if(p){
+      // 이름표
+      arenaLeftInfo.textContent = (p.team==='A'||p.team==='team1') ? `${p.name}의 차례` : '';
+      arenaRightInfo.textContent = (p.team==='B'||p.team==='team2') ? `${p.name}의 차례` : '';
+      // 초상화
+      if(p.avatar){
+        if(p.team==='A'||p.team==='team1'){
+          arenaLeftChar.style.display='block'; arenaLeftChar.style.backgroundImage=`url(${p.avatar})`;
+          arenaLeftChar.classList.add('active'); arenaRightChar.classList.remove('active');
+        }else{
+          arenaRightChar.style.display='block'; arenaRightChar.style.backgroundImage=`url(${p.avatar})`;
+          arenaRightChar.classList.add('active'); arenaLeftChar.classList.remove('active');
         }
       }
-      
-      // 스탯 표시
-      arenaStats.style.display = 'grid';
+      // 스탯
+      const s=p.stats||{attack:p.atk, defense:p.def, agility:p.agi, luck:p.luk};
+      arenaStats.style.display='grid';
       arenaStats.innerHTML = `
-        <div class="arena-stat">
-          <div class="arena-stat-label">이름</div>
-          <div class="arena-stat-value">${currentPlayer.name}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">팀</div>
-          <div class="arena-stat-value">${getTeamDisplayName(currentPlayer.team)}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">HP</div>
-          <div class="arena-stat-value">${currentPlayer.hp}/${currentPlayer.maxHp}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">공격</div>
-          <div class="arena-stat-value">${currentPlayer.stats.attack}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">방어</div>
-          <div class="arena-stat-value">${currentPlayer.stats.defense}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">민첩</div>
-          <div class="arena-stat-value">${currentPlayer.stats.agility}</div>
-        </div>
-        <div class="arena-stat">
-          <div class="arena-stat-label">행운</div>
-          <div class="arena-stat-value">${currentPlayer.stats.luck}</div>
-        </div>
+        <div class="arena-stat"><div class="arena-stat-label">이름</div><div class="arena-stat-value">${p.name}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">팀</div><div class="arena-stat-value">${teamName(p.team)}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">HP</div><div class="arena-stat-value">${p.hp}/${p.maxHp||100}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">공격</div><div class="arena-stat-value">${s.attack??p.atk}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">방어</div><div class="arena-stat-value">${s.defense??p.def}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">민첩</div><div class="arena-stat-value">${s.agility??p.agi}</div></div>
+        <div class="arena-stat"><div class="arena-stat-label">행운</div><div class="arena-stat-value">${s.luck??p.luk}</div></div>
       `;
-    } else {
-      arenaLeftInfo.textContent = '-';
-      arenaRightInfo.textContent = '-';
-      arenaLeftChar.style.display = 'none';
-      arenaRightChar.style.display = 'none';
-      arenaStats.style.display = 'none';
-      arenaLeftChar.classList.remove('active');
-      arenaRightChar.classList.remove('active');
+    }else{
+      arenaLeftInfo.textContent='-'; arenaRightInfo.textContent='-';
+      arenaLeftChar.style.display='none'; arenaRightChar.style.display='none'; arenaStats.style.display='none';
+      arenaLeftChar.classList.remove('active'); arenaRightChar.classList.remove('active');
     }
   };
 
-  const updateTeamPanels = () => {
-    if (!gameState?.players) return;
-    
-    phoenixTeam.innerHTML = '';
-    deathEaterTeam.innerHTML = '';
-    
-    const team1Players = Object.values(gameState.players).filter(p => p.team === 'team1');
-    const team2Players = Object.values(gameState.players).filter(p => p.team === 'team2');
-    
-    team1Players.forEach(player => {
-      phoenixTeam.appendChild(createSpectatorUnit(player));
-    });
-    
-    team2Players.forEach(player => {
-      deathEaterTeam.appendChild(createSpectatorUnit(player));
-    });
+  const renderTeams = ()=>{
+    if(!state?.players) return;
+    phoenixTeam.innerHTML=''; deathEaterTeam.innerHTML='';
+    const t1 = Object.values(state.players).filter(p => (p.team==='A'||p.team==='team1'));
+    const t2 = Object.values(state.players).filter(p => (p.team==='B'||p.team==='team2'));
+    t1.forEach(p=> phoenixTeam.appendChild(unitCard(p)));
+    t2.forEach(p=> deathEaterTeam.appendChild(unitCard(p)));
   };
 
-  const updateSpectatorLog = () => {
-    if (!gameState?.chat) return;
-    
-    spectatorLog.innerHTML = '';
-    gameState.chat.slice(-100).forEach(entry => {
-      let type = 'info';
-      if (entry.type === 'system') type = 'system-message';
-      else if (entry.from === '관전자') type = 'cheer';
-      else if (entry.type === 'action') type = 'battle-action';
-      
-      addSpectatorLogEntry(entry.text || entry.message, type);
+  const renderLog = ()=>{
+    if(!state?.chat) return;
+    spectatorLog.innerHTML='';
+    state.chat.slice(-100).forEach(entry=>{
+      let type='info', text='';
+      if(entry.type==='system'){ type='system-message'; text=entry.text; }
+      else if(entry.type==='action'){ type='battle-action'; text=entry.text; }
+      else if(entry.type==='cheer'){
+        type='cheer';
+        const nick = entry.nickname || entry.from?.nickname || entry.from || '관전자'; // 닉네임 우선
+        text = `[응원] ${nick}: ${entry.text}`;
+      }else{
+        const scope = (entry.channel==='team' || entry.scope==='team') ? '[팀] ' : '[전체] ';
+        const nick = entry.nickname || entry.from?.nickname || entry.from || '익명';
+        text = `${scope}${nick}: ${entry.text||entry.message}`;
+      }
+      if(text) addLog(text, type);
     });
   };
 
-  const renderSpectatorView = () => {
-    if (!gameState) return;
-    
-    updateBattleStatus();
-    updateArena();
-    updateTeamPanels();
-    updateSpectatorLog();
+  const render = ()=>{ renderStatus(); renderArena(); renderTeams(); renderLog(); };
+
+  // 응원 전송 (중복표시 방지: 로컬에서는 즉시 로그 추가하지 않고 서버 브로드캐스트만 표시)
+  const sendCheer = (text)=>{
+    const payload = { battleId: currentBattleId, text, nickname: spectatorName, role:'spectator', scope:'cheer', type:'cheer' };
+    // 신 스펙
+    socket.emit('chat:send', payload, (ack)=>{ if(ack && ack.ok===false) console.error('응원 실패:', ack.msg); });
+    // 레거시 폴백
+    socket.emit('cheer', { text, from: spectatorName });
   };
 
-  // 응원 메시지 전송
-  const sendCheerMessage = message => {
-    // 관전자 이름과 함께 응원 메시지 전송
-    socket.emit('cheer', { 
-      text: message,
-      from: spectatorName  // 관전자 이름 포함
-    }, (ack) => {
-      if (ack?.error) {
-        console.error('응원 메시지 전송 실패:', ack.error);
-      } else {
-        // 성공 시 로컬에도 표시 (서버에서 다시 오는 것과 중복 방지를 위해 제거할 수도 있음)
-        addSpectatorLogEntry(`[응원] ${spectatorName}: ${message}`, 'cheer');
+  // 인증
+  const joinSpectate = (battleId, token, name)=>{
+    currentBattleId=battleId; spectatorName = name || '관전자';
+    spectatorNameDisplay.textContent = spectatorName;
+    // 1) 신규 스펙
+    socket.emit('join', { role:'spectator', battleId, token, name: spectatorName }, (ack)=>{
+      if(ack?.ok){
+        joined=true; state=ack.state; authSection.style.display='none'; render(); addLog(`${spectatorName}님이 관전을 시작했습니다`, 'system-message');
+      }else{
+        // 2) 레거시 폴백
+        socket.emit('auth', { role:'spectator', battle:battleId, token, name: spectatorName }, (ack2)=>{
+          if(ack2?.ok){ joined=true; state=ack2.state; authSection.style.display='none'; render(); addLog(`${spectatorName}님이 관전을 시작했습니다`, 'system-message'); }
+          else{ alert(`관전 인증 실패: ${ack?.msg||ack2?.error||'알 수 없는 오류'}`); }
+        });
       }
     });
   };
 
-  // 인증 함수
-  const authenticateSpectator = () => {
-    const battleId = authBattleId.value.trim();
-    const token = authToken.value.trim();
-    const name = authSpectatorName.value.trim();
-    
-    if (!battleId || !token) {
-      alert('전투 ID와 관전자 OTP를 입력해주세요!');
-      return;
-    }
-    
-    // 이름이 비어있으면 기본값 사용
-    spectatorName = name || '관전자';
-    
-    authJoinBtn.textContent = '접속 중...';
-    authJoinBtn.disabled = true;
-    
-    socket.emit('auth', {
-      role: 'spectator',
-      battle: battleId,
-      token,
-      name: spectatorName
-    }, (ack) => {
-      authJoinBtn.textContent = '관전 시작';
-      authJoinBtn.disabled = false;
-      
-      if (ack?.ok) {
-        isAuthenticated = true;
-        gameState = ack.state;
-        authSection.style.display = 'none';
-        
-        // 관전자 이름 표시 업데이트
-        const spectatorNameDisplay = $('spectatorNameDisplay');
-        if (spectatorNameDisplay) {
-          spectatorNameDisplay.textContent = spectatorName;
-        }
-        
-        renderSpectatorView();
-        addSpectatorLogEntry(`${spectatorName}님이 관전을 시작했습니다`, 'system-message');
-      } else {
-        alert(`관전 인증 실패: ${ack?.error || '알 수 없는 오류'}`);
-      }
-    });
+  const authenticate = ()=>{
+    const b=authBattleId.value.trim(), t=authToken.value.trim(), n=authSpectatorName.value.trim();
+    if(!b || !t){ alert('전투 ID와 관전자 OTP를 입력해주세요!'); return; }
+    authJoinBtn.disabled=true; authJoinBtn.textContent='접속 중...';
+    joinSpectate(b,t,n);
+    setTimeout(()=>{ authJoinBtn.disabled=false; authJoinBtn.textContent='관전 시작'; }, 1200);
   };
 
-  // 이벤트 리스너 설정
-  authJoinBtn.onclick = authenticateSpectator;
-  
-  authBattleId.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') authenticateSpectator();
-  });
-  
-  authToken.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') authenticateSpectator();
-  });
-  
-  authSpectatorName.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') authenticateSpectator();
-  });
+  // 이벤트 바인딩
+  authJoinBtn.onclick=authenticate;
+  authBattleId.addEventListener('keypress', e=>{ if(e.key==='Enter') authenticate(); });
+  authToken.addEventListener('keypress', e=>{ if(e.key==='Enter') authenticate(); });
+  authSpectatorName.addEventListener('keypress', e=>{ if(e.key==='Enter') authenticate(); });
 
-  // 응원 버튼 이벤트
-  document.querySelectorAll('.cheer-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const message = btn.dataset.cheer;
-      sendCheerMessage(message);
-      
-      // 시각적 피드백
-      btn.style.transform = 'scale(0.95)';
-      setTimeout(() => {
-        btn.style.transform = '';
-      }, 150);
+  document.querySelectorAll('.cheer-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const msg=btn.dataset.cheer; sendCheer(msg);
+      btn.style.transform='scale(0.95)'; setTimeout(()=> btn.style.transform='', 150);
     });
   });
 
-  // 소켓 이벤트 리스너
-  socket.on('state', (newState) => {
-    gameState = newState;
-    renderSpectatorView();
-  });
+  // 소켓 수신 (신/구 스펙 모두)
+  socket.on('state:update', s=>{ state=s; render(); });
+  socket.on('state', s=>{ state=s; render(); });
+  socket.on('phase:change', p=>{ addLog(`▶︎ 턴 전환: ${(p.phase==='A'?'불사조 기사단':'죽음을 먹는 자들')} (라운드 ${p.round})`, 'system-message'); if(state){ state.turn={...state.turn, phase:p.phase, round:p.round}; } });
+  socket.on('log:new', ev=>{ if(ev?.text) addLog(ev.text, 'system-message'); });
+  socket.on('battle:end', r=>{ addLog(`◆ 전투 종료: ${r.winner==='draw'?'무승부':(r.winner==='A'?'불사조 기사단':'죽음을 먹는 자들')} / A=${r.scoreA} / B=${r.scoreB}`, 'system-message'); });
 
-  socket.on('chat', (message) => {
-    let type = 'info';
-    let content = '';
-    
-    if (message.type === 'system') {
-      type = 'system-message';
-      content = message.text;
-    } else if (message.type === 'cheer') {
-      type = 'cheer';
-      // 관전자별 이름 구분하여 표시
-      const cheerFrom = message.from || '관전자';
-      content = `[응원] ${cheerFrom}: ${message.text}`;
-    } else {
-      const channelPrefix = message.channel === 'team' ? '[팀] ' : '[전체] ';
-      content = `${channelPrefix}${message.from}: ${message.text}`;
+  // 채팅/응원 수신
+  const handleChat = (message)=>{
+    let type='info', content='';
+    if(message.type==='system'){ type='system-message'; content=message.text; }
+    else if(message.type==='cheer'){
+      type='cheer';
+      const nick = message.nickname || message.from?.nickname || message.from || '관전자'; // ‘관전자’/닉 중복 방지: 닉 우선
+      content = `[응원] ${nick}: ${message.text}`;
+    }else{
+      const scope = (message.channel==='team' || message.scope==='team') ? '[팀] ' : '[전체] ';
+      const nick = message.nickname || message.from?.nickname || message.from || '익명';
+      content = `${scope}${nick}: ${message.text||message.message}`;
     }
-    
-    addSpectatorLogEntry(content, type);
-  });
+    if(content) addLog(content, type);
+  };
+  socket.on('chat:new', handleChat);
+  socket.on('chat', handleChat);
+  socket.on('chatError', err=> addLog(`채팅 오류: ${err}`, 'system-message'));
 
-  socket.on('chatError', (error) => {
-    addSpectatorLogEntry(`채팅 오류: ${error}`, 'system-message');
-  });
+  // 연결 상태
+  socket.on('connect', ()=>{ console.log('관전자 소켓 연결됨'); if(joined) addLog('서버에 연결되었습니다', 'system-message'); });
+  socket.on('disconnect', ()=>{ console.log('관전자 소켓 끊김'); if(joined) addLog('서버 연결이 끊어졌습니다. 재연결 시도 중...', 'system-message'); });
+  socket.on('reconnect', ()=>{ console.log('관전자 소켓 재연결'); if(joined) addLog('서버에 재연결되었습니다', 'system-message'); });
 
-  // 연결 상태 모니터링
-  socket.on('connect', () => {
-    console.log('관전자 소켓 연결됨');
-  });
-
-  socket.on('disconnect', () => {
-    console.log('관전자 소켓 연결 해제됨');
-    if (isAuthenticated) {
-      addSpectatorLogEntry('서버 연결이 끊어졌습니다. 재연결 시도 중...', 'system-message');
-    }
-  });
-
-  socket.on('reconnect', () => {
-    console.log('관전자 소켓 재연결됨');
-    if (isAuthenticated) {
-      addSpectatorLogEntry('서버에 재연결되었습니다', 'system-message');
-    }
-  });
-
-  // URL 파라미터 자동 인증
-  const initFromUrl = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const battle = urlParams.get('battle');
-    const token = urlParams.get('token');
-    const name = urlParams.get('name');
-    
-    if (battle && token) {
-      authBattleId.value = battle;
-      authToken.value = token;
-      if (name) {
-        authSpectatorName.value = decodeURIComponent(name);
-      }
-      // URL에서 온 경우에도 사용자가 이름을 수정할 수 있도록 바로 인증하지 않고 폼을 보여줌
-      authSection.style.display = 'block';
-      
-      // 하지만 모든 필수 정보가 있으면 자동 포커스
-      if (battle && token) {
-        authJoinBtn.focus();
-      }
-    } else {
-      authSection.style.display = 'block';
-    }
+  // URL 파라미터
+  const initFromUrl = ()=>{
+    const u=new URLSearchParams(location.search);
+    const b=u.get('battle'), t=u.get('token'), n=u.get('name');
+    if(b && t){ authBattleId.value=b; authToken.value=t; if(n) authSpectatorName.value=decodeURIComponent(n); authSection.style.display='block'; authJoinBtn.focus(); }
+    else{ authSection.style.display='block'; }
   };
 
-  // 접근성 개선: 키보드 네비게이션
-  document.addEventListener('keydown', (e) => {
-    // ESC 키로 인증 폼 포커스
-    if (e.key === 'Escape' && !isAuthenticated) {
-      authBattleId.focus();
-    }
-    
-    // 응원 단축키 (1-4번: 기본 응원, 5-0번: 재치있는 응원)
-    if (isAuthenticated && e.key >= '1' && e.key <= '0') {
-      const cheerButtons = document.querySelectorAll('.cheer-btn');
-      let buttonIndex = -1;
-      
-      if (e.key >= '1' && e.key <= '4') {
-        buttonIndex = parseInt(e.key) - 1;
-      } else if (e.key >= '5' && e.key <= '9') {
-        buttonIndex = parseInt(e.key) - 1;
-      } else if (e.key === '0') {
-        buttonIndex = 9;
-      }
-      
-      if (cheerButtons[buttonIndex]) {
-        cheerButtons[buttonIndex].click();
-        e.preventDefault();
-      }
-    }
+  // 단축키: 응원(1~0)
+  document.addEventListener('keydown', e=>{
+    if(!joined) return;
+    const btns=[...document.querySelectorAll('.cheer-btn')];
+    let idx=-1;
+    if(e.key>='1' && e.key<='9') idx = parseInt(e.key)-1;
+    else if(e.key==='0') idx=9;
+    if(idx>=0 && btns[idx]){ btns[idx].click(); e.preventDefault(); }
   });
 
-  // 성능 최적화: 디바운스된 리사이즈 핸들러
-  let resizeTimeout;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      // 필요한 경우 레이아웃 재계산
-      if (isAuthenticated) {
-        renderSpectatorView();
-      }
-    }, 250);
-  });
+  // 리사이즈/가시성
+  let rT; window.addEventListener('resize', ()=>{ clearTimeout(rT); rT=setTimeout(()=>{ if(joined && state) render(); }, 250); });
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && joined && state) render(); });
 
-  // 페이지 가시성 변경 시 처리
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && isAuthenticated && gameState) {
-      // 페이지가 다시 보일 때 최신 상태로 업데이트
-      renderSpectatorView();
-    }
-  });
-
-  // 초기화
+  // 시작
   initFromUrl();
-  
-  // 개발 모드에서 디버그 정보 출력
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    window.spectatorDebug = {
-      gameState: () => gameState,
-      socket: () => socket,
-      renderView: renderSpectatorView
-    };
-    console.log('관전자 디버그 모드 활성화: window.spectatorDebug 사용 가능');
+
+  // 로컬 디버그
+  if(location.hostname==='localhost' || location.hostname==='127.0.0.1'){
+    window.spectatorDebug = { state:()=>state, socket:()=>socket, render };
+    console.log('관전자 디버그 모드: window.spectatorDebug 사용 가능');
   }
 })();
 </script>
