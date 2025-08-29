@@ -54,6 +54,8 @@
     .portrait{background:#0a0f1f;border:1px solid var(--line);border-radius:12px;display:flex;align-items:flex-end;justify-content:center;position:relative;overflow:hidden;min-height:420px}
     .portrait .img{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:340px;height:420px;object-fit:cover;filter:contrast(1.05) saturate(1.05)}
     .portrait .ph{position:absolute;bottom:0;left:0;right:0;height:420px;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 20%, transparent), radial-gradient(600px 300px at 50% 110%, rgba(228,196,118,.08), transparent 60%);}
+    .portrait .upload{position:absolute;top:8px;left:8px;right:8px;display:flex;gap:8px;align-items:center;justify-content:space-between;background:rgba(0,0,0,.35);padding:6px;border-radius:10px;border:1px solid var(--line)}
+    .portrait .upload input[type="file"]{color:#c8c0ab}
     .pinfo{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px}
     .statrow{display:flex;gap:8px;flex-wrap:wrap}
     .stat{background:#0b142a;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
@@ -101,6 +103,10 @@
         <h3 class="title">현재 턴</h3>
         <div class="turnpanel">
           <div class="portrait">
+            <div class="upload">
+              <label class="muted">반신 이미지 업로드(256KB 이하)</label>
+              <input id="avatarInput" type="file" accept="image/*">
+            </div>
             <img id="portraitImg" class="img" alt="">
             <div class="ph"></div>
           </div>
@@ -117,6 +123,9 @@
               <div class="row" style="margin-top:8px">
                 <select id="targetSel" disabled class="input"></select>
                 <select id="itemSel" disabled class="input"></select>
+              </div>
+              <div class="muted" style="margin-top:6px">
+                아이템 안내: 디터니(HP +10), 공격 보정기(1턴 공격 x1.5, 실패 확률), 방어 보정기(1턴 방어 x1.5, 실패 확률)
               </div>
             </div>
           </div>
@@ -181,6 +190,7 @@
   const targetSel = $('targetSel');
   const itemSel = $('itemSel');
   const portraitImg = $('portraitImg');
+  const avatarInput = $('avatarInput');
   const turnName = $('turnName');
   const turnStats = $('turnStats');
 
@@ -292,6 +302,22 @@
   actDefend.onclick = ()=> choose('DEFEND');
   actItem.onclick   = ()=> choose('ITEM');
   actPass.onclick   = ()=> choose('PASS');
+
+  // 반신 이미지 업로드: 256KB 제한, image/* 만 허용
+  avatarInput.addEventListener('change', async (ev)=>{
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('이미지 파일만 업로드할 수 있습니다'); return; }
+    if (file.size > 256 * 1024) { alert('파일 용량이 256KB를 초과합니다'); return; }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const dataUrl = reader.result;
+      socket.emit('uploadAvatar', { dataUrl }, (ack)=>{
+        if (!ack || !ack.ok) { alert('업로드 실패: ' + (ack && ack.error || '')); return; }
+      });
+    };
+    reader.readAsDataURL(file);
+  });
 
   chatSend.onclick = ()=>{
     const text = chatInput.value.trim(); if (!text) return;
