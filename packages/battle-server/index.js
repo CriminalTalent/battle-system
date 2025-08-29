@@ -275,7 +275,7 @@ io.on('connection', (socket) => {
 
   socket.on('auth', (payload, ack) => {
     try {
-      const { battle, token, role, name, pid } = payload || {};
+      const { battle, token, role, name } = payload || {};
       const b = battles.get(battle);
       if (!b) return ack && ack({ ok: false, error: 'battle_not_found' });
 
@@ -285,18 +285,22 @@ io.on('connection', (socket) => {
       } else if (role === 'spectator') {
         authed = token === b.tokens.spectator.token && b.tokens.spectator.exp > now();
       } else if (role === 'player') {
-        const rec = b.tokens.players[token];
-        if (rec && rec.exp > now() && rec.pid && b.players[rec.pid]) {
-          authed = true; linkedPid = rec.pid;
-        }
+        const rec = Object.entries(b.tokens.players).find(([, v]) => v.exp > now() && b.players[v.pid]);
+        // 기본은 링크로 접근하므로 위 rec 탐색은 보조용. 실제는 아래에서 name 일치로 보조 확인한다.
+        if (rec) { authed = true; linkedPid = rec[1].pid; }
+        // 이름 일치(필수)
         if (authed && name && b.players[linkedPid] && b.players[linkedPid].name !== name) authed = false;
+        // 토큰 직접 전달 시
+        if (!authed && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
+          linkedPid = b.tokens.players[token].pid;
+          if (name && b.players[linkedPid] && b.players[linkedPid].name === name) authed = true;
+        }
       }
       if (!authed) return ack && ack({ ok: false, error: 'auth_failed' });
 
       socket._auth = { ok: true, role, battle: battle, pid: linkedPid || null, name: name || null };
       socket.join(room(battle));
 
-      // 접속 안내(관전 제외)
       if (role !== 'spectator') b.chat.push({ type: 'system', ts: now(), text: `${role === 'admin' ? '관리자' : (name || '플레이어')} 접속` });
       emitState(io, b);
       ack && ack({ ok: true, state: sanitizePublicBattle(b) });
