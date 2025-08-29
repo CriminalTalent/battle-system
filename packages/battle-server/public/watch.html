@@ -4,130 +4,129 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>PYXIS 관전자</title>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@800;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
 <style>
   :root{
-    /* 네이비 + 골드 팔레트 */
-    --navy:#001E35;
-    --navy-0:#001528;
-    --navy-1:#012443;
-    --glass:#05223fcc;
-    --glass-2:#062846cc;
-    --border:#0b2a4a;
-    --border-2:#0a355e;
+    /* 통일 팔레트: 1번=주색, 2번=그라데이션 보조 */
+    --gold1:#DCC7A2;
+    --gold2:#D4BA8D;
+    --navy1:#00080D;
+    --navy2:#001E35;
+
+    /* 유리/테두리 */
+    --glass-1:#08131fcc;
+    --glass-2:#0b2540cc;
+    --border-1:#0e2a49;
+    --border-2:#123a66;
 
     --ink:#F2F1ED;
     --muted:#BFD0E1;
 
-    --gold:#D4BA8D;
-    --gold-2:#E5D7BE;
-
     --blur: blur(12px) saturate(120%);
     --lift: 0 14px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.03);
   }
-
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0; color:var(--ink);
-    font-family:"Noto Sans KR", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family:"Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     background:
-      radial-gradient(1200px 600px at 20% -10%, rgba(212,186,141,.10), transparent 60%),
-      linear-gradient(180deg, var(--navy-0) 0%, var(--navy) 40%, var(--navy-1) 100%);
+      radial-gradient(1100px 520px at 18% -12%, rgba(220,199,162,.10), transparent 60%),
+      linear-gradient(180deg, var(--navy1) 0%, var(--navy2) 100%);
   }
 
   header{position:relative; padding:18px 16px 8px 16px}
   header::before{
     content:""; position:absolute; inset:-35% -10% auto -10%; height:320px;
-    background:conic-gradient(from 0deg, rgba(212,186,141,.20), rgba(212,186,141,.05), rgba(212,186,141,.20));
+    background:conic-gradient(from 0deg, rgba(220,199,162,.22), rgba(220,199,162,.08), rgba(220,199,162,.22));
     filter:blur(48px); animation:spin 36s linear infinite; opacity:.55; pointer-events:none;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
   .wrap{max-width:1280px; margin:0 auto}
   .brand{
-    font-family:"Cinzel", serif; font-weight:900; letter-spacing:.06em;
+    font-family:"Cinzel",serif; font-weight:900; letter-spacing:.06em;
     font-size:30px; display:inline-block;
-    background:linear-gradient(180deg,var(--gold-2),var(--gold));
+    background:linear-gradient(180deg,var(--gold1),var(--gold2));
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
 
-  /* 그리드 레이아웃 */
+  /* 레이아웃 */
   .stage{display:grid; grid-template-columns:260px 1fr 260px; gap:14px; padding:12px 16px}
   @media (max-width:1100px){ .stage{grid-template-columns:1fr} }
 
   .card{
-    background:linear-gradient(180deg,var(--glass),var(--glass-2));
-    border:1px solid var(--border); border-top:1px solid rgba(255,255,255,.05);
+    background:linear-gradient(180deg,var(--glass-1),var(--glass-2));
+    border:1px solid var(--border-1); border-top:1px solid rgba(255,255,255,.05);
     border-radius:16px; padding:12px; backdrop-filter:var(--blur); box-shadow:var(--lift);
   }
 
-  /* 좌/우 팀 패널 */
+  /* 팀 패널 */
   .side{display:flex; flex-direction:column; gap:10px}
-  .unit{display:flex; gap:10px; align-items:center; border:1px solid var(--border); border-radius:12px; padding:8px; background:#05243f}
-  .unit .avatar{width:44px; height:44px; border-radius:8px; background:#0b1630 center/cover no-repeat; border:1px solid var(--border)}
+  .unit{display:flex; gap:10px; align-items:center; border:1px solid var(--border-1); border-radius:12px; padding:8px; background:#0a2036}
+  .unit .avatar{width:44px; height:44px; border-radius:8px; background:#0b1630 center/cover no-repeat; border:1px solid var(--border-1)}
   .unit .meta{flex:1}
   .hpbar{height:8px;background:#0a2a4a;border-radius:8px;overflow:hidden;margin-top:4px}
   .hpbar>span{display:block;height:100%;background:linear-gradient(90deg,#4aa3ff,#6ee7f9)}
-  .unit.active{outline:2px solid rgba(212,186,141,.45)}
+  .unit.active{outline:2px solid rgba(220,199,162,.45)}
   .unit.dead{opacity:.55}
 
   /* 중앙 */
   .center{display:grid; grid-template-rows:auto 260px 220px; gap:12px}
   @media (max-width:1100px){ .center{grid-template-rows:auto 260px 240px} }
 
+  /* 인증 */
+  .auth{
+    display:none; gap:10px; align-items:end; flex-wrap:wrap;
+    border:1px solid var(--border-1); border-radius:12px; padding:10px; background:#0a2138
+  }
+  .field{display:flex; flex-direction:column; gap:6px}
+  .input,.select{
+    padding:10px 12px; border-radius:10px; background:#0a2238; color:var(--ink); border:1px solid var(--border-1);
+  }
+  .input:focus,.select:focus{outline:1px solid var(--gold1); box-shadow:0 0 0 3px rgba(220,199,162,.18)}
+  .btn{
+    border:1px solid var(--border-2); color:var(--ink);
+    background:linear-gradient(180deg,#10385f,#0b2c4d);
+    padding:10px 12px; border-radius:12px; cursor:pointer;
+    transition:transform .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px)}
+  .btn.gold{border-color:#7b694d;background:linear-gradient(180deg,var(--gold1),var(--gold2)); color:#2a200f}
+  .btn[disabled]{opacity:.55; cursor:not-allowed}
+
+  /* 반신/스탯 */
   .portrait{
     position:relative; min-height:200px; display:flex; align-items:flex-end; justify-content:center;
-    border:1px solid var(--border); border-radius:16px;
-    background:linear-gradient(180deg,#031b30,#031b30);
+    border:1px solid var(--border-1); border-radius:16px;
+    background:linear-gradient(180deg,#051426,#071c30);
     overflow:hidden;
   }
   .portrait .img{
-    position:absolute; bottom:0; width:40%; max-width:360px; aspect-ratio:3/4; background:#0b1630 center/cover no-repeat; border:1px solid var(--border);
+    position:absolute; bottom:0; width:40%; max-width:360px; aspect-ratio:3/4; background:#0b1630 center/cover no-repeat; border:1px solid var(--border-1);
     border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.45);
   }
   .portrait.left  .img{left:24px}
   .portrait.right .img{right:24px}
   .portrait .nameplate{
     position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center;
-    font-weight:700; color:var(--gold);
+    font-weight:800; color:var(--gold1);
   }
   .portrait .stats{
     position:absolute; bottom:12px; left:12px; right:12px; display:flex; gap:12px; flex-wrap:wrap; color:#dfe9f4; font-size:14px;
-    background:#05243faa; border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+    background:#0a2138cc; border:1px solid var(--border-1); border-radius:10px; padding:8px 10px;
   }
 
-  /* 채팅/로그 뷰 (읽기 전용) */
-  .view{height:100%; overflow:auto; background:#061c33; border:1px solid var(--border); border-radius:12px; padding:10px}
+  /* 뷰 (채팅/로그) */
+  .view{height:100%; overflow:auto; background:#081c31; border:1px solid var(--border-1); border-radius:12px; padding:10px}
   .line{display:flex; gap:8px; align-items:baseline; margin-bottom:6px}
   .ts{font-size:11px;color:#8fb0ce;min-width:54px;flex:0 0 auto}
-
   .view::-webkit-scrollbar{height:10px;width:10px}
   .view::-webkit-scrollbar-track{background:#051628;border-radius:10px}
   .view::-webkit-scrollbar-thumb{background:#0f335a;border-radius:10px;border:2px solid #051628}
 
   /* 응원 프리셋 */
   .cheers{display:flex; gap:8px; flex-wrap:wrap}
-  .btn{
-    border:1px solid var(--border-2); color:var(--ink);
-    background:linear-gradient(180deg,#0c3458,#092a4b);
-    padding:10px 12px; border-radius:12px; cursor:pointer; position:relative; overflow:hidden;
-    transition:transform .15s ease, box-shadow .15s ease;
-  }
-  .btn:hover{transform:translateY(-1px)}
-  .btn.gold{border-color:#7b694d; background:linear-gradient(180deg,#E5D7BE,#D4BA8D); color:#2a200f}
-  .btn[disabled]{opacity:.55; cursor:not-allowed}
-
-  /* 인증 폼 */
-  .auth{
-    display:none; gap:10px; align-items:end; flex-wrap:wrap;
-    border:1px solid var(--border); border-radius:12px; padding:10px; background:#05243f
-  }
-  .field{display:flex; flex-direction:column; gap:6px}
-  .input, .select{
-    padding:10px 12px; border-radius:10px; background:#05243f; color:var(--ink); border:1px solid var(--border);
-  }
-  .input:focus, .select:focus{outline:1px solid var(--gold); box-shadow:0 0 0 3px rgba(212,186,141,.18)}
 </style>
 </head>
 <body>
@@ -138,12 +137,12 @@
 </header>
 
 <main class="wrap stage">
-  <!-- 좌측: 팀1(불사조 기사단) -->
+  <!-- 좌: 불사조 기사단 -->
   <aside class="side" id="teamLeft"></aside>
 
   <!-- 중앙 -->
   <section class="center">
-    <!-- 인증 폼 (URL 파라미터 없을 때 표시) -->
+    <!-- 인증 (URL 파라미터 없을 때 표시) -->
     <div class="card auth" id="authBox">
       <div class="field">
         <label for="aBattle">전투 ID</label>
@@ -184,7 +183,7 @@
     </div>
   </section>
 
-  <!-- 우측: 팀2(죽음을 먹는 자들) -->
+  <!-- 우: 죽음을 먹는 자들 -->
   <aside class="side" id="teamRight"></aside>
 </main>
 
@@ -199,7 +198,6 @@
   const portraitStats = $('portraitStats');
   const turnInfo  = $('turnInfo');
   const modeInfo  = $('modeInfo');
-
   const chatEl = $('chat');
   const logsEl = $('logs');
 
@@ -208,7 +206,7 @@
   const socket = io({ path: '/socket.io/' });
   let state = null;
 
-  // URL 파라미터 → 자동 인증
+  // URL 파라미터 자동 인증
   const qs = new URLSearchParams(location.search);
   let battle = qs.get('battle') || '';
   let token  = qs.get('token')  || '';
@@ -274,7 +272,7 @@
     el.appendChild(av);
 
     const meta = document.createElement('div'); meta.className='meta';
-    const nm = document.createElement('div'); nm.style.fontWeight='700'; nm.textContent = p.name + (p.alive?'':' (불능)');
+    const nm = document.createElement('div'); nm.style.fontWeight='800'; nm.textContent = p.name + (p.alive?'':' (불능)');
     const bar = document.createElement('div'); bar.className='hpbar'; const span = document.createElement('span'); span.style.width = hpPct(p)+'%'; bar.appendChild(span);
     const st = document.createElement('div'); st.style.color='#c7d7e6'; st.style.fontSize='12px';
     st.textContent = `공격 ${p.stats.attack} / 방어 ${p.stats.defense} / 민첩 ${p.stats.agility} / 행운 ${p.stats.luck}`;
@@ -293,9 +291,8 @@
     const pid = currentActorPid();
     const p = pid ? state.players[pid] : null;
 
-    const dir = p && p.team==='team2' ? 'right' : 'left';
-    portrait.classList.toggle('left',  dir==='left');
-    portrait.classList.toggle('right', dir==='right');
+    portrait.classList.toggle('left',  p ? p.team!=='team2' : true);
+    portrait.classList.toggle('right', p ? p.team==='team2' : false);
 
     const tm = p ? (p.team==='team1' ? '불사조 기사단' : '죽음을 먹는 자들') : '';
     turnInfo.textContent = p ? `${p.name}의 차례` : '대기중';
@@ -347,7 +344,6 @@
   document.querySelectorAll('[data-cheer]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const text = btn.dataset.cheer;
-      // 서버에 cheer 이벤트가 있는 경우 우선 사용, 실패 시 chatMessage(kind: 'cheer')로 폴백
       socket.emit('cheer', { text }, (ack)=>{
         if (!ack || !ack.ok){
           socket.emit('chatMessage', { message:text, channel:'all', kind:'cheer' }, ()=>{});
