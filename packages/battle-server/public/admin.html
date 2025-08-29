@@ -587,7 +587,7 @@
 
       <!-- 제어 버튼 -->
       <div class="control-actions">
-        <button id="btnConnect" class="btn">소켓 연결</button>
+        <button id="btnConnect" class="btn">관리자 로그인</button>
         <button id="btnStartBattle" class="btn btn-gold">전투 시작</button>
         <button id="btnPauseBattle" class="btn">일시정지</button>
         <button id="btnEndBattle" class="btn btn-danger">전투 종료</button>
@@ -960,6 +960,9 @@
       return;
     }
     
+    btnConnect.textContent = '로그인 중...';
+    btnConnect.disabled = true;
+    
     socket.emit('auth', {
       role: 'admin',
       battle: currentBattleId,
@@ -969,11 +972,14 @@
         isConnected = true;
         battleState = ack.state;
         renderBattleState();
-        addLogEntry('소켓 연결 성공', 'system');
-        btnConnect.textContent = '연결됨';
+        addLogEntry('관리자 로그인 성공', 'system');
+        btnConnect.textContent = '로그인 완료';
+        btnConnect.classList.add('btn-success');
         btnConnect.disabled = true;
       } else {
-        showNotification('소켓 연결 실패', 'error');
+        btnConnect.textContent = '관리자 로그인';
+        btnConnect.disabled = false;
+        showNotification('관리자 로그인 실패', 'error');
       }
     });
   };
