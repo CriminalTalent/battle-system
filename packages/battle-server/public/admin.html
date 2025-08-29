@@ -8,17 +8,17 @@
 <script src="/socket.io/socket.io.js"></script>
 <style>
   :root{
-    /* 네이비/골드 팔레트 고정 */
-    --navy:#001E35;
-    --navy-0:#001528;
-    --navy-1:#012443;
-    --glass:#05223fcc;
-    --glass-2:#062846cc;
-    --border:#0b2a4a;
-    --border-2:#0a355e;
+    /* 컬러: 1번=주색, 2번=그라데이션 보조 */
+    --gold1:#DCC7A2;
+    --gold2:#D4BA8D;
+    --navy1:#00080D;
+    --navy2:#001E35;
 
-    --gold:#D4BA8D;
-    --gold-2:#E5D7BE;
+    /* 유리/테두리 계열 */
+    --glass-1: #061524cc;
+    --glass-2: #0a2640cc;
+    --border-1:#0d2a48;
+    --border-2:#123a66;
 
     --ink:#F2F1ED;
     --muted:#BFD0E1;
@@ -36,13 +36,13 @@
     margin:0; color:var(--ink);
     font-family:"Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     background:
-      radial-gradient(1200px 600px at 20% -10%, rgba(212,186,141,.10), transparent 60%),
-      linear-gradient(180deg, var(--navy-0) 0%, var(--navy) 40%, var(--navy-1) 100%);
+      radial-gradient(1100px 520px at 18% -12%, rgba(220,199,162,.10), transparent 60%),
+      linear-gradient(180deg, var(--navy1) 0%, var(--navy2) 100%);
   }
   header{position:relative; padding:18px 16px 8px 16px}
   header::before{
     content:""; position:absolute; inset:-35% -10% auto -10%; height:320px;
-    background:conic-gradient(from 0deg, rgba(212,186,141,.20), rgba(212,186,141,.05), rgba(212,186,141,.20));
+    background:conic-gradient(from 0deg, rgba(220,199,162,.22), rgba(220,199,162,.08), rgba(220,199,162,.22));
     filter:blur(48px); animation:spin 36s linear infinite; opacity:.55; pointer-events:none;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -50,7 +50,7 @@
   .brand{
     font-family:"Cinzel",serif; font-weight:900; letter-spacing:.06em;
     font-size:30px; display:inline-block;
-    background:linear-gradient(180deg,var(--gold-2),var(--gold));
+    background:linear-gradient(180deg,var(--gold1),var(--gold2));
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
 
@@ -58,15 +58,15 @@
   @media (max-width:1100px){ .layout{grid-template-columns:1fr} }
 
   .card{
-    background:linear-gradient(180deg,var(--glass),var(--glass-2));
-    border:1px solid var(--border); border-top:1px solid rgba(255,255,255,.05);
+    background:linear-gradient(180deg,var(--glass-1),var(--glass-2));
+    border:1px solid var(--border-1); border-top:1px solid rgba(255,255,255,.05);
     border-radius:16px; padding:12px; backdrop-filter:var(--blur); box-shadow:var(--lift);
   }
-  .title{font-weight:800; color:var(--gold); margin-bottom:8px}
+  .title{font-weight:800; color:var(--gold1); margin-bottom:8px}
 
   .aside{position:sticky; top:12px; align-self:start; height:calc(100vh - 100px); display:flex; flex-direction:column; gap:12px}
   .chatbox{display:flex; flex-direction:column; height:100%}
-  .chatlog{flex:1; overflow:auto; background:#061c33; border:1px solid var(--border); border-radius:12px; padding:10px}
+  .chatlog{flex:1; overflow:auto; background:#081c31; border:1px solid var(--border-1); border-radius:12px; padding:10px}
   .chatline{display:flex; gap:8px; align-items:baseline; margin-bottom:6px}
   .ts{font-size:11px;color:#8fb0ce;min-width:54px;flex:0 0 auto}
 
@@ -76,31 +76,36 @@
   .field{display:flex; align-items:center; gap:8px}
   .input, .select{
     width:100%; padding:10px 12px; border-radius:10px;
-    background:#05243f; color:var(--ink); border:1px solid var(--border);
+    background:#0a2238; color:var(--ink); border:1px solid var(--border-1);
   }
-  .input:focus, .select:focus{outline:1px solid var(--gold); box-shadow:0 0 0 3px rgba(212,186,141,.18)}
+  .input:focus, .select:focus{outline:1px solid var(--gold1); box-shadow:0 0 0 3px rgba(220,199,162,.18)}
   .btn{
     border:1px solid var(--border-2); color:var(--ink);
-    background:linear-gradient(180deg,#0c3458,#092a4b);
+    background:linear-gradient(180deg,#10385f,#0b2c4d);
     padding:10px 12px; border-radius:12px; cursor:pointer;
     transition:transform .15s ease;
   }
   .btn:hover{transform:translateY(-1px)}
-  .btn.gold{border-color:#7b694d;background:linear-gradient(180deg,#E5D7BE,#D4BA8D); color:#2a200f}
+  .btn.gold{
+    border-color:#7b694d;
+    background:linear-gradient(180deg,var(--gold1),var(--gold2));
+    color:#2a200f
+  }
   .btn.ok{background:linear-gradient(180deg,#4aa578,#3f9964)}
   .btn.warn{background:linear-gradient(180deg,#cda45a,#8f6d34)}
   .btn.bad{background:linear-gradient(180deg,#c46c6c,#b45c5c)}
-  .pill{display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); background:#06213a; color:#d9e4ee; font-weight:700}
+  .pill{display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border-1); background:#09213a; color:#d9e4ee; font-weight:700}
 
+  /* 링크 리스트는 독립 스크롤 (우측 채팅 안 밀리게) */
   .links-list{
     max-height: 42vh;
     overflow:auto;
-    border:1px solid var(--border);
+    border:1px solid var(--border-1);
     border-radius:12px;
     padding:10px;
-    background:#061c33;
+    background:#081c31;
   }
-  .link-item{border:1px solid var(--border); border-radius:10px; padding:8px; background:#05243f; margin-bottom:8px}
+  .link-item{border:1px solid var(--border-1); border-radius:10px; padding:8px; background:#0a2238; margin-bottom:8px}
   .copy{white-space:nowrap}
   .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#d9e4ee}
 </style>
@@ -113,7 +118,9 @@
 </header>
 
 <main class="wrap layout">
+  <!-- 메인 -->
   <section class="main" style="display:flex; flex-direction:column; gap:16px">
+    <!-- 전투 생성 및 인증 -->
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <div class="title">전투 생성 및 인증</div>
@@ -131,7 +138,7 @@
       </div>
 
       <div class="grid-2">
-        <div class="card" style="background:#061c33">
+        <div class="card" style="background:#081c31">
           <div class="title" style="margin-bottom:6px">토큰 / 링크</div>
           <div class="row field"><span style="width:84px">전투 ID</span><input id="battleId" class="input" readonly></div>
           <div class="row field"><span style="width:84px">관리자 OTP</span><input id="adminOtp" class="input" readonly></div>
@@ -145,7 +152,7 @@
           </div>
         </div>
 
-        <div class="card" style="background:#061c33">
+        <div class="card" style="background:#081c31">
           <div class="title" style="margin-bottom:6px">플레이어별 링크</div>
           <div class="row" style="margin-bottom:8px">
             <button id="genLinks" class="btn">플레이어별 링크 생성</button>
@@ -155,6 +162,7 @@
       </div>
     </div>
 
+    <!-- 참여자 구성 -->
     <div class="card">
       <div class="title">참여자 구성</div>
       <div class="grid-3" style="margin-bottom:8px">
@@ -184,6 +192,7 @@
     </div>
   </section>
 
+  <!-- 우측: 로그 · 채팅 (고정) -->
   <aside class="aside">
     <div class="card chatbox">
       <div class="title">로그 · 채팅</div>
@@ -205,6 +214,7 @@
   const $ = (id)=>document.getElementById(id);
   const bySel = (sel)=>document.querySelector(sel);
 
+  // refs
   const mode=$('mode'), create=$('create'), battleStatus=$('battleStatus');
   const battleId=$('battleId'), adminOtp=$('adminOtp'), specOtp=$('specOtp'), specUrl=$('specUrl');
   const connect=$('connect'), start=$('start'), pause=$('pause'), end=$('end');
@@ -235,14 +245,9 @@
   }
   document.querySelectorAll('.copy').forEach(btn=>btn.addEventListener('click', ()=>copyFrom(btn.dataset.copy)));
 
-  // 공통 POST 함수
   async function postJSON(url, body){
-    const r = await fetch(url, {
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body: JSON.stringify(body||{})
-    });
-    let text=''; try{ text = await r.text(); }catch{}
+    const r = await fetch(url, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body||{}) });
+    const text = await r.text().catch(()=> '');
     let json=null; try{ json = text ? JSON.parse(text) : null; }catch{}
     if (!r.ok || (json && json.ok===false)){
       const msg = (json && (json.error||json.message)) || text || `HTTP ${r.status}`;
@@ -251,36 +256,16 @@
     return json || {};
   }
 
-  // 전투 생성: 기본 → 폴백
-  async function createBattle(){
-    const payload = { mode: String(mode.value||'1v1') };
-    try{
-      return await postJSON('/api/admin/battles', payload);
-    }catch(e1){
-      console.warn('create /api/admin/battles 실패:', e1);
-      // 폴백
-      try{
-        return await postJSON('/api/battles', payload);
-      }catch(e2){
-        console.error('create 폴백(/api/battles) 실패:', e2);
-        // 에러 디테일 표시
-        const details = `상태: ${e2.status||'N/A'}\n메시지: ${e2.message||'알 수 없음'}`;
-        throw new Error('전투 생성 실패\n' + details);
-      }
-    }
-  }
-
-  // 관전자 링크 조립(응답에 urls.watch 없을 때)
   function buildWatchUrl(origin, id, spectatorOtp){
     const base = origin || (location.origin || '');
     const url = new URL(base);
     return `${url.origin}/watch?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(spectatorOtp)}&name=${encodeURIComponent('관전자')}`;
-    }
+  }
 
-  // 생성 버튼
+  // 전투 생성: /api/admin/battles (단일 엔드포인트만 사용)
   create.onclick = async ()=>{
     try{
-      const j = await createBattle();
+      const j = await postJSON('/api/admin/battles', { mode: String(mode.value||'1v1') });
       const b = j.battle || {};
       const otps = j.otps || {};
       const urls = j.urls || {};
@@ -290,14 +275,12 @@
       battleId.value = b.id || '';
       adminOtp.value = otps.admin || '';
       specOtp.value  = otps.spectator || '';
-
-      // urls.watch가 비어있으면 직접 구성
       specUrl.value  = urls.watch || buildWatchUrl('', b.id, otps.spectator);
 
       setStatus(b.status||'waiting');
       logLine('시스템','전투 생성 완료');
     }catch(e){
-      alert(e.message || '생성 실패');
+      alert(`생성 실패\n상태: ${e.status||'N/A'}\n메시지: ${e.message||'알 수 없음'}`);
     }
   };
 
@@ -320,7 +303,7 @@
         links.appendChild(box);
       });
     }catch(e){
-      alert(e.message || '링크 생성 실패');
+      alert(`링크 생성 실패\n상태: ${e.status||'N/A'}\n메시지: ${e.message||'알 수 없음'}`);
     }
   };
 
@@ -342,7 +325,7 @@
       pName.value=''; itHeal.value=itAtk.value=itDef.value='0';
       logLine('시스템','참여자 추가 완료');
     }catch(e){
-      alert(e.message || '추가 실패');
+      alert(`추가 실패\n상태: ${e.status||'N/A'}\n메시지: ${e.message||'알 수 없음'}`);
     }
   };
 
@@ -355,9 +338,9 @@
       logLine('시스템','소켓 인증 성공');
     });
   };
-  start.onclick = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/start`); logLine('시스템','전투 시작'); }catch(e){ alert(e.message||'시작 실패'); } };
-  pause.onclick = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/pause`); logLine('시스템','전투 일시정지'); }catch(e){ alert(e.message||'일시정지 실패'); } };
-  end.onclick   = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/end`);   logLine('시스템','전투 종료'); }catch(e){ alert(e.message||'종료 실패'); } };
+  start.onclick = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/start`); logLine('시스템','전투 시작'); }catch(e){ alert(`시작 실패\n${e.message||''}`); } };
+  pause.onclick = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/pause`); logLine('시스템','전투 일시정지'); }catch(e){ alert(`일시정지 실패\n${e.message||''}`); } };
+  end.onclick   = async ()=>{ if (!currentBattle) return alert('전투가 없습니다'); try{ await postJSON(`/api/admin/battles/${currentBattle}/end`);   logLine('시스템','전투 종료'); }catch(e){ alert(`종료 실패\n${e.message||''}`); } };
 
   // 채팅
   chatSend.onclick = ()=>{
