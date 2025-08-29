@@ -83,24 +83,26 @@ const MODE_CONFIG = {
 function safeMode(m) { return MODE_CONFIG[m] ? m : '1v1'; }
 function room(bid) { return `battle:${bid}`; }
 
-// 인벤토리 표준화: 다양한 입력을 {이름:수량} 맵으로 변환
+// 허용 아이템(3종)
+const ALLOWED_ITEMS = new Set(['디터니','공격 보정기','방어 보정기']);
+
+// 인벤토리 표준화: 다양한 입력을 {이름:수량} 맵으로 변환(허용 아이템만 반영)
 function normalizeInventory(inv) {
   const out = {};
   if (!inv) return out;
+  const add = (name, qty) => {
+    if (!ALLOWED_ITEMS.has(name)) return;           // 필터
+    const q = Math.max(0, Math.floor(Number(qty || 1)));
+    if (q > 0) out[name] = (out[name] || 0) + q;
+  };
   if (Array.isArray(inv)) {
     for (const it of inv) {
       if (!it) continue;
-      if (typeof it === 'string') out[it] = (out[it] || 0) + 1;
-      else if (typeof it === 'object' && it.name) {
-        const q = Math.max(0, Math.floor(Number(it.qty || 1)));
-        if (q > 0) out[it.name] = (out[it.name] || 0) + q;
-      }
+      if (typeof it === 'string') add(it, 1);
+      else if (typeof it === 'object' && it.name) add(it.name, it.qty || 1);
     }
   } else if (typeof inv === 'object') {
-    for (const k of Object.keys(inv)) {
-      const q = Math.max(0, Math.floor(Number(inv[k] || 0)));
-      if (q > 0) out[k] = (out[k] || 0) + q;
-    }
+    for (const k of Object.keys(inv)) add(k, inv[k]);
   }
   return out;
 }
@@ -249,9 +251,9 @@ app.post('/api/battles/:id/players', (req, res) => {
       agility: clampInt(stats.agility, 1, 5),
       luck: clampInt(stats.luck, 1, 5),
     },
-    inventory: normalizeInventory(invRaw),
+    inventory: normalizeInventory(invRaw), // 허용 아이템만 반영
     avatar: null,
-    _buffs: {} // 엔진 버프 저장소
+    _buffs: {}
   };
 
   emitState(io, b);
