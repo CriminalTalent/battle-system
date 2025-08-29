@@ -9,173 +9,145 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root{
-      --bg:#0b1020; --bg-deep:#09122a; --panel:#0f1830; --panel2:#0c1428;
       --ink:#e8e2cf; --ink-dim:#b8b3a2;
       --gold:#e4c476; --gold-2:#c9ab5f; --gold-3:#a98b45;
-      --navy-1:#17233f; --navy-2:#223055; --line:#28324a; --line-subtle:#1c2540;
-      --glass: blur(10px) saturate(120%);
-      --shadow-1: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
-      --top-line: 0 -1px 0 rgba(255,255,255,.06) inset, 0 1px 0 rgba(0,0,0,.4) inset;
-      --grad-gold: linear-gradient(90deg,#f6e3a1,#e4c476,#d2b062);
-      --grad-ink: linear-gradient(90deg,#eef2ff,#e8e2cf);
-      --grad-card: radial-gradient(1200px 600px at 10% -10%,rgba(255,255,255,.06),transparent 40%),
-                   radial-gradient(1000px 600px at 110% -20%,rgba(255,215,160,.08),transparent 50%),
-                   linear-gradient(180deg,rgba(20,28,50,.7),rgba(8,10,22,.8));
-      --grad-btn: linear-gradient(180deg,#2a3c66,#192746);
-      --grad-btn-gold: linear-gradient(180deg,#f2d98b,#d0b266);
+      --line:#2a2f42; --line-subtle:#1b2033;
+      --card:#0b1020; --card2:#0f1530; --card3:#0a0f1f;
       --st-wait:#6a7aa5; --st-go:#49c07d; --st-pause:#d5a746; --st-end:#c04c4c;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{
-      margin:0;color:var(--ink);
-      background:
-        radial-gradient(1000px 500px at 50% -10%, rgba(255,255,255,.05), transparent 60%),
-        linear-gradient(180deg, #0a0f1e, #080c18 60%, #060a14),
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="none"/><circle cx="1" cy="1" r="1" fill="%23121a2a" opacity="0.8"/></svg>');
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
-      line-height:1.45;
-    }
-    .wrap{max-width:1200px;margin:0 auto;padding:16px;animation:fadeIn .5s ease both}
-    @keyframes fadeIn{from{opacity:.0; transform:translateY(6px)}to{opacity:1; transform:none}}
-    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
-    .brand{
-      font-family:"Cinzel", serif; letter-spacing:.06em; font-weight:800; font-size:20px;
-      background:var(--grad-gold); -webkit-background-clip:text; background-clip:text; color:transparent;
-      text-shadow:0 0 20px rgba(226,197,118,.15);
-    }
-    .subbrand{font-size:12px;color:var(--ink-dim);margin-top:2px;letter-spacing:.04em}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0c1526a6;backdrop-filter:var(--glass)}
+    body{margin:0;background:#000;color:var(--ink);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;}
+    .wrap{max-width:1280px;margin:0 auto;padding:14px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .brand{font-family:"Cinzel", serif; letter-spacing:.06em; font-weight:800; font-size:20px;
+      background:linear-gradient(90deg,#f6e3a1,#e4c476,#d2b062); -webkit-background-clip:text; background-clip:text; color:transparent;}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0c1526a6}
     .pill.wait{border-color:var(--st-wait); color:var(--st-wait)}
     .pill.go{border-color:var(--st-go); color:var(--st-go)}
     .pill.pause{border-color:var(--st-pause); color:var(--st-pause)}
     .pill.end{border-color:var(--st-end); color:var(--st-end)}
-    .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}
-    @media (max-width: 1000px){ .grid{grid-template-columns:1fr} }
-    .card{
-      background:var(--grad-card);
-      border:1px solid var(--line);
-      border-radius:16px; padding:14px; position:relative;
-      backdrop-filter:var(--glass);
-      box-shadow:var(--shadow-1);
-      transition:transform .25s ease, box-shadow .25s ease;
-    }
-    .card::before{content:""; position:absolute; inset:0; pointer-events:none; border-radius:16px; box-shadow:var(--top-line)}
-    .card:hover{ transform:translateY(-2px); box-shadow:0 14px 38px rgba(0,0,0,.42)}
-    .card .title{display:flex;align-items:center;gap:8px;margin:0 0 10px 0;color:var(--gold)}
-    .title .dot{width:8px;height:8px;border-radius:999px;background:var(--gold-2); box-shadow:0 0 10px rgba(240,205,110,.5)}
-    .teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .team h3{margin:0 0 8px 0;color:var(--gold); letter-spacing:.02em}
-    .unit{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line-subtle);border-radius:12px;margin-bottom:8px;background:rgba(16,22,40,.55)}
-    .unit:hover{background:rgba(18,26,48,.7)}
-    .unit .av{width:46px;height:46px;border-radius:10px;background:#1a2238;overflow:hidden;border:1px solid var(--line);flex:0 0 auto;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
-    .unit .av img{width:100%;height:100%;object-fit:cover;display:block}
-    .bar{height:8px;background:#202a44;border-radius:8px;overflow:hidden}
-    .bar>span{display:block;height:100%;background:linear-gradient(90deg,#4da3ff,#67e8f9)}
-    .meta{font-size:12px;color:var(--ink-dim)}
-    .actions .muted{color:var(--ink-dim)}
-    .action-card.turn{outline:1px solid rgba(228,196,118,.35); box-shadow:0 0 0 3px rgba(228,196,118,.08) inset}
-    .btn{border:1px solid var(--line); color:var(--ink); padding:10px 12px; border-radius:12px; cursor:pointer; background:var(--grad-btn); transition:transform .15s ease, box-shadow .15s ease, background .2s}
-    .btn:hover{transform:translateY(-1px)}
-    .btn:active{transform:translateY(0); box-shadow:none}
-    .btn.primary{border-color:#314568; background:var(--grad-btn)}
-    .btn.gold{border-color:var(--gold-3); background:var(--grad-btn-gold); color:#261b06}
-    .btn.success{border-color:#2f6e53; background:linear-gradient(180deg,#3d996f,#2a6b50)}
-    .btn.warn{border-color:#7a5a20; background:linear-gradient(180deg,#caa455,#9a7a36); color:#231a07}
-    .btn.danger{border-color:#6b2b2b; background:linear-gradient(180deg,#c95b5b,#983f3f)}
-    .btn.glossy{position:relative; overflow:hidden}
-    .btn.glossy::after{content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(255,255,255,.18),transparent 40%, transparent); mix-blend-mode:screen; opacity:.8; transition:opacity .2s}
-    .btn.glossy:hover::after{opacity:1}
-    input, select, button, textarea{font:inherit}
-    .input, select, textarea{
-      background:rgba(12,20,38,.7); color:var(--ink);
-      border:1px solid var(--line); border-radius:12px; padding:10px;
-      backdrop-filter:var(--glass); outline:none; transition:box-shadow .15s,border-color .15s;
-    }
-    .input::placeholder{color:#7f86a1}
-    .input:focus, select:focus, textarea:focus{border-color:var(--gold-2); box-shadow:0 0 0 3px rgba(228,196,118,.15)}
-    .chat{height:340px;overflow:auto;background:rgba(10,16,32,.7);border:1px solid var(--line);border-radius:12px;padding:10px; backdrop-filter:var(--glass)}
-    .chat .row{display:flex;gap:8px;align-items:baseline; margin-bottom:6px}
-    .chat .ts{font-size:11px;color:#8aa0c2;min-width:54px}
-    .chat .sys .msg{color:#9fb0d0}
-    .chat .cheer .msg{color:#a6e6a6}
-    .chat .me .msg{color:#e8d4a8}
-    .chat::-webkit-scrollbar{width:10px}
-    .chat::-webkit-scrollbar-thumb{background:#2a3552;border-radius:10px;border:2px solid #0b1222}
-    .fx-hit{animation:hitPulse .6s ease}
-    @keyframes hitPulse{
-      0%{text-shadow:0 0 0 rgba(255,80,80,.0)}
-      40%{text-shadow:0 0 14px rgba(255,80,80,.45)}
-      100%{text-shadow:0 0 0 rgba(255,80,80,.0)}
-    }
-    .fx-ko{animation:koFlash .8s ease}
-    @keyframes koFlash{
-      0%,100%{color:var(--ink)}
-      30%{color:#ffce7a; text-shadow:0 0 16px rgba(255,210,120,.6)}
-    }
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    /* 레이아웃: 좌/중/우 */
+    .layout{display:grid;grid-template-columns:260px 1fr 260px;gap:12px}
+    @media (max-width: 1100px){ .layout{grid-template-columns:1fr;}}
+    .col{display:flex;flex-direction:column;gap:12px}
+
+    .card{background:linear-gradient(180deg,var(--card),var(--card3));
+      border:1px solid var(--line); border-radius:14px; padding:12px}
+
+    .title{margin:0 0 8px 0; color:var(--gold); font-weight:700; letter-spacing:.02em}
     .muted{color:var(--ink-dim)}
-    .tools{display:flex;gap:8px; align-items:center}
-    .right{margin-left:auto}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+
+    /* 팀 리스트 */
+    .unit{display:flex;gap:8px;align-items:center;border:1px solid var(--line-subtle);border-radius:12px;padding:8px;background:#0c1326}
+    .unit .av{width:44px;height:44px;border-radius:10px;background:#1a2238;overflow:hidden;border:1px solid var(--line)}
+    .unit .av img{width:100%;height:100%;object-fit:cover;display:block}
+    .bar{height:8px;background:#1b2136;border-radius:8px;overflow:hidden}
+    .bar>span{display:block;height:100%;background:linear-gradient(90deg,#4da3ff,#67e8f9)}
+
+    /* 현재 턴 플레이어 패널(반신) */
+    .turnpanel{display:grid;grid-template-columns:360px 1fr;gap:12px;align-items:stretch}
+    @media (max-width: 900px){ .turnpanel{grid-template-columns:1fr}}
+    .portrait{background:#0a0f1f;border:1px solid var(--line);border-radius:12px;display:flex;align-items:flex-end;justify-content:center;position:relative;overflow:hidden;min-height:420px}
+    .portrait .img{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:340px;height:420px;object-fit:cover;filter:contrast(1.05) saturate(1.05)}
+    .portrait .ph{position:absolute;bottom:0;left:0;right:0;height:420px;background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 20%, transparent), radial-gradient(600px 300px at 50% 110%, rgba(228,196,118,.08), transparent 60%);}
+    .pinfo{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px}
+    .statrow{display:flex;gap:8px;flex-wrap:wrap}
+    .stat{background:#0b142a;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+    .actions .row{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{border:1px solid var(--line); color:var(--ink); padding:10px 12px; border-radius:12px; cursor:pointer; background:linear-gradient(180deg,#2a3c66,#192746)}
+    .btn[disabled]{opacity:.45; cursor:not-allowed}
+    .btn.gold{border-color:var(--gold-3); background:linear-gradient(180deg,#f2d98b,#d0b266); color:#261b06}
+    .input, select{background:#0b142a;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px}
+
+    /* 중앙 로그/채팅 */
+    .midstack{display:grid;grid-template-rows:1fr 1fr;gap:12px;min-height:520px}
+    .log, .chat{background:#0a1122;border:1px solid var(--line);border-radius:12px;padding:10px;overflow:auto}
+    .log .row, .chat .row{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
+    .ts{font-size:11px;color:#8aa0c2;min-width:54px}
+    .log::-webkit-scrollbar, .chat::-webkit-scrollbar{width:10px}
+    .log::-webkit-scrollbar-thumb, .chat::-webkit-scrollbar-thumb{background:#2a3552;border-radius:10px;border:2px solid #0b1222}
+
+    /* 상태 Pill */
+    .status{display:inline-flex;gap:8px;align-items:center}
+    .status .pill{margin-left:6px}
   </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div>
-      <div class="brand">PYXIS</div>
-      <div class="subbrand">Tactical Duel Interface</div>
-    </div>
-    <div class="tools">
-      <span id="statusPill" class="pill wait"><b>대기중</b></span>
+    <div class="brand">PYXIS</div>
+    <div class="status">
+      <span>전장 상태</span>
+      <span id="statusPill" class="pill wait">대기중</span>
     </div>
   </header>
 
-  <div class="grid">
-    <div class="card">
-      <h3 class="title"><span class="dot"></span> 전장 정보</h3>
-      <div class="row muted" id="headInfo"></div>
-      <div style="height:8px"></div>
-      <div class="teams">
-        <div class="team">
-          <h3 id="t1name">불사조 기사단</h3>
-          <div id="team1"></div>
+  <div class="layout">
+    <!-- 좌측: 팀1 -->
+    <div class="col" id="leftCol">
+      <div class="card">
+        <h3 class="title">불사조 기사단</h3>
+        <div id="team1"></div>
+      </div>
+    </div>
+
+    <!-- 중앙: 현재 턴 패널 + 로그/채팅 -->
+    <div class="col">
+      <div class="card">
+        <h3 class="title">현재 턴</h3>
+        <div class="turnpanel">
+          <div class="portrait">
+            <img id="portraitImg" class="img" alt="">
+            <div class="ph"></div>
+          </div>
+          <div class="pinfo">
+            <div id="turnName" style="font-weight:700;font-size:18px"></div>
+            <div class="statrow" id="turnStats"></div>
+            <div class="actions">
+              <div class="row">
+                <button id="actAttack" disabled class="btn">공격</button>
+                <button id="actDefend" disabled class="btn">방어</button>
+                <button id="actItem" disabled class="btn">아이템</button>
+                <button id="actPass" disabled class="btn">패스</button>
+              </div>
+              <div class="row" style="margin-top:8px">
+                <select id="targetSel" disabled class="input"></select>
+                <select id="itemSel" disabled class="input"></select>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="team">
-          <h3 id="t2name">죽음을 먹는 자들</h3>
-          <div id="team2"></div>
+      </div>
+
+      <div class="midstack">
+        <div class="card">
+          <h3 class="title">로그</h3>
+          <div class="log" id="logBox"></div>
+        </div>
+        <div class="card">
+          <h3 class="title">채팅</h3>
+          <div class="chat" id="chat"></div>
+          <div class="row" style="margin-top:6px">
+            <input id="chatInput" class="input" placeholder="메시지 입력" style="flex:1 1 auto" />
+            <select id="chatChannel" class="input">
+              <option value="all">전체</option>
+              <option value="team">팀</option>
+            </select>
+            <button id="chatSend" class="btn gold">보내기</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="card action-card" id="actionCard">
-      <h3 class="title"><span class="dot"></span> 행동</h3>
-      <div class="actions" id="actionsBox">
-        <div class="muted">당신의 차례가 되면 버튼이 활성화됩니다.</div>
-        <div style="height:8px"></div>
-        <div class="row">
-          <button id="actAttack" disabled class="btn primary glossy">공격</button>
-          <button id="actDefend" disabled class="btn">방어</button>
-          <button id="actItem" disabled class="btn">아이템</button>
-          <button id="actPass" disabled class="btn warn">패스</button>
-        </div>
-        <label class="muted">대상</label>
-        <select id="targetSel" disabled class="input"></select>
-        <label class="muted">아이템</label>
-        <select id="itemSel" disabled class="input"></select>
-      </div>
-
-      <div style="height:12px"></div>
-      <h3 class="title"><span class="dot"></span> 로그 · 채팅</h3>
-      <div class="chat" id="chat"></div>
-      <div class="row" style="margin-top:6px">
-        <input id="chatInput" class="input" placeholder="메시지 입력" style="flex:1 1 auto" />
-        <select id="chatChannel" class="input">
-          <option value="all">전체</option>
-          <option value="team">팀</option>
-        </select>
-        <button id="chatSend" class="btn glossy gold">보내기</button>
+    <!-- 우측: 팀2 -->
+    <div class="col" id="rightCol">
+      <div class="card">
+        <h3 class="title">죽음을 먹는 자들</h3>
+        <div id="team2"></div>
       </div>
     </div>
   </div>
@@ -187,21 +159,19 @@
   const battle = qs.get('battle');
   const token = qs.get('token');
   const name = qs.get('name');
-  const pid = qs.get('pid');
+  const pidFromUrl = qs.get('pid');
 
   const socket = io({ path: '/socket.io/' });
   let state = null;
   let mePid = null;
 
-  const $ = (id) => document.getElementById(id);
-  const headInfo = $('headInfo');
+  const $ = (id)=>document.getElementById(id);
   const team1 = $('team1'), team2 = $('team2');
-  const t1name = $('t1name'), t2name = $('t2name');
+  const logBox = $('logBox');
   const chatEl = $('chat');
   const chatInput = $('chatInput');
   const chatSend = $('chatSend');
   const chatChannel = $('chatChannel');
-  const actionCard = $('actionCard');
   const statusPill = $('statusPill');
 
   const actAttack = $('actAttack');
@@ -210,136 +180,118 @@
   const actPass = $('actPass');
   const targetSel = $('targetSel');
   const itemSel = $('itemSel');
-
-  function fmtTs(ts){
-    try{ const d = new Date(ts); return d.toLocaleTimeString([], {hour12:false}); }catch{ return '--:--:--'; }
-  }
-
-  function lineEl(klass, tsText, bodyText){
-    const row = document.createElement('div'); row.className = 'row ' + klass;
-    const ts = document.createElement('span'); ts.className = 'ts mono'; ts.textContent = tsText;
-    const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = bodyText;
-    row.appendChild(ts); row.appendChild(msg);
-    return row;
-  }
-
-  function appendChat(msg){
-    if (!msg) return;
-    const t = fmtTs(msg.ts || Date.now());
-    let klass = '';
-    let text = '';
-
-    if (msg.type === 'system') {
-      text = `[시스템] ${msg.text}`;
-      klass = 'sys';
-      if (/피해/.test(msg.text)) klass += ' fx-hit';
-      if (/전투 불능/.test(msg.text)) klass += ' fx-ko';
-    } else if (msg.type === 'cheer') {
-      text = `[응원] ${msg.from}: ${msg.text}`;
-      klass = 'cheer';
-    } else if (msg.type === 'chat') {
-      const who = msg.from || '익명';
-      const ch = msg.channel === 'team' ? '팀' : '전체';
-      text = `[${ch}] ${who}: ${msg.text}`;
-      klass = (msg.pid && state && state.players[msg.pid] && mePid === msg.pid) ? 'me' : '';
-    } else {
-      text = JSON.stringify(msg);
-    }
-
-    chatEl.appendChild(lineEl(klass, t, text));
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
+  const portraitImg = $('portraitImg');
+  const turnName = $('turnName');
+  const turnStats = $('turnStats');
 
   function setStatusPill(status){
     statusPill.classList.remove('wait','go','pause','end');
-    if (status === 'waiting') { statusPill.classList.add('wait'); statusPill.innerHTML = '<b>대기중</b>'; }
-    else if (status === 'ongoing') { statusPill.classList.add('go'); statusPill.innerHTML = '<b>진행중</b>'; }
-    else if (status === 'paused') { statusPill.classList.add('pause'); statusPill.innerHTML = '<b>일시정지</b>'; }
-    else if (status === 'ended') { statusPill.classList.add('end'); statusPill.innerHTML = '<b>종료</b>'; }
+    if (status === 'waiting') { statusPill.textContent = '대기중'; statusPill.classList.add('wait'); }
+    else if (status === 'ongoing') { statusPill.textContent = '진행중'; statusPill.classList.add('go'); }
+    else if (status === 'paused') { statusPill.textContent = '일시정지'; statusPill.classList.add('pause'); }
+    else if (status === 'ended') { statusPill.textContent = '종료'; statusPill.classList.add('end'); }
+  }
+  function fmtTs(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour12:false}); }catch{return '--:--:--';} }
+  function appendRow(to, klass, ts, text){
+    const row = document.createElement('div'); row.className = 'row ' + klass;
+    const t = document.createElement('span'); t.className = 'ts'; t.textContent = ts;
+    const m = document.createElement('span'); m.textContent = text;
+    row.appendChild(t); row.appendChild(m); to.appendChild(row); to.scrollTop = to.scrollHeight;
   }
 
-  function render(){
-    if (!state) return;
-    setStatusPill(state.status);
-
-    const T = state.turn || {turnIndex:0, frameIndex:0, framePlan:[]};
-
-    headInfo.textContent = `전투 ${state.id} · 모드 ${state.mode} · 턴 ${T.turnIndex} / 프레임 ${T.frameIndex+1} / 총 ${T.framePlan.length}`;
-
-    t1name.textContent = state.teams.team1;
-    t2name.textContent = state.teams.team2;
-
+  function renderTeams(){
     team1.innerHTML = ''; team2.innerHTML = '';
-    const players = Object.values(state.players);
-
-    const mkUnit = (p) => {
+    const mkUnit = (p)=>{
       const box = document.createElement('div'); box.className = 'unit';
       const av = document.createElement('div'); av.className = 'av';
       if (p.avatar) { const img = document.createElement('img'); img.src = p.avatar; av.appendChild(img); }
       const info = document.createElement('div'); info.style.flex='1';
-      const title = document.createElement('div'); title.textContent = `${p.name}${p.alive?'':' (불능)'}`;
+      const nameEl = document.createElement('div'); nameEl.textContent = `${p.name}${p.alive?'':' (불능)'}`;
       const bar = document.createElement('div'); bar.className = 'bar';
       const span = document.createElement('span'); span.style.width = `${Math.round((p.hp/p.maxHp)*100)}%`; bar.appendChild(span);
-      const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = `ATK ${p.stats.attack} / DEF ${p.stats.defense} / AGI ${p.stats.agility} / LUCK ${p.stats.luck}`;
-      info.appendChild(title); info.appendChild(bar); info.appendChild(meta);
+      const meta = document.createElement('div'); meta.className='muted'; meta.textContent = `ATK ${p.stats.attack} / DEF ${p.stats.defense} / AGI ${p.stats.agility} / LUCK ${p.stats.luck}`;
+      info.appendChild(nameEl); info.appendChild(bar); info.appendChild(meta);
       box.appendChild(av); box.appendChild(info);
       return box;
     };
+    Object.values(state.players).filter(p=>p.team==='team1').forEach(p=>team1.appendChild(mkUnit(p)));
+    Object.values(state.players).filter(p=>p.team==='team2').forEach(p=>team2.appendChild(mkUnit(p)));
+  }
 
-    players.filter(p => p.team==='team1').forEach(p => team1.appendChild(mkUnit(p)));
-    players.filter(p => p.team==='team2').forEach(p => team2.appendChild(mkUnit(p)));
+  function renderTurnPanel(){
+    const T = state.turn || {turnIndex:0, frameIndex:0, framePlan:[]};
+    const cur = T.framePlan[T.frameIndex];
+    const actor = cur ? state.players[cur.pid] : null;
 
-    let myFrame = null;
-    if (mePid && T && T.framePlan && typeof T.frameIndex === 'number') {
-      const f = T.framePlan[T.frameIndex];
-      if (f && f.pid === mePid) myFrame = f;
-    }
+    // 기본 버튼/입력 비활성화
+    [actAttack, actDefend, actItem, actPass, targetSel, itemSel].forEach(el => el.disabled = true);
+    targetSel.innerHTML = ''; itemSel.innerHTML = '';
+    turnName.textContent = '대기 중';
+    turnStats.innerHTML = '';
+    portraitImg.src = '';
 
-    [actAttack, actDefend, actItem, actPass, targetSel, itemSel]
-      .forEach(e => e.disabled = true);
-    actionCard.classList.remove('turn');
+    if (!actor) return;
 
-    if (myFrame) {
-      actionCard.classList.add('turn');
-      const allows = new Set(myFrame.allows || []);
+    // 반신 이미지
+    if (actor.avatar) portraitImg.src = actor.avatar; else portraitImg.removeAttribute('src');
+
+    turnName.textContent = `${actor.name}${actor.alive?'':' (불능)'}`;
+    turnStats.innerHTML = '';
+    const S = actor.stats || {};
+    const addStat = (label,val)=>{ const s = document.createElement('div'); s.className='stat'; s.textContent = `${label} ${val}`; turnStats.appendChild(s); };
+    addStat('HP', `${actor.hp}/${actor.maxHp}`);
+    addStat('ATK', S.attack||0); addStat('DEF', S.defense||0); addStat('AGI', S.agility||0); addStat('LUCK', S.luck||0);
+
+    // 내 차례 판단
+    const isMine = (mePid && actor.id === mePid);
+    const allows = new Set(cur.allows || []);
+
+    if (isMine) {
+      // 버튼 활성화
       actAttack.disabled = !allows.has('ATTACK');
       actDefend.disabled = !allows.has('DEFEND');
       actItem.disabled   = !allows.has('ITEM');
       actPass.disabled   = !allows.has('PASS');
 
-      targetSel.innerHTML = '';
-      if (myFrame.targetable) {
+      // 대상 후보(살아있는 타인)
+      const list = Object.values(state.players).filter(p=>p.alive && p.id !== mePid);
+      if (list.length) {
         targetSel.disabled = false;
-        const list = Object.values(state.players)
-          .filter(p => p.alive && (!myFrame.targetTeam || p.team === myFrame.targetTeam) && p.id !== mePid);
-        for (const p of list) {
+        list.forEach(p=>{
           const opt = document.createElement('option');
-          opt.value = p.id; opt.textContent = `${p.name} (${p.team=== 'team1' ? '팀1':'팀2'})`;
+          opt.value = p.id; opt.textContent = `${p.name} (${p.team === 'team1' ? '팀1':'팀2'})`;
           targetSel.appendChild(opt);
-        }
+        });
       }
-
+      // 아이템 후보(수량)
       const me = state.players[mePid];
-      itemSel.innerHTML = '';
-      if (actItem.disabled === false && me && Array.isArray(me.inventory)) {
+      if (me && me.inventory && Object.keys(me.inventory).length) {
         itemSel.disabled = false;
-        for (const it of me.inventory) {
-          const opt = document.createElement('option');
-          opt.value = it; opt.textContent = it;
-          itemSel.appendChild(opt);
-        }
+        Object.keys(me.inventory).forEach(k=>{
+          const q = me.inventory[k] || 0;
+          if (q>0) {
+            const opt = document.createElement('option');
+            opt.value = k; opt.textContent = `${k} (x${q})`;
+            itemSel.appendChild(opt);
+          }
+        });
       }
     }
   }
 
-  function choose(kind) {
+  function render(){
+    if (!state) return;
+    setStatusPill(state.status);
+    renderTeams();
+    renderTurnPanel();
+  }
+
+  function choose(kind){
     const payload = { kind };
-    if (!actAttack.disabled && kind === 'ATTACK') payload.targetId = targetSel.value || null;
-    if (!actDefend.disabled && kind === 'DEFEND') payload.targetId = targetSel.value || null;
-    if (!actItem.disabled   && kind === 'ITEM') { payload.itemName = itemSel.value || null; payload.targetId = targetSel.value || null; }
-    socket.emit('chooseAction', payload, (ack) => {
-      if (!ack || !ack.ok) alert(ack?.error || '액션 실패');
-    });
+    if (kind === 'ATTACK') payload.targetId = targetSel.value || null;
+    if (kind === 'DEFEND') payload.targetId = targetSel.value || null;
+    if (kind === 'ITEM') { payload.itemName = itemSel.value || null; payload.targetId = targetSel.value || null; }
+    socket.emit('chooseAction', payload, (ack)=>{ if (!ack || !ack.ok) alert(ack?.error || '액션 실패'); });
   }
 
   actAttack.onclick = ()=> choose('ATTACK');
@@ -347,14 +299,14 @@
   actItem.onclick   = ()=> choose('ITEM');
   actPass.onclick   = ()=> choose('PASS');
 
-  chatSend.onclick = () => {
+  chatSend.onclick = ()=>{
     const text = chatInput.value.trim(); if (!text) return;
     socket.emit('chatMessage', { message: text, channel: chatChannel.value });
     chatInput.value = '';
   };
 
-  socket.on('connect', () => {
-    socket.emit('auth', { battle, token, role:'player', name, pid }, (ack) => {
+  socket.on('connect', ()=>{
+    socket.emit('auth', { battle, token, role:'player', name, pid: pidFromUrl }, (ack)=>{
       if (!ack || !ack.ok) { alert('인증 실패'); return; }
       state = ack.state;
       const list = Object.values(state.players);
@@ -363,8 +315,22 @@
       render();
     });
   });
+
   socket.on('state', s => { state = s; render(); });
-  socket.on('chat', appendChat);
+
+  // 시스템 로그는 state 갱신시 chat에도 쌓이므로 별도 로그 영역에 최근 로그만 반영
+  socket.on('chat', (msg)=>{
+    if (!msg) return;
+    const t = fmtTs(msg.ts || Date.now());
+    if (msg.type === 'system') appendRow(logBox, 'sys', t, msg.text);
+    // 채팅 박스에도 반영
+    let text = '';
+    if (msg.type === 'system') text = '[시스템] ' + msg.text;
+    else if (msg.type === 'cheer') text = '[응원] ' + (msg.from||'관전자') + ': ' + msg.text;
+    else if (msg.type === 'chat') text = '[' + (msg.channel === 'team' ? '팀':'전체') + '] ' + (msg.from||'익명') + ': ' + msg.text;
+    appendRow(chatEl, '', t, text);
+  });
+
   socket.on('chatError', (m)=> alert(m));
 })();
 </script>
