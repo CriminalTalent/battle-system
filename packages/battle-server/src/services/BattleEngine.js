@@ -262,7 +262,6 @@ class BattleEngine {
     if (name === '공격 보정기') {
       if (Math.random() < ITEM_FAIL_RATE) {
         logs.push(`${user.name} 아이템 사용 실패: 공격 보정기`);
-        // 실패 시 소모하지 않음
         return { ok:true, logs };
       }
       user._buffs.atkMul = 1.5;
@@ -275,7 +274,6 @@ class BattleEngine {
     if (name === '방어 보정기') {
       if (Math.random() < ITEM_FAIL_RATE) {
         logs.push(`${user.name} 아이템 사용 실패: 방어 보정기`);
-        // 실패 시 소모하지 않음
         return { ok:true, logs };
       }
       user._buffs.defMul = 1.5;
