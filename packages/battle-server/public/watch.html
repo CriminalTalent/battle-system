@@ -619,6 +619,28 @@
   box-shadow:0 4px 12px rgba(46,204,113,.2);
 }
 
+.cheer-btn.witty{
+  border-color:rgba(230,126,34,.5);
+  background:linear-gradient(135deg, 
+    rgba(230,126,34,.15), 
+    rgba(230,126,34,.08)
+  );
+  color:#F39C12;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:-.01em;
+}
+
+.cheer-btn.witty:hover{
+  border-color:rgba(230,126,34,.7);
+  background:linear-gradient(135deg, 
+    rgba(230,126,34,.25), 
+    rgba(230,126,34,.15)
+  );
+  box-shadow:0 4px 12px rgba(230,126,34,.2);
+  transform:translateY(-1px) scale(1.02);
+}
+
 /* 관전 로그 */
 .spectator-log{
   background:rgba(8,28,49,.95);
@@ -776,15 +798,18 @@
           <label for="authBattleId">전투 ID</label>
           <input id="authBattleId" class="input" placeholder="battle_xxxxx" maxlength="50">
         </div>
-        <div class="auth-row">
-          <div class="field">
-            <label for="authToken">관전자 OTP</label>
-            <input id="authToken" class="input" placeholder="관전 토큰" maxlength="50">
-          </div>
-          <div class="field">
-            <label for="authSpectatorName">표시 이름</label>
-            <input id="authSpectatorName" class="input" placeholder="관전자 이름" maxlength="20">
-          </div>
+        <div class="field">
+          <label for="authToken">관전자 OTP</label>
+          <input id="authToken" class="input" placeholder="관전 토큰" maxlength="50">
+        </div>
+        <div class="field">
+          <label for="authSpectatorName">관전자 이름</label>
+          <input id="authSpectatorName" class="input" placeholder="표시할 이름 (예: 관전왕, 응원단장)" maxlength="20" value="">
+        </div>
+        <div class="auth-help">
+          <small style="color:var(--text-muted); font-size:12px; text-align:center; margin-top:8px; display:block;">
+            관전자 이름을 입력하지 않으면 '관전자'로 표시됩니다
+          </small>
         </div>
         <button id="authJoinBtn" class="btn btn-gold">관전 시작</button>
       </div>
@@ -813,12 +838,18 @@
     <!-- 응원 & 관전 로그 -->
     <div class="card">
       <div class="cheer-section">
-        <div class="cheer-title">응원하기</div>
+        <div class="cheer-title">응원하기 - <span style="color:var(--gold); font-weight:800;" id="spectatorNameDisplay">관전자</span></div>
         <div class="cheer-buttons">
           <button class="cheer-btn" data-cheer="힘내!">힘내!</button>
           <button class="cheer-btn" data-cheer="지지마!">지지마!</button>
           <button class="cheer-btn" data-cheer="이길 수 있어!">이길 수 있어!</button>
           <button class="cheer-btn" data-cheer="포기하지 마!">포기하지 마!</button>
+          <button class="cheer-btn witty" data-cheer="안 이기면 죽어">안 이기면 죽어</button>
+          <button class="cheer-btn witty" data-cheer="죽으면 죽을 줄 알아">죽으면 죽을 줄 알아</button>
+          <button class="cheer-btn witty" data-cheer="HP 1도 소중해">HP 1도 소중해</button>
+          <button class="cheer-btn witty" data-cheer="회피는 배신이야">회피는 배신이야</button>
+          <button class="cheer-btn witty" data-cheer="방어는 겁쟁이야">방어는 겁쟁이야</button>
+          <button class="cheer-btn witty" data-cheer="아이템 아껴서 뭐해">아이템 아껴서 뭐해</button>
         </div>
       </div>
       <div id="spectatorLog" class="spectator-log" aria-label="전투 관전 로그"></div>
@@ -1103,9 +1134,16 @@
 
   // 응원 메시지 전송
   const sendCheerMessage = message => {
-    socket.emit('cheer', { text: message }, (ack) => {
+    // 관전자 이름과 함께 응원 메시지 전송
+    socket.emit('cheer', { 
+      text: message,
+      from: spectatorName  // 관전자 이름 포함
+    }, (ack) => {
       if (ack?.error) {
         console.error('응원 메시지 전송 실패:', ack.error);
+      } else {
+        // 성공 시 로컬에도 표시 (서버에서 다시 오는 것과 중복 방지를 위해 제거할 수도 있음)
+        addSpectatorLogEntry(`[응원] ${spectatorName}: ${message}`, 'cheer');
       }
     });
   };
@@ -1114,14 +1152,16 @@
   const authenticateSpectator = () => {
     const battleId = authBattleId.value.trim();
     const token = authToken.value.trim();
-    const name = authSpectatorName.value.trim() || '관전자';
+    const name = authSpectatorName.value.trim();
     
     if (!battleId || !token) {
       alert('전투 ID와 관전자 OTP를 입력해주세요!');
       return;
     }
     
-    spectatorName = name;
+    // 이름이 비어있으면 기본값 사용
+    spectatorName = name || '관전자';
+    
     authJoinBtn.textContent = '접속 중...';
     authJoinBtn.disabled = true;
     
@@ -1129,7 +1169,7 @@
       role: 'spectator',
       battle: battleId,
       token,
-      name
+      name: spectatorName
     }, (ack) => {
       authJoinBtn.textContent = '관전 시작';
       authJoinBtn.disabled = false;
@@ -1138,6 +1178,13 @@
         isAuthenticated = true;
         gameState = ack.state;
         authSection.style.display = 'none';
+        
+        // 관전자 이름 표시 업데이트
+        const spectatorNameDisplay = $('spectatorNameDisplay');
+        if (spectatorNameDisplay) {
+          spectatorNameDisplay.textContent = spectatorName;
+        }
+        
         renderSpectatorView();
         addSpectatorLogEntry(`${spectatorName}님이 관전을 시작했습니다`, 'system-message');
       } else {
@@ -1190,7 +1237,9 @@
       content = message.text;
     } else if (message.type === 'cheer') {
       type = 'cheer';
-      content = `[응원] ${message.from}: ${message.text}`;
+      // 관전자별 이름 구분하여 표시
+      const cheerFrom = message.from || '관전자';
+      content = `[응원] ${cheerFrom}: ${message.text}`;
     } else {
       const channelPrefix = message.channel === 'team' ? '[팀] ' : '[전체] ';
       content = `${channelPrefix}${message.from}: ${message.text}`;
@@ -1232,8 +1281,16 @@
     if (battle && token) {
       authBattleId.value = battle;
       authToken.value = token;
-      if (name) authSpectatorName.value = name;
-      authenticateSpectator();
+      if (name) {
+        authSpectatorName.value = decodeURIComponent(name);
+      }
+      // URL에서 온 경우에도 사용자가 이름을 수정할 수 있도록 바로 인증하지 않고 폼을 보여줌
+      authSection.style.display = 'block';
+      
+      // 하지만 모든 필수 정보가 있으면 자동 포커스
+      if (battle && token) {
+        authJoinBtn.focus();
+      }
     } else {
       authSection.style.display = 'block';
     }
@@ -1246,10 +1303,19 @@
       authBattleId.focus();
     }
     
-    // 응원 단축키 (1-4번)
-    if (isAuthenticated && e.key >= '1' && e.key <= '4') {
+    // 응원 단축키 (1-4번: 기본 응원, 5-0번: 재치있는 응원)
+    if (isAuthenticated && e.key >= '1' && e.key <= '0') {
       const cheerButtons = document.querySelectorAll('.cheer-btn');
-      const buttonIndex = parseInt(e.key) - 1;
+      let buttonIndex = -1;
+      
+      if (e.key >= '1' && e.key <= '4') {
+        buttonIndex = parseInt(e.key) - 1;
+      } else if (e.key >= '5' && e.key <= '9') {
+        buttonIndex = parseInt(e.key) - 1;
+      } else if (e.key === '0') {
+        buttonIndex = 9;
+      }
+      
       if (cheerButtons[buttonIndex]) {
         cheerButtons[buttonIndex].click();
         e.preventDefault();
