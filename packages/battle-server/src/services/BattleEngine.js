@@ -2,13 +2,10 @@
 // 턴제 엔진(1v1/2v2/3v3/4v4), 프레임 단위 처리
 // 액션: ATTACK(공격), DEFEND(방어), ITEM(아이템), PASS(패스)
 // 인벤토리: {아이템명: 수량} 맵
-// 아이템 목록:
+// 사용 가능 아이템(3종):
 //  - "디터니": 아군 10 회복
-//  - "치유 키트": 아군 20 회복
 //  - "공격 보정기": 사용자 1턴 공격 +1
 //  - "방어 보정기": 사용자 1턴 방어 +1
-//  - "신속의 부적": 사용자 1턴 민첩 +1 (턴 순서에 반영)
-//  - "부활의 깃털": 전투 불능 아군 부활(HP 30)
 
 class BattleEngine {
   constructor(battle, callbacks = {}) {
@@ -110,14 +107,8 @@ class BattleEngine {
     const b = this.battle;
     const order = this._frameOrder();
     this.framePlan = order.map(pid => {
-      const p = b.players[pid];
       const allows = new Set(['ATTACK','DEFEND','ITEM','PASS']);
-      return {
-        pid: pid,
-        allows,
-        targetable: true,
-        targetTeam: null
-      };
+      return { pid, allows, targetable: true, targetTeam: null };
     });
     this.frameIndex = 0;
   }
@@ -137,7 +128,6 @@ class BattleEngine {
       if (t2[0]) o.push(t2[0].id);
       return o;
     } else {
-      // A팀 전체 → B팀 전체
       return [...t1.map(p=>p.id), ...t2.map(p=>p.id)];
     }
   }
@@ -228,7 +218,6 @@ class BattleEngine {
   }
 
   _applyItem(user, name, targetId) {
-    const b = this.battle;
     const logs = [];
     user._buffs = user._buffs || {};
     name = String(name || '').trim();
@@ -247,18 +236,6 @@ class BattleEngine {
       return { ok:true, logs };
     }
 
-    if (name === '치유 키트') {
-      const t = this._pickTarget(targetId, user, 'ally');
-      if (!t) return { ok:false, error:'invalid_target' };
-      const heal = 20;
-      const before = t.hp;
-      t.hp = Math.min(t.maxHp, t.hp + heal);
-      if (t.hp > 0) t.alive = true;
-      this._consumeItem(user, name);
-      logs.push(`${user.name} 아이템 사용: 치유 키트 → ${t.name} +${t.hp - before} HP`);
-      return { ok:true, logs };
-    }
-
     if (name === '공격 보정기') {
       user._buffs.atkUp = 1;
       this._consumeItem(user, name);
@@ -273,38 +250,7 @@ class BattleEngine {
       return { ok:true, logs };
     }
 
-    if (name === '신속의 부적') {
-      user._buffs.agiUp = 1;
-      this._consumeItem(user, name);
-      logs.push(`${user.name} 아이템 사용: 신속의 부적 (1턴 +민첩)`);
-      return { ok:true, logs };
-    }
-
-    if (name === '부활의 깃털') {
-      const t = this._pickReviveTarget(targetId, user);
-      if (!t) return { ok:false, error:'invalid_target' };
-      t.alive = true;
-      t.hp = Math.min(t.maxHp, 30);
-      this._consumeItem(user, name);
-      logs.push(`${user.name} 아이템 사용: 부활의 깃털 → ${t.name} 부활(HP ${t.hp})`);
-      return { ok:true, logs };
-    }
-
     return { ok:false, error:'unknown_item' };
-  }
-
-  _pickReviveTarget(targetId, actor) {
-    const b = this.battle;
-    let cand = null;
-    if (typeof targetId === 'string' && targetId) {
-      cand = b.players[targetId] || null;
-      if (!cand || cand.alive || cand.team !== actor.team) cand = null;
-    }
-    if (!cand) {
-      const list = Object.values(b.players).filter(p=>!p.alive && p.team === actor.team);
-      cand = list[0] || null;
-    }
-    return cand;
   }
 
   _checkEnd() {
