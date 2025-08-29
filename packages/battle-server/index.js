@@ -331,7 +331,7 @@ app.use((err, req, res, next) => {
   res.status(500).send('Internal Server Error');
 });
 
-// Socket.IO
+// 서버/소켓: 여기서 단 한 번만 생성
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   path: '/socket.io/',
@@ -466,12 +466,7 @@ function validateAndApplyAvatar(player, dataUrl) {
   return { ok: true };
 }
 
-// 서버 시작
-const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-  path: '/socket.io/',
-  cors: { origin: ALLOW.includes('*') ? true : ALLOW, credentials: true },
-});
+// 서버 시작(한 번만)
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
   console.log(`Static root: ${pubDir}`);
