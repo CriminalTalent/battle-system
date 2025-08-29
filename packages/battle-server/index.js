@@ -5,10 +5,7 @@
 // - 1v1 / 2v2 / 3v3 / 4v4 지원, 한쪽 전멸 즉시 종료, 총 시간 1시간
 // - 정적 라우트: /admin(.html), /play(.html), /watch(.html)
 // - [호환] 전투 생성 엔드포인트 다수 허용: POST
-//     /api/battles
-//     /api/admin/battles
-//     /api/battle
-//     /api/admin/battle
+//     /api/battles, /api/admin/battles, /api/battle, /api/admin/battle
 //   (JSON / x-www-form-urlencoded / querystring 모두 지원)
 
 const path = require('path');
@@ -39,7 +36,7 @@ const app = express();
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: true })); // 폼 전송 호환
 
-// 간단 요청 로거(원인 추적용)
+// 간단 요청 로거
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
