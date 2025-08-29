@@ -1,34 +1,28 @@
 // packages/battle-server/src/services/BattleEngine.js
-// 턴 수집 → 일괄 해석 엔진
-// - 1v1: [A 공격] [B 방어] → 해석 → [B 공격] [A 방어] → 해석 반복
-// - 2v2: [A1 공격] [A2 공격] [B1 역공] [B2 방어] → 해석 반복
-// - 3v3: [A1 공격] [A2 공격] [A3 공격] [B1 역공] [B2 방어] [B3 방어] → 해석
-// - 4v4: [A1] [A2] [A3] [A4] 공격 → [B1 역공] [B2 방어] [B3 방어] [B4 방어] → 해석
-// - 한쪽 전멸 즉시 종료, 1시간 제한
+// 간단 턴제 엔진(1v1/2v2/3v3/4v4). 프레임 단위로 즉시 해석.
+// 액션: ATTACK, DEFEND, ITEM(디터니/공격 보정기/방어 보정기), PASS
 
 class BattleEngine {
-  /**
-   * @param {any} battle
-   * @param {{onResolve?:(logs:string[])=>void, onEnd?:(reason:string)=>void}} hooks
-   */
-  constructor(battle, hooks = {}) {
-    this.b = battle;
-    this.hooks = hooks;
-    this.turnIndex = 0;    // 1부터
-    this.frameIndex = 0;   // 현재 턴 내 프레임 인덱스
-    this.framePlan = [];   // 현재 턴 프레임 계획
-    this.pending = [];     // 현재 턴 수집 액션들
+  constructor(battle, callbacks = {}) {
+    this.battle = battle; // { players, teams, status, ... }
+    this.cb = {
+      onResolve: (logs)=>{},
+      onEnd: (reason)=>{},
+      ...callbacks
+    };
+    this.turnIndex = 0;
+    this.frameIndex = 0;
+    this.framePlan = [];
+    this.pending = [];
   }
 
   onStart() {
-    this.turnIndex = 1;
-    this.frameIndex = 0;
-    this.pending = [];
+    if (this.turnIndex === 0) this.turnIndex = 1;
     this._rebuildPlan();
   }
 
-  forceEnd(reason) {
-    this.hooks.onEnd && this.hooks.onEnd(reason || 'force_end');
+  forceEnd(reason = '종료') {
+    this.cb.onEnd && this.cb.onEnd(reason);
   }
 
   getTurnPublic() {
@@ -36,218 +30,232 @@ class BattleEngine {
       turnIndex: this.turnIndex,
       frameIndex: this.frameIndex,
       framePlan: this.framePlan.map(f => ({
-        pid: f.pid, team: f.team, role: f.role,
-        allows: f.allows, targetable: f.targetable, targetTeam: f.targetTeam || null
+        pid: f.pid,
+        allows: Array.from(f.allows),
+        targetable: f.targetable,
+        targetTeam: f.targetTeam || null
       })),
-      pending: this.pending.map(p => ({
-        pid: p.pid, kind: p.kind, targetId: p.targetId || null, itemName: p.itemName || null
-      })),
+      pending: this.pending.slice()
     };
   }
 
-  chooseAction(pid, { kind, targetId, itemName }) {
-    const b = this.b;
-    const p = b.players[pid];
-    if (!p || !p.alive) return { ok: false, error: 'invalid_player' };
-    if (b.status !== 'ongoing') return { ok: false, error: 'invalid_state' };
+  chooseAction(pid, payload) {
+    const b = this.battle;
+    if (b.status !== 'ongoing') return { ok:false, error:'invalid_state' };
+    const cur = this.framePlan[this.frameIndex];
+    if (!cur || cur.pid !== pid) return { ok:false, error:'not_your_turn' };
 
-    if (b.endsAt && Date.now() >= b.endsAt) {
-      this.hooks.onEnd && this.hooks.onEnd('시간 종료');
-      return { ok: false, error: 'time_over' };
-    }
+    const actor = b.players[pid];
+    if (!actor || !actor.alive) return { ok:false, error:'actor_dead' };
 
-    const frame = this.framePlan[this.frameIndex];
-    if (!frame || frame.pid !== pid) return { ok: false, error: 'not_your_frame' };
-    if (!frame.allows.includes(kind)) return { ok: false, error: 'invalid_action' };
+    const kind = String(payload.kind || '').toUpperCase();
+    if (!cur.allows.has(kind)) return { ok:false, error:'action_not_allowed' };
 
-    // 아이템 검사
-    if (kind === 'ITEM') {
-      if (!itemName || !Array.isArray(p.inventory) || !p.inventory.includes(itemName)) {
-        return { ok: false, error: 'no_item' };
-      }
-    }
-
-    // 타겟 검사
-    if (frame.targetable) {
-      if (!targetId || !b.players[targetId] || !b.players[targetId].alive) {
-        return { ok: false, error: 'invalid_target' };
-      }
-      if (frame.targetTeam && b.players[targetId].team !== frame.targetTeam) {
-        return { ok: false, error: 'target_team_mismatch' };
-      }
-    }
-
-    // 기록
-    this.pending.push({ pid, kind, targetId: targetId || null, itemName: itemName || null, role: frame.role });
-    this.frameIndex++;
-
+    let logs = [];
     let resolved = false;
-    if (this.frameIndex >= this.framePlan.length) {
-      const logs = this._resolveTurn();
-      this.hooks.onResolve && this.hooks.onResolve(logs);
-      resolved = true;
 
-      const win = this._checkWin();
-      if (win) {
-        this.hooks.onEnd && this.hooks.onEnd(win);
-      } else if (this.b.endsAt && Date.now() >= this.b.endsAt) {
-        this.hooks.onEnd && this.hooks.onEnd('시간 종료');
-      } else {
-        this.turnIndex++;
-        this.frameIndex = 0;
-        this.pending = [];
-        this._rebuildPlan();
+    if (kind === 'ATTACK') {
+      const target = this._pickTarget(payload.targetId, actor, 'enemy');
+      if (!target) return { ok:false, error:'invalid_target' };
+      logs.push(...this._doAttack(actor, target));
+      resolved = true;
+    } else if (kind === 'DEFEND') {
+      actor._buffs = actor._buffs || {};
+      actor._buffs.guard = 1; // 이번 라운드 1회 피해 경감
+      logs.push(`${actor.name} 방어 태세`);
+      resolved = true;
+    } else if (kind === 'ITEM') {
+      const item = String(payload.itemName || '');
+      if (!Array.isArray(actor.inventory) || !actor.inventory.includes(item)) {
+        return { ok:false, error:'no_item' };
       }
+      const t = this._applyItem(actor, item, payload.targetId);
+      if (!t.ok) return t;
+      logs.push(...t.logs);
+      // 소모형 처리
+      this._consumeItem(actor, item);
+      resolved = true;
+    } else if (kind === 'PASS') {
+      logs.push(`${actor.name} 패스`);
+      resolved = true;
+    } else {
+      return { ok:false, error:'unknown_action' };
     }
 
-    return { ok: true, pending: this.pending, resolved };
+    // 프레임 진행
+    this.cb.onResolve && logs.length && this.cb.onResolve(logs);
+    this._advanceFrame();
+
+    // 전투 종료 검사
+    const endReason = this._checkEnd();
+    if (endReason) {
+      this.battle.status = 'ended';
+      this.cb.onEnd && this.cb.onEnd(endReason);
+      return { ok:true, resolved:true };
+    }
+
+    return { ok:true, resolved };
   }
+
+  // 내부 구현 --------------------------------------
 
   _rebuildPlan() {
-    const b = this.b;
-    const t1 = this._aliveTeam('team1');
-    const t2 = this._aliveTeam('team2');
-
-    if (b.mode === '1v1') {
-      if (t1.length === 0 || t2.length === 0) return this._clearPlan();
-      const A = t1[0], B = t2[0];
-      if (this.turnIndex % 2 === 1) {
-        // A 공격 / B 방어
-        this.framePlan = [
-          { pid: A.id, team: 'team1', role: 'attacker', allows: ['ATTACK','ITEM','PASS'], targetable: true,  targetTeam: 'team2' },
-          { pid: B.id, team: 'team2', role: 'defender', allows: ['DEFEND','ITEM','PASS'], targetable: true,  targetTeam: 'team2' },
-        ];
-      } else {
-        // B 공격 / A 방어
-        this.framePlan = [
-          { pid: B.id, team: 'team2', role: 'attacker', allows: ['ATTACK','ITEM','PASS'], targetable: true,  targetTeam: 'team1' },
-          { pid: A.id, team: 'team1', role: 'defender', allows: ['DEFEND','ITEM','PASS'], targetable: true,  targetTeam: 'team1' },
-        ];
-      }
-      return;
-    }
-
-    // 2v2 / 3v3 / 4v4
-    const n = b.config.playersPerTeam;
-    if (t1.length < n || t2.length < n) return this._clearPlan();
-
-    // 팀1: 전원 공격 프레임
-    const planA = t1.slice(0, n).map(P => (
-      { pid: P.id, team: 'team1', role: 'attacker', allows: ['ATTACK','ITEM','PASS'], targetable: true, targetTeam: 'team2' }
-    ));
-
-    // 팀2: 첫 번째는 역공(공격), 나머지는 방어
-    const firstB = { pid: t2[0].id, team: 'team2', role: 'counter', allows: ['ATTACK','ITEM','PASS'], targetable: true, targetTeam: 'team1' };
-    const restB = t2.slice(1, n).map(P => (
-      { pid: P.id, team: 'team2', role: 'defender', allows: ['DEFEND','ITEM','PASS'], targetable: true, targetTeam: 'team2' }
-    ));
-
-    this.framePlan = [...planA, firstB, ...restB];
+    const b = this.battle;
+    const order = this._frameOrder();
+    this.framePlan = order.map(pid => {
+      const p = b.players[pid];
+      const allows = new Set(['ATTACK','DEFEND','ITEM','PASS']);
+      return {
+        pid: pid,
+        allows,
+        targetable: true,
+        targetTeam: null // UI에서 전체에서 골라오되, 실제 적용 시 검증
+      };
+    });
+    this.frameIndex = 0;
   }
 
-  _clearPlan() {
-    this.framePlan = [];
+  _frameOrder() {
+    const b = this.battle;
+    const aliveByTeam = (team) => Object.values(b.players).filter(p=>p.team===team && p.alive);
+    const t1 = aliveByTeam('team1').sort((a,b)=>b.stats.agility - a.stats.agility);
+    const t2 = aliveByTeam('team2').sort((a,b)=>b.stats.agility - a.stats.agility);
+
+    const mode = b.mode || '1v1';
+    if (mode === '1v1') {
+      // 단순 교차
+      const o = [];
+      if (t1[0]) o.push(t1[0].id);
+      if (t2[0]) o.push(t2[0].id);
+      return o;
+    } else {
+      // 팀별 순차: A1, A2, ... -> B1, B2, ...
+      return [...t1.map(p=>p.id), ...t2.map(p=>p.id)];
+    }
   }
 
-  _resolveTurn() {
-    const b = this.b;
-    const logs = [];
-
-    // 아이템 처리(버프/힐)
-    const buffs = {}; // pid -> { atk:+, def:+, guard:boolean }
-    const heals = []; // { pid, amount }
-
-    const ensure = (pid) => (buffs[pid] || (buffs[pid] = { atk: 0, def: 0, guard: false }));
-
-    for (const act of this.pending) {
-      const user = b.players[act.pid];
-      if (!user || !user.alive) continue;
-
-      if (act.kind === 'ITEM' && act.itemName) {
-        const idx = user.inventory.indexOf(act.itemName);
-        if (idx >= 0) user.inventory.splice(idx, 1); // 소비
-
-        if (act.itemName === '디터니') {
-          const target = (act.targetId && b.players[act.targetId]) || user;
-          if (target && target.alive && target.team === user.team) {
-            heals.push({ pid: target.id, amount: 10 });
-            logs.push(`${user.name}이(가) ${target.name}에게 디터니 사용(HP +10)`);
-          }
-        } else if (act.itemName === '공격 보정기') {
-          ensure(user.id).atk += 10;
-          logs.push(`${user.name} 공격 보정기 사용(이번 턴 공격 +10)`);
-        } else if (act.itemName === '방어 보정기') {
-          ensure(user.id).def += 10;
-          logs.push(`${user.name} 방어 보정기 사용(이번 턴 방어 +10)`);
-        }
-      } else if (act.kind === 'DEFEND') {
-        ensure(user.id).guard = true; // 방어 선택 시 가드
-        logs.push(`${user.name} 방어 태세`);
+  _advanceFrame() {
+    this.frameIndex++;
+    if (this.frameIndex >= this.framePlan.length) {
+      this.turnIndex++;
+      // 버프 턴 감소
+      for (const p of Object.values(this.battle.players)) {
+        if (!p._buffs) continue;
+        if (p._buffs.atkUp) p._buffs.atkUp--;
+        if (p._buffs.guard) p._buffs.guard--;
+        if (p._buffs.defUp) p._buffs.defUp--;
       }
+      this._rebuildPlan();
+    }
+  }
+
+  _pickTarget(targetId, actor, relation) {
+    const b = this.battle;
+    const list = Object.values(b.players).filter(p=>p.alive && p.id !== actor.id);
+    let cand = null;
+    if (typeof targetId === 'string' && targetId) {
+      cand = b.players[targetId] || null;
+      if (!cand || !cand.alive) cand = null;
+    }
+    if (!cand && list.length) cand = list.find(p=> relation==='enemy' ? p.team !== actor.team : p.team === actor.team) || list[0];
+    if (!cand) return null;
+    // 관계 검증
+    if (relation === 'enemy' && cand.team === actor.team) return null;
+    if (relation === 'ally'  && cand.team !== actor.team) return null;
+    return cand;
     }
 
-    // 힐 적용
-    for (const h of heals) {
-      const target = b.players[h.pid];
-      if (!target || !target.alive) continue;
-      target.hp = Math.min(target.maxHp, target.hp + h.amount);
+  _rng(seed) {
+    return (Math.sin((Date.now() % 1e9) + seed) + 1) / 2;
+  }
+
+  _critChance(luck) {
+    return Math.min(0.1 + luck * 0.03, 0.35); // 최대 35%
+  }
+
+  _doAttack(attacker, target) {
+    attacker._buffs = attacker._buffs || {};
+    target._buffs = target._buffs || {};
+
+    const atk = attacker.stats.attack + (attacker._buffs.atkUp ? 1 : 0);
+    let def = target.stats.defense + (target._buffs.defUp ? 1 : 0);
+    let base = 10 + atk * 2 - def;
+    base = Math.max(base, 3);
+
+    // 운에 따른 변동
+    const rnd = this._rng(atk + def);
+    const luck = attacker.stats.luck || 0;
+    const bonus = Math.round(rnd * (2 + luck));
+    let dmg = base + bonus;
+
+    // 크리티컬
+    if (Math.random() < this._critChance(luck)) {
+      dmg = Math.round(dmg * 1.5);
     }
 
-    // 공격 데미지 집계
-    // dmg = max(0, 10 + atk*5 + atkBuff - def*5 - defBuff - guardBonus)
-    // guardBonus = 10(방어 선택 시)
-    const damages = []; // { toPid, amount, fromPid }
-    const attacks = this.pending.filter(a => a.kind === 'ATTACK');
-
-    for (const act of attacks) {
-      const A = b.players[act.pid];
-      const D = b.players[act.targetId];
-      if (!A || !D || !A.alive || !D.alive) continue;
-
-      const ab = ensure(A.id);
-      const db = ensure(D.id);
-      const guardBonus = db.guard ? 10 : 0;
-
-      const raw = 10 + (A.stats.attack * 5) + ab.atk - (D.stats.defense * 5) - db.def - guardBonus;
-      const dmg = Math.max(0, raw);
-      if (dmg > 0) {
-        damages.push({ toPid: D.id, amount: dmg, fromPid: A.id });
-      }
+    // 방어 태세 경감
+    if (target._buffs.guard > 0) {
+      dmg = Math.round(dmg * 0.6);
+      target._buffs.guard = 0; // 1회성
     }
 
-    // 동시 적용
-    for (const d of damages) {
-      const target = this.b.players[d.toPid];
-      if (!target || !target.alive) continue;
-      target.hp = Math.max(0, target.hp - d.amount);
-      if (target.hp === 0) {
-        target.alive = false;
-        logs.push(`${target.name} 전투 불능`);
-      }
-    }
+    target.hp = Math.max(0, target.hp - dmg);
+    const logs = [`${attacker.name} → ${target.name}에게 ${dmg} 피해`];
 
-    // 요약 로그
-    for (const d of damages) {
-      const A = this.b.players[d.fromPid];
-      const T = this.b.players[d.toPid];
-      if (A && T) logs.push(`${A.name} → ${T.name} ${d.amount} 피해`);
+    if (target.hp <= 0 && target.alive) {
+      target.alive = false;
+      logs.push(`${target.name} 전투 불능`);
     }
-
     return logs;
   }
 
-  _checkWin() {
-    const a = this._aliveTeam('team1').length;
-    const b = this._aliveTeam('team2').length;
-    if (a === 0 && b === 0) return '무승부(쌍방 전멸)';
-    if (a === 0) return '팀2 승리';
-    if (b === 0) return '팀1 승리';
-    return null;
+  _applyItem(user, name, targetId) {
+    const b = this.battle;
+    const logs = [];
+    user._buffs = user._buffs || {};
+    name = String(name || '').trim();
+
+    if (name === '디터니') {
+      const t = this._pickTarget(targetId, user, 'ally');
+      if (!t) return { ok:false, error:'invalid_target' };
+      const heal = 10;
+      const before = t.hp;
+      t.hp = Math.min(t.maxHp, t.hp + heal);
+      if (t.hp > 0) t.alive = true;
+      logs.push(`${user.name} 아이템 사용: 디터니 → ${t.name} +${t.hp - before} HP`);
+      return { ok:true, logs };
+    }
+    if (name === '공격 보정기') {
+      user._buffs.atkUp = 1;
+      logs.push(`${user.name} 아이템 사용: 공격 보정기 (1턴 +공격)`);
+      return { ok:true, logs };
+    }
+    if (name === '방어 보정기') {
+      user._buffs.defUp = 1;
+      logs.push(`${user.name} 아이템 사용: 방어 보정기 (1턴 +방어)`);
+      return { ok:true, logs };
+    }
+    return { ok:false, error:'unknown_item' };
   }
 
-  _aliveTeam(team) {
-    return Object.values(this.b.players).filter(p => p.team === team && p.alive);
+  _consumeItem(user, name) {
+    if (!Array.isArray(user.inventory)) return;
+    const idx = user.inventory.indexOf(name);
+    if (idx >= 0) user.inventory.splice(idx, 1);
+  }
+
+  _checkEnd() {
+    const aliveTeam = (team)=>Object.values(this.battle.players).some(p=>p.team===team && p.alive);
+    const a1 = aliveTeam('team1');
+    const a2 = aliveTeam('team2');
+    if (!a1 && !a2) return '양측 전멸';
+    if (!a1) return `${this.battle.teams.team1} 전멸`;
+    if (!a2) return `${this.battle.teams.team2} 전멸`;
+    // 시간 제한
+    if (this.battle.endsAt && Date.now() > this.battle.endsAt) return '시간 만료';
+    return null;
   }
 }
 
-module.exports = { BattleEngine };
+module.exports = BattleEngine;
+module.exports.BattleEngine = BattleEngine;
