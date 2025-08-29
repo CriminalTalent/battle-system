@@ -223,7 +223,6 @@
     const cur = T.framePlan[T.frameIndex];
     const actor = cur ? state.players[cur.pid] : null;
 
-    // 기본 버튼/입력 비활성화
     [actAttack, actDefend, actItem, actPass, targetSel, itemSel].forEach(el => el.disabled = true);
     targetSel.innerHTML = ''; itemSel.innerHTML = '';
     turnName.textContent = '대기 중';
@@ -232,7 +231,6 @@
 
     if (!actor) return;
 
-    // 반신 이미지
     if (actor.avatar) portraitImg.src = actor.avatar; else portraitImg.removeAttribute('src');
 
     turnName.textContent = `${actor.name}${actor.alive?'':' (불능)'}`;
@@ -242,18 +240,15 @@
     addStat('HP', `${actor.hp}/${actor.maxHp}`);
     addStat('ATK', S.attack||0); addStat('DEF', S.defense||0); addStat('AGI', S.agility||0); addStat('LUCK', S.luck||0);
 
-    // 내 차례 판단
     const isMine = (mePid && actor.id === mePid);
     const allows = new Set(cur.allows || []);
 
     if (isMine) {
-      // 버튼 활성화
       actAttack.disabled = !allows.has('ATTACK');
       actDefend.disabled = !allows.has('DEFEND');
       actItem.disabled   = !allows.has('ITEM');
       actPass.disabled   = !allows.has('PASS');
 
-      // 대상 후보(살아있는 타인)
       const list = Object.values(state.players).filter(p=>p.alive && p.id !== mePid);
       if (list.length) {
         targetSel.disabled = false;
@@ -263,7 +258,6 @@
           targetSel.appendChild(opt);
         });
       }
-      // 아이템 후보(수량)
       const me = state.players[mePid];
       if (me && me.inventory && Object.keys(me.inventory).length) {
         itemSel.disabled = false;
@@ -318,12 +312,10 @@
 
   socket.on('state', s => { state = s; render(); });
 
-  // 시스템 로그는 state 갱신시 chat에도 쌓이므로 별도 로그 영역에 최근 로그만 반영
   socket.on('chat', (msg)=>{
     if (!msg) return;
     const t = fmtTs(msg.ts || Date.now());
     if (msg.type === 'system') appendRow(logBox, 'sys', t, msg.text);
-    // 채팅 박스에도 반영
     let text = '';
     if (msg.type === 'system') text = '[시스템] ' + msg.text;
     else if (msg.type === 'cheer') text = '[응원] ' + (msg.from||'관전자') + ': ' + msg.text;
