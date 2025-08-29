@@ -1,12 +1,11 @@
 // packages/battle-server/index.js
-// Express + Socket.IO 서버 (관리자 채팅 가능 / 관전자 채팅 불가, 응원 프리셋만)
-// - 관전자/플레이어 OTP 30분, 관리자 OTP 60분
+// Express + Socket.IO 서버
+// - 관리자 채팅 가능 / 관전자 채팅 불가(응원 프리셋만)
+// - OTP: 관리자 60분, 관전자 30분, 플레이어 30분
 // - 아바타 업로드 검증(<=300KB, data:image/*;base64)
-// - 1v1 / 2v2 / 3v3 / 4v4 지원, 한쪽 전멸 즉시 종료, 총 시간 1시간
+// - 모드: 1v1 / 2v2 / 3v3 / 4v4
 // - 정적 라우트: /admin(.html), /play(.html), /watch(.html)
-// - [호환] 전투 생성 엔드포인트 다수 허용: POST
-//     /api/battles, /api/admin/battles, /api/battle, /api/admin/battle
-//   (JSON / x-www-form-urlencoded / querystring 모두 지원)
+// - 전투 생성 엔드포인트 호환: POST /api/battles, /api/admin/battles, /api/battle, /api/admin/battle
 
 const path = require('path');
 const fs = require('fs');
@@ -16,7 +15,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 
-// BattleEngine 로딩(기본/이름 내보내기 모두 지원)
+// BattleEngine 로드(기본/이름 내보내기 둘 다 지원)
 let BE = null;
 try { BE = require('./src/services/BattleEngine'); } catch (e) {
   console.error('BattleEngine 로드 실패:', e && (e.stack || e.message || e));
@@ -25,18 +24,16 @@ const BattleEngine =
   (typeof BE === 'function') ? BE :
   (BE && typeof BE.BattleEngine === 'function') ? BE.BattleEngine :
   null;
-if (!BattleEngine) {
-  throw new Error('BattleEngine를 찾을 수 없습니다. ./src/services/BattleEngine 내보내기 확인');
-}
+if (!BattleEngine) throw new Error('BattleEngine를 찾을 수 없습니다. ./src/services/BattleEngine 확인');
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || '0.0.0.0';
 
 const app = express();
 app.use(express.json({ limit: '512kb' }));
-app.use(express.urlencoded({ extended: true })); // 폼 전송 호환
+app.use(express.urlencoded({ extended: true }));
 
-// 간단 요청 로거
+// 간단 로거
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
@@ -44,46 +41,30 @@ app.use((req, res, next) => {
 
 // CORS
 const ALLOW = (process.env.CORS_ORIGIN || '*')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (ALLOW.includes('*') || ALLOW.includes(origin)) return cb(null, true);
-      return cb(new Error('CORS blocked'), false);
-    },
-    credentials: true,
-  })
-);
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (ALLOW.includes('*') || ALLOW.includes(origin)) return cb(null, true);
+    return cb(new Error('CORS blocked'), false);
+  },
+  credentials: true
+}));
 
 // 정적 파일
 const pubDir = path.join(__dirname, 'public');
 app.use(express.static(pubDir, { fallthrough: true }));
-
-// 정적 파일 명시 라우팅
 const send = (res, file) => res.sendFile(path.join(pubDir, file));
-app.get('/admin', (req, res) => {
-  const f = path.join(pubDir, 'admin.html');
-  if (fs.existsSync(f)) return res.sendFile(f);
-  return res.redirect('/play');
+app.get('/', (req, res) => {
+  const hasAdmin = fs.existsSync(path.join(pubDir, 'admin.html'));
+  res.redirect(hasAdmin ? '/admin' : '/play');
 });
-app.get('/admin.html', (req, res) => {
-  const f = path.join(pubDir, 'admin.html');
-  if (fs.existsSync(f)) return res.sendFile(f);
-  return res.redirect('/play');
-});
+app.get('/admin', (req, res) => send(res, 'admin.html'));
+app.get('/admin.html', (req, res) => send(res, 'admin.html'));
 app.get('/play', (req, res) => send(res, 'play.html'));
 app.get('/play.html', (req, res) => send(res, 'play.html'));
 app.get('/watch', (req, res) => send(res, 'watch.html'));
 app.get('/watch.html', (req, res) => send(res, 'watch.html'));
-
-// 루트
-app.get('/', (req, res) => {
-  const hasAdmin = fs.existsSync(path.join(pubDir, 'admin.html'));
-  return res.redirect(hasAdmin ? '/admin' : '/play');
-});
 
 // 인메모리 저장소
 const battles = new Map();
@@ -102,6 +83,29 @@ const MODE_CONFIG = {
 function safeMode(m) { return MODE_CONFIG[m] ? m : '1v1'; }
 function room(bid) { return `battle:${bid}`; }
 
+// 인벤토리 표준화: 다양한 입력을 {이름:수량} 맵으로 변환
+function normalizeInventory(inv) {
+  const out = {};
+  if (!inv) return out;
+  if (Array.isArray(inv)) {
+    for (const it of inv) {
+      if (!it) continue;
+      if (typeof it === 'string') out[it] = (out[it] || 0) + 1;
+      else if (typeof it === 'object' && it.name) {
+        const q = Math.max(0, Math.floor(Number(it.qty || 1)));
+        if (q > 0) out[it.name] = (out[it.name] || 0) + q;
+      }
+    }
+  } else if (typeof inv === 'object') {
+    for (const k of Object.keys(inv)) {
+      const q = Math.max(0, Math.floor(Number(inv[k] || 0)));
+      if (q > 0) out[k] = (out[k] || 0) + q;
+    }
+  }
+  return out;
+}
+
+// 공개 상태로 가공
 function sanitizePublicBattle(b) {
   const players = {};
   for (const pid of Object.keys(b.players)) {
@@ -109,7 +113,9 @@ function sanitizePublicBattle(b) {
     players[pid] = {
       id: p.id, name: p.name, team: p.team,
       hp: p.hp, maxHp: p.maxHp, alive: p.alive,
-      stats: p.stats, inventory: p.inventory, avatar: p.avatar || null
+      stats: p.stats,
+      inventory: { ...(p.inventory || {}) },
+      avatar: p.avatar || null
     };
   }
   return {
@@ -117,7 +123,7 @@ function sanitizePublicBattle(b) {
     createdAt: b.createdAt, startedAt: b.startedAt || null, endsAt: b.endsAt || null,
     teams: b.teams, players,
     turn: b.engine.getTurnPublic ? b.engine.getTurnPublic() : null,
-    chat: b.chat.slice(-200)
+    chat: b.chat.slice(-300)
   };
 }
 
@@ -157,7 +163,7 @@ function createBattle(mode = '2v2') {
     _emitScheduled: false,
   };
 
-  // 엔진 인스턴스(콜백 제공)
+  // 엔진 인스턴스
   b.engine = new BattleEngine(b, {
     onResolve: (logs) => {
       if (Array.isArray(logs) && logs.length) {
@@ -184,12 +190,13 @@ function findBattleOr404(req, res) {
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: now() }));
 
-// ------------------------
-// 전투 생성(호환 라우트 묶음)
-// ------------------------
+// 전투 생성(호환 라우트)
 function extractMode(req) {
-  // JSON/폼/쿼리 어디서든 mode를 허용
   return (req.body && req.body.mode) || req.query.mode || undefined;
+}
+function absoluteUrl(req, p) {
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return base + p;
 }
 function createBattleResponse(req, res) {
   const mode = extractMode(req) || '2v2';
@@ -204,21 +211,19 @@ function createBattleResponse(req, res) {
     },
   });
 }
-// 신규 사양
 app.post('/api/battles', createBattleResponse);
-// 구형/관리자 사양 호환
 app.post('/api/admin/battles', createBattleResponse);
 app.post('/api/battle', createBattleResponse);
 app.post('/api/admin/battle', createBattleResponse);
 
-// 플레이어 추가(대기중)
+// 플레이어 추가(대기중에만)
 app.post('/api/battles/:id/players', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
   if (b.status !== 'waiting') return res.status(400).json({ error: 'already_started' });
 
   const { name, team } = req.body || {};
   const stats = (req.body && req.body.stats) || {};
-  const inventory = Array.isArray(req.body && req.body.inventory) ? req.body.inventory : [];
+  const invRaw = (req.body && req.body.inventory) || {};
 
   if (!name || !team) return res.status(400).json({ error: 'invalid_payload' });
   if (!['team1','team2'].includes(team)) return res.status(400).json({ error: 'invalid_team' });
@@ -244,15 +249,16 @@ app.post('/api/battles/:id/players', (req, res) => {
       agility: clampInt(stats.agility, 1, 5),
       luck: clampInt(stats.luck, 1, 5),
     },
-    inventory: inventory.slice(0, 10),
+    inventory: normalizeInventory(invRaw),
     avatar: null,
+    _buffs: {} // 엔진 버프 저장소
   };
 
   emitState(io, b);
   res.json({ ok: true, player: b.players[pid] });
 });
 
-// 플레이어별 참여 링크(OTP 발급)
+// 플레이어별 링크(OTP 발급)
 app.post('/api/admin/battles/:id/links', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
 
@@ -261,7 +267,7 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   for (const pid of Object.keys(b.players)) {
     const p = b.players[pid];
     const token = genOTP(24);
-    b.tokens.players[token] = { pid, exp: now() + minutes(30) }; // 30분
+    b.tokens.players[token] = { pid, exp: now() + minutes(30) };
     const url = `${base}/play?battle=${b.id}&token=${token}&name=${encodeURIComponent(p.name)}&pid=${pid}`;
     playerLinks.push({ pid, name: p.name, url, token });
   }
@@ -279,7 +285,6 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
 app.post('/api/admin/battles/:id/start', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
   if (!['waiting','paused'].includes(b.status)) return res.status(400).json({ error: 'invalid_state' });
-
   b.status = 'ongoing';
   b.startedAt = b.startedAt || now();
   b.endsAt = b.startedAt + b.maxDurationMs;
@@ -304,7 +309,7 @@ app.post('/api/admin/battles/:id/end', (req, res) => {
   res.json({ ok: true });
 });
 
-// 아바타 업로드(HTTP 경로; 소켓도 지원)
+// 아바타 업로드(HTTP)
 app.post('/api/battles/:id/players/:pid/avatar', (req, res) => {
   const b = findBattleOr404(req, res); if (!b) return;
   const { pid } = req.params;
@@ -346,14 +351,13 @@ io.on('connection', (socket) => {
       } else if (role === 'spectator') {
         authed = token === b.tokens.spectator.token && b.tokens.spectator.exp > now();
       } else if (role === 'player') {
-        // 토큰 직접 매칭
         if (token && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
           linkedPid = b.tokens.players[token].pid;
           authed = !!b.players[linkedPid];
         }
-        // 혹시 구형 클라이언트가 name만 보내는 경우(관리자 발급 링크 없이)
         if (!authed && name) {
-          const entry = Object.entries(b.tokens.players).find(([, v]) => v.exp > now() && b.players[v.pid] && b.players[v.pid].name === name);
+          const entry = Object.entries(b.tokens.players)
+            .find(([, v]) => v.exp > now() && b.players[v.pid] && b.players[v.pid].name === name);
           if (entry) { linkedPid = entry[1].pid; authed = true; }
         }
       }
@@ -375,11 +379,9 @@ io.on('connection', (socket) => {
   socket.on('chatMessage', (payload) => {
     const a = socket._auth; if (!a.ok) return;
     const b = battles.get(a.battle); if (!b) return;
-
     if (a.role === 'spectator') { socket.emit('chatError', '관전자는 채팅을 보낼 수 없습니다'); return; }
     const { message, channel } = payload || {};
     if (!message || typeof message !== 'string') return;
-
     const msg = {
       type: 'chat', ts: now(),
       from: a.role === 'admin' ? '관리자' : (a.name || '플레이어'),
@@ -396,11 +398,9 @@ io.on('connection', (socket) => {
     const a = socket._auth; if (!a.ok) return;
     const b = battles.get(a.battle); if (!b) return;
     if (a.role !== 'spectator') return;
-
     const allowed = ['힘내!', '지지마!', '이길 수 있어!', '포기하지 마!'];
     const { text } = payload || {};
     if (!allowed.includes(text)) return;
-
     const msg = { type: 'cheer', ts: now(), from: a.name || '관전자', text };
     b.chat.push(msg);
     io.to(room(b.id)).emit('chat', msg);
@@ -449,10 +449,6 @@ io.on('connection', (socket) => {
 function clampInt(v, min, max) {
   const n = Math.floor(Number(v || 0));
   return Math.min(Math.max(n, min), max);
-}
-function absoluteUrl(req, p) {
-  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-  return base + p;
 }
 function validateAndApplyAvatar(player, dataUrl) {
   if (typeof dataUrl !== 'string') return { ok: false, error: 'invalid_data' };
