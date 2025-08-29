@@ -2,67 +2,89 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS | 관전자</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&display=swap" rel="stylesheet">
-  <script src="/socket.io/socket.io.js"></script>
-  <style>
-    :root{
-      --ink:#e8e2cf; --ink-dim:#b8b3a2;
-      --gold:#e4c476; --line:#2a2f42; --line-subtle:#1b2033;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;background:#000;color:var(--ink);font-family:system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif}
-    .wrap{max-width:1280px;margin:0 auto;padding:14px}
-    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-    .brand{font-family:"Cinzel", serif; letter-spacing:.06em; font-weight:800; font-size:20px;
-      background:linear-gradient(90deg,#f6e3a1,#e4c476,#d2b062); -webkit-background-clip:text; background-clip:text; color:transparent;}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0c1526a6}
-    .wait{color:#6a7aa5;border-color:#6a7aa5} .go{color:#49c07d;border-color:#49c07d} .pause{color:#d5a746;border-color:#d5a746} .end{color:#c04c4c;border-color:#c04c4c}
+<meta charset="utf-8" />
+<title>PYXIS 관전자</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root{
+    --gold:#c9a96e;
+    --ink:#e9e3d0; --ink-dim:#bfb7a5;
+    --bg:#0a0f1a; --panel:#0c1326; --panel2:#0b1020;
+    --line:#20283c; --line2:#1a2234;
+    --blur: blur(10px) saturate(120%);
+    --lift: 0 10px 22px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% -10%, rgba(201,169,110,.12), transparent 60%), #0a0f1a; color:var(--ink); font-family:system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif}
 
-    .layout{display:grid;grid-template-columns:260px 1fr 260px;gap:12px}
-    @media (max-width: 1100px){ .layout{grid-template-columns:1fr}}
-    .card{background:#0b1020;border:1px solid var(--line);border-radius:14px;padding:12px}
-    .title{margin:0 0 8px 0;color:var(--gold);font-weight:700}
-    .teams .unit{display:flex;gap:8px;align-items:center;border:1px solid var(--line-subtle);border-radius:12px;padding:8px;background:#0c1326;margin-bottom:8px}
-    .unit .av{width:44px;height:44px;border-radius:10px;background:#1a2238;overflow:hidden;border:1px solid var(--line)}
-    .unit .av img{width:100%;height:100%;object-fit:cover}
-    .bar{height:8px;background:#1b2136;border-radius:8px;overflow:hidden}
-    .bar>span{display:block;height:100%;background:linear-gradient(90deg,#4da3ff,#67e8f9)}
-    .chat{height:520px;overflow:auto;background:#0a1122;border:1px solid var(--line);border-radius:12px;padding:10px}
-    .row{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
-    .ts{font-size:11px;color:#8aa0c2;min-width:54px}
-  </style>
+  header{position:relative;padding:18px 16px 10px 16px}
+  header::before{
+    content:""; position:absolute; inset:-40% -10% auto -10%; height:240px;
+    background:conic-gradient(from 0deg, rgba(201,169,110,.18), rgba(201,169,110,.03), rgba(201,169,110,.18));
+    filter:blur(40px); animation:spin 28s linear infinite; opacity:.65; pointer-events:none;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .wrap{max-width:1280px;margin:0 auto}
+  .brand{font-family:"Playfair Display", serif; font-weight:800; letter-spacing:.06em; font-size:28px; color:var(--gold); position:relative; display:inline-block}
+  .twinkles{position:absolute; inset:0; pointer-events:none}
+  .twinkles span{position:absolute; width:3px; height:3px; background:var(--gold); border-radius:999px; opacity:.7; animation:twinkle 2.2s ease-in-out infinite}
+  .twinkles span:nth-child(1){left:10%; top:36%; animation-delay:.2s}
+  .twinkles span:nth-child(2){left:32%; top:16%; animation-delay:.7s}
+  .twinkles span:nth-child(3){left:60%; top:30%; animation-delay:1.2s}
+  .twinkles span:nth-child(4){left:80%; top:18%; animation-delay:1.7s}
+  @keyframes twinkle{0%,100%{opacity:.15; transform:scale(.7)}50%{opacity:1; transform:scale(1)}}
+
+  .layout{display:grid;grid-template-columns:260px 1fr 260px;gap:14px;padding:10px 16px}
+  @media (max-width:1100px){.layout{grid-template-columns:1fr}}
+  .card{position:relative;background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:16px; padding:14px; backdrop-filter:var(--blur); box-shadow:var(--lift)}
+  .title{margin:0 0 8px 0; color:var(--gold); font-weight:700}
+
+  .teams .unit{display:flex;gap:8px;align-items:center;border:1px solid var(--line2);border-radius:12px;padding:8px;background:#0c152b;margin-bottom:8px}
+  .unit .av{width:44px;height:44px;border-radius:10px;background:#1a2238;overflow:hidden;border:1px solid var(--line2)}
+  .unit .av img{width:100%;height:100%;object-fit:cover}
+  .bar{height:8px;background:#1b2336;border-radius:8px;overflow:hidden}
+  .bar>span{display:block;height:100%;background:linear-gradient(90deg,#4da3ff,#67e8f9)}
+  .chat{height:520px;overflow:auto;background:#0a1326;border:1px solid var(--line);border-radius:12px;padding:10px}
+  .row{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}
+  .ts{font-size:11px;color:#8aa0c2;min-width:54px}
+
+  .status{display:flex;gap:10px;align-items:center;color:#a9b6d2}
+  .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0d172b}
+  .pill.small{padding:4px 8px}
+</style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="brand">PYXIS</div>
-    <div>
-      <span id="statusPill" class="pill wait">대기중</span>
-      <button class="pill" data-cheer="힘내!">힘내!</button>
-      <button class="pill" data-cheer="지지마!">지지마!</button>
-      <button class="pill" data-cheer="이길 수 있어!">이길 수 있어!</button>
-      <button class="pill" data-cheer="포기하지 마!">포기하지 마!</button>
+<header>
+  <div class="wrap">
+    <div class="brand">PYXIS
+      <span class="twinkles"><span></span><span></span><span></span><span></span></span>
     </div>
-  </header>
+    <div class="status" style="margin-top:6px">
+      <span id="statusPill" class="pill small">대기중</span>
+      <button class="pill small" data-cheer="힘내!">힘내!</button>
+      <button class="pill small" data-cheer="지지마!">지지마!</button>
+      <button class="pill small" data-cheer="이길 수 있어!">이길 수 있어!</button>
+      <button class="pill small" data-cheer="포기하지 마!">포기하지 마!</button>
+    </div>
+  </div>
+</header>
 
-  <div class="layout">
-    <div class="card">
-      <h3 class="title">불사조 기사단</h3>
-      <div id="team1" class="teams"></div>
-    </div>
-    <div class="card">
-      <h3 class="title">실시간</h3>
-      <div id="chat" class="chat"></div>
-      <div class="muted" style="margin-top:6px;color:#b8b3a2">관전자는 채팅을 보낼 수 없으며, 상단 버튼으로만 응원할 수 있습니다.</div>
-    </div>
-    <div class="card">
-      <h3 class="title">죽음을 먹는 자들</h3>
-      <div id="team2" class="teams"></div>
-    </div>
+<div class="wrap layout">
+  <div class="card">
+    <h3 class="title">불사조 기사단</h3>
+    <div id="team1" class="teams"></div>
+  </div>
+  <div class="card">
+    <h3 class="title">실시간</h3>
+    <div id="chat" class="chat"></div>
+    <div style="margin-top:6px;color:#b8b3a2">관전자는 채팅을 보낼 수 없으며, 상단 버튼으로만 응원할 수 있습니다.</div>
+  </div>
+  <div class="card">
+    <h3 class="title">죽음을 먹는 자들</h3>
+    <div id="team2" class="teams"></div>
   </div>
 </div>
 
@@ -82,8 +104,7 @@
   const statusPill = document.getElementById('statusPill');
 
   function setStatusPill(status){
-    statusPill.className = 'pill ' + (status==='waiting'?'wait':status==='ongoing'?'go':status==='paused'?'pause':'end');
-    statusPill.textContent = (status==='waiting'?'대기중':status==='ongoing'?'진행중':status==='paused'?'일시정지':'종료');
+    statusPill.textContent = status==='waiting'?'대기중':status==='ongoing'?'진행중':status==='paused'?'일시정지':'종료';
   }
   function fmtTs(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour12:false}); }catch{return '--:--:--';} }
   function appendChat(msg){
