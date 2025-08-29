@@ -1514,3 +1514,1096 @@
     width:min(50%, 280px);
   }
 }
+
+/* 접근성 개선 */
+@media (prefers-reduced-motion: reduce){
+  .player-header::before,
+  .player-brand,
+  .player-brand::before,
+  .turnPulse,
+  .championGlow,
+  .activeUnit,
+  .sparkle,
+  .shimmer,
+  .connectionPulse{
+    animation:none;
+  }
+  
+  .unit:hover,
+  .action-btn:hover:not(:disabled),
+  .target-card:hover:not(.disabled){
+    transform:none;
+  }
+}
+
+/* 숨김 유틸리티 */
+.hide{
+  display:none !important;
+}
+</style>
+</head>
+<body>
+<!-- 연결 상태 표시 -->
+<div class="connection-status" id="connectionStatus">
+  <div class="connection-dot" id="connectionDot"></div>
+  <span id="connectionText">연결 중...</span>
+</div>
+
+<header class="player-header">
+  <div class="wrap">
+    <div class="player-brand sparkle-effect">Pyxis</div>
+  </div>
+</header>
+
+<main class="wrap player-stage">
+  <!-- 좌측: 팀 정보 -->
+  <aside class="team-panel" id="leftTeam">
+    <div class="team-header enhance-hover">아군</div>
+    <div id="allyUnits"></div>
+  </aside>
+
+  <!-- 중앙: 메인 -->
+  <section class="center-section">
+    <!-- 인증 폼 -->
+    <div class="card auth-section sparkle-effect" id="authSection" style="display:none">
+      <div class="auth-title">전투 입장</div>
+      <div class="auth-form">
+        <div class="field">
+          <label for="authBattleId">전투 ID</label>
+          <input id="authBattleId" class="input enhance-hover" placeholder="battle_xxxxx" maxlength="50">
+        </div>
+        <div class="auth-row">
+          <div class="field">
+            <label for="authToken">플레이어 OTP</label>
+            <input id="authToken" class="input enhance-hover" placeholder="인증 토큰" maxlength="50">
+          </div>
+          <div class="field">
+            <label for="authName">플레이어 이름</label>
+            <input id="authName" class="input enhance-hover" placeholder="캐릭터 이름" maxlength="20">
+          </div>
+        </div>
+        <button id="authJoinBtn" class="btn btn-gold enhance-hover">전투 참가</button>
+      </div>
+    </div>
+
+    <!-- 정보 바 -->
+    <div class="player-info-bar card sparkle-effect">
+      <div class="info-header">
+        <div>
+          <div class="player-name" id="playerName">-</div>
+          <div class="player-team" id="playerTeam">-</div>
+        </div>
+        <div class="turn-status" id="turnStatus">대기중</div>
+      </div>
+      <div class="action-bar" id="actionBar">
+        <button class="action-btn primary enhance-hover" id="btnAttack">공격<span class="hotkey-hint">[1]</span></button>
+        <button class="action-btn enhance-hover" id="btnDefend">방어<span class="hotkey-hint">[2]</span></button>
+        <button class="action-btn enhance-hover" id="btnDodge">회피<span class="hotkey-hint">[3]</span></button>
+        <button class="action-btn enhance-hover" id="btnUseItem">아이템<span class="hotkey-hint">[4]</span></button>
+        <button class="action-btn enhance-hover" id="btnPass">패스<span class="hotkey-hint">[5]</span></button>
+      </div>
+      <div class="game-hint" id="gameHint">내 턴에만 행동할 수 있습니다</div>
+    </div>
+
+    <!-- 초상화/스탯 -->
+    <div class="card battle-portrait sparkle-effect">
+      <div class="portrait-character" id="portraitChar" style="display:none"></div>
+      <div class="portrait-stats" id="portraitStats" style="display:none"></div>
+    </div>
+
+    <!-- 전투 로그 -->
+    <div class="card sparkle-effect">
+      <div class="section-header">
+        <div class="section-title" style="font-size:16px;">전투 로그</div>
+      </div>
+      <div id="battleLog" class="battle-log" aria-label="전투 로그"></div>
+    </div>
+  </section>
+
+  <!-- 우측: 채팅 -->
+  <aside class="card chat-panel sparkle-effect">
+    <div class="section-header">
+      <div class="section-title" style="font-size:16px;">실시간 채팅</div>
+    </div>
+    <div class="chat-header">
+      <select id="chatChannel" class="select chat-channel enhance-hover">
+        <option value="all">전체</option>
+        <option value="team">팀</option>
+      </select>
+      <input id="chatInput" class="input chat-input enhance-hover" placeholder="메시지 입력 (/t 팀 채팅)" maxlength="200">
+      <button id="chatSend" class="btn chat-send enhance-hover">전송</button>
+    </div>
+    <div id="chatMessages" class="chat-messages" aria-label="채팅 메시지"></div>
+  </aside>
+</main>
+
+<!-- 타겟 선택 -->
+<div class="target-overlay" id="targetOverlay" role="dialog" aria-modal="true">
+  <div class="target-panel sparkle-effect">
+    <div class="target-title" id="targetTitle">대상 선택</div>
+    <div class="target-list" id="targetList"></div>
+    <div class="target-actions">
+      <button class="btn enhance-hover" id="cancelTarget">취소</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  // DOM 요소
+  const connectionStatus = $('connectionStatus');
+  const connectionDot = $('connectionDot');
+  const connectionText = $('connectionText');
+
+  // 인증 UI
+  const authSection = $('authSection');
+  const authBattleId = $('authBattleId');
+  const authToken = $('authToken');
+  const authName = $('authName');
+  const authJoinBtn = $('authJoinBtn');
+
+  // 게임 UI
+  const allyUnits = $('allyUnits');
+  const playerNameEl = $('playerName');
+  const playerTeamEl = $('playerTeam');
+  const turnStatus = $('turnStatus');
+  const gameHint = $('gameHint');
+
+  // 액션 버튼
+  const btnAttack = $('btnAttack');
+  const btnDefend = $('btnDefend');
+  const btnDodge = $('btnDodge');
+  const btnUseItem = $('btnUseItem');
+  const btnPass = $('btnPass');
+
+  // 초상화/로그/채팅
+  const portraitChar = $('portraitChar');
+  const portraitStats = $('portraitStats');
+  const battleLog = $('battleLog');
+  const chatChannel = $('chatChannel');
+  const chatInput = $('chatInput');
+  const chatSend = $('chatSend');
+  const chatMessages = $('chatMessages');
+
+  // 타겟 선택
+  const targetOverlay = $('targetOverlay');
+  const targetTitle = $('targetTitle');
+  const targetList = $('targetList');
+  const cancelTarget = $('cancelTarget');
+
+  // 상태 관리
+  let socket = null;
+  let state = null;
+  let myPid = null;
+  let me = null;
+  let joined = false;
+  let currentBattleId = null;
+  let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  const RECONNECT_DELAY = 1000;
+
+  // 소켓 초기화
+  const initSocket = () => {
+    if (socket) {
+      socket.disconnect();
+    }
+    
+    socket = io({
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      reconnectionDelay: RECONNECT_DELAY,
+      reconnectionDelayMax: 10000,
+      maxReconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+      timeout: 20000,
+      forceNew: true
+    });
+
+    setupSocketEvents();
+    return socket;
+  };
+
+  // 연결 상태 업데이트
+  const updateConnectionStatus = (status, text) => {
+    connectionDot.className = `connection-dot ${status}`;
+    connectionText.textContent = text;
+    
+    switch(status) {
+      case 'connected':
+        connectionDot.style.background = 'var(--success)';
+        break;
+      case 'connecting':
+        connectionDot.style.background = 'var(--warning)';
+        break;
+      case 'disconnected':
+      default:
+        connectionDot.style.background = 'var(--danger)';
+        break;
+    }
+  };
+
+  // 알림 시스템
+  const showNotification = (message, type = 'info') => {
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position: fixed; top: 20px; right: 20px; z-index: 10000;
+      padding: 12px 20px; border-radius: 8px; color: white; font-weight: 600;
+      background: ${type === 'error' ? 'linear-gradient(135deg, #e74c3c, #c0392b)' : 
+                   type === 'success' ? 'linear-gradient(135deg, #27ae60, #219a52)' : 
+                   'linear-gradient(135deg, #3498db, #2980b9)'};
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transform: translateX(100%); transition: transform 0.3s ease;
+      max-width: 300px; word-wrap: break-word;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => toast.style.transform = 'translateX(0)', 100);
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        toast.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      }
+    }, 3000);
+  };
+
+  // 유틸리티 함수
+  const fmtTime = t => {
+    try { 
+      return new Date(t).toLocaleTimeString([], {hour12: false}); 
+    } catch { 
+      return '--:--:--'; 
+    }
+  };
+  
+  const teamLabel = key => (key === 'A' || key === 'team1') ? '불사조 기사단' : '죽음을 먹는 자들';
+  const hpPct = p => !p ? 0 : Math.max(0, Math.min(100, Math.round((p.hp / (p.maxHp || 100)) * 100)));
+  const currActor = () => state?.turn?.pending?.[0] || state?.turn?.actor || null;
+  const isMyTurn = () => (currActor() === myPid) && (me?.alive !== false);
+
+  // 로그 및 채팅 함수
+  const log = (txt, type = 'info') => {
+    const row = document.createElement('div');
+    row.className = `log-entry ${type}`;
+    
+    const t = document.createElement('span');
+    t.className = 'time';
+    t.textContent = fmtTime(Date.now());
+    
+    const c = document.createElement('span');
+    c.className = 'content';
+    c.textContent = txt;
+    
+    row.appendChild(t);
+    row.appendChild(c);
+    battleLog.appendChild(row);
+    battleLog.scrollTop = battleLog.scrollHeight;
+
+    // 최대 로그 개수 제한
+    while (battleLog.children.length > 100) {
+      battleLog.removeChild(battleLog.firstChild);
+    }
+  };
+  
+  const addChat = (m) => {
+    const wrap = document.createElement('div');
+    wrap.className = `chat-message ${m.type || (m.scope === 'team' ? 'team' : '')}`;
+    
+    const t = document.createElement('span');
+    t.className = 'chat-time';
+    t.textContent = fmtTime(m.ts || Date.now());
+    
+    const c = document.createElement('span');
+    c.className = 'chat-content';
+    
+    if (m.type === 'system') {
+      c.textContent = `[시스템] ${m.text}`;
+    } else if (m.type === 'cheer') {
+      c.textContent = `[응원] ${m.from?.nickname || m.from || '익명'}: ${m.text}`;
+    } else {
+      const scope = (m.scope === 'team' || m.channel === 'team') ? '[팀] ' : '[전체] ';
+      const nick = m.from?.nickname || m.from || m.nickname || '익명';
+      c.textContent = `${scope}${nick}: ${m.text}`;
+    }
+    
+    wrap.appendChild(t);
+    wrap.appendChild(c);
+    chatMessages.appendChild(wrap);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // 최대 채팅 개수 제한
+    while (chatMessages.children.length > 100) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
+  };
+
+  // 소켓 이벤트 설정
+  const setupSocketEvents = () => {
+    if (!socket) return;
+
+    // 연결 이벤트
+    socket.on('connect', () => {
+      updateConnectionStatus('connected', '연결됨');
+      reconnectAttempts = 0;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      showNotification('서버에 연결되었습니다', 'success');
+      console.log('[Socket] Connected to server');
+    });
+
+    socket.on('disconnect', (reason) => {
+      updateConnectionStatus('disconnected', '연결 끊김');
+      console.log(`[Socket] Disconnected: ${reason}`);
+      
+      if (joined) {
+        if (reason === 'io server disconnect') {
+          showNotification('서버와의 연결이 종료되었습니다', 'error');
+        } else {
+          showNotification('연결이 끊어졌습니다. 재연결 시도 중...', 'error');
+        }
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      updateConnectionStatus('disconnected', '연결 실패');
+      console.error('[Socket] Connection error:', error);
+      
+      if (joined) {
+        showNotification(`연결 오류: ${error.message || '알 수 없는 오류'}`, 'error');
+      }
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      updateConnectionStatus('connected', '재연결됨');
+      showNotification(`서버에 재연결되었습니다 (시도 ${attemptNumber}회)`, 'success');
+      console.log(`[Socket] Reconnected after ${attemptNumber} attempts`);
+      
+      // 재연결 후 상태 복구
+      if (joined && currentBattleId) {
+        requestStateUpdate();
+      }
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      updateConnectionStatus('connecting', `재연결 중... (${attemptNumber}회)`);
+      console.log(`[Socket] Reconnection attempt ${attemptNumber}`);
+    });
+
+    socket.on('reconnect_failed', () => {
+      updateConnectionStatus('disconnected', '재연결 실패');
+      showNotification('서버 재연결에 실패했습니다', 'error');
+      console.error('[Socket] Reconnection failed');
+    });
+
+    // 게임 이벤트
+    socket.on('chat:new', (message) => {
+      try {
+        addChat(message);
+      } catch (error) {
+        console.error('[Socket] Error handling chat message:', error);
+      }
+    });
+
+    socket.on('chat', (message) => {
+      try {
+        addChat(message);
+      } catch (error) {
+        console.error('[Socket] Error handling chat:', error);
+      }
+    });
+
+    socket.on('log:new', (ev) => {
+      try {
+        if (ev?.text) {
+          log(ev.text, 'system');
+        }
+      } catch (error) {
+        console.error('[Socket] Error handling log:', error);
+      }
+    });
+    
+    socket.on('phase:change', (p) => {
+      try {
+        const teamName = (p.phase === 'A' || p.phase === 'team1') ? '불사조 기사단' : '죽음을 먹는 자들';
+        log(`▶︎ 턴 전환: ${teamName} (라운드 ${p.round})`, 'system');
+        
+        if (state) {
+          state.turn = { ...state.turn, actor: null, pending: [], phase: p.phase, round: p.round };
+          state.phase = p.phase;
+          state.round = p.round;
+        }
+        
+        render();
+      } catch (error) {
+        console.error('[Socket] Error handling phase change:', error);
+      }
+    });
+    
+    socket.on('battle:end', (r) => {
+      try {
+        const winnerText = r.winner === 'draw' ? '무승부' : 
+                          (r.winner === 'A' || r.winner === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들');
+        log(`◆ 전투 종료: ${winnerText} / A=${r.scoreA || 0} / B=${r.scoreB || 0}`, 'system');
+        showNotification('전투가 종료되었습니다', 'info');
+      } catch (error) {
+        console.error('[Socket] Error handling battle end:', error);
+      }
+    });
+
+    socket.on('state:update', (s) => {
+      try {
+        state = s;
+        me = myPid && s?.players ? s.players[myPid] : me;
+        render();
+      } catch (error) {
+        console.error('[Socket] Error handling state update:', error);
+      }
+    });
+    
+    socket.on('state', (s) => {
+      try {
+        state = s;
+        me = myPid && s?.players ? s.players[myPid] : me;
+        render();
+      } catch (error) {
+        console.error('[Socket] Error handling state:', error);
+      }
+    });
+
+    // 인증 응답
+    socket.on('authSuccess', (response) => {
+      try {
+        joined = true;
+        state = response.state || response.battle;
+        myPid = response.selfPid || response.playerId;
+        me = myPid && state?.players ? state.players[myPid] : null;
+        
+        authSection.style.display = 'none';
+        render();
+        
+        authJoinBtn.classList.add('feedback-success');
+        log('전투에 성공적으로 참가했습니다!', 'system');
+        showNotification('전투 입장 완료!', 'success');
+        
+        setTimeout(() => {
+          authJoinBtn.textContent = '전투 참가';
+          authJoinBtn.classList.remove('feedback-success');
+        }, 2000);
+      } catch (error) {
+        console.error('[Socket] Error handling auth success:', error);
+        showNotification('인증 처리 중 오류가 발생했습니다', 'error');
+      }
+    });
+
+    socket.on('authError', (message) => {
+      authJoinBtn.classList.add('feedback-error');
+      setTimeout(() => {
+        authJoinBtn.textContent = '전투 참가';
+        authJoinBtn.classList.remove('feedback-error');
+      }, 2000);
+      
+      showNotification(`인증 실패: ${message || '알 수 없는 오류'}`, 'error');
+    });
+
+    // 액션 응답
+    socket.on('actionSuccess', (result) => {
+      if (result?.message) {
+        showNotification(result.message, 'success');
+      }
+    });
+
+    socket.on('actionError', (message) => {
+      showNotification(`행동 실패: ${message || '알 수 없는 오류'}`, 'error');
+    });
+
+    // 채팅 오류
+    socket.on('chatError', (error) => {
+      showNotification(`채팅 오류: ${error}`, 'error');
+    });
+
+    // 오류 처리
+    socket.on('error', (error) => {
+      console.error('[Socket] Generic error:', error);
+      showNotification('소켓 오류가 발생했습니다', 'error');
+    });
+  };
+
+  // 상태 업데이트 요청
+  const requestStateUpdate = () => {
+    if (socket && socket.connected && currentBattleId) {
+      socket.emit('requestState', { battleId: currentBattleId });
+    }
+  };
+
+  // 인증 함수 (다중 시도)
+  const doJoin = (battleId, token, name) => {
+    if (!socket || !socket.connected) {
+      showNotification('서버에 연결되어 있지 않습니다', 'error');
+      return;
+    }
+
+    currentBattleId = battleId;
+    authJoinBtn.classList.add('loading');
+    authJoinBtn.textContent = '접속 중...';
+    
+    // 타임아웃 설정
+    const authTimeout = setTimeout(() => {
+      authJoinBtn.classList.remove('loading');
+      authJoinBtn.textContent = '전투 참가';
+      authJoinBtn.classList.add('feedback-error');
+      setTimeout(() => authJoinBtn.classList.remove('feedback-error'), 1000);
+      showNotification('인증 요청 시간이 초과되었습니다', 'error');
+    }, 10000);
+
+    // 성공/실패 콜백
+    const handleAuthResult = (success, message) => {
+      clearTimeout(authTimeout);
+      authJoinBtn.classList.remove('loading');
+      
+      if (!success) {
+        authJoinBtn.classList.add('feedback-error');
+        setTimeout(() => {
+          authJoinBtn.textContent = '전투 참가';
+          authJoinBtn.classList.remove('feedback-error');
+        }, 2000);
+        showNotification(message || '인증에 실패했습니다', 'error');
+      }
+    };
+
+    // 1) 최신 스펙: join 이벤트
+    socket.timeout(8000).emit('join', { 
+      role: 'player', 
+      battleId, 
+      token, 
+      name 
+    }, (error, ack) => {
+      if (error) {
+        console.log('[Auth] Join timeout, trying alternative methods');
+        // 2) 중간 스펙: playerAuth 이벤트
+        socket.timeout(8000).emit('playerAuth', { 
+          battleId, 
+          playerId: name, 
+          otp: token 
+        }, (error2, ack2) => {
+          if (error2) {
+            console.log('[Auth] PlayerAuth timeout, trying legacy');
+            // 3) 레거시 스펙: auth 이벤트 (응답 없이 이벤트 대기)
+            socket.emit('auth', { 
+              role: 'player', 
+              battle: battleId, 
+              token, 
+              name 
+            });
+          } else if (ack2 && !ack2.ok) {
+            handleAuthResult(false, ack2.message || ack2.error);
+          }
+        });
+      } else if (ack && !ack.ok) {
+        handleAuthResult(false, ack.msg || ack.message);
+      }
+    });
+  };
+
+  // 전투원 카드 렌더링
+  const unitCard = (p) => {
+    const el = document.createElement('div');
+    el.className = `unit enhance-hover ${currActor() === p.id ? 'active' : ''} ${p.alive === false ? 'dead' : ''}`;
+    el.dataset.playerId = p.id;
+    
+    const av = document.createElement('div');
+    av.className = 'unit-avatar';
+    if (p.avatar) av.style.backgroundImage = `url(${p.avatar})`;
+    
+    const info = document.createElement('div');
+    info.className = 'unit-info';
+    
+    const name = document.createElement('div');
+    name.className = `unit-name ${p.alive === false ? 'dead' : ''}`;
+    name.textContent = p.name;
+    
+    const hp = document.createElement('div');
+    hp.className = 'unit-hp';
+    const bar = document.createElement('span');
+    bar.className = 'unit-hp-bar';
+    bar.style.width = `${hpPct(p)}%`;
+    hp.appendChild(bar);
+    
+    const st = document.createElement('div');
+    st.className = 'unit-stats';
+    const s = p.stats || { attack: p.atk, defense: p.def, agility: p.agi, luck: p.luk };
+    st.textContent = `공격 ${s.attack ?? p.atk} · 방어 ${s.defense ?? p.def} · 민첩 ${s.agility ?? p.agi} · 행운 ${s.luck ?? p.luk}`;
+    
+    info.appendChild(name);
+    info.appendChild(hp);
+    info.appendChild(st);
+    el.appendChild(av);
+    el.appendChild(info);
+    return el;
+  };
+
+  // 렌더링 함수들
+  const renderTeam = () => {
+    if (!state?.players || !me) return;
+    
+    allyUnits.innerHTML = '';
+    const allies = Object.values(state.players).filter(x => {
+      const tA = (x.team === 'A' || x.team === 'team1');
+      const myT = (me.team === 'A' || me.team === 'team1');
+      return tA === myT;
+    });
+    
+    allies.forEach(p => allyUnits.appendChild(unitCard(p)));
+  };
+
+  const renderInfo = () => {
+    if (!me) return;
+    
+    playerNameEl.textContent = me.name || '-';
+    playerTeamEl.textContent = teamLabel(me.team);
+    
+    const mine = isMyTurn();
+    turnStatus.textContent = mine ? '내 차례!' : '대기중';
+    turnStatus.classList.toggle('active', mine);
+    
+    // 행동 버튼 활성화/비활성화
+    [btnAttack, btnDefend, btnDodge, btnUseItem, btnPass].forEach(b => {
+      b.disabled = !mine;
+    });
+    
+    if (mine) {
+      gameHint.textContent = '행동을 선택하세요!';
+      gameHint.classList.add('active');
+    } else {
+      gameHint.textContent = '내 턴을 기다리는 중...';
+      gameHint.classList.remove('active');
+    }
+  };
+
+  const renderPortrait = () => {
+    const aId = currActor();
+    const p = aId && state?.players?.[aId];
+    
+    if (p) {
+      portraitChar.style.display = 'block';
+      portraitChar.style.backgroundImage = p.avatar ? `url(${p.avatar})` : '';
+      portraitChar.classList.remove('left', 'right');
+      
+      const isEnemy = (p.team === 'B' || p.team === 'team2');
+      portraitChar.classList.add(isEnemy ? 'right' : 'left');
+      portraitChar.classList.toggle('active', aId === myPid);
+
+      const s = p.stats || { attack: p.atk, defense: p.def, agility: p.agi, luck: p.luk };
+      portraitStats.style.display = 'flex';
+      portraitStats.innerHTML = `
+        <div class="stat-item"><span class="stat-label">이름:</span><span class="stat-value">${p.name}</span></div>
+        <div class="stat-item"><span class="stat-label">팀:</span><span class="stat-value">${teamLabel(p.team)}</span></div>
+        <div class="stat-item"><span class="stat-label">HP:</span><span class="stat-value">${p.hp}/${p.maxHp || 100}</span></div>
+        <div class="stat-item"><span class="stat-label">공격:</span><span class="stat-value">${s.attack ?? p.atk}</span></div>
+        <div class="stat-item"><span class="stat-label">방어:</span><span class="stat-value">${s.defense ?? p.def}</span></div>
+        <div class="stat-item"><span class="stat-label">민첩:</span><span class="stat-value">${s.agility ?? p.agi}</span></div>
+        <div class="stat-item"><span class="stat-label">행운:</span><span class="stat-value">${s.luck ?? p.luk}</span></div>
+      `;
+    } else {
+      portraitChar.style.display = 'none';
+      portraitStats.style.display = 'none';
+    }
+  };
+
+  const renderBattleLog = () => {
+    if (!state?.chat) return;
+    
+    battleLog.innerHTML = '';
+    state.chat.slice(-50).forEach(e => {
+      if (e.type === 'system' || e.type === 'action') {
+        log(e.text, e.type);
+      }
+    });
+  };
+
+  const render = () => {
+    try {
+      if (!state) return;
+      
+      me = myPid && state.players ? state.players[myPid] : me;
+      renderInfo();
+      renderPortrait();
+      renderTeam();
+      renderBattleLog();
+    } catch (error) {
+      console.error('[Render] Error during render:', error);
+    }
+  };
+
+  // 타겟 선택 UI
+  const showTargets = (title, targets, cb) => {
+    targetTitle.textContent = title;
+    targetList.innerHTML = '';
+    
+    targets.forEach(t => {
+      const card = document.createElement('div');
+      card.className = `target-card enhance-hover ${t.alive === false ? 'disabled' : ''}`;
+      
+      const n = document.createElement('div');
+      n.className = 'target-name';
+      n.textContent = t.name;
+      
+      const h = document.createElement('div');
+      h.className = 'target-hp';
+      h.textContent = `HP ${t.hp}/${t.maxHp || 100}`;
+      
+      card.appendChild(n);
+      card.appendChild(h);
+      
+      if (t.alive !== false) {
+        card.onclick = () => {
+          hideTargets();
+          cb(t);
+        };
+      }
+      
+      targetList.appendChild(card);
+    });
+    
+    targetOverlay.style.display = 'flex';
+  };
+  
+  const hideTargets = () => {
+    targetOverlay.style.display = 'none';
+  };
+
+  // 액션 전송 (다중 폴백)
+  const sendAction = (type, payload = {}) => {
+    if (!socket || !socket.connected) {
+      showNotification('서버에 연결되어 있지 않습니다', 'error');
+      return;
+    }
+
+    const msg = { type, ...payload };
+    console.log('[Action] Sending:', msg);
+    
+    // 1) 최신 스펙: action:player
+    socket.timeout(5000).emit('action:player', msg, (error, ack) => {
+      if (error || (ack && ack.ok === false)) {
+        console.log('[Action] Primary method failed, trying alternative');
+        
+        // 2) 중간 스펙: player:action
+        socket.timeout(5000).emit('player:action', msg, (error2, ack2) => {
+          if (error2 || (ack2 && ack2.ok === false)) {
+            console.log('[Action] Secondary method failed, trying legacy');
+            
+            // 3) 레거시 스펙: playerAction
+            socket.emit('playerAction', {
+              battleId: currentBattleId,
+              playerId: myPid,
+              action: msg
+            });
+          }
+        });
+      }
+    });
+  };
+
+  // 액션 구현
+  const getEnemies = () => {
+    if (!state?.players || !me) return [];
+    
+    return Object.values(state.players).filter(p => {
+      const myT = (me.team === 'A' || me.team === 'team1');
+      const t = (p.team === 'A' || p.team === 'team1');
+      return t !== myT && p.alive !== false;
+    });
+  };
+  
+  const getAllies = () => {
+    if (!state?.players || !me) return [];
+    
+    return Object.values(state.players).filter(p => {
+      const myT = (me.team === 'A' || me.team === 'team1');
+      const t = (p.team === 'A' || p.team === 'team1');
+      return t === myT && p.alive !== false;
+    });
+  };
+
+  const doAttack = () => {
+    const targets = getEnemies();
+    if (targets.length === 0) {
+      showNotification('공격할 대상이 없습니다!', 'error');
+      return;
+    }
+    showTargets('공격 대상 선택', targets, (t) => {
+      sendAction('attack', { targetPid: t.id });
+    });
+  };
+  
+  const doDefend = () => sendAction('defend');
+  const doEvade = () => sendAction('evade');
+  
+  const doUseItem = () => {
+    const itemsList = ['디터니', '공격 보정기', '방어 보정기'];
+    const pick = prompt(`사용할 아이템을 입력하세요:\n${itemsList.join(', ')}`);
+    if (!pick) return;
+    
+    if (pick === '디터니') {
+      const targets = getAllies();
+      if (targets.length === 0) {
+        showNotification('회복 대상이 없습니다!', 'error');
+        return;
+      }
+      showTargets('회복 대상 선택', targets, (t) => {
+        sendAction('useItem', { item: '디터니', targetPid: t.id });
+      });
+    } else if (pick === '공격 보정기' || pick === '방어 보정기') {
+      sendAction('useItem', { item: pick, targetPid: myPid });
+    } else {
+      showNotification('알 수 없는 아이템입니다.', 'error');
+    }
+  };
+  
+  const doPass = () => {
+    if (confirm('정말로 턴을 넘기시겠습니까?')) {
+      sendAction('pass');
+    }
+  };
+
+  // 채팅 전송
+  const sendChat = () => {
+    const txt = chatInput.value.trim();
+    if (!txt) return;
+    
+    if (!socket || !socket.connected) {
+      showNotification('서버에 연결되어 있지 않습니다', 'error');
+      return;
+    }
+    
+    // /t 접두사 처리
+    let scope = (chatChannel.value === 'team') ? 'team' : 'all';
+    let text = txt;
+    if (txt.startsWith('/t ')) {
+      scope = 'team';
+      text = txt.slice(3).trim();
+      if (!text) return;
+    }
+    
+    const nickname = me?.name || '플레이어';
+    
+    // 1) 신규 스펙
+    socket.emit('chat:send', {
+      battleId: currentBattleId,
+      text,
+      nickname,
+      role: 'player',
+      scope
+    }, (ack) => {
+      if (ack && ack.ok === false) {
+        showNotification(`채팅 오류: ${ack.msg || '전송 실패'}`, 'error');
+      }
+    });
+    
+    // 2) 레거시 폴백
+    socket.emit('chatMessage', {
+      message: text,
+      channel: scope === 'team' ? 'team' : 'all'
+    });
+    
+    chatInput.value = '';
+  };
+
+  // 이벤트 바인딩
+  const setupEventListeners = () => {
+    // 액션 버튼
+    btnAttack.onclick = doAttack;
+    btnDefend.onclick = doDefend;
+    btnDodge.onclick = doEvade;
+    btnUseItem.onclick = doUseItem;
+    btnPass.onclick = doPass;
+    
+    // 채팅
+    chatSend.onclick = sendChat;
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChat();
+    });
+    
+    // 타겟 선택
+    cancelTarget.onclick = hideTargets;
+
+    // 단축키
+    document.addEventListener('keydown', (e) => {
+      if (targetOverlay.style.display === 'flex') return; // 타겟 선택 중엔 차단
+      if (!isMyTurn()) return;
+      
+      switch (e.key) {
+        case '1':
+          e.preventDefault();
+          doAttack();
+          break;
+        case '2':
+          e.preventDefault();
+          doDefend();
+          break;
+        case '3':
+          e.preventDefault();
+          doEvade();
+          break;
+        case '4':
+          e.preventDefault();
+          doUseItem();
+          break;
+        case '5':
+          e.preventDefault();
+          doPass();
+          break;
+      }
+    });
+
+    // 인증 관련
+    authJoinBtn.onclick = () => {
+      const b = authBattleId.value.trim();
+      const t = authToken.value.trim();
+      const n = authName.value.trim();
+      
+      if (!b || !t || !n) {
+        authJoinBtn.classList.add('feedback-error');
+        setTimeout(() => authJoinBtn.classList.remove('feedback-error'), 1000);
+        return showNotification('모든 필드를 입력해주세요!', 'error');
+      }
+      
+      doJoin(b, t, n);
+    };
+
+    // 엔터키로 인증
+    [authBattleId, authToken, authName].forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') authJoinBtn.click();
+      });
+    });
+
+    // 윈도우 이벤트
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (joined && state) render();
+      }, 250);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && joined && state) {
+        render();
+        requestStateUpdate();
+      }
+    });
+
+    // ESC 키로 타겟 선택 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && targetOverlay.style.display === 'flex') {
+        hideTargets();
+      }
+    });
+  };
+
+  // URL 파라미터 자동 인증
+  const initFromUrl = () => {
+    const urlParams = new URLSearchParams(location.search);
+    const b = urlParams.get('battle');
+    const t = urlParams.get('token');
+    const n = urlParams.get('name');
+    
+    if (b && t && n) {
+      authBattleId.value = b;
+      authToken.value = t;
+      authName.value = decodeURIComponent(n);
+      
+      // 소켓 연결 후 자동 인증
+      if (socket && socket.connected) {
+        setTimeout(() => doJoin(b, t, n), 500);
+      } else {
+        socket.on('connect', () => {
+          setTimeout(() => doJoin(b, t, n), 500);
+        });
+      }
+    } else {
+      authSection.style.display = 'block';
+    }
+  };
+
+  // 초기화
+  const initialize = () => {
+    updateConnectionStatus('connecting', '연결 중...');
+    
+    try {
+      initSocket();
+      setupEventListeners();
+      initFromUrl();
+      
+      console.log('[Init] Player client initialized');
+      
+      // 로컬 디버그
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        window.playerDebug = {
+          state: () => state,
+          socket: () => socket,
+          render,
+          me: () => me,
+          reconnect: initSocket,
+          requestState: requestStateUpdate
+        };
+        console.log('플레이어 디버그 모드: window.playerDebug 사용 가능');
+      }
+    } catch (error) {
+      console.error('[Init] Initialization error:', error);
+      showNotification('초기화 중 오류가 발생했습니다', 'error');
+    }
+  };
+
+  // 페이지 로드 완료 후 초기화
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize);
+  } else {
+    initialize();
+  }
+
+  // 정리 함수
+  const cleanup = () => {
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    state = null;
+    me = null;
+    joined = false;
+    currentBattleId = null;
+  };
+
+  // 페이지 언로드 시 정리
+  window.addEventListener('beforeunload', cleanup);
+  window.addEventListener('pagehide', cleanup);
+
+  // 전역 오류 처리
+  window.addEventListener('error', (event) => {
+    console.error('[Global Error]', event.error);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Unhandled Promise Rejection]', event.reason);
+  });
+
+})();
+</script>
+</body>
+</html>
