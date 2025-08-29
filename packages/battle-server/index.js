@@ -6,7 +6,8 @@
 // - 상태 브로드캐스트 스로틀(빠른 반영)
 // - 1v1 / 2v2 / 3v3 / 4v4 지원
 // - 한쪽 전멸 즉시 종료, 총 시간 1시간
-// - [FIX] /admin, /play, /watch 정적 파일 명시 매핑 + 루트 폴백
+// - /admin, /admin.html, /play(.html), /watch(.html) 명시 매핑
+// - [FIX] httpServer/io 중복 선언 제거
 
 const path = require('path');
 const fs = require('fs');
@@ -42,20 +43,24 @@ app.use(
 
 // 정적 파일
 const pubDir = path.join(__dirname, 'public');
-app.use(express.static(pubDir, {
-  // 명시적으로만 서빙(확장자 자동추론 비활성)
-  fallthrough: true
-}));
+app.use(express.static(pubDir, { fallthrough: true }));
 
 // 정적 파일 명시 라우팅
+const send = (res, file) => res.sendFile(path.join(pubDir, file));
 app.get('/admin', (req, res) => {
   const f = path.join(pubDir, 'admin.html');
   if (fs.existsSync(f)) return res.sendFile(f);
-  // admin.html이 없으면 플레이어 페이지로 안내
   return res.redirect('/play');
 });
-app.get('/play', (req, res) => res.sendFile(path.join(pubDir, 'play.html')));
-app.get('/watch', (req, res) => res.sendFile(path.join(pubDir, 'watch.html')));
+app.get('/admin.html', (req, res) => {
+  const f = path.join(pubDir, 'admin.html');
+  if (fs.existsSync(f)) return res.sendFile(f);
+  return res.redirect('/play');
+});
+app.get('/play', (req, res) => send(res, 'play.html'));
+app.get('/play.html', (req, res) => send(res, 'play.html'));
+app.get('/watch', (req, res) => send(res, 'watch.html'));
+app.get('/watch.html', (req, res) => send(res, 'watch.html'));
 
 // 루트: admin.html 있으면 /admin, 없으면 /play
 app.get('/', (req, res) => {
@@ -90,6 +95,8 @@ function sanitizePublicBattle(b) {
   };
 }
 
+function room(bid) { return `battle:${bid}`; }
+
 function emitState(io, b) {
   if (b._emitScheduled) return;
   b._emitScheduled = true;
@@ -98,8 +105,6 @@ function emitState(io, b) {
     io.to(room(b.id)).emit('state', sanitizePublicBattle(b));
   }, 10);
 }
-
-function room(bid) { return `battle:${bid}`; }
 
 const MODE_CONFIG = {
   '1v1': { playersPerTeam: 1 },
@@ -123,7 +128,7 @@ function createBattle(mode = '2v2') {
     createdAt: now(),
     startedAt: null,
     endsAt: null,
-    maxDurationMs: 60 * 60 * 1000, // 1시간
+    maxDurationMs: 60 * 60 * 1000,
     teams: { team1: '불사조 기사단', team2: '죽음을 먹는 자들' },
     players: {},
     chat: [],
@@ -281,13 +286,15 @@ app.post('/api/battles/:id/players/:pid/avatar', (req, res) => {
   res.json({ ok: true });
 });
 
-// 에러 핸들러(마지막)
+// 에러 핸들러
 app.use((err, req, res, next) => {
   console.error('[Express Error]', err && (err.stack || err.message || err));
   res.status(500).send('Internal Server Error');
 });
 
-// 소켓
+// ------------------------
+// Socket.IO (단일 선언)
+// ------------------------
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   path: '/socket.io/',
@@ -428,12 +435,7 @@ function validateAndApplyAvatar(player, dataUrl) {
   return { ok: true };
 }
 
-const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-  path: '/socket.io/',
-  cors: { origin: ALLOW.includes('*') ? true : ALLOW, credentials: true },
-});
-
+// 서버 시작
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
 });
