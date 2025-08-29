@@ -149,7 +149,6 @@
     </div>
     <div class="tools">
       <span id="statusPill" class="pill wait"><b>대기중</b></span>
-      <button id="btnCopyLink" class="btn glossy gold">내 링크 복사</button>
     </div>
   </header>
 
@@ -232,8 +231,6 @@
   const targetSel = $('targetSel');
   const itemSel = $('itemSel');
 
-  const btnCopyLink = $('btnCopyLink');
-
   function fmtTs(ts){
     try{ const d = new Date(ts); return d.toLocaleTimeString([], {hour12:false}); }catch{ return '--:--:--'; }
   }
@@ -285,7 +282,6 @@
     if (!state) return;
     setStatusPill(state.status);
 
-    const sel = (x)=>document.querySelector(x);
     const T = state.turn || {turnIndex:0, frameIndex:0, framePlan:[]};
 
     headInfo.textContent = `전투 ${state.id} · 모드 ${state.mode} · 턴 ${T.turnIndex} / 프레임 ${T.frameIndex+1} / 총 ${T.framePlan.length}`;
@@ -304,7 +300,7 @@
       const title = document.createElement('div'); title.textContent = `${p.name}${p.alive?'':' (불능)'}`;
       const bar = document.createElement('div'); bar.className = 'bar';
       const span = document.createElement('span'); span.style.width = `${Math.round((p.hp/p.maxHp)*100)}%`; bar.appendChild(span);
-      const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `ATK ${p.stats.attack} / DEF ${p.stats.defense} / AGI ${p.stats.agility} / LUCK ${p.stats.luck}`;
+      const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = `ATK ${p.stats.attack} / DEF ${p.stats.defense} / AGI ${p.stats.agility} / LUCK ${p.stats.luck}`;
       info.appendChild(title); info.appendChild(bar); info.appendChild(meta);
       box.appendChild(av); box.appendChild(info);
       return box;
@@ -379,15 +375,6 @@
     const text = chatInput.value.trim(); if (!text) return;
     socket.emit('chatMessage', { message: text, channel: chatChannel.value });
     chatInput.value = '';
-  };
-
-  // 링크 복사
-  btnCopyLink.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(location.href);
-      btnCopyLink.textContent = '복사됨';
-      setTimeout(()=> btnCopyLink.textContent = '내 링크 복사', 1200);
-    } catch {}
   };
 
   // 소켓 이벤트
