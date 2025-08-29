@@ -60,7 +60,7 @@
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
 
-  /* 메인 3열 스테이지: 좌(팀1) - 중앙(초상/행동/채팅/로그) - 우(팀2) */
+  /* 메인 3열 스테이지: 좌(팀1) - 중앙(포트레이트/채팅/로그) - 우(팀2) */
   .stage{display:grid; grid-template-columns:260px 1fr 260px; gap:14px; padding:12px 16px}
   @media (max-width:1100px){ .stage{grid-template-columns:1fr} }
 
@@ -81,9 +81,24 @@
   .unit.active{outline:2px solid rgba(201,169,110,.4)}
   .unit.dead{opacity:.55}
 
+  /* 사이드 액션 패널(내 팀 열에 위치) */
+  .side-actions{margin-top:6px}
+  .actions .btn{
+    border:1px solid var(--border-2); color:var(--ink);
+    background:linear-gradient(180deg,#213456,#172a4a);
+    padding:10px 12px; border-radius:12px; cursor:pointer; position:relative; overflow:hidden;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .actions .btn:hover{transform:translateY(-1px)}
+  .actions .btn[disabled]{opacity:.55; cursor:not-allowed}
+  .actions .btn.gold{border-color:#6f5a33; background:linear-gradient(180deg,#e6d2a6,#c9a96e); color:#2a200f}
+  .actions .btn.warn{border-color:#7b5b20; background:linear-gradient(180deg,#cda45a,#8f6d34)}
+  .actions .row{display:flex; flex-wrap:wrap; gap:8px}
+  .hint{color:#aeb7cf; font-size:12px}
+
   /* 중앙 레이아웃 */
-  .center{display:grid; grid-template-rows:auto auto 260px 220px; gap:12px}
-  @media (max-width:1100px){ .center{grid-template-rows:auto auto 260px 240px} }
+  .center{display:grid; grid-template-rows:auto 260px 220px; gap:12px}
+  @media (max-width:1100px){ .center{grid-template-rows:auto 260px 240px} }
 
   /* 액티브 포트레이트(반신) */
   .portrait{
@@ -107,23 +122,6 @@
     background:#0c162eaa; border:1px solid var(--border); border-radius:10px; padding:8px 10px;
   }
 
-  /* 행동 패널 */
-  .actions .btn{
-    border:1px solid var(--border-2); color:var(--ink);
-    background:linear-gradient(180deg,#213456,#172a4a);
-    padding:10px 12px; border-radius:12px; cursor:pointer; position:relative; overflow:hidden;
-    transition:transform .15s ease, box-shadow .15s ease;
-  }
-  .actions .btn:hover{transform:translateY(-1px)}
-  .actions .btn[disabled]{opacity:.55; cursor:not-allowed}
-  .actions .btn.gold{border-color:#6f5a33; background:linear-gradient(180deg,#e6d2a6,#c9a96e); color:#2a200f}
-  .actions .btn.success{border-color:#305f47; background:linear-gradient(180deg,#44956c,#2f5f47)}
-  .actions .btn.warn{border-color:#7b5b20; background:linear-gradient(180deg,#cda45a,#8f6d34)}
-
-  .actions .row{display:flex; flex-wrap:wrap; gap:8px}
-
-  .hint{color:#aeb7cf; font-size:12px}
-
   /* 채팅, 로그 */
   .chat, .logs{height:100%; overflow:auto; background:#0b1630; border:1px solid var(--border); border-radius:12px; padding:10px}
   .ts{font-size:11px;color:#8aa0c2;min-width:54px;flex:0 0 auto}
@@ -132,21 +130,6 @@
   .chat::-webkit-scrollbar, .logs::-webkit-scrollbar{height:10px;width:10px}
   .chat::-webkit-scrollbar-track, .logs::-webkit-scrollbar-track{background:#0b1426;border-radius:10px}
   .chat::-webkit-scrollbar-thumb, .logs::-webkit-scrollbar-thumb{background:#1e2d4f;border-radius:10px;border:2px solid #0b1426}
-
-  /* 모달(타겟/아이템 선택) */
-  .modal{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:30}
-  .modal.open{display:flex}
-  .panel{width:min(720px, 94vw); background:linear-gradient(180deg,var(--glass),var(--glass-2)); border:1px solid var(--border); border-radius:16px; padding:14px; backdrop-filter:var(--blur)}
-  .panel h3{margin:0 0 8px 0; color:var(--gold)}
-  .listgrid{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px}
-  @media (max-width:560px){ .listgrid{grid-template-columns:1fr 1fr} }
-  .choice{border:1px solid var(--border); border-radius:12px; padding:10px; background:#0f1d39; cursor:pointer}
-  .choice.dead{opacity:.5; pointer-events:none}
-  .choice:hover{outline:2px solid rgba(201,169,110,.4)}
-  .choice .mini{font-size:12px; color:#aeb7cf}
-
-  .controls{display:flex; gap:8px; margin-top:8px; justify-content:flex-end}
-  .controls .btn{border:1px solid var(--border); background:#112243; color:var(--ink); border-radius:10px; padding:8px 10px}
 </style>
 </head>
 <body>
@@ -157,7 +140,7 @@
 </header>
 
 <main class="wrap stage">
-  <!-- 좌측: 팀1 -->
+  <!-- 좌측: 팀1(불사조 기사단) -->
   <aside class="side" id="teamLeft"></aside>
 
   <!-- 중앙 -->
@@ -170,34 +153,6 @@
       </div>
       <div class="img" id="portraitImg" style="display:none"></div>
       <div class="stats" id="portraitStats" style="display:none"></div>
-    </div>
-
-    <!-- 내 정보 / 업로드 -->
-    <div class="card" id="meCard">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap">
-        <div>
-          <div id="meName" style="font-weight:800; color:var(--gold)"></div>
-          <div id="meTeam" class="hint"></div>
-        </div>
-        <div class="row" style="display:flex; gap:8px; align-items:center">
-          <input id="avatarFile" type="file" accept="image/*" style="display:none" />
-          <button id="btnAvatar" class="actions btn">아바타 업로드</button>
-          <span class="hint">권장 256KB 이하</span>
-        </div>
-      </div>
-      <div class="hint" id="turnHint" style="margin-top:6px"></div>
-    </div>
-
-    <!-- 행동 -->
-    <div class="card actions">
-      <div class="row">
-        <button id="btnAtk" class="btn gold">공격</button>
-        <button id="btnDef" class="btn">방어</button>
-        <button id="btnEva" class="btn">회피</button>
-        <button id="btnItem" class="btn">아이템</button>
-        <button id="btnPass" class="btn warn">패스</button>
-      </div>
-      <div class="hint" style="margin-top:6px">내 턴에만 버튼이 활성화됩니다.</div>
     </div>
 
     <!-- 채팅 -->
@@ -219,28 +174,28 @@
     </div>
   </section>
 
-  <!-- 우측: 팀2 -->
+  <!-- 우측: 팀2(죽음을 먹는 자들) -->
   <aside class="side" id="teamRight"></aside>
 </main>
 
 <!-- 타겟 선택 모달 -->
-<div class="modal" id="targetModal">
-  <div class="panel">
-    <h3 id="targetTitle">대상 선택</h3>
-    <div id="targetList" class="listgrid"></div>
-    <div class="controls">
-      <button class="btn" id="targetCancel">취소</button>
+<div class="modal" id="targetModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:30">
+  <div class="panel" style="width:min(720px, 94vw); background:linear-gradient(180deg,var(--glass),var(--glass-2)); border:1px solid var(--border); border-radius:16px; padding:14px; backdrop-filter:var(--blur)">
+    <h3 id="targetTitle" style="margin:0 0 8px 0; color:var(--gold)">대상 선택</h3>
+    <div id="targetList" class="listgrid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px"></div>
+    <div class="controls" style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end">
+      <button class="btn" id="targetCancel" style="border:1px solid var(--border); background:#112243; color:var(--ink); border-radius:10px; padding:8px 10px">취소</button>
     </div>
   </div>
 </div>
 
 <!-- 아이템 선택 모달 -->
-<div class="modal" id="itemModal">
-  <div class="panel">
-    <h3>아이템 사용</h3>
-    <div id="itemList" class="listgrid"></div>
-    <div class="controls">
-      <button class="btn" id="itemCancel">닫기</button>
+<div class="modal" id="itemModal" style="position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:30">
+  <div class="panel" style="width:min(720px, 94vw); background:linear-gradient(180deg,var(--glass),var(--glass-2)); border:1px solid var(--border); border-radius:16px; padding:14px; backdrop-filter:var(--blur)">
+    <h3 style="margin:0 0 8px 0; color:var(--gold)">아이템 사용</h3>
+    <div id="itemList" class="listgrid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px"></div>
+    <div class="controls" style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end">
+      <button class="btn" id="itemCancel" style="border:1px solid var(--border); background:#112243; color:var(--ink); border-radius:10px; padding:8px 10px">닫기</button>
     </div>
   </div>
 </div>
@@ -257,14 +212,9 @@
   const portraitStats = $('portraitStats');
   const turnInfo  = $('turnInfo');
   const modeInfo  = $('modeInfo');
-  const meCard = $('meCard'), meName = $('meName'), meTeam = $('meTeam'), turnHint = $('turnHint');
-
-  const btnAtk = $('btnAtk'), btnDef = $('btnDef'), btnEva = $('btnEva'), btnItem = $('btnItem'), btnPass = $('btnPass');
 
   const chatEl = $('chat'), chatInput = $('chatInput'), chatSend = $('chatSend'), chatCh = $('chatCh');
   const logsEl = $('logs');
-
-  const avatarFile = $('avatarFile'), btnAvatar = $('btnAvatar');
 
   const targetModal = $('targetModal'), targetList = $('targetList'), targetCancel = $('targetCancel'), targetTitle = $('targetTitle');
   const itemModal   = $('itemModal'), itemList = $('itemList'), itemCancel = $('itemCancel');
@@ -273,13 +223,14 @@
   const socket = io({ path: '/socket.io/' });
   let state = null;
   let myPid = null;
-  let myName = null;
   let myTeam = null;
+
+  // 현재 렌더링된 액션 버튼 레퍼런스
+  let actionUI = null; // {container, btnAtk, btnDef, btnEva, btnItem, btnPass}
 
   // 쿼리 인증
   const qs = new URLSearchParams(location.search);
   const battle = qs.get('battle'); const token = qs.get('token'); const name = qs.get('name'); const pid = qs.get('pid');
-  myName = name || '플레이어';
 
   function fmtTs(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour12:false}); }catch{return '--:--:--';} }
 
@@ -309,18 +260,15 @@
     const t = state && state.turn;
     if (!t) return null;
     if (Array.isArray(t.pending) && t.pending.length) return t.pending[0];
-    // 베스트-에포트 추정 실패 시 null
     return null;
   }
 
-  function isMyTurn(){
-    return state && state.status==='ongoing' && myPid && currentActorPid() === myPid;
-  }
+  function isMyTurn(){ return state && state.status==='ongoing' && myPid && currentActorPid() === myPid; }
 
   function setActionEnables(){
+    if (!actionUI) return;
     const en = isMyTurn();
-    [btnAtk,btnDef,btnEva,btnItem,btnPass].forEach(b=>{ b.disabled = !en; });
-    turnHint.textContent = en ? '당신의 턴입니다. 행동을 선택하세요.' : '상대 또는 팀원의 턴입니다.';
+    [actionUI.btnAtk, actionUI.btnDef, actionUI.btnEva, actionUI.btnItem, actionUI.btnPass].forEach(b=>{ b.disabled = !en; });
   }
 
   function hpPct(p){ return Math.max(0, Math.min(100, Math.round((p.hp/p.maxHp)*100))); }
@@ -343,14 +291,46 @@
     return el;
   }
 
+  function buildActionsPanel(){
+    const wrap = document.createElement('div');
+    wrap.className = 'card side-actions actions';
+    const row = document.createElement('div'); row.className = 'row';
+    const bAtk  = document.createElement('button'); bAtk.className  = 'btn gold'; bAtk.textContent  = '공격';
+    const bDef  = document.createElement('button'); bDef.className  = 'btn';      bDef.textContent  = '방어';
+    const bEva  = document.createElement('button'); bEva.className  = 'btn';      bEva.textContent  = '회피';
+    const bItem = document.createElement('button'); bItem.className = 'btn';      bItem.textContent = '아이템';
+    const bPass = document.createElement('button'); bPass.className = 'btn warn'; bPass.textContent = '패스';
+    row.appendChild(bAtk); row.appendChild(bDef); row.appendChild(bEva); row.appendChild(bItem); row.appendChild(bPass);
+    const hint = document.createElement('div'); hint.className='hint'; hint.style.marginTop='6px'; hint.textContent='내 턴에만 버튼이 활성화됩니다.';
+    wrap.appendChild(row); wrap.appendChild(hint);
+
+    // 이벤트 바인딩
+    bAtk.addEventListener('click', onClickAttack);
+    bDef.addEventListener('click', onClickDefend);
+    bEva.addEventListener('click', onClickEvade);
+    bItem.addEventListener('click', onClickItem);
+    bPass.addEventListener('click', onClickPass);
+
+    actionUI = { container: wrap, btnAtk:bAtk, btnDef:bDef, btnEva:bEva, btnItem:bItem, btnPass:bPass };
+    return wrap;
+  }
+
   function renderSides(){
     teamLeft.innerHTML=''; teamRight.innerHTML='';
-    byTeam('team1').forEach(p=>teamLeft.appendChild(smallUnit(p)));
-    byTeam('team2').forEach(p=>teamRight.appendChild(smallUnit(p)));
+    const leftList = byTeam('team1');
+    const rightList = byTeam('team2');
+
+    leftList.forEach(p=>{
+      teamLeft.appendChild(smallUnit(p));
+      if (p.id === myPid) teamLeft.appendChild(buildActionsPanel());
+    });
+    rightList.forEach(p=>{
+      teamRight.appendChild(smallUnit(p));
+      if (p.id === myPid) teamRight.appendChild(buildActionsPanel());
+    });
   }
 
   function renderPortrait(){
-    // 현재 액터를 기준으로 반신/스탯 표시
     const pid = currentActorPid();
     const p = pid ? state.players[pid] : null;
     const dir = p && p.team==='team2' ? 'right' : 'left';
@@ -358,7 +338,6 @@
     portrait.classList.toggle('right', dir==='right');
 
     const tm = p ? (p.team==='team1' ? '불사조 기사단' : '죽음을 먹는 자들') : '';
-    const ti = state ? `턴 ${state.turn?.turnIndex||0}` : '';
     turnInfo.textContent = p ? `${p.name}의 차례` : '대기중';
     modeInfo.textContent = state ? `${state.mode || ''}` : '';
 
@@ -385,13 +364,6 @@
     }
   }
 
-  function renderMe(){
-    if (!myPid || !state || !state.players[myPid]) return;
-    const me = state.players[myPid];
-    meName.textContent = me.name;
-    meTeam.textContent = me.team==='team1' ? '불사조 기사단' : '죽음을 먹는 자들';
-  }
-
   function renderLogsFromState(){
     logsEl.innerHTML = '';
     (state.chat||[]).slice(-200).forEach(m=>{
@@ -405,7 +377,6 @@
     if (!state) return;
     renderSides();
     renderPortrait();
-    renderMe();
     setActionEnables();
     renderLogsFromState();
   }
@@ -417,42 +388,39 @@
       state = ack.state;
       // 내 PID 파악
       myPid = (function(){
-        if (pid && state.players[pid]) return pid;
-        // 토큰으로 연결된 경우 서버에서 연결 pid를 심어주지 않으므로, 이름으로 찾기
-        const entry = Object.values(state.players||{}).find(p=>p.name===name);
-        return entry ? entry.id : null;
+        const s = ack.state;
+        if (pid && s.players && s.players[pid]) return pid;
+        if (name) {
+          const entry = Object.values(s.players||{}).find(p=>p.name===name);
+          if (entry) return entry.id;
+        }
+        // 토큰에 playerId가 실린 경우(서버쪽 구현 따라 다름)
+        // 없으면 이후 state 갱신 때도 다시 확인
+        return myPid;
       })();
       myTeam = myPid ? (state.players[myPid]?.team || null) : null;
       renderAll();
     });
   });
 
-  socket.on('state', s => { state = s; renderAll(); });
+  socket.on('state', s => {
+    state = s;
+    if (!myPid && state){
+      const cand = Object.values(state.players||{}).find(p=>p.name===name);
+      if (cand) { myPid = cand.id; myTeam = cand.team; }
+    }
+    renderAll();
+  });
   socket.on('chat', appendChat);
   socket.on('chatError', txt => alert(txt));
 
   // 채팅 전송
   chatSend.onclick = ()=>{
     const text = chatInput.value.trim(); if (!text) return;
-    socket.emit('chatMessage', { message: text, channel: chatCh.value });
+    socket.emit('chatMessage', { message: text, channel: chatCh.value }, (ack)=>{
+      if (ack && ack.error) alert('보내기 실패: ' + ack.error);
+    });
     chatInput.value = '';
-  };
-
-  // 아바타 업로드
-  btnAvatar.onclick = ()=> avatarFile.click();
-  avatarFile.onchange = (e)=>{
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { alert('이미지 파일만 업로드할 수 있습니다'); return; }
-    if (file.size > 256*1024) { alert('파일 용량이 256KB를 초과합니다'); return; }
-    const r = new FileReader();
-    r.onload = ()=> {
-      const dataUrl = r.result;
-      socket.emit('uploadAvatar', { dataUrl }, (ack)=>{
-        if (!ack || !ack.ok) { alert('업로드 실패'); return; }
-      });
-    };
-    r.readAsDataURL(file);
   };
 
   // ---------- 액션 처리(공격/방어/회피/아이템/패스) ----------
@@ -463,16 +431,16 @@
     targetTitle.textContent = title;
     targetList.innerHTML = '';
     targets.forEach(p=>{
-      const c = document.createElement('div'); c.className='choice' + (p.alive?'':' dead');
+      const c = document.createElement('div'); c.className='choice'; c.style.border='1px solid var(--border)'; c.style.borderRadius='12px'; c.style.padding='10px'; c.style.background='#0f1d39'; if(!p.alive){ c.style.opacity='.5'; c.style.pointerEvents='none'; }
       const nm = document.createElement('div'); nm.style.fontWeight='700'; nm.textContent = p.name + (p.alive?'':' (불능)');
-      const mini = document.createElement('div'); mini.className='mini'; mini.textContent = `HP ${p.hp}/${p.maxHp}`;
+      const mini = document.createElement('div'); mini.style.fontSize='12px'; mini.style.color='#aeb7cf'; mini.textContent = `HP ${p.hp}/${p.maxHp}`;
       c.appendChild(nm); c.appendChild(mini);
       c.onclick = ()=>{ closeTargetModal(); onPick && onPick(p); };
       targetList.appendChild(c);
     });
-    targetModal.classList.add('open');
+    targetModal.style.display='flex';
   }
-  function closeTargetModal(){ targetModal.classList.remove('open'); }
+  function closeTargetModal(){ targetModal.style.display='none'; }
   targetCancel.onclick = closeTargetModal;
 
   // 아이템 모달
@@ -483,9 +451,9 @@
     const allowed = ['디터니','공격 보정기','방어 보정기'];
     allowed.forEach(name=>{
       const count = Number(inv[name] || 0);
-      const c = document.createElement('div'); c.className='choice' + (count>0?'':' dead');
+      const c = document.createElement('div'); c.className='choice'; c.style.border='1px solid var(--border)'; c.style.borderRadius='12px'; c.style.padding='10px'; c.style.background='#0f1d39'; if(count<=0){ c.style.opacity='.5'; c.style.pointerEvents='none'; }
       const nm = document.createElement('div'); nm.style.fontWeight='700'; nm.textContent = `${name} x${count}`;
-      const mini = document.createElement('div'); mini.className='mini';
+      const mini = document.createElement('div'); mini.style.fontSize='12px'; mini.style.color='#aeb7cf';
       if (name==='디터니') mini.textContent = '아군 10 회복';
       if (name==='공격 보정기') mini.textContent = '1턴 공격 x1.5 (실패 가능)';
       if (name==='방어 보정기') mini.textContent = '1턴 방어 x1.5 (실패 가능)';
@@ -493,13 +461,13 @@
       if (count>0) c.onclick = ()=>{ closeItemModal(); onPick && onPick(name); };
       itemList.appendChild(c);
     });
-    itemModal.classList.add('open');
+    itemModal.style.display='flex';
   }
-  function closeItemModal(){ itemModal.classList.remove('open'); }
+  function closeItemModal(){ itemModal.style.display='none'; }
   itemCancel.onclick = closeItemModal;
 
-  // 공격
-  btnAtk.onclick = ()=>{
+  // 버튼 핸들러들
+  function onClickAttack(){
     if (!ensureMyTurn()) return;
     const opps = byTeam(getOppTeam(myTeam)).filter(p=>p.alive);
     if (!opps.length){ alert('공격 대상이 없습니다'); return; }
@@ -508,34 +476,26 @@
         if (!ack || !ack.ok) { alert(ack && ack.error ? ('실패: '+ack.error) : '실패'); }
       });
     });
-  };
-
-  // 방어
-  btnDef.onclick = ()=>{
+  }
+  function onClickDefend(){
     if (!ensureMyTurn()) return;
     socket.emit('chooseAction', { kind:'defend' }, (ack)=>{
       if (!ack || !ack.ok) { alert(ack && ack.error ? ('실패: '+ack.error) : '실패'); }
     });
-  };
-
-  // 회피
-  btnEva.onclick = ()=>{
+  }
+  function onClickEvade(){
     if (!ensureMyTurn()) return;
     socket.emit('chooseAction', { kind:'evade' }, (ack)=>{
       if (!ack || !ack.ok) { alert(ack && ack.error ? ('실패: '+ack.error) : '실패'); }
     });
-  };
-
-  // 패스
-  btnPass.onclick = ()=>{
+  }
+  function onClickPass(){
     if (!ensureMyTurn()) return;
     socket.emit('chooseAction', { kind:'pass' }, (ack)=>{
       if (!ack || !ack.ok) { alert(ack && ack.error ? ('실패: '+ack.error) : '실패'); }
     });
-  };
-
-  // 아이템
-  btnItem.onclick = ()=>{
+  }
+  function onClickItem(){
     if (!ensureMyTurn()) return;
     openItemModal((itemName)=>{
       if (itemName === '디터니'){
@@ -546,14 +506,12 @@
           });
         });
       } else {
-        // 공격/방어 보정기는 대상 없이 자기 자신
         socket.emit('chooseAction', { kind:'item', itemName }, (ack)=>{
           if (!ack || !ack.ok) { alert(ack && ack.error ? ('실패: '+ack.error) : '실패'); }
         });
       }
     });
-  };
-
+  }
 })();
 </script>
 </body>
