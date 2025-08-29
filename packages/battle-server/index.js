@@ -6,8 +6,10 @@
 // - 상태 브로드캐스트 스로틀(빠른 반영)
 // - 1v1 / 2v2 / 3v3 / 4v4 지원
 // - 한쪽 전멸 즉시 종료, 총 시간 1시간
+// - [FIX] /admin, /play, /watch 정적 파일 명시 매핑 + 루트 폴백
 
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
@@ -40,10 +42,26 @@ app.use(
 
 // 정적 파일
 const pubDir = path.join(__dirname, 'public');
-app.use(express.static(pubDir));
+app.use(express.static(pubDir, {
+  // 명시적으로만 서빙(확장자 자동추론 비활성)
+  fallthrough: true
+}));
 
-// 루트 → /admin (기존 관리자 페이지 가정)
-app.get('/', (req, res) => res.redirect('/admin'));
+// 정적 파일 명시 라우팅
+app.get('/admin', (req, res) => {
+  const f = path.join(pubDir, 'admin.html');
+  if (fs.existsSync(f)) return res.sendFile(f);
+  // admin.html이 없으면 플레이어 페이지로 안내
+  return res.redirect('/play');
+});
+app.get('/play', (req, res) => res.sendFile(path.join(pubDir, 'play.html')));
+app.get('/watch', (req, res) => res.sendFile(path.join(pubDir, 'watch.html')));
+
+// 루트: admin.html 있으면 /admin, 없으면 /play
+app.get('/', (req, res) => {
+  const hasAdmin = fs.existsSync(path.join(pubDir, 'admin.html'));
+  return res.redirect(hasAdmin ? '/admin' : '/play');
+});
 
 // 인메모리 저장소
 const battles = new Map();
@@ -263,6 +281,12 @@ app.post('/api/battles/:id/players/:pid/avatar', (req, res) => {
   res.json({ ok: true });
 });
 
+// 에러 핸들러(마지막)
+app.use((err, req, res, next) => {
+  console.error('[Express Error]', err && (err.stack || err.message || err));
+  res.status(500).send('Internal Server Error');
+});
+
 // 소켓
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
@@ -286,11 +310,8 @@ io.on('connection', (socket) => {
         authed = token === b.tokens.spectator.token && b.tokens.spectator.exp > now();
       } else if (role === 'player') {
         const rec = Object.entries(b.tokens.players).find(([, v]) => v.exp > now() && b.players[v.pid]);
-        // 기본은 링크로 접근하므로 위 rec 탐색은 보조용. 실제는 아래에서 name 일치로 보조 확인한다.
         if (rec) { authed = true; linkedPid = rec[1].pid; }
-        // 이름 일치(필수)
         if (authed && name && b.players[linkedPid] && b.players[linkedPid].name !== name) authed = false;
-        // 토큰 직접 전달 시
         if (!authed && b.tokens.players[token] && b.tokens.players[token].exp > now()) {
           linkedPid = b.tokens.players[token].pid;
           if (name && b.players[linkedPid] && b.players[linkedPid].name === name) authed = true;
@@ -304,7 +325,8 @@ io.on('connection', (socket) => {
       if (role !== 'spectator') b.chat.push({ type: 'system', ts: now(), text: `${role === 'admin' ? '관리자' : (name || '플레이어')} 접속` });
       emitState(io, b);
       ack && ack({ ok: true, state: sanitizePublicBattle(b) });
-    } catch {
+    } catch (e) {
+      console.error('[auth handler error]', e);
       ack && ack({ ok: false, error: 'auth_exception' });
     }
   });
@@ -405,6 +427,12 @@ function validateAndApplyAvatar(player, dataUrl) {
   player.avatar = dataUrl;
   return { ok: true };
 }
+
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  path: '/socket.io/',
+  cors: { origin: ALLOW.includes('*') ? true : ALLOW, credentials: true },
+});
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Battle server on http://${HOST}:${PORT}`);
