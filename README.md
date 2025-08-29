@@ -376,7 +376,7 @@ pm2 monit
 pm2 restart battle-server --max-memory-restart 1G
 ```
 
-## 🤝 기여하기
+## 기여하기
 
 1. **Fork** 저장소
 2. **Feature 브랜치** 생성
@@ -422,7 +422,7 @@ git push origin feature/amazing-feature
 
 <div align="center">
 
-**실시간 턴제 전투의 새로운 경험을 만나보세요! ⚔️**
+**실시간 턴제 전투의 새로운 경험을 만나보세요!**
 
 [라이브 데모 체험](https://pyxisbattlesystem.monster) | [문서 보기](https://github.com/CriminalTalent/battle-system/wiki) | [이슈 신고](https://github.com/CriminalTalent/battle-system/issues)
 
