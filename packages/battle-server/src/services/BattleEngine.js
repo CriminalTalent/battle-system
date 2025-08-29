@@ -4,8 +4,8 @@
 // 인벤토리: {아이템명: 수량} 맵
 // 사용 가능 아이템(3종):
 //  - "디터니": 아군 10 회복
-//  - "공격 보정기": 사용자 1턴 공격 +1
-//  - "방어 보정기": 사용자 1턴 방어 +1
+//  - "공격 보정기": 사용자 1턴 공격 x1.5 (아이템 실패도 있음)
+//  - "방어 보정기": 사용자 1턴 방어 x1.5 (아이템 실패도 있음)
 
 class BattleEngine {
   constructor(battle, callbacks = {}) {
@@ -104,7 +104,6 @@ class BattleEngine {
   // 내부 ---------------------------------------
 
   _rebuildPlan() {
-    const b = this.battle;
     const order = this._frameOrder();
     this.framePlan = order.map(pid => {
       const allows = new Set(['ATTACK','DEFEND','ITEM','PASS']);
@@ -136,13 +135,25 @@ class BattleEngine {
     this.frameIndex++;
     if (this.frameIndex >= this.framePlan.length) {
       this.turnIndex++;
-      // 버프 소모
+      // 버프 소모/감소
       for (const p of Object.values(this.battle.players)) {
         if (!p._buffs) continue;
-        if (p._buffs.atkUp) p._buffs.atkUp--;
         if (p._buffs.guard) p._buffs.guard--;
-        if (p._buffs.defUp) p._buffs.defUp--;
-        if (p._buffs.agiUp) p._buffs.agiUp--;
+
+        if (p._buffs.atkMulTurns) {
+          p._buffs.atkMulTurns--;
+          if (p._buffs.atkMulTurns <= 0) {
+            delete p._buffs.atkMulTurns;
+            delete p._buffs.atkMul;
+          }
+        }
+        if (p._buffs.defMulTurns) {
+          p._buffs.defMulTurns--;
+          if (p._buffs.defMulTurns <= 0) {
+            delete p._buffs.defMulTurns;
+            delete p._buffs.defMul;
+          }
+        }
       }
       this._rebuildPlan();
     }
@@ -177,8 +188,17 @@ class BattleEngine {
     attacker._buffs = attacker._buffs || {};
     target._buffs = target._buffs || {};
 
-    const atk = attacker.stats.attack + (attacker._buffs.atkUp ? 1 : 0);
-    let def = target.stats.defense + (target._buffs.defUp ? 1 : 0);
+    // x1.5 배수 버프 적용
+    let atk = attacker.stats.attack;
+    if (attacker._buffs.atkMul && attacker._buffs.atkMul > 1) {
+      atk = Math.round(atk * attacker._buffs.atkMul);
+    }
+
+    let def = target.stats.defense;
+    if (target._buffs.defMul && target._buffs.defMul > 1) {
+      def = Math.round(def * target._buffs.defMul);
+    }
+
     let base = 10 + atk * 2 - def;
     base = Math.max(base, 3);
 
@@ -224,6 +244,9 @@ class BattleEngine {
 
     if (!this._hasItem(user, name)) return { ok:false, error:'no_item' };
 
+    // 실패 확률(기본 20%)
+    const ITEM_FAIL_RATE = 0.20;
+
     if (name === '디터니') {
       const t = this._pickTarget(targetId, user, 'ally');
       if (!t) return { ok:false, error:'invalid_target' };
@@ -237,16 +260,28 @@ class BattleEngine {
     }
 
     if (name === '공격 보정기') {
-      user._buffs.atkUp = 1;
+      if (Math.random() < ITEM_FAIL_RATE) {
+        logs.push(`${user.name} 아이템 사용 실패: 공격 보정기`);
+        // 실패 시 소모하지 않음
+        return { ok:true, logs };
+      }
+      user._buffs.atkMul = 1.5;
+      user._buffs.atkMulTurns = 1;
       this._consumeItem(user, name);
-      logs.push(`${user.name} 아이템 사용: 공격 보정기 (1턴 +공격)`);
+      logs.push(`${user.name} 아이템 사용: 공격 보정기 (1턴 공격 x1.5)`);
       return { ok:true, logs };
     }
 
     if (name === '방어 보정기') {
-      user._buffs.defUp = 1;
+      if (Math.random() < ITEM_FAIL_RATE) {
+        logs.push(`${user.name} 아이템 사용 실패: 방어 보정기`);
+        // 실패 시 소모하지 않음
+        return { ok:true, logs };
+      }
+      user._buffs.defMul = 1.5;
+      user._buffs.defMulTurns = 1;
       this._consumeItem(user, name);
-      logs.push(`${user.name} 아이템 사용: 방어 보정기 (1턴 +방어)`);
+      logs.push(`${user.name} 아이템 사용: 방어 보정기 (1턴 방어 x1.5)`);
       return { ok:true, logs };
     }
 
