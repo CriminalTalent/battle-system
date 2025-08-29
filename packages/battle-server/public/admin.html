@@ -9,7 +9,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root{
-      --bg:#0b1020; --bg2:#09122a; --panel:#0f1830; --panel2:#0c1428;
+      --bg:#000; --panel:#0b1020; --panel2:#0c1428;
       --ink:#e8e2cf; --ink-dim:#b8b3a2;
       --gold:#e4c476; --gold-2:#c9ab5f; --gold-3:#a98b45;
       --line:#28324a; --line-subtle:#1c2540;
@@ -17,9 +17,7 @@
       --shadow-1: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
       --top-line: 0 -1px 0 rgba(255,255,255,.06) inset, 0 1px 0 rgba(0,0,0,.4) inset;
       --grad-gold: linear-gradient(90deg,#f6e3a1,#e4c476,#d2b062);
-      --grad-card: radial-gradient(1200px 600px at 10% -10%,rgba(255,255,255,.06),transparent 40%),
-                   radial-gradient(1000px 600px at 110% -20%,rgba(255,215,160,.08),transparent 50%),
-                   linear-gradient(180deg,rgba(20,28,50,.7),rgba(8,10,22,.8));
+      --grad-card: linear-gradient(180deg,rgba(20,28,50,.7),rgba(8,10,22,.8));
       --grad-btn: linear-gradient(180deg,#2a3c66,#192746);
       --grad-btn-gold: linear-gradient(180deg,#f2d98b,#d0b266);
       --st-wait:#6a7aa5; --st-go:#49c07d; --st-pause:#d5a746; --st-end:#c04c4c;
@@ -27,44 +25,32 @@
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
-      margin:0;color:var(--ink);
-      background:
-        radial-gradient(1000px 500px at 50% -10%, rgba(255,255,255,.05), transparent 60%),
-        linear-gradient(180deg, #0a0f1e, #080c18 60%, #060a14);
+      margin:0;color:var(--ink); background:#000;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
       line-height:1.45;
     }
-    .wrap{max-width:1200px;margin:0 auto;padding:16px;animation:fadeIn .5s ease both}
-    @keyframes fadeIn{from{opacity:.0; transform:translateY(6px)}to{opacity:1; transform:none}}
-
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
     header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
     .brand{font-family:"Cinzel", serif; letter-spacing:.06em; font-weight:800; font-size:20px;
-      background:var(--grad-gold); -webkit-background-clip:text; background-clip:text; color:transparent;
-      text-shadow:0 0 20px rgba(226,197,118,.15);}
-
+      background:var(--grad-gold); -webkit-background-clip:text; background-clip:text; color:transparent;}
     .tools{display:flex;gap:8px;align-items:center}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0c1526a6;backdrop-filter:var(--glass)}
     .pill.wait{border-color:var(--st-wait); color:var(--st-wait)}
     .pill.go{border-color:var(--st-go); color:var(--st-go)}
     .pill.pause{border-color:var(--st-pause); color:var(--st-pause)}
     .pill.end{border-color:var(--st-end); color:var(--st-end)}
-
     .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:14px}
     @media (max-width: 1000px){ .grid{grid-template-columns:1fr} }
-
     .card{background:var(--grad-card); border:1px solid var(--line); border-radius:16px; padding:14px; position:relative;
       backdrop-filter:var(--glass); box-shadow:var(--shadow-1)}
     .card::before{content:""; position:absolute; inset:0; pointer-events:none; border-radius:16px; box-shadow:var(--top-line)}
     .card .title{display:flex;align-items:center;gap:8px;margin:0 0 10px 0;color:var(--gold)}
-    .title .dot{width:8px;height:8px;border-radius:999px;background:var(--gold-2); box-shadow:0 0 10px rgba(240,205,110,.5)}
-
+    .title .dot{width:8px;height:8px;border-radius:999px;background:var(--gold-2)}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .muted{color:var(--ink-dim)}
     .input, select, textarea{background:rgba(12,20,38,.7); color:var(--ink);
       border:1px solid var(--line); border-radius:12px; padding:10px; backdrop-filter:var(--glass); outline:none}
-    .input::placeholder{color:#7f86a1}
-    .btn{border:1px solid var(--line); color:var(--ink); padding:10px 12px; border-radius:12px; cursor:pointer; background:var(--grad-btn); transition:transform .15s ease}
-    .btn:hover{transform:translateY(-1px)}
+    .btn{border:1px solid var(--line); color:var(--ink); padding:10px 12px; border-radius:12px; cursor:pointer; background:var(--grad-btn)}
     .btn.gold{border-color:var(--gold-3); background:var(--grad-btn-gold); color:#261b06}
     .btn.warn{border-color:#7a5a20; background:linear-gradient(180deg,#caa455,#9a7a36); color:#231a07}
     .btn.danger{border-color:#6b2b2b; background:linear-gradient(180deg,#c95b5b,#983f3f)}
@@ -76,7 +62,6 @@
     .unit .name{font-weight:600}
     .bar{height:8px;background:#202a44;border-radius:8px;overflow:hidden}
     .bar>span{display:block;height:100%;background:linear-gradient(90deg,#4da3ff,#67e8f9)}
-
     .chat{height:340px;overflow:auto;background:rgba(10,16,32,.7);border:1px solid var(--line);border-radius:12px;padding:10px; backdrop-filter:var(--glass)}
     .chat .row{display:flex;gap:8px;align-items:baseline; margin-bottom:6px}
     .chat .ts{font-size:11px;color:#8aa0c2;min-width:54px}
@@ -84,6 +69,9 @@
     .chat .cheer .msg{color:#a6e6a6}
     .chat .me .msg{color:#e8d4a8}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .items-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+    .item-row{display:flex;gap:8px;align-items:center}
+    .item-row input[type="number"]{width:80px}
   </style>
 </head>
 <body>
@@ -91,7 +79,7 @@
   <header>
     <div>
       <div class="brand">PYXIS</div>
-      <div class="muted">Administrator Console</div>
+      <div class="muted">관리자 콘솔</div>
     </div>
     <div class="tools">
       <span id="statusPill" class="pill wait">대기중</span>
@@ -165,27 +153,21 @@
         </label>
       </div>
       <div class="grid3" style="margin-top:8px">
-        <label>ATK <input id="pAtk" class="input" type="number" min="1" max="5" value="3"></label>
-        <label>DEF <input id="pDef" class="input" type="number" min="1" max="5" value="3"></label>
-        <label>AGI <input id="pAgi" class="input" type="number" min="1" max="5" value="3"></label>
+        <label>공격(ATK) <input id="pAtk" class="input" type="number" min="1" max="5" value="3"></label>
+        <label>방어(DEF) <input id="pDef" class="input" type="number" min="1" max="5" value="3"></label>
+        <label>민첩(AGI) <input id="pAgi" class="input" type="number" min="1" max="5" value="3"></label>
       </div>
       <div class="grid3" style="margin-top:8px">
-        <label>LUCK <input id="pLuck" class="input" type="number" min="1" max="5" value="3"></label>
-        <label>아이템
-          <select id="pItem" class="input">
-            <option value="">없음</option>
-            <option>디터니</option>
-            <option>공격 보정기</option>
-            <option>방어 보정기</option>
-          </select>
-        </label>
-        <div class="row" style="justify-content:flex-end;align-items:end">
-          <button id="btnAdd" class="btn gold">플레이어 추가</button>
-        </div>
+        <label>행운(LUCK) <input id="pLuck" class="input" type="number" min="1" max="5" value="3"></label>
       </div>
+
+      <div style="height:8px"></div>
+      <div class="muted">아이템 지급(수량 입력, 0은 미지급)</div>
+      <div class="items-grid" id="itemsGrid"></div>
 
       <div style="height:10px"></div>
       <div class="row">
+        <button id="btnAdd" class="btn gold">플레이어 추가</button>
         <button id="btnLinks" class="btn">플레이어별 링크 생성</button>
       </div>
 
@@ -221,11 +203,29 @@
   const chatEl = $('chat'), chatInput = $('chatInput'), chatSend = $('chatSend'), chatChannel = $('chatChannel');
 
   const team1 = $('team1'), team2 = $('team2'), t1name = $('t1name'), t2name = $('t2name'), headInfo = $('headInfo');
+  const itemsGrid = $('itemsGrid');
+
+  const ITEM_LIST = ['디터니','치유 키트','공격 보정기','방어 보정기','신속의 부적','부활의 깃털'];
+
+  function buildItemsUI() {
+    itemsGrid.innerHTML = '';
+    ITEM_LIST.forEach(name => {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      const label = document.createElement('label');
+      label.textContent = name;
+      const qty = document.createElement('input');
+      qty.type = 'number'; qty.min = '0'; qty.max = '99'; qty.value = '0';
+      qty.dataset.item = name;
+      row.appendChild(label); row.appendChild(qty);
+      itemsGrid.appendChild(row);
+    });
+  }
+  buildItemsUI();
 
   const socket = io({ path: '/socket.io/' });
   let state = null;
 
-  // URL 파라미터로 들어온 battle/token이 있으면 먼저 채워둔다
   const qs = new URLSearchParams(location.search);
   if (qs.get('battle')) battleId.value = qs.get('battle');
   if (qs.get('token'))  adminOtp.value = qs.get('token');
@@ -242,7 +242,7 @@
   }
   function lineEl(klass, tsText, bodyText){
     const row = document.createElement('div'); row.className = 'row ' + klass;
-    const ts = document.createElement('span'); ts.className = 'ts mono'; ts.textContent = tsText;
+    const ts = document.createElement('span'); ts.className = 'ts'; ts.textContent = tsText;
     const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = bodyText;
     row.appendChild(ts); row.appendChild(msg); return row;
   }
@@ -285,7 +285,6 @@
 
   // 소켓 이벤트
   socket.on('connect', ()=>{
-    // 자동 인증 시도(입력되어 있으면)
     if (battleId.value && adminOtp.value) {
       socket.emit('auth', { battle: battleId.value, token: adminOtp.value, role:'admin' }, (ack)=>{
         if (!ack || !ack.ok) { alert('인증 실패'); return; }
@@ -341,15 +340,21 @@
     const name = $('pName').value.trim();
     const team = $('pTeam').value;
     const stats = { attack: Number($('pAtk').value||3), defense:Number($('pDef').value||3), agility:Number($('pAgi').value||3), luck:Number($('pLuck').value||3) };
-    const item = $('pItem').value;
-    const inventory = item ? [item] : [];
     if (!name) return alert('이름을 입력하세요');
+
+    const inv = {};
+    itemsGrid.querySelectorAll('input[type="number"]').forEach(inp=>{
+      const n = inp.dataset.item; const q = Math.max(0, Math.floor(Number(inp.value || 0)));
+      if (q > 0) inv[n] = q;
+    });
+
     const r = await fetch(`/api/battles/${battleId.value}/players`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, team, stats, inventory })
+      body: JSON.stringify({ name, team, stats, inventory: inv })
     });
     if (!r.ok) { const t = await r.text().catch(()=> ''); alert('추가 실패: '+t); return; }
-    $('pName').value=''; $('pItem').value='';
+
+    $('pName').value=''; buildItemsUI();
   };
 
   $('btnLinks').onclick = async ()=>{
