@@ -8,21 +8,20 @@
 <script src="/socket.io/socket.io.js"></script>
 <style>
   :root{
-    /* 네이비 + 골드 고정 팔레트 */
-    --bg-0:#05090f;
-    --bg-1:#081223;
-    --bg-2:#0b172d;
-    --glass:#0e1a33cc;
-    --glass-2:#122242cc;
-    --border:#1f2b46;
-    --border-2:#162139;
+    /* 네이비 + 골드 팔레트 */
+    --navy:#001E35;
+    --navy-0:#001528;
+    --navy-1:#012443;
+    --glass:#05223fcc;
+    --glass-2:#062846cc;
+    --border:#0b2a4a;
+    --border-2:#0a355e;
 
-    --ink:#e9e3d0;
-    --ink-dim:#cfc7b2;
-    --muted:#9fb0d1;
+    --ink:#F2F1ED;
+    --muted:#BFD0E1;
 
-    --gold:#c9a96e;
-    --gold-2:#e6d2a6;
+    --gold:#D4BA8D;
+    --gold-2:#E5D7BE;
 
     --blur: blur(12px) saturate(120%);
     --lift: 0 14px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.03);
@@ -34,57 +33,53 @@
     margin:0; color:var(--ink);
     font-family:"Noto Sans KR", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
     background:
-      radial-gradient(1200px 600px at 20% -10%, rgba(201,169,110,.10), transparent 60%),
-      linear-gradient(180deg, #020509 0%, #051021 40%, #0a1830 100%);
+      radial-gradient(1200px 600px at 20% -10%, rgba(212,186,141,.10), transparent 60%),
+      linear-gradient(180deg, var(--navy-0) 0%, var(--navy) 40%, var(--navy-1) 100%);
   }
 
-  /* 헤더(브랜딩) */
   header{position:relative; padding:18px 16px 8px 16px}
   header::before{
     content:""; position:absolute; inset:-35% -10% auto -10%; height:320px;
-    background:conic-gradient(from 0deg, rgba(201,169,110,.18), rgba(201,169,110,.03), rgba(201,169,110,.18));
+    background:conic-gradient(from 0deg, rgba(212,186,141,.20), rgba(212,186,141,.05), rgba(212,186,141,.20));
     filter:blur(48px); animation:spin 36s linear infinite; opacity:.55; pointer-events:none;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
-
   .wrap{max-width:1280px; margin:0 auto}
   .brand{
     font-family:"Cinzel", serif; font-weight:900; letter-spacing:.06em;
-    font-size:30px; position:relative; display:inline-block;
+    font-size:30px; display:inline-block;
     background:linear-gradient(180deg,var(--gold-2),var(--gold));
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
 
-  /* 메인 3열 스테이지 */
+  /* 그리드 레이아웃 */
   .stage{display:grid; grid-template-columns:260px 1fr 260px; gap:14px; padding:12px 16px}
   @media (max-width:1100px){ .stage{grid-template-columns:1fr} }
 
-  /* 카드 */
   .card{
     background:linear-gradient(180deg,var(--glass),var(--glass-2));
     border:1px solid var(--border); border-top:1px solid rgba(255,255,255,.05);
     border-radius:16px; padding:12px; backdrop-filter:var(--blur); box-shadow:var(--lift);
   }
 
-  /* 좌/우 팀 리스트 */
+  /* 좌/우 팀 패널 */
   .side{display:flex; flex-direction:column; gap:10px}
-  .unit{display:flex; gap:10px; align-items:center; border:1px solid var(--border); border-radius:12px; padding:8px; background:#0f1d39}
+  .unit{display:flex; gap:10px; align-items:center; border:1px solid var(--border); border-radius:12px; padding:8px; background:#05243f}
   .unit .avatar{width:44px; height:44px; border-radius:8px; background:#0b1630 center/cover no-repeat; border:1px solid var(--border)}
   .unit .meta{flex:1}
-  .hpbar{height:8px;background:#172642;border-radius:8px;overflow:hidden;margin-top:4px}
-  .hpbar>span{display:block;height:100%;background:linear-gradient(90deg,#58a7ff,#67e8f9)}
-  .unit.active{outline:2px solid rgba(201,169,110,.4)}
+  .hpbar{height:8px;background:#0a2a4a;border-radius:8px;overflow:hidden;margin-top:4px}
+  .hpbar>span{display:block;height:100%;background:linear-gradient(90deg,#4aa3ff,#6ee7f9)}
+  .unit.active{outline:2px solid rgba(212,186,141,.45)}
   .unit.dead{opacity:.55}
 
-  /* 중앙 레이아웃 */
-  .center{display:grid; grid-template-rows:auto auto 200px 280px 220px; gap:12px}
-  @media (max-width:1100px){ .center{grid-template-rows:auto auto 200px 300px 240px} }
+  /* 중앙 */
+  .center{display:grid; grid-template-rows:auto 260px 220px; gap:12px}
+  @media (max-width:1100px){ .center{grid-template-rows:auto 260px 240px} }
 
-  /* 액티브 포트레이트(반신) */
   .portrait{
     position:relative; min-height:200px; display:flex; align-items:flex-end; justify-content:center;
     border:1px solid var(--border); border-radius:16px;
-    background:linear-gradient(180deg,#0a1224,#0a1224);
+    background:linear-gradient(180deg,#031b30,#031b30);
     overflow:hidden;
   }
   .portrait .img{
@@ -98,29 +93,41 @@
     font-weight:700; color:var(--gold);
   }
   .portrait .stats{
-    position:absolute; bottom:12px; left:12px; right:12px; display:flex; gap:12px; flex-wrap:wrap; color:#cfd6ea; font-size:14px;
-    background:#0c162eaa; border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+    position:absolute; bottom:12px; left:12px; right:12px; display:flex; gap:12px; flex-wrap:wrap; color:#dfe9f4; font-size:14px;
+    background:#05243faa; border:1px solid var(--border); border-radius:10px; padding:8px 10px;
   }
 
-  /* 응원 패널 */
-  .cheers .btn{
+  /* 채팅/로그 뷰 (읽기 전용) */
+  .view{height:100%; overflow:auto; background:#061c33; border:1px solid var(--border); border-radius:12px; padding:10px}
+  .line{display:flex; gap:8px; align-items:baseline; margin-bottom:6px}
+  .ts{font-size:11px;color:#8fb0ce;min-width:54px;flex:0 0 auto}
+
+  .view::-webkit-scrollbar{height:10px;width:10px}
+  .view::-webkit-scrollbar-track{background:#051628;border-radius:10px}
+  .view::-webkit-scrollbar-thumb{background:#0f335a;border-radius:10px;border:2px solid #051628}
+
+  /* 응원 프리셋 */
+  .cheers{display:flex; gap:8px; flex-wrap:wrap}
+  .btn{
     border:1px solid var(--border-2); color:var(--ink);
-    background:linear-gradient(180deg,#213456,#172a4a);
+    background:linear-gradient(180deg,#0c3458,#092a4b);
     padding:10px 12px; border-radius:12px; cursor:pointer; position:relative; overflow:hidden;
     transition:transform .15s ease, box-shadow .15s ease;
   }
-  .cheers .btn:hover{transform:translateY(-1px)}
-  .cheers .row{display:flex; flex-wrap:wrap; gap:8px}
-  .hint{color:#aeb7cf; font-size:12px}
+  .btn:hover{transform:translateY(-1px)}
+  .btn.gold{border-color:#7b694d; background:linear-gradient(180deg,#E5D7BE,#D4BA8D); color:#2a200f}
+  .btn[disabled]{opacity:.55; cursor:not-allowed}
 
-  /* 채팅, 로그 */
-  .chat, .logs{height:100%; overflow:auto; background:#0b1630; border:1px solid var(--border); border-radius:12px; padding:10px}
-  .ts{font-size:11px;color:#8aa0c2;min-width:54px;flex:0 0 auto}
-  .line{display:flex; gap:8px; align-items:baseline; margin-bottom:6px}
-
-  .chat::-webkit-scrollbar, .logs::-webkit-scrollbar{height:10px;width:10px}
-  .chat::-webkit-scrollbar-track, .logs::-webkit-scrollbar-track{background:#0b1426;border-radius:10px}
-  .chat::-webkit-scrollbar-thumb, .logs::-webkit-scrollbar-thumb{background:#1e2d4f;border-radius:10px;border:2px solid #0b1426}
+  /* 인증 폼 */
+  .auth{
+    display:none; gap:10px; align-items:end; flex-wrap:wrap;
+    border:1px solid var(--border); border-radius:12px; padding:10px; background:#05243f
+  }
+  .field{display:flex; flex-direction:column; gap:6px}
+  .input, .select{
+    padding:10px 12px; border-radius:10px; background:#05243f; color:var(--ink); border:1px solid var(--border);
+  }
+  .input:focus, .select:focus{outline:1px solid var(--gold); box-shadow:0 0 0 3px rgba(212,186,141,.18)}
 </style>
 </head>
 <body>
@@ -131,55 +138,53 @@
 </header>
 
 <main class="wrap stage">
-  <!-- 좌측: 팀1 -->
+  <!-- 좌측: 팀1(불사조 기사단) -->
   <aside class="side" id="teamLeft"></aside>
 
   <!-- 중앙 -->
   <section class="center">
-    <!-- 액티브 포트레이트 -->
+    <!-- 인증 폼 (URL 파라미터 없을 때 표시) -->
+    <div class="card auth" id="authBox">
+      <div class="field">
+        <label for="aBattle">전투 ID</label>
+        <input id="aBattle" class="input" placeholder="battle_xxxxx" />
+      </div>
+      <div class="field">
+        <label for="aToken">관전자 OTP</label>
+        <input id="aToken" class="input" placeholder="관전자 OTP" />
+      </div>
+      <div class="field" style="min-width:220px">
+        <label for="aName">표시 이름</label>
+        <input id="aName" class="input" placeholder="관전자 이름" />
+      </div>
+      <button id="aJoin" class="btn gold">입장</button>
+    </div>
+
     <div class="card portrait" id="portrait">
       <div class="nameplate">
         <div id="turnInfo">대기중</div>
-        <div id="modeInfo" style="color:#cfd6ea; font-weight:600"></div>
+        <div id="modeInfo" style="color:#dfe9f4; font-weight:600"></div>
       </div>
       <div class="img" id="portraitImg" style="display:none"></div>
       <div class="stats" id="portraitStats" style="display:none"></div>
     </div>
 
-    <!-- 관전자 정보 -->
-    <div class="card" id="viewerCard">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap">
-        <div>
-          <div id="viewerName" style="font-weight:800; color:var(--gold)"></div>
-          <div id="viewerInfo" class="hint"></div>
-        </div>
-        <div class="hint">관전은 채팅 대신 응원 버튼만 전송됩니다.</div>
-      </div>
-    </div>
-
-    <!-- 응원 버튼 -->
-    <div class="card cheers">
-      <div class="row">
-        <button class="btn" data-cheer="힘내!">힘내!</button>
+    <div class="card" style="display:grid; grid-template-rows:auto 1fr">
+      <div class="cheers">
+        <button class="btn gold" data-cheer="힘내!">힘내!</button>
         <button class="btn" data-cheer="지지마!">지지마!</button>
         <button class="btn" data-cheer="이길 수 있어!">이길 수 있어!</button>
         <button class="btn" data-cheer="포기하지 마!">포기하지 마!</button>
       </div>
-      <div class="hint" style="margin-top:6px">허용된 문구만 전송됩니다.</div>
+      <div id="chat" class="view" aria-label="채팅(읽기 전용)"></div>
     </div>
 
-    <!-- 채팅(읽기 전용) -->
     <div class="card">
-      <div id="chat" class="chat"></div>
-    </div>
-
-    <!-- 전투 로그 -->
-    <div class="card">
-      <div id="logs" class="logs"></div>
+      <div id="logs" class="view" aria-label="전투 로그"></div>
     </div>
   </section>
 
-  <!-- 우측: 팀2 -->
+  <!-- 우측: 팀2(죽음을 먹는 자들) -->
   <aside class="side" id="teamRight"></aside>
 </main>
 
@@ -187,7 +192,6 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
 
-  // DOM
   const teamLeft  = $('teamLeft');
   const teamRight = $('teamRight');
   const portrait  = $('portrait');
@@ -195,34 +199,52 @@
   const portraitStats = $('portraitStats');
   const turnInfo  = $('turnInfo');
   const modeInfo  = $('modeInfo');
-  const viewerName = $('viewerName');
-  const viewerInfo = $('viewerInfo');
 
   const chatEl = $('chat');
   const logsEl = $('logs');
 
-  // 소켓 & 상태
+  const authBox = $('authBox'), aBattle=$('aBattle'), aToken=$('aToken'), aName=$('aName'), aJoin=$('aJoin');
+
   const socket = io({ path: '/socket.io/' });
   let state = null;
 
-  // 쿼리 인증
+  // URL 파라미터 → 자동 인증
   const qs = new URLSearchParams(location.search);
-  const battle = qs.get('battle');
-  const token  = qs.get('token');
-  const name   = qs.get('name') || '관전자';
+  let battle = qs.get('battle') || '';
+  let token  = qs.get('token')  || '';
+  let name   = qs.get('name')   || '';
 
-  viewerName.textContent = name;
-  viewerInfo.textContent = '관전 중';
+  if (!battle || !token || !name) {
+    authBox.style.display = 'flex';
+  } else {
+    tryAuth(battle, token, name);
+  }
 
+  aJoin.onclick = ()=>{
+    const b=aBattle.value.trim(), t=aToken.value.trim(), n=aName.value.trim();
+    if (!b || !t || !n) return alert('전투 ID / 관전자 OTP / 이름을 입력하세요');
+    tryAuth(b,t,n);
+  };
+
+  function tryAuth(b,t,n){
+    socket.emit('auth', { battle:b, token:t, role:'spectator', name:n }, (ack)=>{
+      if (!ack || !ack.ok) { alert('인증 실패'); return; }
+      authBox.style.display = 'none';
+      battle=b; token=t; name=n;
+      state = ack.state;
+      renderAll();
+    });
+  }
+
+  // 공통 포맷
   function fmtTs(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour12:false}); }catch{return '--:--:--';} }
-
   function appendChat(m){
     const row = document.createElement('div'); row.className='line';
     const ts = document.createElement('span'); ts.className='ts'; ts.textContent = fmtTs(m.ts||Date.now());
     const body = document.createElement('span');
     if (m.type === 'system')      body.textContent = '[시스템] ' + m.text;
     else if (m.type === 'cheer')  body.textContent = '[응원] ' + (m.from||'관전자') + ': ' + m.text;
-    else if (m.type === 'chat')   body.textContent = '[' + (m.channel==='team'?'팀':'전체') + '] ' + (m.from||'익명') + ': ' + (m.text||m.message||'');
+    else if (m.type === 'chat')   body.textContent = '[전체] ' + (m.from||'') + ': ' + (m.text||m.message||'');
     else                          body.textContent = m.text || JSON.stringify(m);
     row.appendChild(ts); row.appendChild(body);
     chatEl.appendChild(row); chatEl.scrollTop = chatEl.scrollHeight;
@@ -235,17 +257,14 @@
     logsEl.appendChild(row); logsEl.scrollTop = logsEl.scrollHeight;
   }
 
-  function byTeam(team){ return Object.values(state.players||{}).filter(p=>p.team===team); }
-
+  // 렌더링
+  function hpPct(p){ return Math.max(0, Math.min(100, Math.round((p.hp/p.maxHp)*100))); }
   function currentActorPid(){
     const t = state && state.turn;
     if (!t) return null;
     if (Array.isArray(t.pending) && t.pending.length) return t.pending[0];
     return null;
   }
-
-  function hpPct(p){ return Math.max(0, Math.min(100, Math.round((p.hp/p.maxHp)*100))); }
-
   function smallUnit(p){
     const el = document.createElement('div'); el.className='unit' + (p.alive?'':' dead');
     if (currentActorPid() === p.id) el.classList.add('active');
@@ -257,22 +276,23 @@
     const meta = document.createElement('div'); meta.className='meta';
     const nm = document.createElement('div'); nm.style.fontWeight='700'; nm.textContent = p.name + (p.alive?'':' (불능)');
     const bar = document.createElement('div'); bar.className='hpbar'; const span = document.createElement('span'); span.style.width = hpPct(p)+'%'; bar.appendChild(span);
-    const st = document.createElement('div'); st.style.color='#aeb7cf'; st.style.fontSize='12px';
+    const st = document.createElement('div'); st.style.color='#c7d7e6'; st.style.fontSize='12px';
     st.textContent = `공격 ${p.stats.attack} / 방어 ${p.stats.defense} / 민첩 ${p.stats.agility} / 행운 ${p.stats.luck}`;
     meta.appendChild(nm); meta.appendChild(bar); meta.appendChild(st);
     el.appendChild(meta);
     return el;
   }
-
+  function byTeam(team){ return Object.values(state.players||{}).filter(p=>p.team===team); }
   function renderSides(){
+    const left = byTeam('team1'), right = byTeam('team2');
     teamLeft.innerHTML=''; teamRight.innerHTML='';
-    byTeam('team1').forEach(p=>teamLeft.appendChild(smallUnit(p)));
-    byTeam('team2').forEach(p=>teamRight.appendChild(smallUnit(p)));
+    left.forEach(p=> teamLeft.appendChild(smallUnit(p)));
+    right.forEach(p=> teamRight.appendChild(smallUnit(p)));
   }
-
   function renderPortrait(){
     const pid = currentActorPid();
     const p = pid ? state.players[pid] : null;
+
     const dir = p && p.team==='team2' ? 'right' : 'left';
     portrait.classList.toggle('left',  dir==='left');
     portrait.classList.toggle('right', dir==='right');
@@ -303,7 +323,6 @@
       portraitStats.innerHTML = '';
     }
   }
-
   function renderLogsFromState(){
     logsEl.innerHTML = '';
     (state.chat||[]).slice(-200).forEach(m=>{
@@ -312,7 +331,6 @@
       }
     });
   }
-
   function renderAll(){
     if (!state) return;
     renderSides();
@@ -320,25 +338,20 @@
     renderLogsFromState();
   }
 
-  // 소켓 인증
-  socket.on('connect', ()=>{
-    socket.emit('auth', { battle, token, role:'spectator', name }, (ack)=>{
-      if (!ack || !ack.ok) { alert('인증 실패'); return; }
-      state = ack.state;
-      renderAll();
-    });
-  });
-
-  socket.on('state', s => { state = s; renderAll(); });
+  // 소켓 수신
+  socket.on('state', s => { state=s; renderAll(); });
   socket.on('chat', appendChat);
+  socket.on('chatError', txt => alert(txt));
 
-  // 응원 버튼
+  // 응원 프리셋 전송
   document.querySelectorAll('[data-cheer]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const phrase = btn.getAttribute('data-cheer');
-      // 관전자 전용 이벤트 가정: cheer
-      socket.emit('cheer', { text: phrase }, (ack)=>{
-        if (ack && ack.error) alert('전송 실패: ' + ack.error);
+      const text = btn.dataset.cheer;
+      // 서버에 cheer 이벤트가 있는 경우 우선 사용, 실패 시 chatMessage(kind: 'cheer')로 폴백
+      socket.emit('cheer', { text }, (ack)=>{
+        if (!ack || !ack.ok){
+          socket.emit('chatMessage', { message:text, channel:'all', kind:'cheer' }, ()=>{});
+        }
       });
     });
   });
