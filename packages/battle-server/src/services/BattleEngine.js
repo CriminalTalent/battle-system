@@ -1,24 +1,16 @@
 // packages/battle-server/src/services/BattleEngine.js
-// 엔진: 전투 생성/인증/로스터/턴/행동(간략)/링크 생성
-// CommonJS 내보내기 (server/index.js: const BattleEngine = require('./src/services/BattleEngine');)
 const crypto = require('crypto');
 
-function rid(len = 12) {
-  return crypto.randomBytes(len).toString('hex');
-}
+function rid(len = 12) { return crypto.randomBytes(len).toString('hex'); }
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function now() { return Date.now(); }
 
 class BattleEngine {
   constructor(opts = {}) {
     this.opts = Object.assign({ spectatorOtpTtlMs: 30 * 60 * 1000 }, opts);
-    /** @type {Map<string, any>} */
     this.battles = new Map();
   }
 
-  // -----------------------------
-  // 생성/조회
-  // -----------------------------
   createBattle(mode = '1v1') {
     const caps = { '1v1': 1, '2v2': 2, '3v3': 3, '4v4': 4 };
     const playersPerTeam = caps[mode] || 1;
@@ -35,29 +27,19 @@ class BattleEngine {
       endsAt: null,
       teams: { team1: '불사조 기사단', team2: '죽음을 먹는 자들' },
 
-      // 로스터
-      players: /** @type {Record<string, any>} */ ({}),
-
-      // 턴/라운드
+      players: {},
       turn: { turnIndex: 0, frameIndex: 0, framePlan: [], pending: [] },
-
-      // 로그/채팅
       chat: [],
-
-      // 설정
       config: { playersPerTeam },
 
-      // OTP/토큰
       otp: {
         admin: rid(12),
-        // 관전자 OTP는 30분 만료
         spectator: { value: rid(12), issuedAt: ts, ttlMs: this.opts.spectatorOtpTtlMs },
-        // 플레이어별 링크용 일회성 토큰 저장소
-        player: /** @type {Record<string,string>} */ ({})
+        player: {}
       },
 
-      // 아바타(선택, base64 dataURL)
-      avatars: /** @type {Record<string,string|null>} */ ({})
+      // pid -> dataURL
+      avatars: {}
     };
 
     this.battles.set(id, battle);
@@ -66,28 +48,30 @@ class BattleEngine {
 
   getBattle(id) { return this.battles.get(id) || null; }
 
+  // players에 avatar를 포함해서 반환
   getPublicState(id) {
     const b = this.getBattle(id);
     if (!b) return null;
+    const players = {};
+    for (const [pid, p] of Object.entries(b.players)) {
+      players[pid] = Object.assign({}, p, { avatar: b.avatars[pid] || null });
+    }
     return {
       id: b.id, mode: b.mode, status: b.status,
       createdAt: b.createdAt, startedAt: b.startedAt, endsAt: b.endsAt,
       teams: { team1: b.teams.team1, team2: b.teams.team2 },
-      players: b.players,
+      players,
       turn: b.turn,
       chat: b.chat
     };
   }
 
-  // -----------------------------
-  // 인증
-  // -----------------------------
   adminAuth(id, token) {
     const b = this.getBattle(id);
     if (!b) return { ok: false, message: '전투 없음' };
     if (b.otp.admin !== token) return { ok: false, message: 'OTP 불일치' };
     return { ok: true, state: this.getPublicState(id) };
-    }
+  }
 
   spectatorAuth(id, token, name) {
     const b = this.getBattle(id);
@@ -101,30 +85,24 @@ class BattleEngine {
   playerAuthByName(id, token, name) {
     const b = this.getBattle(id);
     if (!b) return { ok: false, message: '전투 없음' };
-    // 플레이어별 링크를 생성하면 b.otp.player[pid] 에 토큰이 저장됨.
-    const p = Object.values(b.players).find((x) => x.name === name);
+    const p = Object.values(b.players).find(x => x.name === name);
     if (!p) return { ok: false, message: '해당 이름의 플레이어 없음' };
     const pt = b.otp.player[p.id];
     if (!pt || pt !== token) return { ok: false, message: '플레이어 OTP 불일치' };
     return { ok: true, state: this.getPublicState(id), selfPid: p.id };
   }
 
-  // -----------------------------
-  // 로스터
-  // -----------------------------
   addPlayer(id, payload) {
     const b = this.getBattle(id);
     if (!b) throw new Error('전투 없음');
     if (b.status !== 'waiting') throw new Error('이미 시작된 전투');
 
-    const { name, team, stats, inventory = [], imageUrl = '' } = payload || {};
+    const { name, team, stats, inventory = [] } = payload || {};
     if (!name || !['team1', 'team2'].includes(team)) throw new Error('이름/팀 필수');
 
-    // 중복 이름 금지
-    if (Object.values(b.players).some((p) => p.name === name)) throw new Error('중복된 이름');
+    if (Object.values(b.players).some(p => p.name === name)) throw new Error('중복된 이름');
 
-    // 팀 수용 인원 체크
-    const teamCount = Object.values(b.players).filter((p) => p.team === team).length;
+    const teamCount = Object.values(b.players).filter(p => p.team === team).length;
     if (teamCount >= b.config.playersPerTeam) throw new Error('해당 팀 가득 참');
 
     const pid = `p_${rid(5)}`;
@@ -139,8 +117,7 @@ class BattleEngine {
       buffs: {}
     };
     b.players[pid] = pl;
-
-    // 기본 공격 순서(라운드마다 팀1 전체 -> 팀2 전체). 시작 시 계산됨.
+    // avatar는 별도 저장소(b.avatars)에 저장, state에서 합쳐줌
     this.rebuildOrder(b);
     return { ok: true, player: pl };
   }
@@ -151,18 +128,15 @@ class BattleEngine {
     if (b.status !== 'waiting') throw new Error('이미 시작된 전투');
     if (!b.players[pid]) throw new Error('플레이어 없음');
     delete b.players[pid];
+    delete b.avatars[pid];
     this.rebuildOrder(b);
     return { ok: true };
   }
 
-  // -----------------------------
-  // 아바타 (base64 dataURL, 2MB 제한)
-  // -----------------------------
   setPlayerAvatar(id, pid, dataUrl) {
     const b = this.getBattle(id);
     if (!b) throw new Error('전투 없음');
-    const p = b.players[pid];
-    if (!p) throw new Error('플레이어 없음');
+    if (!b.players[pid]) throw new Error('플레이어 없음');
 
     if (typeof dataUrl !== 'string' || !/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(dataUrl))
       throw new Error('잘못된 이미지 데이터');
@@ -174,9 +148,6 @@ class BattleEngine {
     return { ok: true };
   }
 
-  // -----------------------------
-  // 링크 생성 (플레이어별)
-  // -----------------------------
   generatePlayerLinks(id, publicBaseUrl) {
     const b = this.getBattle(id);
     if (!b) throw new Error('전투 없음');
@@ -194,7 +165,6 @@ class BattleEngine {
       playerLinks.push({ id: p.id, name: p.name, url: url.toString() });
     }
 
-    // 관전 링크도 함께 제공
     const wurl = new URL((publicBaseUrl || '').trim() || 'http://localhost');
     wurl.pathname = '/watch';
     wurl.searchParams.set('battle', id);
@@ -204,15 +174,11 @@ class BattleEngine {
     return { ok: true, playerLinks, urls: { watch: wurl.toString() } };
   }
 
-  // -----------------------------
-  // 전투 제어
-  // -----------------------------
   startBattle(id) {
     const b = this.getBattle(id);
     if (!b) throw new Error('전투 없음');
     if (b.status !== 'waiting') throw new Error('이미 시작됨');
 
-    // 최소 1:1 조건
     const t1 = Object.values(b.players).filter(p => p.team === 'team1').length;
     const t2 = Object.values(b.players).filter(p => p.team === 'team2').length;
     if (!t1 || !t2) throw new Error('각 팀에 최소 1명 필요');
@@ -240,13 +206,9 @@ class BattleEngine {
     return { ok: true };
   }
 
-  // -----------------------------
-  // 턴/행동(간략한 해석)
-  // -----------------------------
   rebuildOrder(b) {
     const t1 = Object.values(b.players).filter(p => p.alive && p.team === 'team1');
     const t2 = Object.values(b.players).filter(p => p.alive && p.team === 'team2');
-    // A팀1 -> A팀2 -> B팀1 -> B팀2 순서 (팀별 정렬은 생성 순)
     const order = [...t1.map(p=>p.id), ...t2.map(p=>p.id)];
     b.turn.framePlan = order;
     b.turn.pending = order.slice();
@@ -273,7 +235,6 @@ class BattleEngine {
     if (kind === 'attack') {
       const target = b.players[action.targetPid];
       if (!target || !target.alive) throw new Error('대상 없음');
-      // 간략한 피해 계산: 공격(+버프) - 방어(+버프)
       const atkMul = me.buffs.atk ? 1.5 : 1.0;
       const defMul = target.buffs.def ? 1.5 : 1.0;
       const base = clamp(Math.round(10 + me.stats.attack * 3 * atkMul - target.stats.defense * 2 * defMul), 1, 50);
@@ -291,7 +252,7 @@ class BattleEngine {
     } else if (kind === 'useItem') {
       const item = action.item;
       if (!['디터니','공격 보정기','방어 보정기'].includes(item)) throw new Error('허용되지 않은 아이템');
-      // 인벤토리: 배열 또는 카운트 object 둘 다 허용
+
       let has = 0;
       if (Array.isArray(me.inventory)) has = me.inventory.filter(x=>x===item).length;
       else if (me.inventory && typeof me.inventory==='object') has = +me.inventory[item] || 0;
@@ -321,24 +282,17 @@ class BattleEngine {
       throw new Error('알 수 없는 행동');
     }
 
-    // 다음 대기열
     b.turn.pending.shift();
     b.turn.frameIndex++;
     if (b.turn.pending.length === 0) {
-      // 턴 종료 → 다음 라운드
       b.turn.turnIndex++;
-      // 1턴 버프/회피 해제
       Object.values(b.players).forEach(p => { p.isDodging=false; p.buffs.atk=false; p.buffs.def=false; });
       this.rebuildOrder(b);
     }
-    // 승패 확인
     this._checkEnd(b);
     return { ok:true, state:this.getPublicState(id) };
   }
 
-  // -----------------------------
-  // 채팅/응원 로그 (엔진은 저장만, 권한은 서버에서)
-  // -----------------------------
   pushChat(id, entry) {
     const b = this.getBattle(id);
     if (!b) throw new Error('전투 없음');
@@ -346,9 +300,6 @@ class BattleEngine {
     if (b.chat.length > 500) b.chat.splice(0, b.chat.length - 500);
   }
 
-  // -----------------------------
-  // 내부 유틸
-  // -----------------------------
   normalizeStats(s = {}) {
     return {
       attack: clamp(+s.attack || 3, 1, 10),
