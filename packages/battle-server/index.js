@@ -1,199 +1,266 @@
-// index.js - Battle Server Entry (PYXIS minimal)
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const { Server } = require('socket.io');
-const bodyParser = require('body-parser');
-const multer = require('multer');
-const fs = require('fs');
+/**
+ * PYXIS Battle Server — index.js (FULL)
+ * - 디자인/클라이언트 파일은 건드리지 않음
+ * - 브로드캐스트 모듈(src/socket/broadcast.js) 연결
+ * - REST 엔드포인트: 전투 생성, 플레이어 추가, 링크 생성
+ * - 정적 파일 제공: /pages/* -> /admin, /play, /watch
+ */
 
-// 채팅 모듈
-const { initChat } = require('./src/socket/chat');
+"use strict";
 
-// ──────────────────────────────────────────────
-// Express app
-// ──────────────────────────────────────────────
-const app = express();
-app.use(bodyParser.json());
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const multer = require("multer");
+const bodyParser = require("body-parser");
+const cors = require("cors");
 
-// 정적 파일
-const PUBLIC_DIR = path.join(__dirname, 'public');
-app.use(express.static(PUBLIC_DIR, { maxAge: '1m' }));
+// ────────────────────────────────────────────────────────────────
+// 0) 경로/상수
+// ────────────────────────────────────────────────────────────────
+const ROOT = __dirname;
+const PUBLIC_DIR = path.join(ROOT, "public");
+const PAGES_DIR = path.join(PUBLIC_DIR, "pages");
+const UPLOAD_DIR = path.join(ROOT, "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// SPA처럼 접근 가능하도록 편의 라우트
-app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/play', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'play.html')));
-app.get('/watch', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'watch.html')));
-
-// ──────────────────────────────────────────────
-/** In-memory Storage (데모용) */
-const battles = {}; // battleId -> state
-// ──────────────────────────────────────────────
-
-// Utils
-function newId(prefix) {
-  return `${prefix}_${Math.random().toString(36).slice(2, 11)}`;
-}
-function now() { return Date.now(); }
-
-// ──────────────────────────────────────────────
-// 파일 업로드 (아바타)
-// ──────────────────────────────────────────────
+// 파일 업로드(multer)
 const upload = multer({
-  dest: path.join(__dirname, 'uploads/'),
-  limits: { fileSize: 2 * 1024 * 1024 } // 2MB
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
-app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!battles[id]) return res.status(404).json({ ok: false, message: '전투 없음' });
-    if (!req.file) return res.status(400).json({ ok: false, message: '파일 없음' });
+// ────────────────────────────────────────────────────────────────
+// 1) 유틸
+// ────────────────────────────────────────────────────────────────
+function newId(prefix = "id") {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+function now() {
+  return Date.now();
+}
+function randomToken(len = 24) {
+  // URL-safe 토큰
+  return [...cryptoRandom(len)].join("");
+}
+function cryptoRandom(len) {
+  // base62
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const out = [];
+  for (let i = 0; i < len; i++) out.push(chars[Math.floor(Math.random() * chars.length)]);
+  return out;
+}
 
-    // 간단히 파일명만 저장 (실서비스는 정적 경로로 옮기는 것을 권장)
-    battles[id].avatar = req.file.filename;
-    res.json({ ok: true, file: req.file.filename });
-  } catch (e) {
-    console.error('[POST /api/battles/:id/avatar]', e);
-    res.status(500).json({ ok: false, message: '업로드 실패' });
+// ────────────────────────────────────────────────────────────────
+// 2) 앱/미들웨어
+// ────────────────────────────────────────────────────────────────
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 정적 파일 서비스
+app.use(express.static(PUBLIC_DIR, { index: false }));
+
+// ────────────────────────────────────────────────────────────────
+/**
+ * 3) 소켓 브로드캐스트 허브 부착
+ *    /src/socket/broadcast.js 의 attach(app, server?) 사용
+ */
+// ────────────────────────────────────────────────────────────────
+const { attach, battles } = require("./src/socket/broadcast");
+const { server, io } = attach(app); // app.listen 대신 attach가 만든 server 사용
+
+// ────────────────────────────────────────────────────────────────
+/**
+ * 4) 인메모리 전투 관리 (REST와 소켓이 공용으로 사용하는 최소 상태)
+ *    - 실제 엔진/DB가 있다면 여기 로직을 교체/연동하세요.
+ */
+// ────────────────────────────────────────────────────────────────
+/**
+ * battle 구조(메모리):
+ * {
+ *   status: 'idle' | 'started' | 'paused' | 'ended',
+ *   turn: number,
+ *   players: Map<playerId, {
+ *     id, name, team: 'phoenix' | 'eaters',
+ *     hp: number,
+ *     stats: { atk, def, dex, luk },
+ *     avatar?: string (url path),
+ *     token?: string (player OTP)
+ *   }>,
+ *   logs: string[],
+ *   spectatorToken?: string
+ * }
+ */
+
+// ────────────────────────────────────────────────────────────────
+// 5) REST API
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * 헬스체크
+ */
+app.get("/healthz", (req, res) => {
+  res.json({ ok: true, ts: now() });
+});
+
+/**
+ * 전투 생성 (관리자)
+ * POST /api/admin/battles
+ * body: { mode: '1v1'|'2v2'|'3v3'|'4v4' }  // 현재는 메타 정보로만 저장
+ * resp: { id, status, spectatorToken }
+ */
+app.post("/api/admin/battles", (req, res) => {
+  try {
+    const { mode = "1v1" } = req.body || {};
+    const id = newId("battle");
+    const spectatorToken = randomToken(16);
+
+    battles.set(id, {
+      status: "idle",
+      turn: 1,
+      mode,
+      players: new Map(),
+      logs: [],
+      spectatorToken,
+      createdAt: now(),
+    });
+
+    res.json({ id, status: "idle", spectatorToken });
+  } catch (err) {
+    console.error("create battle error:", err);
+    res.status(500).json({ error: "FAILED_TO_CREATE_BATTLE" });
   }
 });
 
-// ──────────────────────────────────────────────
-// Admin API
-// ──────────────────────────────────────────────
+/**
+ * 플레이어 추가
+ * POST /api/battles/:id/players
+ * form-data:
+ *  - name (string)
+ *  - team ('phoenix'|'eaters')
+ *  - stats (json string: {atk,def,dex,luk})
+ *  - items (json string: ['포션', ...])  // 현재 서버는 저장만, 디테일은 엔진에서 사용
+ *  - avatar (file, optional)
+ * resp: player 객체
+ */
+app.post("/api/battles/:id/players", upload.single("avatar"), (req, res) => {
+  const { id } = req.params;
+  const battle = battles.get(id);
+  if (!battle) {
+    if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(404).json({ error: "BATTLE_NOT_FOUND" });
+  }
 
-// 전투 생성: adminOtp + spectator token 포함
-app.post('/api/admin/battles', (req, res) => {
   try {
-    const { mode } = req.body || {};
-    if (!mode) return res.json({ ok: false, message: 'mode 필요' });
+    const name = String(req.body.name || "").trim();
+    const team = req.body.team === "phoenix" ? "phoenix" : "eaters";
+    const statsRaw = req.body.stats || "{}";
+    const itemsRaw = req.body.items || "[]";
 
-    const battleId = newId('battle');
-    const adminOtp = newId('admin');           // ✅ 관리자 OTP 생성
-    const spectatorOtp = newId('spec');        // 관전자 OTP
+    if (!name) throw new Error("NAME_REQUIRED");
 
-    battles[battleId] = {
-      id: battleId,
-      mode,
+    let stats = {};
+    try { stats = JSON.parse(statsRaw); } catch {}
+    const { atk = 3, def = 3, dex = 3, luk = 3 } = stats;
+
+    // 검증: 각 1~5, 총합 <= 30
+    const sum = (+atk) + (+def) + (+dex) + (+luk);
+    if ([atk, def, dex, luk].some((v) => v < 1 || v > 5)) {
+      throw new Error("STATS_RANGE_1_5");
+    }
+    if (sum > 30) throw new Error("STATS_SUM_MAX_30");
+
+    let items = [];
+    try { items = JSON.parse(itemsRaw); } catch {}
+
+    // 아바타 파일 경로 -> 정적 서빙 가능하도록 /uploads 상대경로 제공
+    let avatarUrl = "";
+    if (req.file) {
+      const rel = path.relative(PUBLIC_DIR, req.file.path); // ../uploads/abcd
+      // public 외부라면 직접 매핑: /uploads 경로 노출
+      avatarUrl = `/uploads/${path.basename(req.file.path)}`;
+      // /uploads 정적 노출(최초 1회)
+      if (!app._uploadsMounted) {
+        app.use("/uploads", express.static(UPLOAD_DIR, { index: false }));
+        app._uploadsMounted = true;
+      }
+    }
+
+    const pid = newId("player");
+    const token = randomToken(20);
+
+    const player = {
+      id: pid,
+      name,
+      team,
+      hp: 100,
+      stats: { atk: +atk, def: +def, dex: +dex, luk: +luk },
+      avatar: avatarUrl,
+      items,
+      token,
       createdAt: now(),
-      teamA: { name: '불사조 기사단', players: [] },
-      teamB: { name: '죽음을 먹는 자들', players: [] },
-      otp: {
-        admin: { value: adminOtp },            // ✅ 저장
-        players: {},                           // pid -> token (옵션)
-        spectator: { value: spectatorOtp }     // ✅ 저장
-      },
-      state: 'created'
     };
 
-    // ✅ 응답에 adminOtp 제공
-    res.json({ ok: true, battleId, adminOtp, spectatorOtp });
-  } catch (e) {
-    console.error('[POST /api/admin/battles]', e);
-    res.status(500).json({ ok: false, message: '생성 실패' });
+    battle.players.set(pid, player);
+
+    res.json(player);
+  } catch (err) {
+    console.error("add player error:", err);
+    if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+    res.status(400).json({ error: String(err.message || "INVALID_PLAYER") });
   }
 });
 
-// 전투 링크 발급 (플레이/관전/관리)
-app.post('/api/admin/battles/:id/links', (req, res) => {
-  try {
-    const { id } = req.params;
-    const b = battles[id];
-    if (!b) return res.status(404).json({ ok: false, message: '전투 없음' });
+/**
+ * 플레이어별 링크 생성
+ * GET /api/battles/:id/links
+ * resp: [ { id, name, token, player } ]
+ *  - 클라이언트는 `${origin}/play?battle=${id}&token=${token}&name=${encodeURIComponent(name)}`
+ *    형태로 링크를 만들어 사용
+ */
+app.get("/api/battles/:id/links", (req, res) => {
+  const { id } = req.params;
+  const battle = battles.get(id);
+  if (!battle) return res.status(404).json({ error: "BATTLE_NOT_FOUND" });
 
-    const base = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-
-    // 데모용: 1명의 플레이어 링크 샘플 생성
-    const pToken = newId('pTok');
-    const pid = newId('p');
-    b.otp.players[pid] = pToken;
-
-    const playUrl = new URL('/play', base);
-    playUrl.searchParams.set('battle', b.id);
-    playUrl.searchParams.set('token', pToken);
-    playUrl.searchParams.set('name', '플레이어');
-    playUrl.searchParams.set('pid', pid);
-
-    const watchUrl = new URL('/watch', base);
-    watchUrl.searchParams.set('battle', b.id);
-    watchUrl.searchParams.set('token', (b.otp && b.otp.spectator && b.otp.spectator.value) || '');
-
-    const adminUrl = new URL('/admin', base);
-    adminUrl.searchParams.set('battle', b.id);
-
-    res.json({
-      ok: true,
-      play: playUrl.toString(),
-      watch: watchUrl.toString(),
-      admin: adminUrl.toString()
-    });
-  } catch (e) {
-    console.error('[POST /api/admin/battles/:id/links]', e);
-    res.status(500).json({ ok: false, message: '링크 발급 실패' });
+  const out = [];
+  for (const p of battle.players.values()) {
+    // 플레이어 토큰이 없으면 새로 부여(안전)
+    if (!p.token) p.token = randomToken(20);
+    out.push({ id: p.id, name: p.name, token: p.token, player: p });
   }
+  res.json(out);
 });
 
-// 전투 시작/종료
-app.post('/api/admin/battles/:id/start', (req, res) => {
-  try {
-    const b = battles[req.params.id];
-    if (!b) return res.status(404).json({ ok: false, message: '전투 없음' });
-    b.state = 'started';
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[POST /api/admin/battles/:id/start]', e);
-    res.status(500).json({ ok: false, message: '시작 실패' });
-  }
+// ────────────────────────────────────────────────────────────────
+// 6) 페이지 라우팅 (정적 파일 그대로 사용; 디자인 불변)
+//    - /admin -> /public/pages/admin.html
+//    - /play  -> /public/pages/player.html
+//    - /watch -> /public/pages/spectator.html
+// ────────────────────────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.redirect("/admin");
 });
 
-app.post('/api/admin/battles/:id/end', (req, res) => {
-  try {
-    const b = battles[req.params.id];
-    if (!b) return res.status(404).json({ ok: false, message: '전투 없음' });
-    b.state = 'ended';
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[POST /api/admin/battles/:id/end]', e);
-    res.status(500).json({ ok: false, message: '종료 실패' });
-  }
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "admin.html"));
 });
 
-// 단순 헬스체크
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: now() }));
-
-// ──────────────────────────────────────────────
-// HTTP / Socket.IO
-// ──────────────────────────────────────────────
-const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-  transports: ['websocket', 'polling'],
-  pingInterval: 20000,
-  pingTimeout: 30000,
-  allowEIO3: true
+app.get("/play", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "player.html"));
 });
 
-// 채팅 초기화 (파일 로그로 기록)
-initChat(io, {
-  pushChat: (battleId, entry) => {
-    try {
-      const dir = path.join(__dirname, 'logs');
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, `chat-${battleId}.log`);
-      fs.appendFileSync(file, JSON.stringify(entry) + '\n');
-    } catch (e) {
-      console.error('[chatLogWrite]', e);
-    }
-  }
+app.get("/watch", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "spectator.html"));
 });
 
-// ──────────────────────────────────────────────
-// Start
-// ──────────────────────────────────────────────
-const PORT = Number(process.env.PORT || 3001);
-httpServer.listen(PORT, () => {
-  console.log(`Battle server on http://0.0.0.0:${PORT}`);
-  console.log(`Static root: ${PUBLIC_DIR}`);
-  console.log('Access pages: /admin  /play  /watch');
+// ────────────────────────────────────────────────────────────────
+// 7) 서버 시작
+//    attach(app) 가 만든 server를 사용. 포트만 정하면 됨.
+// ────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`[PYXIS] server listening on :${PORT}`);
 });
