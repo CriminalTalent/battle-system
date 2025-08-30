@@ -1,251 +1,266 @@
-// PYXIS Socket Handler - 완전히 새로운 소켓 이벤트 핸들러
-const adminHandler = require('./handlers/adminHandler');
-const playerHandler = require('./handlers/playerHandler');
-const spectatorHandler = require('./handlers/spectatorHandler');
-const chatHandler = require('./handlers/chatHandler');
-const broadcastManager = require('./broadcast/broadcastManager');
+/**
+ * PYXIS Battle Server — index.js (FULL)
+ * - 디자인/클라이언트 파일은 건드리지 않음
+ * - 브로드캐스트 모듈(src/socket/broadcast.js) 연결
+ * - REST 엔드포인트: 전투 생성, 플레이어 추가, 링크 생성
+ * - 정적 파일 제공: /pages/* -> /admin, /play, /watch
+ */
 
-// 전투 로직 (선택적)
-let battleEngine = null;
-try {
-  battleEngine = require('../services/BattleEngine');
-} catch (e) {
-  console.warn('[Socket] BattleEngine not found, using mock');
+"use strict";
+
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const multer = require("multer");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+
+// ────────────────────────────────────────────────────────────────
+// 0) 경로/상수
+// ────────────────────────────────────────────────────────────────
+const ROOT = __dirname;
+const PUBLIC_DIR = path.join(ROOT, "public");
+const PAGES_DIR = path.join(PUBLIC_DIR, "pages");
+const UPLOAD_DIR = path.join(ROOT, "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+// 파일 업로드(multer)
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+// ────────────────────────────────────────────────────────────────
+// 1) 유틸
+// ────────────────────────────────────────────────────────────────
+function newId(prefix = "id") {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+function now() {
+  return Date.now();
+}
+function randomToken(len = 24) {
+  // URL-safe 토큰
+  return [...cryptoRandom(len)].join("");
+}
+function cryptoRandom(len) {
+  // base62
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const out = [];
+  for (let i = 0; i < len; i++) out.push(chars[Math.floor(Math.random() * chars.length)]);
+  return out;
 }
 
-module.exports = function initSocket(io) {
-  console.log('[Socket] Initializing PYXIS Socket System');
+// ────────────────────────────────────────────────────────────────
+// 2) 앱/미들웨어
+// ────────────────────────────────────────────────────────────────
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 
-  // 브로드캐스트 매니저 초기화
-  broadcastManager.init(io);
+// 정적 파일 서비스
+app.use(express.static(PUBLIC_DIR, { index: false }));
 
-  // 소켓 연결 처리
-  io.on('connection', (socket) => {
-    console.log(`[Socket] New connection: ${socket.id}`);
+// ────────────────────────────────────────────────────────────────
+/**
+ * 3) 소켓 브로드캐스트 허브 부착
+ *    /src/socket/broadcast.js 의 attach(app, server?) 사용
+ */
+// ────────────────────────────────────────────────────────────────
+const { attach, battles } = require("./src/socket/broadcast");
+const { server, io } = attach(app); // app.listen 대신 attach가 만든 server 사용
 
-    // 소켓 인증 정보 초기화
-    socket.auth = {
-      battleId: null,
-      role: null,        // 'admin' | 'player' | 'spectator'
-      playerId: null,
-      spectatorName: null,
-      teamKey: null,     // 'team1' | 'team2'
-      authenticated: false
+// ────────────────────────────────────────────────────────────────
+/**
+ * 4) 인메모리 전투 관리 (REST와 소켓이 공용으로 사용하는 최소 상태)
+ *    - 실제 엔진/DB가 있다면 여기 로직을 교체/연동하세요.
+ */
+// ────────────────────────────────────────────────────────────────
+/**
+ * battle 구조(메모리):
+ * {
+ *   status: 'idle' | 'started' | 'paused' | 'ended',
+ *   turn: number,
+ *   players: Map<playerId, {
+ *     id, name, team: 'phoenix' | 'eaters',
+ *     hp: number,
+ *     stats: { atk, def, dex, luk },
+ *     avatar?: string (url path),
+ *     token?: string (player OTP)
+ *   }>,
+ *   logs: string[],
+ *   spectatorToken?: string
+ * }
+ */
+
+// ────────────────────────────────────────────────────────────────
+// 5) REST API
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * 헬스체크
+ */
+app.get("/healthz", (req, res) => {
+  res.json({ ok: true, ts: now() });
+});
+
+/**
+ * 전투 생성 (관리자)
+ * POST /api/admin/battles
+ * body: { mode: '1v1'|'2v2'|'3v3'|'4v4' }  // 현재는 메타 정보로만 저장
+ * resp: { id, status, spectatorToken }
+ */
+app.post("/api/admin/battles", (req, res) => {
+  try {
+    const { mode = "1v1" } = req.body || {};
+    const id = newId("battle");
+    const spectatorToken = randomToken(16);
+
+    battles.set(id, {
+      status: "idle",
+      turn: 1,
+      mode,
+      players: new Map(),
+      logs: [],
+      spectatorToken,
+      createdAt: now(),
+    });
+
+    res.json({ id, status: "idle", spectatorToken });
+  } catch (err) {
+    console.error("create battle error:", err);
+    res.status(500).json({ error: "FAILED_TO_CREATE_BATTLE" });
+  }
+});
+
+/**
+ * 플레이어 추가
+ * POST /api/battles/:id/players
+ * form-data:
+ *  - name (string)
+ *  - team ('phoenix'|'eaters')
+ *  - stats (json string: {atk,def,dex,luk})
+ *  - items (json string: ['포션', ...])  // 현재 서버는 저장만, 디테일은 엔진에서 사용
+ *  - avatar (file, optional)
+ * resp: player 객체
+ */
+app.post("/api/battles/:id/players", upload.single("avatar"), (req, res) => {
+  const { id } = req.params;
+  const battle = battles.get(id);
+  if (!battle) {
+    if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(404).json({ error: "BATTLE_NOT_FOUND" });
+  }
+
+  try {
+    const name = String(req.body.name || "").trim();
+    const team = req.body.team === "phoenix" ? "phoenix" : "eaters";
+    const statsRaw = req.body.stats || "{}";
+    const itemsRaw = req.body.items || "[]";
+
+    if (!name) throw new Error("NAME_REQUIRED");
+
+    let stats = {};
+    try { stats = JSON.parse(statsRaw); } catch {}
+    const { atk = 3, def = 3, dex = 3, luk = 3 } = stats;
+
+    // 검증: 각 1~5, 총합 <= 30
+    const sum = (+atk) + (+def) + (+dex) + (+luk);
+    if ([atk, def, dex, luk].some((v) => v < 1 || v > 5)) {
+      throw new Error("STATS_RANGE_1_5");
+    }
+    if (sum > 30) throw new Error("STATS_SUM_MAX_30");
+
+    let items = [];
+    try { items = JSON.parse(itemsRaw); } catch {}
+
+    // 아바타 파일 경로 -> 정적 서빙 가능하도록 /uploads 상대경로 제공
+    let avatarUrl = "";
+    if (req.file) {
+      const rel = path.relative(PUBLIC_DIR, req.file.path); // ../uploads/abcd
+      // public 외부라면 직접 매핑: /uploads 경로 노출
+      avatarUrl = `/uploads/${path.basename(req.file.path)}`;
+      // /uploads 정적 노출(최초 1회)
+      if (!app._uploadsMounted) {
+        app.use("/uploads", express.static(UPLOAD_DIR, { index: false }));
+        app._uploadsMounted = true;
+      }
+    }
+
+    const pid = newId("player");
+    const token = randomToken(20);
+
+    const player = {
+      id: pid,
+      name,
+      team,
+      hp: 100,
+      stats: { atk: +atk, def: +def, dex: +dex, luk: +luk },
+      avatar: avatarUrl,
+      items,
+      token,
+      createdAt: now(),
     };
 
-    // 공통 유틸리티 함수들
-    const utils = createSocketUtils(socket, io);
+    battle.players.set(pid, player);
 
-    // === 연결 상태 이벤트 ===
-    socket.on('disconnect', (reason) => {
-      console.log(`[Socket] ${socket.id} disconnected: ${reason}`);
-      handleDisconnect(socket, reason, utils);
-    });
-
-    socket.on('error', (error) => {
-      console.error(`[Socket] ${socket.id} error:`, error);
-      socket.emit('error', { message: '소켓 오류가 발생했습니다' });
-    });
-
-    // === 인증 핸들러 ===
-    
-    // 관리자 인증
-    socket.on('adminAuth', (data) => {
-      adminHandler.authenticate(socket, data, utils);
-    });
-
-    // 플레이어 인증
-    socket.on('playerAuth', (data) => {
-      playerHandler.authenticate(socket, data, utils);
-    });
-
-    // 관전자 인증
-    socket.on('spectatorAuth', (data) => {
-      spectatorHandler.authenticate(socket, data, utils);
-    });
-
-    // === 관리자 전용 이벤트 ===
-    socket.on('admin:startBattle', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.startBattle(socket, data, utils);
-    });
-
-    socket.on('admin:pauseBattle', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.pauseBattle(socket, data, utils);
-    });
-
-    socket.on('admin:endBattle', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.endBattle(socket, data, utils);
-    });
-
-    socket.on('admin:addPlayer', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.addPlayer(socket, data, utils);
-    });
-
-    socket.on('admin:removePlayer', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.removePlayer(socket, data, utils);
-    });
-
-    socket.on('admin:chat', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      chatHandler.handleAdminChat(socket, data, utils);
-    });
-
-    socket.on('admin:requestState', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.requestState(socket, data, utils);
-    });
-
-    socket.on('admin:notice', (data) => {
-      if (socket.auth.role !== 'admin') return;
-      adminHandler.updateNotice(socket, data, utils);
-    });
-
-    // === 플레이어 전용 이벤트 ===
-    socket.on('player:action', (data) => {
-      if (socket.auth.role !== 'player') return;
-      playerHandler.handleAction(socket, data, utils);
-    });
-
-    socket.on('playerAction', (data) => {  // 레거시 지원
-      if (socket.auth.role !== 'player') return;
-      playerHandler.handleAction(socket, data, utils);
-    });
-
-    socket.on('player:requestState', (data) => {
-      if (socket.auth.role !== 'player') return;
-      playerHandler.requestState(socket, data, utils);
-    });
-
-    // === 관전자 전용 이벤트 ===
-    socket.on('spectator:join', (data) => {
-      spectatorHandler.joinBattle(socket, data, utils);
-    });
-
-    socket.on('spectator:cheer', (data) => {
-      if (socket.auth.role !== 'spectator') return;
-      spectatorHandler.handleCheer(socket, data, utils);
-    });
-
-    socket.on('cheer', (data) => {  // 레거시 지원
-      if (socket.auth.role !== 'spectator') return;
-      spectatorHandler.handleCheer(socket, data, utils);
-    });
-
-    socket.on('spectator:requestState', (data) => {
-      if (socket.auth.role !== 'spectator') return;
-      spectatorHandler.requestState(socket, data, utils);
-    });
-
-    // === 채팅 이벤트 (공통) ===
-    socket.on('chat:send', (data) => {
-      if (!socket.auth.authenticated) return;
-      chatHandler.handleChat(socket, data, utils);
-    });
-
-    socket.on('send-chat', (data) => {  // 레거시 지원
-      if (!socket.auth.authenticated) return;
-      chatHandler.handleChat(socket, data, utils);
-    });
-
-    socket.on('chatMessage', (data) => {  // 레거시 지원
-      if (!socket.auth.authenticated) return;
-      chatHandler.handleChat(socket, data, utils);
-    });
-
-    // === 상태 동기화 ===
-    socket.on('ping', () => {
-      socket.emit('pong');
-    });
-
-    socket.on('heartbeat', () => {
-      socket.emit('heartbeat', { timestamp: Date.now() });
-    });
-  });
-
-  return io;
-};
-
-// 소켓 유틸리티 함수 생성
-function createSocketUtils(socket, io) {
-  return {
-    // 룸 관리
-    joinRoom: (roomName) => {
-      socket.join(roomName);
-      console.log(`[Socket] ${socket.id} joined room: ${roomName}`);
-    },
-
-    leaveRoom: (roomName) => {
-      socket.leave(roomName);
-      console.log(`[Socket] ${socket.id} left room: ${roomName}`);
-    },
-
-    // 브로드캐스트 헬퍼
-    broadcast: broadcastManager,
-
-    // 응답 헬퍼
-    success: (event, data = {}) => {
-      socket.emit(event, { ok: true, ...data });
-    },
-
-    error: (event, message) => {
-      socket.emit(event, { ok: false, message });
-    },
-
-    // 전투 엔진 접근
-    battleEngine: battleEngine,
-
-    // 인증 체크
-    requireAuth: () => {
-      if (!socket.auth.authenticated) {
-        throw new Error('인증이 필요합니다');
-      }
-    },
-
-    requireRole: (role) => {
-      if (socket.auth.role !== role) {
-        throw new Error(`${role} 권한이 필요합니다`);
-      }
-    },
-
-    // 로깅
-    log: (message, data = null) => {
-      console.log(`[Socket:${socket.id}] ${message}`, data || '');
-    },
-
-    error: (message, error = null) => {
-      console.error(`[Socket:${socket.id}] ${message}`, error || '');
-    }
-  };
-}
-
-// 연결 해제 처리
-function handleDisconnect(socket, reason, utils) {
-  const { auth } = socket;
-  
-  if (auth.authenticated && auth.battleId) {
-    // 역할별 정리 작업
-    switch (auth.role) {
-      case 'admin':
-        adminHandler.handleDisconnect(socket, utils);
-        break;
-      case 'player':
-        playerHandler.handleDisconnect(socket, utils);
-        break;
-      case 'spectator':
-        spectatorHandler.handleDisconnect(socket, utils);
-        break;
-    }
-
-    // 브로드캐스트: 연결 해제 알림
-    utils.broadcast.toRoom(auth.battleId, 'user:disconnected', {
-      role: auth.role,
-      userId: auth.playerId || auth.spectatorName,
-      reason: reason
-    });
+    res.json(player);
+  } catch (err) {
+    console.error("add player error:", err);
+    if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+    res.status(400).json({ error: String(err.message || "INVALID_PLAYER") });
   }
-}
+});
+
+/**
+ * 플레이어별 링크 생성
+ * GET /api/battles/:id/links
+ * resp: [ { id, name, token, player } ]
+ *  - 클라이언트는 `${origin}/play?battle=${id}&token=${token}&name=${encodeURIComponent(name)}`
+ *    형태로 링크를 만들어 사용
+ */
+app.get("/api/battles/:id/links", (req, res) => {
+  const { id } = req.params;
+  const battle = battles.get(id);
+  if (!battle) return res.status(404).json({ error: "BATTLE_NOT_FOUND" });
+
+  const out = [];
+  for (const p of battle.players.values()) {
+    // 플레이어 토큰이 없으면 새로 부여(안전)
+    if (!p.token) p.token = randomToken(20);
+    out.push({ id: p.id, name: p.name, token: p.token, player: p });
+  }
+  res.json(out);
+});
+
+// ────────────────────────────────────────────────────────────────
+// 6) 페이지 라우팅 (정적 파일 그대로 사용; 디자인 불변)
+//    - /admin -> /public/pages/admin.html
+//    - /play  -> /public/pages/player.html
+//    - /watch -> /public/pages/spectator.html
+// ────────────────────────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.redirect("/admin");
+});
+
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "admin.html"));
+});
+
+app.get("/play", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "player.html"));
+});
+
+app.get("/watch", (req, res) => {
+  res.sendFile(path.join(PAGES_DIR, "spectator.html"));
+});
+
+// ────────────────────────────────────────────────────────────────
+// 7) 서버 시작
+//    attach(app) 가 만든 server를 사용. 포트만 정하면 됨.
+// ────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`[PYXIS] server listening on :${PORT}`);
+});
