@@ -1,6 +1,6 @@
 # /etc/nginx/sites-available/pyxisbattlesystem.monster
 
-# --- HTTP → HTTPS 리다이렉트 ---
+# ── HTTP → HTTPS 리다이렉트 ─────────────────────────────────────
 server {
     listen 80;
     listen [::]:80;
@@ -8,25 +8,34 @@ server {
     return 301 https://$host$request_uri;
 }
 
-# --- HTTPS 메인 사이트 ---
+# ── HTTPS 메인 사이트 ───────────────────────────────────────────
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name pyxisbattlesystem.monster;
 
-    # Certbot이 발급한 인증서 경로 (이미 발급됨)
+    # ── TLS ─────────────────────────────────────────────────────
     ssl_certificate     /etc/letsencrypt/live/pyxisbattlesystem.monster/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/pyxisbattlesystem.monster/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_trusted_certificate /etc/letsencrypt/live/pyxisbattlesystem.monster/chain.pem;
 
-    # 보안 헤더
+    # ── 업로드 한도(서버 Node multer 5MB와 맞춤) ────────────────
+    client_max_body_size 5m;
+
+    # ── 보안 헤더(서버에서 이미 세팅해도 중복 무해) ────────────
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
-    # ★ 모든 경로를 Node(Express:3001)로 프록시
+    # ── 헬스체크(선택: 직접 응답) ───────────────────────────────
+    location = /healthz {
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+
+    # ── 기본: Node(Express:3001) 프록시 ─────────────────────────
     location / {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -35,12 +44,19 @@ server {
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Port  $server_port;
 
-        proxy_read_timeout 300;
-        proxy_send_timeout 300;
+        # 일반 요청 타임아웃
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+
+        # 응답 버퍼(대용량 스트리밍 방지: 기본값 사용)
+        # proxy_buffering on;  # 기본값(on). 필요 시 조정.
     }
 
-    # Socket.IO(WebSocket)
+    # ── Socket.IO(WebSocket) 전용 ───────────────────────────────
+    # ※ /socket.io/ 경로는 버퍼링을 끄고, 업그레이드 헤더를 전달
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -52,12 +68,15 @@ server {
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        proxy_read_timeout 300;
-        proxy_send_timeout 300;
+        # 웹소켓은 긴 연결이므로 타임아웃 넉넉히
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+
+        # 웹소켓은 버퍼링 금지
         proxy_buffering off;
     }
 
-    # 50x 전용 에러 페이지(선택)
+    # 50x 오류 페이지(선택)
     error_page 500 502 503 504 /50x.html;
     location = /50x.html { return 500 "Server error\n"; }
 }
