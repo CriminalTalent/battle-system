@@ -1,249 +1,126 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PYXIS 플레이어</title>
-    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
-    
-    <!-- 폰트 -->
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- 스타일시트 -->
-    <link href="/assets/css/core.css" rel="stylesheet">
-    <link href="/assets/css/components.css" rel="stylesheet">
-    <link href="/assets/css/player.css" rel="stylesheet">
+  <meta charset="utf-8" />
+  <title>PYXIS | 플레이어</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- 파비콘 -->
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
+  <!-- 폰트 & 테마 -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/pyxis-theme.css">
+  <link rel="stylesheet" href="/assets/css/core.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/player.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <!-- 연결 상태 표시 -->
-    <div class="connection-status" id="connectionStatus">
-        <div class="connection-dot" id="connectionDot"></div>
-        <span id="connectionText">연결 중...</span>
+  <!-- 연결 상태 -->
+  <div class="connection-status" id="connectionStatus">
+    <div class="connection-dot" id="connectionDot"></div>
+    <span id="connectionText">연결 중...</span>
+  </div>
+
+  <!-- 헤더 -->
+  <header class="player-header">
+    <div class="player-brand sparkle-effect">Pyxis Player</div>
+  </header>
+
+  <main class="container">
+    <!-- 인증 -->
+    <section id="authSection" class="card">
+      <div class="section-header">
+        <h2 class="section-title">플레이어 입장</h2>
+      </div>
+      <form id="authForm">
+        <div class="field">
+          <label for="authBattleId">전투 ID</label>
+          <input type="text" id="authBattleId" name="authBattleId" class="input" placeholder="전투 ID" required />
+        </div>
+        <div class="field">
+          <label for="authToken">플레이어 OTP</label>
+          <input type="text" id="authToken" name="authToken" class="input" placeholder="발급된 OTP" required />
+        </div>
+        <div class="field">
+          <label for="authName">플레이어 이름</label>
+          <input type="text" id="authName" name="authName" class="input" placeholder="이름 입력" required maxlength="20" />
+        </div>
+        <button type="submit" class="btn btn-gold">입장하기</button>
+      </form>
+    </section>
+
+    <!-- 플레이어 UI -->
+    <section id="playerInfoBar" class="card" style="display:none;">
+      <div class="section-header">
+        <h2 class="section-title">내 정보</h2>
+      </div>
+      <div class="player-info">
+        <div id="playerName">-</div>
+        <div id="playerTeam">-</div>
+        <div id="turnStatus">대기중</div>
+        <div id="gameHint"></div>
+      </div>
+    </section>
+
+    <section id="battlePortrait" class="card" style="display:none;">
+      <div id="portraitChar" class="portrait"></div>
+      <div id="portraitStats" class="portrait-stats"></div>
+    </section>
+
+    <!-- 아군 -->
+    <section id="allyUnits" class="grid"></section>
+
+    <!-- 액션 -->
+    <section id="actionBar" class="card action-panel">
+      <div class="section-header">
+        <h2 class="section-title">행동 선택</h2>
+      </div>
+      <div class="action-buttons">
+        <button id="btnAttack" class="btn">공격</button>
+        <button id="btnDefend" class="btn">방어</button>
+        <button id="btnDodge" class="btn">회피</button>
+        <button id="btnUseItem" class="btn">아이템</button>
+        <button id="btnPass" class="btn">패스</button>
+      </div>
+    </section>
+
+    <!-- 전투 로그 -->
+    <section id="battleLogCard" class="card" style="display:none;">
+      <div class="section-header">
+        <h2 class="section-title">전투 로그</h2>
+      </div>
+      <div id="battleLog" class="battle-log"></div>
+    </section>
+
+    <!-- 채팅 -->
+    <section id="chatPanel" class="card" style="display:none;">
+      <div class="section-header">
+        <h2 class="section-title">채팅</h2>
+      </div>
+      <div class="chat-controls">
+        <select id="chatChannel" class="select">
+          <option value="all">전체</option>
+          <option value="team">팀</option>
+        </select>
+        <input type="text" id="chatInput" class="input" placeholder="메시지를 입력하세요" />
+        <button id="chatSend" class="btn btn-success">전송</button>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+    </section>
+
+    <!-- 타겟 선택 -->
+    <div id="targetOverlay" class="target-overlay" style="display:none;">
+      <div class="target-card-container">
+        <h3 id="targetTitle"></h3>
+        <div id="targetList" class="target-list"></div>
+        <button id="cancelTarget" class="btn btn-danger">취소</button>
+      </div>
     </div>
+  </main>
 
-    <!-- 헤더 -->
-    <header class="player-header">
-        <div class="player-brand sparkle-effect">Pyxis</div>
-    </header>
-
-    <!-- 메인 콘텐츠 -->
-    <main class="container">
-        <!-- 인증 폼 -->
-        <div class="card auth-section sparkle-effect" id="authSection">
-            <div class="auth-title">전투 입장</div>
-            <form id="authForm" class="auth-form">
-                <div class="field">
-                    <label for="authBattleId">전투 ID</label>
-                    <input id="authBattleId" 
-                           class="input enhance-hover" 
-                           placeholder="battle_xxxxx" 
-                           maxlength="50" 
-                           required>
-                </div>
-                <div class="auth-row">
-                    <div class="field">
-                        <label for="authToken">플레이어 OTP</label>
-                        <input id="authToken" 
-                               class="input enhance-hover" 
-                               placeholder="인증 토큰" 
-                               maxlength="50" 
-                               required>
-                    </div>
-                    <div class="field">
-                        <label for="authName">플레이어 이름</label>
-                        <input id="authName" 
-                               class="input enhance-hover" 
-                               placeholder="캐릭터 이름" 
-                               maxlength="20" 
-                               required>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-gold enhance-hover">전투 참가</button>
-            </form>
-        </div>
-
-        <!-- 게임 플레이 영역 -->
-        <div id="gameplayArea" style="display: none;">
-            <!-- 메인 레이아웃 -->
-            <div class="player-stage">
-                <!-- 좌측: 팀원 정보 -->
-                <aside class="team-panel" id="allyPanel">
-                    <div class="card team-card glow-effect">
-                        <div class="card-header">
-                            <h3 class="card-title" id="allyTeamTitle">우리 팀</h3>
-                            <div class="status-indicator" id="teamStatus">
-                                <div class="status-dot"></div>
-                                <span>대기중</span>
-                            </div>
-                        </div>
-                        <div class="team-members" id="allyMembers">
-                            <div class="loading">팀원을 불러오는 중...</div>
-                        </div>
-                    </div>
-                </aside>
-
-                <!-- 중앙: 플레이어 액션 -->
-                <section class="action-section">
-                    <!-- 플레이어 정보 -->
-                    <div class="card player-info-card glow-pulse" id="playerInfo">
-                        <div class="player-avatar-section">
-                            <img id="myAvatar" class="my-avatar" src="/assets/default-avatar.png" alt="내 아바타">
-                            <div class="player-details">
-                                <div class="my-name" id="myName">플레이어</div>
-                                <div class="my-team" id="myTeam">팀 없음</div>
-                            </div>
-                        </div>
-                        
-                        <div class="my-stats" id="myStats">
-                            <div class="stat-item">
-                                <span class="stat-label">공격</span>
-                                <span class="stat-value" id="statAttack">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">방어</span>
-                                <span class="stat-value" id="statDefense">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">민첩</span>
-                                <span class="stat-value" id="statAgility">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">행운</span>
-                                <span class="stat-value" id="statLuck">0</span>
-                            </div>
-                        </div>
-
-                        <div class="my-hp">
-                            <div class="my-hp-bar">
-                                <div class="my-hp-fill" id="myHpFill"></div>
-                            </div>
-                            <div class="my-hp-text" id="myHpText">1000 / 1000</div>
-                        </div>
-
-                        <div class="my-items" id="myItems">
-                            <div class="item-slot" id="itemDittany">
-                                <div class="item-name">디터니</div>
-                                <div class="item-count">0</div>
-                            </div>
-                            <div class="item-slot" id="itemAttackBoost">
-                                <div class="item-name">공격보정</div>
-                                <div class="item-count">0</div>
-                            </div>
-                            <div class="item-slot" id="itemDefenseBoost">
-                                <div class="item-name">방어보정</div>
-                                <div class="item-count">0</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 턴 정보 -->
-                    <div class="card turn-info-card shimmer-effect" id="turnInfo">
-                        <div class="turn-phase" id="turnPhase">대기 중</div>
-                        <div class="turn-description" id="turnDescription">전투가 시작되기를 기다리는 중입니다</div>
-                    </div>
-
-                    <!-- 액션 버튼들 -->
-                    <div class="card action-area glow-effect" id="actionArea">
-                        <div class="action-buttons" id="actionButtons">
-                            <button class="action-btn" id="btnAttack" data-action="attack">
-                                <span class="action-text">공격</span>
-                                <span class="shortcut">1</span>
-                            </button>
-                            <button class="action-btn" id="btnDefend" data-action="defend">
-                                <span class="action-text">방어</span>
-                                <span class="shortcut">2</span>
-                            </button>
-                            <button class="action-btn" id="btnDodge" data-action="dodge">
-                                <span class="action-text">회피</span>
-                                <span class="shortcut">3</span>
-                            </button>
-                            <button class="action-btn" id="btnUseItem" data-action="item">
-                                <span class="action-text">아이템</span>
-                                <span class="shortcut">4</span>
-                            </button>
-                            <button class="action-btn" id="btnPass" data-action="pass">
-                                <span class="action-text">패스</span>
-                                <span class="shortcut">5</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 타겟 선택 -->
-                    <div class="card target-selector" id="targetSelector" style="display: none;">
-                        <div class="target-title">타겟 선택</div>
-                        <div class="target-options" id="targetOptions">
-                            <!-- 동적 생성 -->
-                        </div>
-                        <div class="target-actions">
-                            <button class="btn btn-gold" id="btnConfirmTarget">확인</button>
-                            <button class="btn btn-cancel" id="btnCancelTarget">취소</button>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 우측: 채팅 & 로그 -->
-                <aside class="chat-log-panel">
-                    <!-- 채팅 -->
-                    <div class="card chat-container glow-effect">
-                        <div class="chat-header">
-                            <div class="chat-tabs" id="chatTabs">
-                                <button class="chat-tab active" data-channel="all">전체</button>
-                                <button class="chat-tab" data-channel="team">팀</button>
-                            </div>
-                        </div>
-                        <div class="chat-messages" id="chatMessages">
-                            <div class="loading">채팅을 불러오는 중...</div>
-                        </div>
-                        <div class="chat-input-area">
-                            <div class="chat-input-row">
-                                <input id="chatInput" 
-                                       class="chat-input" 
-                                       placeholder="메시지 입력 (/t 팀 채팅)" 
-                                       maxlength="200">
-                                <button id="chatSendBtn" class="chat-send-btn">전송</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 전투 로그 -->
-                    <div class="card log-container glow-effect">
-                        <div class="card-header">
-                            <h3 class="card-title">전투 로그</h3>
-                        </div>
-                        <div class="log-viewer" id="logViewer">
-                            <div class="loading">로그를 불러오는 중...</div>
-                        </div>
-                    </div>
-                </aside>
-            </div>
-        </div>
-    </main>
-
-    <!-- 키보드 단축키 힌트 -->
-    <div class="shortcuts-hint">
-        <div class="shortcuts-title">단축키</div>
-        <div class="shortcut-item">
-            <span class="shortcut-key">1-5</span>
-            <span class="shortcut-desc">액션</span>
-        </div>
-        <div class="shortcut-item">
-            <span class="shortcut-key">Enter</span>
-            <span class="shortcut-desc">채팅</span>
-        </div>
-        <div class="shortcut-item">
-            <span class="shortcut-key">/t</span>
-            <span class="shortcut-desc">팀 채팅</span>
-        </div>
-    </div>
-
-    <!-- JavaScript -->
-    <!-- 추가: Socket.IO 클라이언트 (반드시 최우선 로드) -->
-    <script src="/socket.io/socket.io.js"></script>
-    <!-- 기존 스크립트 -->
-    <script src="/assets/js/core/socket-manager.js"></script>
-    <script src="/assets/js/core/ui-helpers.js"></script>
-    <script src="/assets/js/components/chat.js"></script>
-    <script src="/assets/js/components/target-selector.js"></script>
-    <script src="/assets/js/pages/player.js"></script>
+  <!-- JS -->
+  <script src="/assets/js/core/socket-manager.js"></script>
+  <script src="/assets/js/core/ui-helpers.js"></script>
+  <script src="/assets/js/core/pages/player.js"></script>
 </body>
 </html>
