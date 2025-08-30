@@ -2,179 +2,78 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>PYXIS | 전투 관리자</title>
+  <title>PYXIS | 전투 관리석</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-
-  <!-- Theme / Fonts -->
   <link rel="icon" href="data:," />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/pyxis-theme.css" />
-  <link rel="stylesheet" href="/assets/css/core.css" />
-  <link rel="stylesheet" href="/assets/css/components.css" />
-  <link rel="stylesheet" href="/assets/css/admin.css" />
-
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="/assets/pyxis-theme.css" rel="stylesheet">
+  <link href="/assets/css/core.css" rel="stylesheet">
+  <link href="/assets/css/components.css" rel="stylesheet">
+  <link href="/assets/css/admin.css" rel="stylesheet">
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/core/ui-helpers.js"></script>
   <script src="/assets/js/core/socket-manager.js"></script>
+  <script src="/assets/js/core/ui-helpers.js"></script>
   <script src="/assets/js/pages/admin.js"></script>
 </head>
 <body>
   <div class="container">
-    <!-- 헤더 -->
     <header class="hero">
       <h1 class="admin-brand">PYXIS 전투 관리자</h1>
     </header>
 
-    <!-- 전투 생성 카드 -->
-    <section class="card">
-      <div class="section-header">
-        <h2 class="section-title">전투 생성</h2>
-      </div>
-      <form id="battleCreateForm" class="grid">
-        <div class="field">
-          <label for="battleMode">전투 모드</label>
-          <select id="battleMode" class="select">
-            <option value="standard">표준</option>
-            <option value="fast">속전속결</option>
-            <option value="long">장기전</option>
-          </select>
+    <main class="grid">
+      <!-- ===== 전투 생성 패널 ===== -->
+      <div class="card">
+        <div class="section-header">
+          <h3 class="section-title">전투 생성</h3>
         </div>
-        <div class="field">
+        <form id="createBattleForm" class="form">
+          <div class="field">
+            <label for="battleName">전투 이름</label>
+            <input type="text" id="battleName" name="battleName" class="input" placeholder="전투 이름을 입력하세요" required>
+          </div>
+          <div class="field">
+            <label for="battleMode">전투 모드</label>
+            <select id="battleMode" name="battleMode" class="select">
+              <option value="custom">커스텀</option>
+              <option value="1v1">1 vs 1</option>
+              <option value="2v2">2 vs 2</option>
+              <option value="3v3">3 vs 3</option>
+              <option value="4v4">4 vs 4</option>
+            </select>
+          </div>
           <button type="submit" class="btn btn-gold">전투 생성</button>
-        </div>
-      </form>
-    </section>
+        </form>
 
-    <!-- 전투 정보 / 상태 -->
-    <section id="battleInfo" class="card hidden">
-      <div class="section-header">
-        <h2 class="section-title">전투 정보</h2>
+        <!-- ✅ 빠른 전투 생성 버튼 -->
+        <div class="section-header" style="margin-top:20px;">
+          <h3 class="section-title">빠른 전투 생성</h3>
+        </div>
+        <div class="quick-match-grid">
+          <button class="btn btn-gold" onclick="admin.createQuickMatch(1)">1 : 1</button>
+          <button class="btn btn-gold" onclick="admin.createQuickMatch(2)">2 : 2</button>
+          <button class="btn btn-gold" onclick="admin.createQuickMatch(3)">3 : 3</button>
+          <button class="btn btn-gold" onclick="admin.createQuickMatch(4)">4 : 4</button>
+        </div>
       </div>
-      <p><strong>Battle ID:</strong> <span id="battleIdDisplay">-</span></p>
-      <p><strong>Admin OTP:</strong> <span id="adminOtpDisplay">-</span></p>
-      <p><strong>Spectator OTP:</strong> <span id="spectatorOtpDisplay">-</span></p>
 
-      <div id="battleStatus" class="status-indicator">
-        <span class="status-dot waiting"></span>
-        <span>대기중</span>
-      </div>
-    </section>
-
-    <!-- 제어 버튼 -->
-    <section id="controlActions" class="card hidden">
-      <div class="section-header">
-        <h2 class="section-title">제어</h2>
-      </div>
-      <div class="grid">
-        <button id="btnConnect" class="btn">관리자 로그인</button>
-        <button id="btnStartBattle" class="btn btn-success" disabled>전투 시작</button>
-        <button id="btnPauseBattle" class="btn">일시 정지</button>
-        <button id="btnEndBattle" class="btn btn-danger" disabled>전투 종료</button>
-      </div>
-    </section>
-
-    <!-- 링크 섹션 -->
-    <section id="linksSection" class="card hidden">
-      <div class="section-header">
-        <h2 class="section-title">접속 링크</h2>
-        <button id="btnGenerateLinks" class="btn">링크 생성</button>
-      </div>
-      <div id="linksList" class="grid"></div>
-    </section>
-
-    <!-- 플레이어 관리 -->
-    <section class="card">
-      <div class="section-header">
-        <h2 class="section-title">플레이어 추가</h2>
-      </div>
-      <form id="playerAddForm" class="grid">
-        <div class="field">
-          <label for="playerName">이름</label>
-          <input id="playerName" class="input" required />
-        </div>
-        <div class="field">
-          <label for="playerTeam">팀</label>
-          <select id="playerTeam" class="select">
-            <option value="A">불사조 기사단</option>
-            <option value="B">죽음을 먹는 자들</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="statAttack">공격</label>
-          <input id="statAttack" type="number" class="input" min="1" max="10" value="3" />
-        </div>
-        <div class="field">
-          <label for="statDefense">방어</label>
-          <input id="statDefense" type="number" class="input" min="1" max="10" value="3" />
-        </div>
-        <div class="field">
-          <label for="statAgility">민첩</label>
-          <input id="statAgility" type="number" class="input" min="1" max="10" value="3" />
-        </div>
-        <div class="field">
-          <label for="statLuck">행운</label>
-          <input id="statLuck" type="number" class="input" min="1" max="10" value="3" />
-        </div>
-        <div class="field">
-          <label for="itemDittany">디터니</label>
-          <input id="itemDittany" type="number" class="input" min="0" value="0" />
-        </div>
-        <div class="field">
-          <label for="itemAttackBoost">공격보정</label>
-          <input id="itemAttackBoost" type="number" class="input" min="0" value="0" />
-        </div>
-        <div class="field">
-          <label for="itemDefenseBoost">방어보정</label>
-          <input id="itemDefenseBoost" type="number" class="input" min="0" value="0" />
-        </div>
-        <div class="field">
-          <button type="submit" class="btn btn-gold">플레이어 링크 생성</button>
-        </div>
-      </form>
-    </section>
-
-    <!-- 로스터 -->
-    <section id="rosterCard" class="card hidden">
-      <div class="section-header">
-        <h2 class="section-title">로스터</h2>
-      </div>
-      <div class="row">
-        <div>
-          <h3 class="team-header phoenix">불사조 기사단</h3>
-          <div id="team1Roster"></div>
-        </div>
-        <div>
-          <h3 class="team-header death-eater">죽음을 먹는 자들</h3>
-          <div id="team2Roster"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 로그 / 채팅 -->
-    <section class="row">
+      <!-- ===== 전투 목록 패널 ===== -->
       <div class="card">
         <div class="section-header">
-          <h2 class="section-title">시스템 로그</h2>
+          <h3 class="section-title">전투 목록</h3>
         </div>
-        <div id="logViewer" class="log-viewer"></div>
+        <div id="battleList" class="log-viewer"></div>
       </div>
-      <div class="card">
-        <div class="section-header">
-          <h2 class="section-title">채팅</h2>
-        </div>
-        <div class="field">
-          <select id="chatChannel" class="select">
-            <option value="all">전체</option>
-            <option value="team">팀</option>
-          </select>
-        </div>
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="grid">
-          <input id="chatInput" class="input" placeholder="메시지를 입력하세요" />
-          <button id="btnSendChat" class="btn">전송</button>
-        </div>
-      </div>
-    </section>
+    </main>
   </div>
+
+  <style>
+    .quick-match-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+  </style>
 </body>
 </html>
