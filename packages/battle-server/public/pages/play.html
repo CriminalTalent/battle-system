@@ -23,107 +23,220 @@
 
     <!-- 헤더 -->
     <header class="player-header">
-        <div class="wrap">
-            <div class="player-brand sparkle-effect">Pyxis</div>
-        </div>
+        <div class="player-brand sparkle-effect">Pyxis</div>
     </header>
 
     <!-- 메인 콘텐츠 -->
-    <main class="wrap player-stage">
-        <!-- 좌측: 팀 정보 -->
-        <aside class="team-panel" id="leftTeam">
-            <div class="team-header enhance-hover">아군</div>
-            <div id="allyUnits"></div>
-        </aside>
-
-        <!-- 중앙: 메인 -->
-        <section class="center-section">
-            <!-- 인증 폼 -->
-            <div class="card auth-section sparkle-effect" id="authSection" style="display:none">
-                <div class="auth-title">전투 입장</div>
-                <form id="authForm" class="auth-form">
+    <main class="container">
+        <!-- 인증 폼 -->
+        <div class="card auth-section sparkle-effect" id="authSection">
+            <div class="auth-title">전투 입장</div>
+            <form id="authForm" class="auth-form">
+                <div class="field">
+                    <label for="authBattleId">전투 ID</label>
+                    <input id="authBattleId" 
+                           class="input enhance-hover" 
+                           placeholder="battle_xxxxx" 
+                           maxlength="50" 
+                           required>
+                </div>
+                <div class="auth-row">
                     <div class="field">
-                        <label for="authBattleId">전투 ID</label>
-                        <input id="authBattleId" class="input enhance-hover" placeholder="battle_xxxxx" maxlength="50" required>
+                        <label for="authToken">플레이어 OTP</label>
+                        <input id="authToken" 
+                               class="input enhance-hover" 
+                               placeholder="인증 토큰" 
+                               maxlength="50" 
+                               required>
                     </div>
-                    <div class="auth-row">
-                        <div class="field">
-                            <label for="authToken">플레이어 OTP</label>
-                            <input id="authToken" class="input enhance-hover" placeholder="인증 토큰" maxlength="50" required>
+                    <div class="field">
+                        <label for="authName">플레이어 이름</label>
+                        <input id="authName" 
+                               class="input enhance-hover" 
+                               placeholder="캐릭터 이름" 
+                               maxlength="20" 
+                               required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-gold enhance-hover">전투 참가</button>
+            </form>
+        </div>
+
+        <!-- 게임 플레이 영역 -->
+        <div id="gameplayArea" style="display: none;">
+            <!-- 메인 레이아웃 -->
+            <div class="player-stage">
+                <!-- 좌측: 팀원 정보 -->
+                <aside class="team-panel" id="allyPanel">
+                    <div class="card team-card glow-effect">
+                        <div class="card-header">
+                            <h3 class="card-title" id="allyTeamTitle">우리 팀</h3>
+                            <div class="status-indicator" id="teamStatus">
+                                <div class="status-dot"></div>
+                                <span>대기중</span>
+                            </div>
                         </div>
-                        <div class="field">
-                            <label for="authName">플레이어 이름</label>
-                            <input id="authName" class="input enhance-hover" placeholder="캐릭터 이름" maxlength="20" required>
+                        <div class="team-members" id="allyMembers">
+                            <div class="loading">팀원을 불러오는 중...</div>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-gold enhance-hover">전투 참가</button>
-                </form>
-            </div>
+                </aside>
 
-            <!-- 플레이어 정보 바 -->
-            <div class="player-info-bar card sparkle-effect" id="playerInfoBar" style="display:none">
-                <div class="info-header">
-                    <div>
-                        <div class="player-name" id="playerName">-</div>
-                        <div class="player-team" id="playerTeam">-</div>
+                <!-- 중앙: 플레이어 액션 -->
+                <section class="action-section">
+                    <!-- 플레이어 정보 -->
+                    <div class="card player-info-card glow-pulse" id="playerInfo">
+                        <div class="player-avatar-section">
+                            <img id="myAvatar" class="my-avatar" src="/assets/default-avatar.png" alt="내 아바타">
+                            <div class="player-details">
+                                <div class="my-name" id="myName">플레이어</div>
+                                <div class="my-team" id="myTeam">팀 없음</div>
+                            </div>
+                        </div>
+                        
+                        <div class="my-stats" id="myStats">
+                            <div class="stat-item">
+                                <span class="stat-label">공격</span>
+                                <span class="stat-value" id="statAttack">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">방어</span>
+                                <span class="stat-value" id="statDefense">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">민첩</span>
+                                <span class="stat-value" id="statAgility">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">행운</span>
+                                <span class="stat-value" id="statLuck">0</span>
+                            </div>
+                        </div>
+
+                        <div class="my-hp">
+                            <div class="my-hp-bar">
+                                <div class="my-hp-fill" id="myHpFill"></div>
+                            </div>
+                            <div class="my-hp-text" id="myHpText">1000 / 1000</div>
+                        </div>
+
+                        <div class="my-items" id="myItems">
+                            <div class="item-slot" id="itemDittany">
+                                <div class="item-name">디터니</div>
+                                <div class="item-count">0</div>
+                            </div>
+                            <div class="item-slot" id="itemAttackBoost">
+                                <div class="item-name">공격보정</div>
+                                <div class="item-count">0</div>
+                            </div>
+                            <div class="item-slot" id="itemDefenseBoost">
+                                <div class="item-name">방어보정</div>
+                                <div class="item-count">0</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="turn-status" id="turnStatus">대기중</div>
-                <div class="action-bar" id="actionBar">
-                    <button class="action-btn primary enhance-hover" id="btnAttack">공격<span class="hotkey-hint">[1]</span></button>
-                    <button class="action-btn enhance-hover" id="btnDefend">방어<span class="hotkey-hint">[2]</span></button>
-                    <button class="action-btn enhance-hover" id="btnDodge">회피<span class="hotkey-hint">[3]</span></button>
-                    <button class="action-btn enhance-hover" id="btnUseItem">아이템<span class="hotkey-hint">[4]</span></button>
-                    <button class="action-btn enhance-hover" id="btnPass">패스<span class="hotkey-hint">[5]</span></button>
-                </div>
-                <div class="game-hint" id="gameHint">내 턴에만 행동할 수 있습니다</div>
-            </div>
 
-            <!-- 초상화/스탯 -->
-            <div class="card battle-portrait sparkle-effect" id="battlePortrait" style="display:none">
-                <div class="portrait-character" id="portraitChar" style="display:none"></div>
-                <div class="portrait-stats" id="portraitStats" style="display:none"></div>
-            </div>
+                    <!-- 턴 정보 -->
+                    <div class="card turn-info-card shimmer-effect" id="turnInfo">
+                        <div class="turn-phase" id="turnPhase">대기 중</div>
+                        <div class="turn-description" id="turnDescription">전투가 시작되기를 기다리는 중입니다</div>
+                    </div>
 
-            <!-- 전투 로그 -->
-            <div class="card sparkle-effect" id="battleLogCard" style="display:none">
-                <div class="section-header">
-                    <div class="section-title" style="font-size:16px;">전투 로그</div>
-                </div>
-                <div id="battleLog" class="battle-log" aria-label="전투 로그"></div>
-            </div>
-        </section>
+                    <!-- 액션 버튼들 -->
+                    <div class="card action-area glow-effect" id="actionArea">
+                        <div class="action-buttons" id="actionButtons">
+                            <button class="action-btn" id="btnAttack" data-action="attack">
+                                <span class="action-text">공격</span>
+                                <span class="shortcut">1</span>
+                            </button>
+                            <button class="action-btn" id="btnDefend" data-action="defend">
+                                <span class="action-text">방어</span>
+                                <span class="shortcut">2</span>
+                            </button>
+                            <button class="action-btn" id="btnDodge" data-action="dodge">
+                                <span class="action-text">회피</span>
+                                <span class="shortcut">3</span>
+                            </button>
+                            <button class="action-btn" id="btnUseItem" data-action="item">
+                                <span class="action-text">아이템</span>
+                                <span class="shortcut">4</span>
+                            </button>
+                            <button class="action-btn" id="btnPass" data-action="pass">
+                                <span class="action-text">패스</span>
+                                <span class="shortcut">5</span>
+                            </button>
+                        </div>
+                    </div>
 
-        <!-- 우측: 채팅 -->
-        <aside class="card chat-panel sparkle-effect" id="chatPanel" style="display:none">
-            <div class="section-header">
-                <div class="section-title" style="font-size:16px;">실시간 채팅</div>
+                    <!-- 타겟 선택 -->
+                    <div class="card target-selector" id="targetSelector" style="display: none;">
+                        <div class="target-title">타겟 선택</div>
+                        <div class="target-options" id="targetOptions">
+                            <!-- 동적 생성 -->
+                        </div>
+                        <div class="target-actions">
+                            <button class="btn btn-gold" id="btnConfirmTarget">확인</button>
+                            <button class="btn btn-cancel" id="btnCancelTarget">취소</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 우측: 채팅 & 로그 -->
+                <aside class="chat-log-panel">
+                    <!-- 채팅 -->
+                    <div class="card chat-container glow-effect">
+                        <div class="chat-header">
+                            <div class="chat-tabs" id="chatTabs">
+                                <button class="chat-tab active" data-channel="all">전체</button>
+                                <button class="chat-tab" data-channel="team">팀</button>
+                            </div>
+                        </div>
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="loading">채팅을 불러오는 중...</div>
+                        </div>
+                        <div class="chat-input-area">
+                            <div class="chat-input-row">
+                                <input id="chatInput" 
+                                       class="chat-input" 
+                                       placeholder="메시지 입력 (/t 팀 채팅)" 
+                                       maxlength="200">
+                                <button id="chatSendBtn" class="chat-send-btn">전송</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 전투 로그 -->
+                    <div class="card log-container glow-effect">
+                        <div class="card-header">
+                            <h3 class="card-title">전투 로그</h3>
+                        </div>
+                        <div class="log-viewer" id="logViewer">
+                            <div class="loading">로그를 불러오는 중...</div>
+                        </div>
+                    </div>
+                </aside>
             </div>
-            <div class="chat-header">
-                <select id="chatChannel" class="select enhance-hover">
-                    <option value="all">전체</option>
-                    <option value="team">팀</option>
-                </select>
-                <input id="chatInput" class="input enhance-hover" placeholder="메시지 입력 (/t 팀 채팅)" maxlength="200">
-                <button id="chatSend" class="btn enhance-hover">전송</button>
-            </div>
-            <div id="chatMessages" class="chat-messages" aria-label="채팅 메시지"></div>
-        </aside>
+        </div>
     </main>
 
-    <!-- 타겟 선택 오버레이 -->
-    <div class="target-overlay" id="targetOverlay" role="dialog" aria-modal="true">
-        <div class="target-panel sparkle-effect">
-            <div class="target-title" id="targetTitle">대상 선택</div>
-            <div class="target-list" id="targetList"></div>
-            <div class="target-actions">
-                <button class="btn enhance-hover" id="cancelTarget">취소</button>
-            </div>
+    <!-- 키보드 단축키 힌트 -->
+    <div class="shortcuts-hint">
+        <div class="shortcuts-title">단축키</div>
+        <div class="shortcut-item">
+            <span class="shortcut-key">1-5</span>
+            <span class="shortcut-desc">액션</span>
+        </div>
+        <div class="shortcut-item">
+            <span class="shortcut-key">Enter</span>
+            <span class="shortcut-desc">채팅</span>
+        </div>
+        <div class="shortcut-item">
+            <span class="shortcut-key">/t</span>
+            <span class="shortcut-desc">팀 채팅</span>
         </div>
     </div>
 
-    <!-- 스크립트 -->
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- JavaScript -->
     <script src="/assets/js/core/socket-manager.js"></script>
     <script src="/assets/js/core/ui-helpers.js"></script>
     <script src="/assets/js/components/chat.js"></script>
