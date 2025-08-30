@@ -1,4 +1,4 @@
-// PYXIS Admin Page - 관리자 페이지 로직
+// PYXIS Admin Page - 관리자 페이지 로직 (알림 + 호환 보강)
 class PyxisAdmin {
   constructor() {
     this.currentBattleId = null;
@@ -20,6 +20,9 @@ class PyxisAdmin {
     
     // 소켓 연결
     PyxisSocket.init();
+
+    // 알림 안내(선호 시 클릭 시점에 요청하도록 유지)
+    UI?.info?.('브라우저 알림을 허용하면 탭 밖에서도 전투 알림을 받을 수 있어요.');
   }
 
   // DOM 요소 설정
@@ -35,9 +38,10 @@ class PyxisAdmin {
     this.adminOtpDisplay = UI.$('#adminOtpDisplay');
     this.spectatorOtpDisplay = UI.$('#spectatorOtpDisplay');
     
-    // 상태 표시
-    this.statusDot = UI.$('#statusDot');
-    this.statusText = UI.$('#statusText');
+    // 상태 표시 (admin.html 구조에 맞게 보정)
+    this.battleStatus = UI.$('#battleStatus');
+    this.statusDot = this.battleStatus?.querySelector('.status-dot');
+    this.statusText = this.battleStatus?.querySelector('span');
     
     // 제어 버튼
     this.controlActions = UI.$('#controlActions');
@@ -57,14 +61,15 @@ class PyxisAdmin {
     this.chatInput = UI.$('#chatInput');
     this.btnSendChat = UI.$('#btnSendChat');
     
-    // 플레이어 관리
+    // 플레이어 관리 (HTML id에 맞춰 보정)
     this.playerName = UI.$('#playerName');
     this.playerTeam = UI.$('#playerTeam');
     this.statAttack = UI.$('#statAttack');
     this.statDefense = UI.$('#statDefense');
     this.statAgility = UI.$('#statAgility');
     this.statLuck = UI.$('#statLuck');
-    this.itemHealing = UI.$('#itemHealing');
+    // 항목 id: itemDittany / itemAttackBoost / itemDefenseBoost
+    this.itemHealing = UI.$('#itemDittany');
     this.itemAttackBoost = UI.$('#itemAttackBoost');
     this.itemDefenseBoost = UI.$('#itemDefenseBoost');
     
@@ -82,7 +87,11 @@ class PyxisAdmin {
     });
 
     // 제어 버튼들
-    this.btnConnect.addEventListener('click', () => this.connectAsAdmin());
+    this.btnConnect.addEventListener('click', async () => {
+      // 최초 클릭 시 알림 권한 요청 시도(UX 배려)
+      await PyxisNotify?.requestPermission?.();
+      this.connectAsAdmin();
+    });
     this.btnStartBattle.addEventListener('click', () => this.startBattle());
     this.btnPauseBattle.addEventListener('click', () => this.pauseBattle());
     this.btnEndBattle.addEventListener('click', () => this.endBattle());
@@ -111,14 +120,20 @@ class PyxisAdmin {
     // 연결 상태
     PyxisSocket.on('connection:success', () => {
       UI.success('서버에 연결되었습니다');
+      PyxisNotify?.notify?.('서버 연결됨', { body: '실시간 제어가 활성화되었습니다.' });
     });
 
-    PyxisSocket.on('connection:disconnect', () => {
+    PyxisSocket.on('connection:disconnect', ({ reason }) => {
       UI.error('서버 연결이 끊어졌습니다');
+      PyxisNotify?.notifyWhenHidden?.('연결 끊김', { body: reason || '네트워크 상태를 확인하세요.' });
     });
 
     PyxisSocket.on('connection:error', ({ error }) => {
-      UI.error(`연결 실패: ${error.message || '알 수 없는 오류'}`);
+      UI.error(`연결 실패: ${error?.message || '알 수 없는 오류'}`);
+    });
+
+    PyxisSocket.on('connection:reconnect', ({ attemptNumber }) => {
+      UI.info(`재연결 성공 (${attemptNumber}회 시도)`);
     });
 
     // 인증
@@ -143,10 +158,18 @@ class PyxisAdmin {
     // 채팅 및 로그
     PyxisSocket.on('chat:new', (message) => {
       this.handleChatMessage(message);
+      // 백그라운드 시 알림
+      const preview = (message?.text || message?.message || '').slice(0, 40);
+      PyxisNotify?.notifyWhenHidden?.('새 채팅', { body: `${message?.from?.nickname || message?.name || '익명'}: ${preview}` });
     });
 
     PyxisSocket.on('log:new', (event) => {
       this.addLogEntry(event.text || '', 'system');
+      // 인상적인 키워드면 백그라운드 알림
+      const t = String(event?.text || '');
+      if (/치명타|격파|KO|역전/.test(t)) {
+        PyxisNotify?.notifyWhenHidden?.('핵심 이벤트!', { body: t });
+      }
     });
 
     PyxisSocket.on('phase:change', (phase) => {
@@ -154,11 +177,26 @@ class PyxisAdmin {
       this.addLogEntry(`▶︎ 턴 전환: ${teamName} (라운드 ${phase.round})`, 'system');
     });
 
+    PyxisSocket.on('battle:started', (data) => {
+      this.addLogEntry('◆ 전투 시작', 'system');
+      PyxisNotify?.notify?.('전투 시작', { body: `전투ID: ${data?.battleId || this.currentBattleId || ''}` });
+    });
+
     PyxisSocket.on('battle:end', (result) => {
-      const winnerText = result.winner === 'draw' ? '무승부' : 
-                        (result.winner === 'A' || result.winner === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들');
+      const winnerText = result?.winner === 'draw'
+        ? '무승부'
+        : ((result?.winner === 'A' || result?.winner === 'team1') ? '불사조 기사단' : '죽음을 먹는 자들');
       this.addLogEntry(`◆ 전투 종료: ${winnerText}`, 'system');
       this.updateStatus('ended');
+      PyxisNotify?.notify?.('전투 종료', { body: winnerText });
+    });
+
+    // 공지
+    PyxisSocket.on('notice:update', ({ text }) => {
+      if (text) {
+        this.addLogEntry(`공지: ${text}`, 'system');
+        PyxisNotify?.notifyWhenHidden?.('공지 업데이트', { body: text });
+      }
     });
   }
 
@@ -180,7 +218,7 @@ class PyxisAdmin {
       UI.show(this.linksSection);
       
       // 자동 연결 시도
-      setTimeout(() => this.connectAsAdmin(), 1000);
+      setTimeout(() => this.connectAsAdmin(), 400);
     }
   }
 
@@ -201,11 +239,12 @@ class PyxisAdmin {
       }
 
       this.currentBattleId = result.battleId;
-      this.adminOtp = result.adminOTP || result.adminOtp;
+      // 서버 응답 키 보정(adminOtp / spectatorOtp)
+      this.adminOtp = result.adminOtp || result.adminOTP;
       
       this.battleIdDisplay.textContent = result.battleId;
-      this.adminOtpDisplay.textContent = this.adminOtp;
-      this.spectatorOtpDisplay.textContent = result.spectatorOTP || result.spectatorOtp || '';
+      this.adminOtpDisplay.textContent = this.adminOtp || '-';
+      this.spectatorOtpDisplay.textContent = result.spectatorOtp || result.spectatorOTP || '';
       
       UI.show(this.battleInfo);
       UI.show(this.controlActions);
@@ -217,8 +256,11 @@ class PyxisAdmin {
       // URL 업데이트
       const url = new URL(window.location);
       url.searchParams.set('battle', result.battleId);
-      url.searchParams.set('token', this.adminOtp);
+      if (this.adminOtp) url.searchParams.set('token', this.adminOtp);
       window.history.pushState({}, '', url);
+
+      // 권한 요청 유도(클릭 이벤트에서 한 번 더 시도됨)
+      await PyxisNotify?.requestPermission?.();
       
     } catch (error) {
       console.error('[Admin] Battle creation failed:', error);
@@ -238,15 +280,9 @@ class PyxisAdmin {
     UI.setLoading(this.btnConnect, true);
 
     try {
-      const authData = {
-        role: 'admin',
-        battleId: this.currentBattleId,
-        token: this.adminOtp,
-        otp: this.adminOtp
-      };
-
-      await PyxisSocket.authenticate(authData);
-      
+      // 소켓 매니저 호환: authenticateAsAdmin 사용
+      await PyxisSocket.authenticateAsAdmin(this.currentBattleId, this.adminOtp);
+      // 성공 처리는 authSuccess 이벤트에서
     } catch (error) {
       console.error('[Admin] Auth failed:', error);
       UI.error(`관리자 로그인 실패: ${error.message}`);
@@ -273,9 +309,8 @@ class PyxisAdmin {
 
   // 상태 업데이트 처리
   handleStateUpdate(state) {
-    console.log('[Admin] State update:', state);
-    
-    this.battleState = state;
+    // console.log('[Admin] State update:', state);
+    this.battleState = state || this.battleState;
     this.renderBattleState();
   }
 
@@ -298,8 +333,8 @@ class PyxisAdmin {
     };
 
     const info = statusMap[status] || statusMap.waiting;
-    this.statusText.textContent = info.text;
-    this.statusDot.className = `status-dot ${info.class}`;
+    if (this.statusText) this.statusText.textContent = info.text;
+    if (this.statusDot) this.statusDot.className = `status-dot ${info.class}`;
   }
 
   // 로스터 렌더링
@@ -310,7 +345,7 @@ class PyxisAdmin {
     this.team2Roster.innerHTML = '';
 
     // 팀 A (불사조 기사단)
-    const teamA = this.battleState.teams.find(t => t.side === 'A');
+    const teamA = this.battleState.teams.find(t => t.side === 'A' || t.side === 'team1');
     if (teamA?.players) {
       teamA.players.forEach(player => {
         this.team1Roster.appendChild(this.createPlayerCard(player));
@@ -318,7 +353,7 @@ class PyxisAdmin {
     }
 
     // 팀 B (죽음을 먹는 자들)
-    const teamB = this.battleState.teams.find(t => t.side === 'B');
+    const teamB = this.battleState.teams.find(t => t.side === 'B' || t.side === 'team2');
     if (teamB?.players) {
       teamB.players.forEach(player => {
         this.team2Roster.appendChild(this.createPlayerCard(player));
@@ -331,17 +366,29 @@ class PyxisAdmin {
     const card = document.createElement('div');
     card.className = 'player-card enhance-hover';
     
-    const hpPercent = UI.calculateHpPercent(player.hp, player.maxHp || 100);
+    const maxHp = player.maxHp || 1000 || 100;
+    const hpPercent = UI.calculateHpPercent(player.hp, maxHp);
+    
+    // 상태 키 호환(atk/def/agi/luk or stats)
+    const atk = player.atk ?? player.stats?.attack ?? 0;
+    const def = player.def ?? player.stats?.defense ?? 0;
+    const agi = player.agi ?? player.stats?.agility ?? 0;
+    const luk = player.luk ?? player.stats?.luck ?? 0;
+
+    const items = player.items || {};
+    const dittany = items.dittany ?? 0;
+    const atkBoost = items.atkBoost ?? 0;
+    const defBoost = items.defBoost ?? 0;
     
     card.innerHTML = `
       <div class="player-avatar" ${player.avatar ? `style="background-image:url(${player.avatar})"` : ''}></div>
       <div class="player-info">
-        <div class="player-name">${player.name}${player.hp <= 0 ? ' (불능)' : ''}</div>
-        <div class="player-stats">공격 ${player.atk} · 방어 ${player.def} · 민첩 ${player.agi} · 행운 ${player.luk}</div>
+        <div class="player-name">${player.name}${(player.hp ?? 1) <= 0 ? ' (불능)' : ''}</div>
+        <div class="player-stats">공격 ${atk} · 방어 ${def} · 민첩 ${agi} · 행운 ${luk}</div>
         <div class="player-hp">
           <div class="player-hp-fill" style="width:${hpPercent}%"></div>
         </div>
-        <div class="player-items">아이템: 디터니 ${player.items?.dittany || 0}, 공격보정 ${player.items?.atkBoost || 0}, 방어보정 ${player.items?.defBoost || 0}</div>
+        <div class="player-items">아이템: 디터니 ${dittany}, 공격보정 ${atkBoost}, 방어보정 ${defBoost}</div>
       </div>
       <div class="player-actions">
         <button class="btn btn-danger" onclick="admin.removePlayer('${player.id}')" ${this.battleState?.status !== 'waiting' ? 'disabled' : ''}>제거</button>
@@ -373,6 +420,7 @@ class PyxisAdmin {
       UI.showFeedback(this.btnStartBattle, 'success');
       this.addLogEntry('전투가 시작되었습니다', 'system');
       UI.success('전투가 시작되었습니다!');
+      PyxisNotify?.notify?.('전투 시작', { body: `전투ID: ${this.currentBattleId}` });
 
     } catch (error) {
       console.error('[Admin] Start battle failed:', error);
@@ -419,7 +467,7 @@ class PyxisAdmin {
       const playerData = {
         adminOtp: this.adminOtp,
         name: formData.playerName,
-        team: formData.playerTeam,
+        team: formData.playerTeam, // 'team1' | 'team2'
         atk: parseInt(this.statAttack.value) || 3,
         def: parseInt(this.statDefense.value) || 3,
         agi: parseInt(this.statAgility.value) || 3,
@@ -431,6 +479,8 @@ class PyxisAdmin {
         }
       };
 
+      // 참고: 서버 라우트는 환경에 따라 다를 수 있음.
+      // 여기서는 기존 admin API 형식을 유지 (필요 시 /api/battles/:id/players 로 교체)
       const result = await PyxisSocket.apiCall(`/api/admin/battles/${this.currentBattleId}/players`, {
         method: 'POST',
         body: JSON.stringify(playerData)
@@ -440,13 +490,13 @@ class PyxisAdmin {
         throw new Error(result?.msg || '플레이어 추가 실패');
       }
 
-      // 접속 링크를 링크 섹션에 추가
+      // 접속 링크를 링크 섹션에 추가 (응답이 제공하는 경우)
       if (result.joinURL) {
         this.addPlayerLink(formData.playerName, result.joinURL);
       }
 
       UI.showFeedback(submitBtn, 'success');
-      this.addLogEntry(`플레이어 '${formData.playerName}' 추가됨 (${formData.playerTeam === 'A' ? '불사조 기사단' : '죽음을 먹는 자들'})`, 'system');
+      this.addLogEntry(`플레이어 '${formData.playerName}' 추가됨 (${formData.playerTeam === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들'})`, 'system');
       UI.success(`${formData.playerName} 플레이어가 추가되었습니다!`);
 
       // 폼 리셋
@@ -494,8 +544,8 @@ class PyxisAdmin {
     }
 
     const allPlayers = [
-      ...(this.battleState.teams.find(t => t.side === 'A')?.players || []),
-      ...(this.battleState.teams.find(t => t.side === 'B')?.players || [])
+      ...(this.battleState.teams.find(t => t.side === 'A' || t.side === 'team1')?.players || []),
+      ...(this.battleState.teams.find(t => t.side === 'B' || t.side === 'team2')?.players || [])
     ];
 
     if (allPlayers.length === 0) {
@@ -536,23 +586,21 @@ class PyxisAdmin {
     const message = this.chatInput.value.trim();
     if (!message || !this.currentBattleId) return;
 
-    const chatData = {
-      battleId: this.currentBattleId,
-      text: message,
-      nickname: '관리자',
-      role: 'admin',
-      scope: this.chatChannel.value === 'team' ? 'team' : 'all'
-    };
+    const channel = this.chatChannel.value === 'team' ? 'team' : 'all';
+    // 소켓 매니저의 통합 시그니처에 맞춰 전송
+    PyxisSocket
+      .sendChat(message, channel, this.currentBattleId)
+      .catch(() => {/* 무시: 레거시 fallback 내부처리 */});
 
-    PyxisSocket.sendChat(chatData);
     this.chatInput.value = '';
   }
 
   // 채팅 메시지 처리
   handleChatMessage(message) {
-    const scope = message.scope === 'team' ? '[팀] ' : '[전체] ';
-    const nickname = message.from?.nickname || message.nickname || '익명';
-    const content = `${scope}${nickname}: ${message.text}`;
+    const scope = message.scope === 'team' || message.channel === 'team' ? '[팀] ' : '[전체] ';
+    const nickname = message.from?.nickname || message.nickname || message.name || '익명';
+    const text = message.text || message.message || '';
+    const content = `${scope}${nickname}: ${text}`;
     
     this.addLogEntry(content, message.from?.role === 'admin' ? 'admin' : 'info');
   }
