@@ -1,141 +1,136 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PYXIS 관전자</title>
-    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
-    
-    <!-- 폰트 -->
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- 스타일시트 -->
-    <link href="/assets/css/core.css" rel="stylesheet">
-    <link href="/assets/css/components.css" rel="stylesheet">
-    <link href="/assets/css/spectator.css" rel="stylesheet">
+  <meta charset="utf-8" />
+  <title>PYXIS | 관전자</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- 파비콘 -->
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
+  <!-- 폰트 & 테마 -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/pyxis-theme.css">
+  <link rel="stylesheet" href="/assets/css/core.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/spectator.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <!-- 연결 상태 표시 -->
-    <div class="connection-status" id="connectionStatus">
-        <div class="connection-dot" id="connectionDot"></div>
-        <span id="connectionText">연결 중...</span>
-    </div>
+  <!-- 연결 상태 -->
+  <div class="connection-status" id="connectionStatus">
+    <div class="connection-dot" id="connectionDot"></div>
+    <span id="connectionText">연결 중...</span>
+  </div>
 
-    <!-- 헤더 -->
-    <header class="spectator-header">
-        <div class="spectator-brand sparkle-effect">Pyxis</div>
-    </header>
+  <!-- 헤더 -->
+  <header class="spectator-header">
+    <div class="spectator-brand sparkle-effect">Pyxis Spectator</div>
+  </header>
 
-    <!-- 메인 콘텐츠 -->
-    <main class="container">
-        <!-- 로그인 폼 -->
-        <div class="card login-form" id="loginForm">
-            <div class="login-title">관전자 입장</div>
-            <form id="spectatorLoginForm">
-                <input type="text" 
-                       id="spectatorName" 
-                       class="login-input" 
-                       placeholder="관전자 이름을 입력하세요" 
-                       required 
-                       maxlength="20">
-                <button type="submit" class="login-btn enhance-hover">관전 시작</button>
-            </form>
+  <main class="container">
+    <!-- 로그인 -->
+    <section id="loginForm" class="card">
+      <div class="section-header">
+        <h2 class="section-title">관전자 입장</h2>
+      </div>
+      <form id="spectatorLoginForm">
+        <div class="field">
+          <label for="spectatorName">관전자 이름</label>
+          <input type="text" id="spectatorName" class="input" placeholder="관전자 이름" required maxlength="20">
         </div>
+        <button type="submit" class="btn btn-gold">관전 시작</button>
+      </form>
+    </section>
 
-        <!-- 관전자 영역 -->
-        <div id="spectatorArea" style="display: none;">
-            <!-- 메인 레이아웃 -->
-            <div class="main-layout">
-                <!-- 왼쪽: 불사조 기사단 -->
-                <div class="team-panel">
-                    <div class="card team-card team-phoenix glow-effect">
-                        <div class="card-header">
-                            <h3 class="card-title">불사조 기사단</h3>
-                            <span class="team-score" id="phoenixScore">0</span>
-                        </div>
-                        <div class="team-members" id="phoenixMembers">
-                            <div class="loading">플레이어를 불러오는 중...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 중앙: 전투 상황 -->
-                <div class="battle-area">
-                    <!-- 전투 상태 -->
-                    <div class="card battle-status glow-pulse">
-                        <div class="status-title" id="battlePhase">전투 대기 중</div>
-                        <div class="status-info" id="battleInfo">플레이어들이 입장하기를 기다리고 있습니다</div>
-                        <div class="current-turn" id="currentTurn" style="display: none;"></div>
-                    </div>
-
-                    <!-- 전투 로그 -->
-                    <div class="card glow-effect">
-                        <div class="card-header">
-                            <h3 class="card-title">전투 로그</h3>
-                            <div class="status-indicator waiting">
-                                <div class="status-dot"></div>
-                                <span>관전 중</span>
-                            </div>
-                        </div>
-                        <div class="action-log" id="battleLog">
-                            <div class="loading">전투 로그를 불러오는 중...</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 오른쪽: 죽음을 먹는 자들 -->
-                <div class="team-panel">
-                    <div class="card team-card team-death glow-effect">
-                        <div class="card-header">
-                            <h3 class="card-title">죽음을 먹는 자들</h3>
-                            <span class="team-score" id="deathScore">0</span>
-                        </div>
-                        <div class="team-members" id="deathMembers">
-                            <div class="loading">플레이어를 불러오는 중...</div>
-                        </div>
-                    </div>
-                </div>
+    <!-- 관전자 영역 -->
+    <section id="spectatorArea" style="display:none;">
+      <div class="main-layout">
+        <!-- 왼쪽 팀 -->
+        <div class="team-panel">
+          <div class="card team-card team-phoenix glow-effect">
+            <div class="card-header">
+              <h3 class="card-title">불사조 기사단</h3>
+              <span class="team-score" id="phoenixScore">0</span>
             </div>
-
-            <!-- 관전자 인터페이스 -->
-            <div class="card spectator-panel shimmer-effect">
-                <div class="card-header">
-                    <h3 class="card-title">응원하기</h3>
-                    <div class="shortcuts-title">키보드 단축키: 1-9</div>
-                </div>
-                <div class="cheer-section">
-                    <button class="cheer-btn enhance-hover" data-cheer="멋져요!">멋져요!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="대단해!">대단해!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="화이팅!">화이팅!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="좋은 수!">좋은 수!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="우와!">우와!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="긴장돼!">긴장돼!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="역전의 기회!">역전의 기회!</button>
-                    <button class="cheer-btn enhance-hover" data-cheer="잘했어!">잘했어!</button>
-                </div>
+            <div class="team-members" id="phoenixMembers">
+              <div class="loading">플레이어를 불러오는 중...</div>
             </div>
+          </div>
         </div>
-    </main>
 
-    <!-- 키보드 단축키 힌트 -->
-    <div class="shortcuts-hint">
-        <div class="shortcuts-title">단축키</div>
-        <div class="shortcut-item">
-            <span class="shortcut-key">1-8</span>
-            <span class="shortcut-desc">응원하기</span>
+        <!-- 전투 영역 -->
+        <div class="battle-area">
+          <!-- 상태 -->
+          <div class="card battle-status glow-pulse">
+            <div class="status-title" id="battlePhase">전투 대기 중</div>
+            <div class="status-info" id="battleInfo">플레이어들이 입장하기를 기다리고 있습니다</div>
+            <div class="current-turn" id="currentTurn" style="display:none;"></div>
+          </div>
+
+          <!-- 로그 -->
+          <div class="card glow-effect">
+            <div class="card-header">
+              <h3 class="card-title">전투 로그</h3>
+              <div class="status-indicator waiting">
+                <div class="status-dot"></div>
+                <span>관전 중</span>
+              </div>
+            </div>
+            <div id="battleLog" class="battle-log">
+              <div class="loading">전투 로그를 불러오는 중...</div>
+            </div>
+          </div>
         </div>
-        <div class="shortcut-item">
-            <span class="shortcut-key">F5</span>
-            <span class="shortcut-desc">새로고침</span>
+
+        <!-- 오른쪽 팀 -->
+        <div class="team-panel">
+          <div class="card team-card team-death glow-effect">
+            <div class="card-header">
+              <h3 class="card-title">죽음을 먹는 자들</h3>
+              <span class="team-score" id="deathScore">0</span>
+            </div>
+            <div class="team-members" id="deathMembers">
+              <div class="loading">플레이어를 불러오는 중...</div>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <!-- 응원 -->
+      <div class="card spectator-panel shimmer-effect">
+        <div class="card-header">
+          <h3 class="card-title">응원하기</h3>
+          <div class="shortcuts-title">키보드 단축키: 1-9</div>
+        </div>
+        <div class="cheer-section">
+          <button class="cheer-btn enhance-hover" data-cheer="멋져요!">멋져요!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="대단해!">대단해!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="화이팅!">화이팅!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="좋은 수!">좋은 수!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="우와!">우와!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="긴장돼!">긴장돼!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="죽으면 죽어!">죽으면 죽어!</button>
+          <button class="cheer-btn enhance-hover" data-cheer="잘했어!">잘했어!</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 단축키 힌트 -->
+  <div class="shortcuts-hint">
+    <div class="shortcuts-title">단축키</div>
+    <div class="shortcut-item">
+      <span class="shortcut-key">1-8</span>
+      <span class="shortcut-desc">응원하기</span>
     </div>
+    <div class="shortcut-item">
+      <span class="shortcut-key">F5</span>
+      <span class="shortcut-desc">새로고침</span>
+    </div>
+  </div>
 
-    <!-- JavaScript -->
-    <!-- 추가: Socket.IO 클라이언트 (브로드캐스트 수신 강화를 위해 필수 로드) -->
-    <script src="/socket.io/socket.io.js"></script>
-    <!-- 기존 스크립트 -->
-    <script src="/assets/js/core/socket-manager.js"></script>
-    <script src="/assets/js/core/ui-helpers.js"></script>
-    <script src="/assets/js/pages/spectator.js"></script>
+  <!-- JS -->
+  <script src="/assets/js/core/socket-manager.js"></script>
+  <script src="/assets/js/core/ui-helpers.js"></script>
+  <script src="/assets/js/core/pages/spectator.js"></script>
 </body>
 </html>
