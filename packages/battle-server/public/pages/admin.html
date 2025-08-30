@@ -1,79 +1,278 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS | 전투 관리석</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" href="data:," />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
-  <link href="/assets/pyxis-theme.css" rel="stylesheet">
-  <link href="/assets/css/core.css" rel="stylesheet">
-  <link href="/assets/css/components.css" rel="stylesheet">
-  <link href="/assets/css/admin.css" rel="stylesheet">
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/core/socket-manager.js"></script>
-  <script src="/assets/js/core/ui-helpers.js"></script>
-  <script src="/assets/js/pages/admin.js"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PYXIS 관리자</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+
+    <!-- 폰트 -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- 스타일시트 (디자인/컬러 변경 없음) -->
+    <link href="/assets/css/core.css" rel="stylesheet">
+    <link href="/assets/css/components.css" rel="stylesheet">
+    <link href="/assets/css/admin.css" rel="stylesheet">
 </head>
 <body>
-  <div class="container">
-    <header class="hero">
-      <h1 class="admin-brand">PYXIS 전투 관리자</h1>
+    <!-- 헤더 -->
+    <header class="admin-header">
+        <div class="admin-brand sparkle-effect">Pyxis</div>
     </header>
 
-    <main class="grid">
-      <!-- ===== 전투 생성 패널 ===== -->
-      <div class="card">
-        <div class="section-header">
-          <h3 class="section-title">전투 생성</h3>
-        </div>
-        <form id="createBattleForm" class="form">
-          <div class="field">
-            <label for="battleName">전투 이름</label>
-            <input type="text" id="battleName" name="battleName" class="input" placeholder="전투 이름을 입력하세요" required>
-          </div>
-          <div class="field">
-            <label for="battleMode">전투 모드</label>
-            <select id="battleMode" name="battleMode" class="select">
-              <option value="custom">커스텀</option>
-              <option value="1v1">1 vs 1</option>
-              <option value="2v2">2 vs 2</option>
-              <option value="3v3">3 vs 3</option>
-              <option value="4v4">4 vs 4</option>
-            </select>
-          </div>
-          <button type="submit" class="btn btn-gold">전투 생성</button>
-        </form>
+    <!-- 메인 콘텐츠 -->
+    <main class="container">
+        <div class="admin-stage">
+            <!-- 좌측: 전투 제어 -->
+            <section class="control-section">
+                <!-- 전투 생성 -->
+                <div class="card control-card glow-effect">
+                    <div class="card-header">
+                        <h2 class="card-title">전투 생성 및 제어</h2>
+                        <div class="status-indicator" id="battleStatus">
+                            <div class="status-dot"></div>
+                            <span>대기중</span>
+                        </div>
+                    </div>
 
-        <!-- ✅ 빠른 전투 생성 버튼 -->
-        <div class="section-header" style="margin-top:20px;">
-          <h3 class="section-title">빠른 전투 생성</h3>
-        </div>
-        <div class="quick-match-grid">
-          <button class="btn btn-gold" onclick="admin.createQuickMatch(1)">1 : 1</button>
-          <button class="btn btn-gold" onclick="admin.createQuickMatch(2)">2 : 2</button>
-          <button class="btn btn-gold" onclick="admin.createQuickMatch(3)">3 : 3</button>
-          <button class="btn btn-gold" onclick="admin.createQuickMatch(4)">4 : 4</button>
-        </div>
-      </div>
+                    <div class="control-content">
+                        <!-- 전투 생성 폼 (토글 선택 → 전투 생성) -->
+                        <form id="battleCreateForm" class="create-form">
+                            <div class="form-row" style="align-items:center; gap:12px;">
+                                <div class="field" style="margin:0;">
+                                    <label>전투 모드</label>
+                                    <div id="modeToggleGroup" class="mode-toggle" style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        <button type="button" class="btn enhance-hover mode-btn active" data-mode="1v1">1 : 1</button>
+                                        <button type="button" class="btn enhance-hover mode-btn" data-mode="2v2">2 : 2</button>
+                                        <button type="button" class="btn enhance-hover mode-btn" data-mode="3v3">3 : 3</button>
+                                        <button type="button" class="btn enhance-hover mode-btn" data-mode="4v4">4 : 4</button>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-gold enhance-hover">전투 생성</button>
+                            </div>
+                        </form>
 
-      <!-- ===== 전투 목록 패널 ===== -->
-      <div class="card">
-        <div class="section-header">
-          <h3 class="section-title">전투 목록</h3>
+                        <!-- 전투 정보 -->
+                        <div class="battle-info" id="battleInfo" style="display: none;">
+                            <div class="info-group">
+                                <div class="info-item">
+                                    <label>전투 ID</label>
+                                    <div class="info-display" id="battleIdDisplay">-</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>관리자 OTP</label>
+                                    <div class="info-display" id="adminOtpDisplay">-</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>관전자 OTP</label>
+                                    <div class="info-display" id="spectatorOtpDisplay">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 제어 버튼들 -->
+                        <div class="control-actions" id="controlActions" style="display: none;">
+                            <button id="btnConnect" class="btn btn-info enhance-hover">관리자 로그인</button>
+                            <button id="btnStartBattle" class="btn btn-success enhance-hover" disabled>전투 시작</button>
+                            <button id="btnPauseBattle" class="btn btn-warning enhance-hover" disabled>전투 일시정지</button>
+                            <button id="btnEndBattle" class="btn btn-danger enhance-hover" disabled>전투 종료</button>
+                        </div>
+
+                        <!-- 링크 생성 섹션 -->
+                        <div class="links-section" id="linksSection" style="display: none;">
+                            <div class="section-title">참여자 링크</div>
+                            <button id="btnGenerateLinks" class="btn btn-gold enhance-hover">플레이어별 링크 생성</button>
+                            <div id="linksList" class="links-list" style="margin-top:12px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 중앙: 참여자 관리 -->
+            <section class="player-section">
+                <!-- 플레이어 추가 -->
+                <div class="card player-card glow-effect">
+                    <div class="card-header">
+                        <h2 class="card-title">참여자 관리</h2>
+                    </div>
+
+                    <form id="playerAddForm" class="player-form">
+                        <div class="player-basics">
+                            <div class="field">
+                                <label for="playerName">플레이어 이름</label>
+                                <input id="playerName"
+                                       class="input enhance-hover"
+                                       placeholder="이름 입력"
+                                       maxlength="20"
+                                       required>
+                            </div>
+                            <div class="field">
+                                <label for="playerTeam">소속 팀</label>
+                                <select id="playerTeam" class="select enhance-hover" required>
+                                    <option value="team1">불사조 기사단</option>
+                                    <option value="team2">죽음을 먹는 자들</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="stats-section">
+                            <div class="section-title">능력치 배분</div>
+                            <div class="stats-grid">
+                                <div class="field">
+                                    <label for="statAttack">공격력</label>
+                                    <input id="statAttack"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="1" max="5"
+                                           value="3"
+                                           required>
+                                </div>
+                                <div class="field">
+                                    <label for="statDefense">방어력</label>
+                                    <input id="statDefense"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="1" max="5"
+                                           value="3"
+                                           required>
+                                </div>
+                                <div class="field">
+                                    <label for="statAgility">민첩성</label>
+                                    <input id="statAgility"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="1" max="5"
+                                           value="3"
+                                           required>
+                                </div>
+                                <div class="field">
+                                    <label for="statLuck">행운</label>
+                                    <input id="statLuck"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="1" max="5"
+                                           value="3"
+                                           required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="items-section">
+                            <div class="section-title">시작 아이템</div>
+                            <div class="items-grid">
+                                <div class="field">
+                                    <label for="itemDittany">디터니</label>
+                                    <input id="itemDittany"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="0" max="5"
+                                           value="2"
+                                           required>
+                                </div>
+                                <div class="field">
+                                    <label for="itemAttackBoost">공격 보정기</label>
+                                    <input id="itemAttackBoost"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="0" max="3"
+                                           value="1"
+                                           required>
+                                </div>
+                                <div class="field">
+                                    <label for="itemDefenseBoost">방어 보정기</label>
+                                    <input id="itemDefenseBoost"
+                                           type="number"
+                                           class="input enhance-hover"
+                                           min="0" max="3"
+                                           value="1"
+                                           required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="avatar-section">
+                            <div class="section-title">아바타 이미지</div>
+                            <div class="avatar-upload">
+                                <input type="file"
+                                       id="avatarFile"
+                                       accept="image/*"
+                                       class="file-input">
+                                <label for="avatarFile" class="file-label enhance-hover">
+                                    이미지 선택
+                                </label>
+                                <div class="avatar-preview" id="avatarPreview"></div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-gold enhance-hover">플레이어 추가</button>
+                    </form>
+                </div>
+
+                <!-- 팀 로스터 -->
+                <div class="card roster-card glow-effect" id="rosterCard" style="display: none;">
+                    <div class="card-header">
+                        <h2 class="card-title">팀 구성</h2>
+                    </div>
+
+                    <div class="teams-roster">
+                        <div class="team-section">
+                            <div class="team-header">불사조 기사단</div>
+                            <div id="team1Roster" class="team-roster">
+                                <div class="empty-roster">플레이어가 없습니다</div>
+                            </div>
+                        </div>
+
+                        <div class="team-section">
+                            <div class="team-header">죽음을 먹는 자들</div>
+                            <div id="team2Roster" class="team-roster">
+                                <div class="empty-roster">플레이어가 없습니다</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 우측: 로그 & 채팅 -->
+            <section class="log-section">
+                <div class="card log-card glow-effect">
+                    <div class="card-header">
+                        <h2 class="card-title">실시간 로그 & 채팅</h2>
+                    </div>
+
+                    <div class="log-chat-container">
+                        <div id="logViewer" class="log-viewer">
+                            <div class="log-entry system">
+                                <div class="log-timestamp">시작</div>
+                                <div class="log-content">PYXIS 관리자 패널에 오신 것을 환영합니다</div>
+                            </div>
+                        </div>
+
+                        <div class="chat-input-container">
+                            <div class="chat-controls">
+                                <select id="chatChannel" class="select">
+                                    <option value="all">전체 채팅</option>
+                                    <option value="team">팀 채팅</option>
+                                </select>
+                            </div>
+                            <div class="chat-input-row">
+                                <input id="chatInput"
+                                       class="input chat-input"
+                                       placeholder="메시지 입력 (/t 팀 채팅)"
+                                       maxlength="200">
+                                <button id="btnSendChat" class="btn btn-info enhance-hover">전송</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
-        <div id="battleList" class="log-viewer"></div>
-      </div>
     </main>
-  </div>
 
-  <style>
-    .quick-match-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-  </style>
+    <!-- JavaScript -->
+    <!-- Socket.IO 클라이언트 (누락되어 연결 실패하던 부분 보완) -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/assets/js/core/socket-manager.js"></script>
+    <script src="/assets/js/core/ui-helpers.js"></script>
+    <script src="/assets/js/pages/admin.js"></script>
 </body>
 </html>
