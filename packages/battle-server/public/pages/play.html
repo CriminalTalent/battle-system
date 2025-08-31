@@ -1,232 +1,451 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS | 플레이어</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/pyxis-theme.css">
-  <link rel="stylesheet" href="/assets/css/core.css">
-  <link rel="stylesheet" href="/assets/css/components.css">
-  <link rel="stylesheet" href="/assets/css/player.css">
-  <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PYXIS - 플레이어</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* 플레이어 페이지 전용 고급 스타일 */
-    body {
-      background: linear-gradient(135deg, 
-        var(--deep-navy) 0%, 
-        var(--midnight) 25%, 
-        var(--navy-mist) 50%, 
-        var(--midnight) 75%, 
-        var(--deep-navy) 100%);
-      background-attachment: fixed;
+    /* ===============================
+       PYXIS Player Variables (네이비+골드 고정)
+       =============================== */
+    :root {
+      /* 기존 네이비+골드 색상 시스템 고정 */
+      --deep-navy: #00080D;
+      --deep-navy-2: #001E35;
+      --deep-navy-3: #0D1B2A;
+      --gold-bright: #DCC7A2;
+      --gold-dark: #D4BA8D;
+      --gold-muted: #B5A082;
+
+      /* 텍스트 컬러 */
+      --text: #F5E6B8;
+      --text-dim: #C4B599;
+      --text-muted: #9C9270;
+
+      /* 배경 & 표면 */
+      --bg-primary: linear-gradient(135deg, #0D1B2A 0%, #00080D 50%, #001E35 100%);
+      --bg-secondary: rgba(13, 27, 42, 0.95);
+      --surface-1: rgba(21, 34, 56, 0.8);
+      --surface-2: rgba(28, 45, 73, 0.6);
+      --glass-1: rgba(220, 199, 162, 0.08);
+      --glass-2: rgba(220, 199, 162, 0.12);
+      --glass-subtle: rgba(220, 199, 162, 0.04);
+
+      /* 보더 */
+      --border-1: rgba(220, 199, 162, 0.25);
+      --border-2: rgba(220, 199, 162, 0.4);
+      --border-subtle: rgba(220, 199, 162, 0.15);
+
+      /* 그림자 */
+      --shadow-soft: 0 8px 32px rgba(0, 8, 13, 0.6);
+      --shadow-medium: 0 16px 48px rgba(0, 8, 13, 0.8);
+      --shadow-hard: 0 24px 64px rgba(0, 0, 0, 0.9);
+      --shadow-inset: inset 0 2px 8px rgba(0, 8, 13, 0.3);
+      --shadow-glow: 0 0 24px rgba(220, 199, 162, 0.15);
+      --shadow-intense: 0 0 60px rgba(220, 199, 162, 0.3);
+
+      /* 상태 색상 (네이비+골드 기반) */
+      --success: #27AE60;
+      --warning: #F39C12;
+      --danger: #E74C3C;
+
+      /* 블러 효과 */
+      --blur-light: blur(12px);
+      --blur-medium: blur(20px);
+      --blur-heavy: blur(32px);
+
+      /* 반지름 */
+      --radius: 16px;
+      --radius-small: 8px;
+      --radius-large: 24px;
+
+      /* 폰트 */
+      --serif: 'Cinzel', serif;
+      --sans: 'Inter', system-ui, sans-serif;
+
+      /* 트랜지션 */
+      --transition-fast: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+      --transition-normal: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      --transition-slow: all 0.5s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    /* ===============================
+       Base Reset & Typography
+       =============================== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
       min-height: 100vh;
-      position: relative;
+      font-family: var(--sans);
+      background: var(--bg-primary);
+      color: var(--text);
+      line-height: 1.6;
       overflow-x: hidden;
     }
 
-    /* 우주 배경 효과 */
     body::before {
       content: '';
       position: fixed;
-      inset: 0;
-      background-image: 
-        radial-gradient(circle at 20% 30%, rgba(212,183,126,0.03) 0%, transparent 40%),
-        radial-gradient(circle at 80% 20%, rgba(212,183,126,0.02) 0%, transparent 35%),
-        radial-gradient(circle at 40% 80%, rgba(212,183,126,0.04) 0%, transparent 45%),
-        radial-gradient(circle at 70% 60%, rgba(212,183,126,0.02) 0%, transparent 30%);
-      animation: starField 25s ease-in-out infinite;
-      pointer-events: none;
+      top: -50%;
+      left: -50%;
+      right: -50%;
+      bottom: -50%;
+      background: 
+        radial-gradient(circle at 30% 20%, rgba(220, 199, 162, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 70% 80%, rgba(220, 199, 162, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 20% 60%, rgba(212, 183, 126, 0.04) 0%, transparent 40%);
+      animation: cosmic-drift 20s ease-in-out infinite;
       z-index: -1;
     }
 
-    @keyframes starField {
-      0%, 100% { opacity: 0.5; transform: rotate(0deg) scale(1); }
-      50% { opacity: 1; transform: rotate(0.5deg) scale(1.02); }
+    /* ===============================
+       Enhanced Header with Dramatic Effects
+       =============================== */
+    .header {
+      position: relative;
+      padding: 32px 0 40px;
+      background: var(--bg-primary);
+      backdrop-filter: var(--blur-heavy);
+      border-bottom: 2px solid var(--border-1);
+      box-shadow: var(--shadow-hard), var(--shadow-intense);
+      overflow: hidden;
     }
 
-    /* 연결 상태 */
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      right: -50%;
+      bottom: -50%;
+      background: 
+        radial-gradient(circle at 25% 25%, rgba(220, 199, 162, 0.1) 0%, transparent 30%),
+        radial-gradient(circle at 75% 75%, rgba(220, 199, 162, 0.08) 0%, transparent 30%);
+      animation: aurora-dance 15s ease-in-out infinite;
+      z-index: 1;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, 
+        transparent 30%, 
+        rgba(220, 199, 162, 0.06) 50%, 
+        transparent 70%);
+      animation: energy-sweep 10s ease-in-out infinite;
+      z-index: 2;
+    }
+
+    .header-content {
+      position: relative;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+    }
+
+    /* Star Field for Player Page */
+    .star-field {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 3;
+    }
+
+    .star {
+      position: absolute;
+      background: var(--gold-bright);
+      border-radius: 50%;
+      filter: blur(0.5px);
+    }
+
+    .star-1 { 
+      top: 20%; left: 15%; 
+      width: 2px; height: 2px;
+      box-shadow: 0 0 15px var(--gold-bright), 0 0 30px rgba(220, 199, 162, 0.6);
+      animation: star-pulse 4s ease-in-out infinite;
+    }
+    .star-2 { 
+      top: 30%; right: 20%; 
+      width: 1.5px; height: 1.5px;
+      box-shadow: 0 0 12px var(--gold-dark), 0 0 25px rgba(212, 183, 126, 0.5);
+      animation: star-pulse 3.5s ease-in-out infinite 1s;
+    }
+    .star-3 { 
+      top: 60%; left: 25%; 
+      width: 2.5px; height: 2.5px;
+      box-shadow: 0 0 18px var(--gold-bright), 0 0 35px rgba(220, 199, 162, 0.7);
+      animation: star-pulse 4.5s ease-in-out infinite 2s;
+    }
+    .star-4 { 
+      top: 80%; right: 30%; 
+      width: 1px; height: 1px;
+      box-shadow: 0 0 10px var(--gold-muted), 0 0 20px rgba(181, 160, 130, 0.4);
+      animation: star-pulse 3s ease-in-out infinite 0.5s;
+    }
+
+    /* Lens Flare for Player Page */
+    .lens-flare {
+      position: absolute;
+      top: 25%;
+      right: 10%;
+      width: 250px;
+      height: 250px;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .lens-flare-core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 25px;
+      height: 25px;
+      background: radial-gradient(circle, 
+        rgba(255, 255, 255, 1) 0%,
+        rgba(220, 199, 162, 0.9) 40%,
+        transparent 100%);
+      border-radius: 50%;
+      box-shadow: 
+        0 0 25px rgba(255, 255, 255, 0.9),
+        0 0 50px rgba(220, 199, 162, 0.7),
+        0 0 100px rgba(212, 183, 126, 0.5);
+      animation: core-pulse 3s ease-in-out infinite;
+    }
+
+    .lens-flare-rays {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px;
+      height: 220px;
+    }
+
+    .lens-flare-rays::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: 220px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 30%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 70%,
+        transparent 100%);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+    }
+
+    .lens-flare-rays::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(90deg);
+      width: 2px;
+      height: 220px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 30%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 70%,
+        transparent 100%);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+    }
+
+    /* Plasma Orbs */
+    .plasma-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(1px);
+      animation: plasma-drift 6s ease-in-out infinite;
+    }
+
+    .orb-1 {
+      top: 35%;
+      right: 40%;
+      width: 50px;
+      height: 50px;
+      background: radial-gradient(circle, 
+        rgba(220, 199, 162, 0.4) 0%, 
+        rgba(220, 199, 162, 0.2) 40%, 
+        transparent 70%);
+      animation-delay: 0s;
+      box-shadow: 0 0 40px rgba(220, 199, 162, 0.3);
+    }
+
+    .orb-2 {
+      top: 55%;
+      right: 60%;
+      width: 35px;
+      height: 35px;
+      background: radial-gradient(circle, 
+        rgba(212, 183, 126, 0.3) 0%, 
+        rgba(212, 183, 126, 0.15) 40%, 
+        transparent 70%);
+      animation-delay: 2s;
+      box-shadow: 0 0 30px rgba(212, 183, 126, 0.2);
+    }
+
+    /* Brand Title */
+    .brand-title {
+      font-family: var(--serif);
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, 
+        var(--gold-bright) 0%, 
+        var(--gold-dark) 50%, 
+        var(--gold-bright) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 20px rgba(220, 199, 162, 0.5);
+      letter-spacing: 0.1em;
+      position: relative;
+      z-index: 10;
+    }
+
+    .brand-title::before {
+      content: '✦';
+      position: absolute;
+      left: -40px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.5rem;
+      color: var(--gold-bright);
+      text-shadow: 0 0 15px var(--gold-bright);
+      animation: star-rotate 5s ease-in-out infinite;
+    }
+
+    .brand-title::after {
+      content: '✧';
+      position: absolute;
+      right: -40px;
+      top: 20%;
+      font-size: 1rem;
+      color: var(--gold-dark);
+      text-shadow: 0 0 10px var(--gold-dark);
+      animation: star-rotate 5s ease-in-out infinite reverse 2.5s;
+    }
+
+    /* Connection Status */
     .connection-status {
-      position: fixed;
-      top: 20px;
-      right: 20px;
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(8,13,25,0.95);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(212,183,126,0.25);
-      border-radius: var(--radius-large);
       padding: 12px 20px;
-      font-weight: 600;
-      z-index: 1000;
-      box-shadow: var(--shadow-deep);
+      background: var(--glass-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      backdrop-filter: var(--blur-light);
+      z-index: 10;
     }
 
     .connection-dot {
       width: 12px;
       height: 12px;
-      border-radius: 50%;
       background: var(--warning);
-      animation: connectionPulse 2s ease-in-out infinite;
-      box-shadow: 0 0 12px currentColor;
+      border-radius: 50%;
+      box-shadow: 0 0 16px var(--warning);
+      animation: pulse 2s ease-in-out infinite;
     }
 
     .connection-dot.connected {
       background: var(--success);
-      color: var(--success);
+      box-shadow: 0 0 16px var(--success);
     }
 
-    .connection-dot.disconnected {
-      background: var(--danger);
-      color: var(--danger);
-      animation: none;
+    .connection-text {
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 14px;
     }
 
-    @keyframes connectionPulse {
-      0%, 100% { opacity: 0.6; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.2); }
-    }
-
-    /* 플레이어 헤더 */
-    .player-header {
-      text-align: center;
-      padding: 80px 20px 60px;
-      position: relative;
-      overflow: hidden;
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.1) 0%, 
-        rgba(10,15,26,0.95) 25%, 
-        rgba(10,15,26,0.95) 75%, 
-        rgba(212,183,126,0.1) 100%);
-      border-bottom: 2px solid rgba(212,183,126,0.2);
-    }
-
-    .player-header::before {
-      content: '';
-      position: absolute;
-      top: -100%;
-      left: -50%;
-      right: -50%;
-      height: 300%;
-      background: conic-gradient(from 45deg, 
-        rgba(212,183,126,0.08) 0deg, 
-        transparent 90deg,
-        rgba(212,183,126,0.05) 180deg, 
-        transparent 270deg, 
-        rgba(212,183,126,0.08) 360deg);
-      animation: playerOrbit 40s linear infinite;
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    @keyframes playerOrbit {
-      0% { transform: rotate(0deg) scale(1); }
-      100% { transform: rotate(360deg) scale(1); }
-    }
-
-    .player-brand {
-      font-family: var(--serif);
-      font-weight: 800;
-      font-size: clamp(2rem, 5vw, 3.5rem);
-      background: linear-gradient(135deg, 
-        var(--gold-bright) 0%, 
-        var(--gold-shimmer) 30%, 
-        var(--gold) 60%, 
-        var(--gold-light) 100%);
-      background-size: 200% 200%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: playerShimmer 3s ease-in-out infinite;
-      letter-spacing: 0.05em;
-      position: relative;
-    }
-
-    @keyframes playerShimmer {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-    }
-
-    .player-brand::after {
-      content: '전사';
-      position: absolute;
-      bottom: -35px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: var(--gold);
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.15), 
-        rgba(212,183,126,0.08));
-      border: 1px solid rgba(212,183,126,0.4);
-      border-radius: 25px;
-      padding: 8px 20px;
-      letter-spacing: 0.03em;
-      white-space: nowrap;
-    }
-
-    /* 메인 컨테이너 - 3열 그리드 */
+    /* ===============================
+       Main Layout
+       =============================== */
     .container {
       max-width: 1400px;
       margin: 0 auto;
-      padding: 40px 24px;
+      padding: 32px 24px;
       display: grid;
       grid-template-columns: 300px 1fr 350px;
       gap: 32px;
       align-items: start;
     }
 
-    /* 카드 스타일 */
+    /* ===============================
+       Enhanced Card System
+       =============================== */
     .card {
-      background: linear-gradient(145deg, 
-        rgba(15,20,25,0.9) 0%, 
-        rgba(25,31,42,0.8) 50%, 
-        rgba(15,20,25,0.9) 100%);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(212,183,126,0.18);
-      border-radius: var(--radius-large);
+      background: var(--surface-1);
+      border: 1px solid var(--border-1);
+      border-radius: var(--radius);
       padding: 28px;
-      margin-bottom: 24px;
       position: relative;
       overflow: hidden;
-      transition: all var(--transition-normal);
+      transition: var(--transition-normal);
+      backdrop-filter: var(--blur-light);
       box-shadow: var(--shadow-soft), var(--shadow-inset);
+      margin-bottom: 24px;
     }
 
     .card::before {
       content: '';
       position: absolute;
       top: 0;
-      left: 25%;
-      right: 25%;
+      left: 20%;
+      right: 20%;
       height: 1px;
       background: linear-gradient(90deg, 
         transparent, 
-        rgba(212,183,126,0.5), 
+        rgba(220, 199, 162, 0.4), 
         transparent);
     }
 
     .card:hover {
-      transform: translateY(-3px);
-      border-color: rgba(212,183,126,0.35);
+      transform: translateY(-4px);
+      border-color: var(--border-2);
       box-shadow: var(--shadow-medium), 
                   var(--shadow-inset), 
-                  0 0 30px rgba(212,183,126,0.12);
+                  0 0 40px rgba(220, 199, 162, 0.1);
     }
 
-    /* 섹션 제목 */
+    /* Section Headers */
+    .section-header {
+      margin-bottom: 24px;
+    }
+
     .section-title {
       font-family: var(--serif);
-      font-size: 1.3rem;
+      font-size: 1.4rem;
       font-weight: 700;
       color: var(--gold-bright);
-      margin-bottom: 20px;
       position: relative;
-      padding-left: 20px;
+      padding-left: 24px;
       letter-spacing: 0.02em;
+      text-shadow: 0 2px 8px rgba(220, 199, 162, 0.3);
     }
 
     .section-title::before {
@@ -236,15 +455,17 @@
       top: 50%;
       transform: translateY(-50%);
       width: 6px;
-      height: 65%;
+      height: 70%;
       background: linear-gradient(to bottom, 
         var(--gold-bright), 
         var(--gold-dark));
       border-radius: 3px;
-      box-shadow: 0 0 10px rgba(212,183,126,0.4);
+      box-shadow: 0 0 10px rgba(220, 199, 162, 0.4);
     }
 
-    /* 인증 폼 */
+    /* ===============================
+       Authentication Section
+       =============================== */
     #authSection {
       grid-column: 1 / -1;
       max-width: 600px;
@@ -267,47 +488,128 @@
     .input {
       width: 100%;
       padding: 16px 20px;
-      background: rgba(8,13,25,0.8);
-      border: 2px solid rgba(212,183,126,0.15);
+      background: var(--surface-2);
+      border: 2px solid var(--border-subtle);
       border-radius: var(--radius);
       color: var(--text);
       font-size: 16px;
       font-weight: 500;
-      transition: all var(--transition-normal);
-      backdrop-filter: blur(8px);
-    }
-
-    .input::placeholder {
-      color: var(--text-muted);
-      opacity: 0.8;
+      transition: var(--transition-normal);
+      backdrop-filter: var(--blur-light);
     }
 
     .input:focus {
       outline: none;
-      border-color: var(--gold);
-      background: rgba(8,13,25,0.95);
-      box-shadow: 0 0 0 4px rgba(212,183,126,0.15),
-                  0 0 20px rgba(212,183,126,0.1);
+      border-color: var(--gold-bright);
+      background: rgba(28, 45, 73, 0.8);
+      box-shadow: 0 0 0 4px rgba(220, 199, 162, 0.15),
+                  0 0 20px rgba(220, 199, 162, 0.1);
     }
 
-    /* 플레이어 정보 바 */
-    .player-info {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 20px;
-      padding: 24px;
-      background: rgba(212,183,126,0.05);
-      border: 1px solid rgba(212,183,126,0.2);
+    /* ===============================
+       Enhanced Button System
+       =============================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 24px;
+      border: none;
       border-radius: var(--radius);
-      backdrop-filter: blur(12px);
+      font-family: var(--sans);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition-normal);
+      position: relative;
+      overflow: hidden;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+      min-width: 140px;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.2), 
+        transparent);
+      transition: left 0.6s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      color: var(--deep-navy);
+      box-shadow: 0 4px 16px rgba(220, 199, 162, 0.3);
+    }
+
+    .btn-gold:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(220, 199, 162, 0.4);
+    }
+
+    .btn-attack {
+      background: linear-gradient(135deg, #E74C3C, #C0392B);
+      color: white;
+    }
+
+    .btn-defend {
+      background: linear-gradient(135deg, #3498DB, #2980B9);
+      color: white;
+    }
+
+    .btn-dodge {
+      background: linear-gradient(135deg, #F39C12, #E67E22);
+      color: white;
+    }
+
+    .btn-item {
+      background: linear-gradient(135deg, #9B59B6, #8E44AD);
+      color: white;
+    }
+
+    .btn-pass {
+      background: linear-gradient(135deg, #95A5A6, #7F8C8D);
+      color: white;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* ===============================
+       Player Info Panel
+       =============================== */
+    .player-info-panel {
+      display: grid;
+      gap: 16px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
     }
 
     .info-item {
       text-align: center;
       padding: 16px;
-      background: rgba(8,13,25,0.6);
+      background: var(--glass-1);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-small);
-      border: 1px solid rgba(212,183,126,0.1);
+      backdrop-filter: var(--blur-light);
     }
 
     .info-label {
@@ -320,12 +622,76 @@
     }
 
     .info-value {
-      font-size: 18px;
+      font-size: 20px;
       font-weight: 700;
       color: var(--gold-bright);
     }
 
-    /* 액션 버튼들 */
+    .info-value.hp {
+      color: var(--success);
+    }
+
+    .info-value.low-hp {
+      color: var(--danger);
+      animation: danger-pulse 2s ease-in-out infinite;
+    }
+
+    /* ===============================
+       Team Members Panel
+       =============================== */
+    .team-member {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 16px;
+      background: var(--glass-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-small);
+      margin-bottom: 12px;
+      transition: var(--transition-normal);
+    }
+
+    .team-member:hover {
+      background: var(--glass-2);
+      border-color: var(--border-1);
+    }
+
+    .member-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      border: 2px solid var(--border-1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--deep-navy);
+      box-shadow: 0 4px 12px rgba(220, 199, 162, 0.2);
+    }
+
+    .member-info {
+      flex: 1;
+    }
+
+    .member-name {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .member-status {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ===============================
+       Action Panel
+       =============================== */
     .action-panel {
       position: sticky;
       top: 20px;
@@ -333,620 +699,775 @@
 
     .action-buttons {
       display: grid;
-      gap: 16px;
+      gap: 12px;
     }
 
-    .btn {
-      padding: 18px 24px;
-      background: linear-gradient(145deg, 
-        rgba(30,37,47,0.95), 
-        rgba(20,26,36,0.95));
-      border: 2px solid rgba(212,183,126,0.2);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 16px;
-      font-weight: 700;
+    .turn-indicator {
       text-align: center;
-      cursor: pointer;
-      transition: all var(--transition-normal);
-      position: relative;
-      overflow: hidden;
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .btn::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.1), 
-        transparent 50%, 
-        rgba(212,183,126,0.05));
-      opacity: 0;
-      transition: opacity var(--transition-normal);
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-3px);
-      border-color: var(--gold);
-      color: var(--gold-bright);
-      box-shadow: var(--shadow-medium), 
-                  0 0 25px rgba(212,183,126,0.2);
-    }
-
-    .btn:hover:not(:disabled)::before {
-      opacity: 1;
-    }
-
-    .btn:active {
-      transform: translateY(-1px);
-    }
-
-    .btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    /* 특수 버튼 스타일 */
-    .btn-attack {
-      background: linear-gradient(145deg, 
-        rgba(231,76,60,0.9), 
-        rgba(192,57,43,0.9));
-      border-color: var(--danger);
-      color: white;
-    }
-
-    .btn-defend {
-      background: linear-gradient(145deg, 
-        rgba(52,152,219,0.9), 
-        rgba(41,128,185,0.9));
-      border-color: var(--info);
-      color: white;
-    }
-
-    .btn-dodge {
-      background: linear-gradient(145deg, 
-        rgba(46,125,50,0.9), 
-        rgba(27,94,32,0.9));
-      border-color: var(--success);
-      color: white;
-    }
-
-    .btn-item {
-      background: linear-gradient(145deg, 
-        rgba(156,39,176,0.9), 
-        rgba(123,31,162,0.9));
-      border-color: #9c27b0;
-      color: white;
-    }
-
-    .btn-pass {
-      background: linear-gradient(145deg, 
-        rgba(97,97,97,0.9), 
-        rgba(66,66,66,0.9));
-      border-color: #616161;
-      color: white;
-    }
-
-    /* 액션 단축키 힌트 */
-    .btn::after {
-      content: attr(data-key);
-      position: absolute;
-      top: 8px;
-      right: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      color: rgba(255,255,255,0.6);
-      background: rgba(0,0,0,0.3);
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-
-    /* 팀 정보 */
-    .team-section {
-      padding: 0;
-    }
-
-    .team-header {
-      text-align: center;
-      font-family: var(--serif);
-      font-weight: 700;
-      font-size: 18px;
-      color: var(--gold-bright);
       padding: 16px;
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.15), 
-        rgba(212,183,126,0.08));
-      border: 1px solid rgba(212,183,126,0.25);
+      background: var(--glass-2);
+      border: 1px solid var(--border-1);
       border-radius: var(--radius);
       margin-bottom: 20px;
-      position: relative;
-      text-shadow: 0 2px 8px rgba(212,183,126,0.3);
+      backdrop-filter: var(--blur-light);
     }
 
-    .team-header::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 30%;
-      right: 30%;
-      height: 1px;
-      background: linear-gradient(90deg, 
-        transparent, 
-        var(--gold-bright), 
-        transparent);
-    }
-
-    .unit-card {
+    .turn-indicator.active {
       background: linear-gradient(135deg, 
-        rgba(15,20,25,0.8), 
-        rgba(25,31,42,0.7));
-      border: 1px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin-bottom: 16px;
-      transition: all var(--transition-normal);
+        rgba(220, 199, 162, 0.2), 
+        rgba(220, 199, 162, 0.1));
+      border-color: var(--gold-bright);
+      box-shadow: 0 0 20px rgba(220, 199, 162, 0.3);
     }
 
-    .unit-card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(212,183,126,0.3);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .unit-card.active {
-      border-color: var(--gold);
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.08), 
-        rgba(15,20,25,0.9));
-      box-shadow: 0 0 20px rgba(212,183,126,0.15);
-    }
-
-    .unit-name {
-      font-size: 16px;
+    .turn-text {
       font-weight: 700;
       color: var(--gold-bright);
-      margin-bottom: 12px;
+      font-size: 16px;
     }
 
-    .unit-stats {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
+    /* ===============================
+       Battle Log
+       =============================== */
+    .battle-log {
+      height: 300px;
+      background: linear-gradient(145deg, 
+        rgba(13, 27, 42, 0.95), 
+        rgba(21, 34, 56, 0.92));
+      border: 1px solid var(--border-1);
+      border-radius: var(--radius);
+      padding: 20px;
+      overflow-y: auto;
+      backdrop-filter: var(--blur-light);
+      box-shadow: inset 0 4px 16px rgba(0, 8, 13, 0.3);
+    }
+
+    .log-entry {
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: var(--radius-small);
       font-size: 13px;
-      color: var(--text-dim);
+      background: rgba(220, 199, 162, 0.05);
+      border-left: 3px solid transparent;
     }
 
-    .stat-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
+    .log-entry.system {
+      color: var(--gold-bright);
+      border-left-color: var(--gold-bright);
     }
 
-    .stat-label {
-      font-weight: 600;
+    .log-entry.action {
+      color: var(--text);
+      border-left-color: var(--text-dim);
     }
 
-    .stat-value {
-      color: var(--gold);
-      font-weight: 700;
+    .log-entry.damage {
+      color: var(--danger);
+      border-left-color: var(--danger);
     }
 
-    /* HP 바 */
-    .hp-bar {
-      width: 100%;
-      height: 8px;
-      background: rgba(0,0,0,0.3);
-      border-radius: 4px;
-      overflow: hidden;
-      margin: 12px 0;
-      border: 1px solid rgba(212,183,126,0.2);
+    .log-entry.heal {
+      color: var(--success);
+      border-left-color: var(--success);
     }
 
-    .hp-fill {
-      height: 100%;
-      background: linear-gradient(90deg, 
-        var(--success), 
-        var(--warning) 50%, 
-        var(--danger) 100%);
-      transition: width 0.5s ease;
-      position: relative;
-    }
-
-    .hp-fill::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, 
-        transparent, 
-        rgba(255,255,255,0.3), 
-        transparent);
-      animation: hpShimmer 2s ease-in-out infinite;
-    }
-
-    @keyframes hpShimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-
-    /* 로그 및 채팅 */
-    .battle-log, .chat-messages {
-      height: 350px;
-      background: linear-gradient(145deg, 
-        rgba(5,15,28,0.95), 
-        rgba(8,20,35,0.92));
-      border: 1px solid rgba(212,183,126,0.2);
-      border-radius: var(--radius);
-      padding: 20px;
-      overflow-y: auto;
-      backdrop-filter: blur(12px);
-      box-shadow: inset 0 4px 16px rgba(0,0,0,0.4);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    /* 타겟 선택 오버레이 */
-    .target-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,8,13,0.95);
-      backdrop-filter: blur(20px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2000;
-      animation: overlayFadeIn 0.3s ease;
-    }
-
-    @keyframes overlayFadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    .target-card-container {
-      background: linear-gradient(145deg, 
-        rgba(15,20,25,0.95), 
-        rgba(25,31,42,0.9));
-      border: 2px solid rgba(212,183,126,0.3);
-      border-radius: var(--radius-large);
-      padding: 40px;
-      max-width: 600px;
-      max-height: 80vh;
-      overflow-y: auto;
-      box-shadow: var(--shadow-deep);
-      backdrop-filter: blur(16px);
-    }
-
-    .target-list {
-      display: grid;
-      gap: 16px;
-      margin: 24px 0;
-    }
-
-    .target-card {
-      padding: 20px;
-      background: rgba(8,13,25,0.8);
-      border: 2px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius);
-      cursor: pointer;
-      transition: all var(--transition-normal);
-    }
-
-    .target-card:hover {
-      border-color: var(--gold);
-      background: rgba(8,13,25,0.95);
-      transform: translateY(-2px);
-    }
-
-    .target-card.selected {
-      border-color: var(--gold-bright);
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.1), 
-        rgba(8,13,25,0.9));
-      box-shadow: 0 0 20px rgba(212,183,126,0.2);
-    }
-
-    /* 반응형 디자인 */
+    /* ===============================
+       Responsive Design
+       =============================== */
     @media (max-width: 1200px) {
       .container {
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
-        padding: 32px 20px;
-      }
-
-      .team-section {
-        grid-column: 1 / -1;
-      }
-    }
-
-    @media (max-width: 800px) {
-      .container {
         grid-template-columns: 1fr;
-        gap: 20px;
-        padding: 24px 16px;
+        gap: 24px;
+      }
+
+      .action-panel {
+        position: static;
       }
     }
 
     @media (max-width: 768px) {
-      .player-header {
-        padding: 60px 16px 40px;
-      }
-
-      .player-brand {
-        font-size: 2rem;
-      }
-
-      .player-brand::after {
-        bottom: -30px;
-        font-size: 0.8rem;
-        padding: 6px 16px;
+      .header-content {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
       }
 
       .container {
-        padding: 24px 16px;
-        gap: 20px;
+        padding: 20px 16px;
       }
 
       .card {
-        padding: 20px;
-        margin-bottom: 20px;
+        padding: 20px 16px;
       }
 
-      .action-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-      }
-
-      .action-btn {
-        padding: 12px 8px;
-        min-height: 60px;
-        gap: 4px;
-      }
-
-      .btn-text {
-        font-size: 13px;
-      }
-
-      .my-info-layout {
-        grid-template-columns: 60px 1fr;
-        gap: 12px;
-      }
-
-      .avatar-frame {
-        width: 50px;
-        height: 50px;
-      }
-
-      .my-stats {
+      .info-grid {
         grid-template-columns: 1fr;
-        gap: 6px;
       }
 
-      .chat-input-group {
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .chat-select {
-        min-width: 60px;
+      .action-buttons {
+        grid-template-columns: repeat(2, 1fr);
       }
     }
 
     @media (max-width: 480px) {
-      .container {
-        padding: 20px 12px;
+      .brand-title::before,
+      .brand-title::after {
+        display: none;
       }
 
-      .card {
-        padding: 16px;
-        margin-bottom: 16px;
+      .action-buttons {
+        grid-template-columns: 1fr;
       }
+    }
 
-      .action-grid {
-        grid-template-columns: 1fr 1fr;
+    /* ===============================
+       Animations
+       =============================== */
+    @keyframes star-pulse {
+      0%, 100% { 
+        opacity: 0.4; 
+        transform: scale(1);
       }
+      50% { 
+        opacity: 1; 
+        transform: scale(1.5);
+      }
+    }
 
-      .connection-status {
-        position: static;
-        margin: 16px;
-        justify-self: center;
+    @keyframes core-pulse {
+      0%, 100% { 
+        opacity: 0.8; 
+        transform: translate(-50%, -50%) scale(1);
       }
+      50% { 
+        opacity: 1; 
+        transform: translate(-50%, -50%) scale(1.2);
+      }
+    }
 
-      .chat-input-group {
-        flex-direction: column;
+    @keyframes plasma-drift {
+      0%, 100% { 
+        opacity: 0.4; 
+        transform: translateY(0px);
       }
+      50% { 
+        opacity: 0.8; 
+        transform: translateY(-10px);
+      }
+    }
 
-      .chat-select,
-      .chat-input {
-        width: 100%;
+    @keyframes aurora-dance {
+      0%, 100% { 
+        transform: rotate(0deg) scale(1); 
+        opacity: 0.6;
       }
+      50% { 
+        transform: rotate(180deg) scale(1.1); 
+        opacity: 0.8;
+      }
+    }
+
+    @keyframes energy-sweep {
+      0% { transform: translateX(-100%) skewX(-15deg); }
+      100% { transform: translateX(100%) skewX(-15deg); }
+    }
+
+    @keyframes star-rotate {
+      0%, 100% { 
+        transform: translateY(-50%) rotate(0deg); 
+        opacity: 0.8;
+      }
+      50% { 
+        transform: translateY(-50%) rotate(180deg); 
+        opacity: 1;
+      }
+    }
+
+    @keyframes cosmic-drift {
+      0%, 100% { 
+        transform: rotate(0deg) scale(1); 
+        opacity: 0.5;
+      }
+      33% { 
+        transform: rotate(120deg) scale(1.05); 
+        opacity: 0.7;
+      }
+      66% { 
+        transform: rotate(240deg) scale(0.95); 
+        opacity: 0.6;
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+
+    @keyframes danger-pulse {
+      0%, 100% { color: var(--danger); }
+      50% { color: #FF6B6B; }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--surface-2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold-bright));
     }
   </style>
 </head>
 <body>
-  <!-- 연결 상태 -->
-  <div class="connection-status" id="connectionStatus">
-    <div class="connection-dot" id="connectionDot"></div>
-    <span id="connectionText">연결 중...</span>
-  </div>
-
-  <!-- 헤더 -->
-  <header class="player-header">
-    <div class="player-brand">PYXIS</div>
+  <!-- Enhanced Header with Dramatic Effects -->
+  <header class="header">
+    <div class="star-field">
+      <div class="star star-1"></div>
+      <div class="star star-2"></div>
+      <div class="star star-3"></div>
+      <div class="star star-4"></div>
+    </div>
+    
+    <div class="lens-flare">
+      <div class="lens-flare-core"></div>
+      <div class="lens-flare-rays"></div>
+      <div class="plasma-orb orb-1"></div>
+      <div class="plasma-orb orb-2"></div>
+    </div>
+    
+    <div class="header-content">
+      <div class="brand-logo">
+        <h1 class="brand-title">PYXIS</h1>
+      </div>
+      <div class="connection-status">
+        <div class="connection-dot" id="connectionDot"></div>
+        <span class="connection-text" id="connectionText">연결 중...</span>
+      </div>
+    </div>
   </header>
 
-  <main class="container">
-    <!-- 인증 섹션 -->
-    <section id="authSection" class="card">
+  <!-- Main Container -->
+  <div class="container">
+    <!-- Authentication Section -->
+    <div id="authSection" class="card">
       <div class="section-header">
-        <h2 class="section-title">플레이어 입장</h2>
+        <h2 class="section-title">플레이어 인증</h2>
       </div>
       <form id="authForm">
         <div class="field">
-          <label for="authBattleId">전투 ID</label>
-          <input type="text" id="authBattleId" name="authBattleId" class="input" placeholder="전투 ID 입력" required />
+          <label for="playerToken">플레이어 토큰</label>
+          <input type="text" id="playerToken" class="input" placeholder="플레이어 토큰을 입력하세요" required />
         </div>
-        <div class="field">
-          <label for="authToken">플레이어 OTP</label>
-          <input type="text" id="authToken" name="authToken" class="input" placeholder="발급된 OTP 입력" required />
-        </div>
-        <div class="field">
-          <label for="authName">플레이어 이름</label>
-          <input type="text" id="authName" name="authName" class="input" placeholder="이름 입력" required maxlength="20" />
-        </div>
-        <button type="submit" class="btn btn-gold">전투 입장</button>
+        <button type="submit" class="btn btn-gold">전투 참여</button>
       </form>
-    </section>
+    </div>
 
-    <!-- 좌측: 팀원 정보 -->
-    <section id="teamSection" class="team-section" style="display:none;">
-      <div class="card">
-        <div class="section-title">팀원 정보</div>
-        <div class="team-header" id="myTeamName">아군</div>
-        <div id="teamUnits" class="team-units"></div>
-      </div>
-      
-      <div class="card">
-        <div class="section-title">적군 정보</div>
-        <div class="team-header enemy" id="enemyTeamName">적군</div>
-        <div id="enemyUnits" class="team-units"></div>
-      </div>
-    </section>
-
-    <!-- 중앙: 플레이어 액션 -->
-    <section id="actionSection" class="action-section" style="display:none;">
-      <!-- 내 정보 -->
-      <div class="card my-info-card">
-        <div class="section-title">내 정보</div>
-        <div class="my-info-layout">
-          <div class="avatar-section">
-            <div class="avatar-frame" id="myAvatar">
-              <div class="avatar-placeholder">플</div>
+    <!-- Game Interface (Hidden initially) -->
+    <div id="gameInterface" style="display: none;">
+      <!-- Left Column: Team Info -->
+      <div class="team-column">
+        <!-- My Info -->
+        <div class="card">
+          <div class="section-header">
+            <h2 class="section-title">내 정보</h2>
+          </div>
+          <div class="player-info-panel">
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="info-label">이름</div>
+                <div class="info-value" id="playerName">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">팀</div>
+                <div class="info-value" id="playerTeam">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">HP</div>
+                <div class="info-value hp" id="playerHp">100/100</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">상태</div>
+                <div class="info-value" id="playerStatus">대기 중</div>
+              </div>
+            </div>
+            
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="info-label">공격</div>
+                <div class="info-value" id="statAttack">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">방어</div>
+                <div class="info-value" id="statDefense">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">민첩</div>
+                <div class="info-value" id="statAgility">-</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">행운</div>
+                <div class="info-value" id="statLuck">-</div>
+              </div>
             </div>
           </div>
-          <div class="stats-hp-section">
-            <div class="my-stats">
-              <div class="stat-row">
-                <span class="stat-label">공격</span>
-                <span class="stat-value" id="statAttack">-</span>
-              </div>
-              <div class="stat-row">
-                <span class="stat-label">방어</span>
-                <span class="stat-value" id="statDefense">-</span>
-              </div>
-              <div class="stat-row">
-                <span class="stat-label">민첩</span>
-                <span class="stat-value" id="statAgility">-</span>
-              </div>
-              <div class="stat-row">
-                <span class="stat-label">행운</span>
-                <span class="stat-value" id="statLuck">-</span>
-              </div>
-            </div>
-            <div class="hp-section">
-              <div class="hp-bar">
-                <div class="hp-fill" id="myHpFill" style="width: 100%;"></div>
-              </div>
-              <div class="hp-text" id="myHpText">100/100 HP</div>
-            </div>
+        </div>
+
+        <!-- Team Members -->
+        <div class="card">
+          <div class="section-header">
+            <h2 class="section-title">팀원 정보</h2>
+          </div>
+          <div id="teamMembers">
+            <!-- Team members will be populated here -->
           </div>
         </div>
       </div>
 
-      <!-- 턴 정보 -->
-      <div class="card turn-info-card">
-        <div class="section-title">턴 정보</div>
-        <div class="turn-status">
+      <!-- Center Column: Battle Area -->
+      <div class="battle-column">
+        <!-- Turn Info -->
+        <div class="card">
           <div class="turn-indicator" id="turnIndicator">
-            <div class="turn-name" id="myName">-</div>
-            <div class="turn-team" id="myTeam">-</div>
-            <div class="turn-state" id="turnStatus">대기중</div>
+            <div class="turn-text" id="turnText">전투 대기 중...</div>
           </div>
         </div>
-        
-        <!-- 아이템 정보 -->
-        <div class="items-info">
-          <div class="item-slot">
-            <span class="item-name">디터니</span>
-            <span class="item-count" id="itemDittany">0</span>
+
+        <!-- Battle Log -->
+        <div class="card">
+          <div class="section-header">
+            <h2 class="section-title">전투 로그</h2>
           </div>
-          <div class="item-slot">
-            <span class="item-name">공격 보정기</span>
-            <span class="item-count" id="itemAttackBoost">0</span>
+          <div class="battle-log" id="battleLog">
+            <div class="log-entry system">전투 시스템에 연결되었습니다.</div>
           </div>
-          <div class="item-slot">
-            <span class="item-name">방어 보정기</span>
-            <span class="item-count" id="itemDefenseBoost">0</span>
+        </div>
+
+        <!-- Target Selection (Hidden initially) -->
+        <div id="targetSelection" class="card" style="display: none;">
+          <div class="section-header">
+            <h2 class="section-title">대상 선택</h2>
+          </div>
+          <div id="targetList">
+            <!-- Targets will be populated here -->
           </div>
         </div>
       </div>
 
-      <!-- 액션 버튼들 -->
-      <div class="card action-buttons-card">
-        <div class="section-title">액션 선택</div>
-        <div class="action-grid">
-          <button id="btnAttack" class="btn action-btn btn-attack" data-key="1">
-            <span class="btn-text">공격</span>
-          </button>
-          <button id="btnDefend" class="btn action-btn btn-defend" data-key="2">
-            <span class="btn-text">방어</span>
-          </button>
-          <button id="btnDodge" class="btn action-btn btn-dodge" data-key="3">
-            <span class="btn-text">회피</span>
-          </button>
-          <button id="btnUseItem" class="btn action-btn btn-item" data-key="4">
-            <span class="btn-text">아이템</span>
-          </button>
-          <button id="btnPass" class="btn action-btn btn-pass" data-key="5">
-            <span class="btn-text">패스</span>
-          </button>
+      <!-- Right Column: Action Panel -->
+      <div class="action-column">
+        <div class="action-panel">
+          <div class="card">
+            <div class="section-header">
+              <h2 class="section-title">액션 선택</h2>
+            </div>
+            <div class="action-buttons">
+              <button id="actionAttack" class="btn btn-attack" disabled>
+                ⚔️ 공격
+              </button>
+              <button id="actionDefend" class="btn btn-defend" disabled>
+                🛡️ 방어
+              </button>
+              <button id="actionDodge" class="btn btn-dodge" disabled>
+                💨 회피
+              </button>
+              <button id="actionItem" class="btn btn-item" disabled>
+                🧪 아이템
+              </button>
+              <button id="actionPass" class="btn btn-pass" disabled>
+                ⏭️ 패스
+              </button>
+            </div>
+          </div>
+
+          <!-- Items Panel -->
+          <div class="card">
+            <div class="section-header">
+              <h2 class="section-title">보유 아이템</h2>
+            </div>
+            <div id="itemsList">
+              <!-- Items will be populated here -->
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
-
-    <!-- 우측: 채팅 & 로그 -->
-    <section id="chatLogSection" class="chat-log-section" style="display:none;">
-      <!-- 채팅 -->
-      <div class="card chat-card">
-        <div class="section-title">채팅</div>
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="chat-input-group">
-          <select id="chatChannel" class="select chat-select">
-            <option value="all">전체</option>
-            <option value="team">팀</option>
-          </select>
-          <input type="text" id="chatInput" class="input chat-input" placeholder="메시지 입력..." />
-          <button id="chatSendBtn" class="btn btn-gold chat-send">전송</button>
-        </div>
-      </div>
-
-      <!-- 전투 로그 -->
-      <div class="card log-card">
-        <div class="section-title">전투 로그</div>
-        <div id="logViewer" class="battle-log"></div>
-      </div>
-    </section>
-  </main>
-
-  <!-- 타겟 선택 오버레이 -->
-  <div id="targetOverlay" class="target-overlay" style="display:none;">
-    <div class="target-card-container">
-      <h3 id="targetTitle" class="section-title">대상 선택</h3>
-      <div id="targetList" class="target-list"></div>
-      <div style="display: flex; gap: 16px; margin-top: 24px;">
-        <button id="cancelTarget" class="btn btn-danger" style="flex: 1;">취소</button>
-        <button id="confirmTarget" class="btn btn-gold" style="flex: 1;">확인</button>
       </div>
     </div>
   </div>
 
-  <!-- JS -->
-  <script src="/assets/js/core/socket-manager.js"></script>
-  <script src="/assets/js/core/ui-helpers.js"></script>
-  <script src="/assets/js/components/target-selector.js"></script>
-  <script src="/assets/js/pages/play.js"></script>
+  <!-- JavaScript Implementation -->
+  <script>
+    // PYXIS Player System Implementation
+    class PyxisPlayer {
+      constructor() {
+        this.socket = null;
+        this.playerData = null;
+        this.battleData = null;
+        this.isAuthenticated = false;
+        this.currentTurn = false;
+        this.selectedAction = null;
+        this.selectedTarget = null;
+
+        this.init();
+      }
+
+      init() {
+        console.log('[PYXIS Player] Initializing...');
+        this.setupEventListeners();
+        this.checkUrlParams();
+        this.updateConnectionStatus('connecting', '연결 중...');
+      }
+
+      setupEventListeners() {
+        // Authentication form
+        const authForm = document.getElementById('authForm');
+        if (authForm) {
+          authForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.authenticatePlayer();
+          });
+        }
+
+        // Action buttons
+        const actions = ['attack', 'defend', 'dodge', 'item', 'pass'];
+        actions.forEach(action => {
+          const btn = document.getElementById(`action${action.charAt(0).toUpperCase() + action.slice(1)}`);
+          if (btn) {
+            btn.addEventListener('click', () => this.selectAction(action));
+          }
+        });
+      }
+
+      checkUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        const battleId = params.get('battleId');
+
+        if (token && battleId) {
+          document.getElementById('playerToken').value = token;
+          this.authenticatePlayer();
+        }
+      }
+
+      async authenticatePlayer() {
+        try {
+          const token = document.getElementById('playerToken').value.trim();
+          
+          if (!token) {
+            this.addLog('error', '토큰을 입력해주세요');
+            return;
+          }
+
+          this.addLog('system', '인증 중...');
+          
+          // Simulate authentication
+          await this.delay(1000);
+          
+          this.playerData = {
+            id: this.generateId(),
+            name: '플레이어' + Math.floor(Math.random() * 1000),
+            team: Math.random() > 0.5 ? 'A' : 'B',
+            stats: {
+              attack: Math.floor(Math.random() * 5) + 1,
+              defense: Math.floor(Math.random() * 5) + 1,
+              agility: Math.floor(Math.random() * 5) + 1,
+              luck: Math.floor(Math.random() * 5) + 1
+            },
+            hp: 100,
+            maxHp: 100,
+            items: {
+              dittany: 1,
+              attackBoost: 1,
+              defenseBoost: 1
+            }
+          };
+
+          this.isAuthenticated = true;
+          this.showGameInterface();
+          this.updateConnectionStatus('connected', '연결됨');
+          this.addLog('system', '전투에 참여했습니다!');
+
+        } catch (error) {
+          console.error('[PYXIS Player] Auth error:', error);
+          this.addLog('error', '인증 실패: ' + error.message);
+        }
+      }
+
+      showGameInterface() {
+        document.getElementById('authSection').style.display = 'none';
+        document.getElementById('gameInterface').style.display = 'grid';
+        
+        this.updatePlayerInfo();
+        this.updateTeamMembers();
+        this.updateItemsList();
+      }
+
+      updatePlayerInfo() {
+        if (!this.playerData) return;
+
+        document.getElementById('playerName').textContent = this.playerData.name;
+        document.getElementById('playerTeam').textContent = 
+          this.playerData.team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
+        document.getElementById('playerHp').textContent = 
+          `${this.playerData.hp}/${this.playerData.maxHp}`;
+        document.getElementById('playerStatus').textContent = '대기 중';
+
+        document.getElementById('statAttack').textContent = this.playerData.stats.attack;
+        document.getElementById('statDefense').textContent = this.playerData.stats.defense;
+        document.getElementById('statAgility').textContent = this.playerData.stats.agility;
+        document.getElementById('statLuck').textContent = this.playerData.stats.luck;
+
+        // Update HP color based on health
+        const hpElement = document.getElementById('playerHp');
+        if (this.playerData.hp <= 30) {
+          hpElement.classList.add('low-hp');
+        } else {
+          hpElement.classList.remove('low-hp');
+        }
+      }
+
+      updateTeamMembers() {
+        const teamMembers = document.getElementById('teamMembers');
+        if (!teamMembers) return;
+
+        // Sample team members
+        const members = [
+          { name: '팀원1', hp: 85, maxHp: 100, status: '준비됨' },
+          { name: '팀원2', hp: 100, maxHp: 100, status: '대기 중' }
+        ];
+
+        teamMembers.innerHTML = '';
+        members.forEach(member => {
+          const memberElement = document.createElement('div');
+          memberElement.className = 'team-member';
+          memberElement.innerHTML = `
+            <div class="member-avatar">${member.name.charAt(0)}</div>
+            <div class="member-info">
+              <div class="member-name">${member.name}</div>
+              <div class="member-status">
+                HP: ${member.hp}/${member.maxHp} | ${member.status}
+              </div>
+            </div>
+          `;
+          teamMembers.appendChild(memberElement);
+        });
+      }
+
+      updateItemsList() {
+        const itemsList = document.getElementById('itemsList');
+        if (!itemsList || !this.playerData) return;
+
+        const items = [
+          { name: '디터니', count: this.playerData.items.dittany, icon: '🧪' },
+          { name: '공격 보정기', count: this.playerData.items.attackBoost, icon: '⚔️' },
+          { name: '방어 보정기', count: this.playerData.items.defenseBoost, icon: '🛡️' }
+        ];
+
+        itemsList.innerHTML = '';
+        items.forEach(item => {
+          if (item.count > 0) {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'info-item';
+            itemElement.innerHTML = `
+              <div class="info-label">${item.icon} ${item.name}</div>
+              <div class="info-value">${item.count}개</div>
+            `;
+            itemsList.appendChild(itemElement);
+          }
+        });
+      }
+
+      selectAction(action) {
+        if (!this.currentTurn) {
+          this.addLog('error', '당신의 턴이 아닙니다');
+          return;
+        }
+
+        this.selectedAction = action;
+        this.addLog('action', `${this.getActionName(action)}을(를) 선택했습니다`);
+
+        if (action === 'attack') {
+          this.showTargetSelection();
+        } else {
+          this.executeAction();
+        }
+      }
+
+      showTargetSelection() {
+        const targetSelection = document.getElementById('targetSelection');
+        const targetList = document.getElementById('targetList');
+        
+        if (!targetSelection || !targetList) return;
+
+        // Sample enemy targets
+        const enemies = [
+          { id: 'enemy1', name: '적 플레이어1', hp: 75, maxHp: 100 },
+          { id: 'enemy2', name: '적 플레이어2', hp: 90, maxHp: 100 }
+        ];
+
+        targetList.innerHTML = '';
+        enemies.forEach(enemy => {
+          const targetBtn = document.createElement('button');
+          targetBtn.className = 'btn btn-attack';
+          targetBtn.style.marginBottom = '8px';
+          targetBtn.innerHTML = `${enemy.name} (${enemy.hp}/${enemy.maxHp} HP)`;
+          targetBtn.addEventListener('click', () => {
+            this.selectedTarget = enemy.id;
+            this.executeAction();
+            targetSelection.style.display = 'none';
+          });
+          targetList.appendChild(targetBtn);
+        });
+
+        targetSelection.style.display = 'block';
+      }
+
+      executeAction() {
+        if (!this.selectedAction) return;
+
+        const actionName = this.getActionName(this.selectedAction);
+        this.addLog('action', `${actionName}을(를) 실행합니다!`);
+
+        // Simulate action execution
+        this.simulateActionResult();
+        
+        // Disable action buttons
+        this.setActionButtonsEnabled(false);
+        this.currentTurn = false;
+        
+        this.updateTurnIndicator(false, '상대 턴');
+        
+        // Reset selections
+        this.selectedAction = null;
+        this.selectedTarget = null;
+      }
+
+      simulateActionResult() {
+        const results = [
+          '강력한 공격이 성공했습니다! 25 데미지!',
+          '방어에 성공했습니다! 받는 데미지 감소!',
+          '화려하게 회피했습니다!',
+          '아이템 사용 완료!',
+          '턴을 넘깁니다'
+        ];
+
+        const randomResult = results[Math.floor(Math.random() * results.length)];
+        this.addLog('action', randomResult);
+
+        // Simulate some battle progression
+        setTimeout(() => {
+          this.addLog('system', '다음 턴이 시작됩니다');
+          this.currentTurn = true;
+          this.setActionButtonsEnabled(true);
+          this.updateTurnIndicator(true, '당신의 턴');
+        }, 3000);
+      }
+
+      setActionButtonsEnabled(enabled) {
+        const actions = ['attack', 'defend', 'dodge', 'item', 'pass'];
+        actions.forEach(action => {
+          const btn = document.getElementById(`action${action.charAt(0).toUpperCase() + action.slice(1)}`);
+          if (btn) {
+            btn.disabled = !enabled;
+          }
+        });
+      }
+
+      updateTurnIndicator(isMyTurn, text) {
+        const indicator = document.getElementById('turnIndicator');
+        const turnText = document.getElementById('turnText');
+        
+        if (indicator && turnText) {
+          turnText.textContent = text;
+          if (isMyTurn) {
+            indicator.classList.add('active');
+          } else {
+            indicator.classList.remove('active');
+          }
+        }
+      }
+
+      updateConnectionStatus(status, text) {
+        const dot = document.getElementById('connectionDot');
+        const statusText = document.getElementById('connectionText');
+        
+        if (dot && statusText) {
+          statusText.textContent = text;
+          
+          if (status === 'connected') {
+            dot.classList.add('connected');
+          } else {
+            dot.classList.remove('connected');
+          }
+        }
+      }
+
+      getActionName(action) {
+        const names = {
+          attack: '공격',
+          defend: '방어', 
+          dodge: '회피',
+          item: '아이템 사용',
+          pass: '패스'
+        };
+        return names[action] || action;
+      }
+
+      addLog(type, message) {
+        const logViewer = document.getElementById('battleLog');
+        if (!logViewer) return;
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry ${type}`;
+        logEntry.innerHTML = `<span class="log-time">${this.getTimeString()}</span> ${message}`;
+        
+        logViewer.appendChild(logEntry);
+        logViewer.scrollTop = logViewer.scrollHeight;
+      }
+
+      getTimeString() {
+        return new Date().toLocaleTimeString('ko-KR', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit' 
+        });
+      }
+
+      generateId() {
+        return Math.random().toString(36).substr(2, 8).toUpperCase();
+      }
+
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    // Initialize player system
+    const player = new PyxisPlayer();
+
+    // Additional event listeners for demo
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[PYXIS Player] System loaded successfully');
+      
+      // Simulate receiving turn after 5 seconds if authenticated
+      setTimeout(() => {
+        if (player.isAuthenticated) {
+          player.currentTurn = true;
+          player.setActionButtonsEnabled(true);
+          player.updateTurnIndicator(true, '당신의 턴');
+          player.addLog('system', '당신의 턴입니다! 액션을 선택하세요.');
+        }
+      }, 5000);
+    });
+  </script>
 </body>
 </html>
