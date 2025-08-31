@@ -1,183 +1,455 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS | 전투 관리석</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/pyxis-theme.css">
-  <link rel="stylesheet" href="/assets/css/core.css">
-  <link rel="stylesheet" href="/assets/css/components.css">
-  <link rel="stylesheet" href="/assets/css/admin.css">
-  <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PYXIS - 관리자</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* 개선된 관리자 페이지 전용 스타일 */
-    body {
-      background: linear-gradient(135deg, 
-        var(--deep-navy) 0%, 
-        var(--midnight) 25%, 
-        var(--navy-mist) 50%, 
-        var(--midnight) 75%, 
-        var(--deep-navy) 100%);
-      background-attachment: fixed;
+    /* ===============================
+       PYXIS Premium Variables
+       =============================== */
+    :root {
+      /* 기본 컬러 시스템 */
+      --deep-navy: #00080D;
+      --deep-navy-2: #001E35;
+      --deep-navy-3: #0D1B2A;
+      --gold-bright: #DCC7A2;
+      --gold-dark: #D4BA8D;
+      --gold-muted: #B5A082;
+
+      /* 텍스트 컬러 */
+      --text: #F5E6B8;
+      --text-dim: #C4B599;
+      --text-muted: #9C9270;
+
+      /* 배경 & 표면 */
+      --bg-primary: linear-gradient(135deg, #0D1B2A 0%, #00080D 50%, #001E35 100%);
+      --bg-secondary: rgba(13, 27, 42, 0.95);
+      --surface-1: rgba(21, 34, 56, 0.8);
+      --surface-2: rgba(28, 45, 73, 0.6);
+      --glass-1: rgba(220, 199, 162, 0.08);
+      --glass-2: rgba(220, 199, 162, 0.12);
+      --glass-subtle: rgba(220, 199, 162, 0.04);
+
+      /* 보더 */
+      --border-1: rgba(220, 199, 162, 0.25);
+      --border-2: rgba(220, 199, 162, 0.4);
+      --border-subtle: rgba(220, 199, 162, 0.15);
+
+      /* 그림자 */
+      --shadow-soft: 0 8px 32px rgba(0, 8, 13, 0.6);
+      --shadow-medium: 0 16px 48px rgba(0, 8, 13, 0.8);
+      --shadow-inset: inset 0 2px 8px rgba(0, 8, 13, 0.3);
+      --shadow-glow: 0 0 24px rgba(220, 199, 162, 0.15);
+
+      /* 블러 효과 */
+      --blur-light: blur(12px);
+      --blur-medium: blur(20px);
+
+      /* 반지름 */
+      --radius: 16px;
+      --radius-small: 8px;
+      --radius-large: 24px;
+
+      /* 폰트 */
+      --serif: 'Cinzel', serif;
+      --sans: 'Inter', system-ui, sans-serif;
+
+      /* 트랜지션 */
+      --transition-fast: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+      --transition-normal: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      --transition-slow: all 0.5s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    /* ===============================
+       Base Reset & Typography
+       =============================== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
       min-height: 100vh;
-      position: relative;
+      font-family: var(--sans);
+      background: var(--bg-primary);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    body {
       overflow-x: hidden;
     }
 
-    /* 천체 배경 효과 */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: 
-        radial-gradient(circle at 15% 25%, rgba(212,183,126,0.04) 0%, transparent 50%),
-        radial-gradient(circle at 85% 75%, rgba(212,183,126,0.03) 0%, transparent 40%),
-        radial-gradient(circle at 60% 10%, rgba(212,183,126,0.02) 0%, transparent 30%),
-        radial-gradient(circle at 40% 85%, rgba(212,183,126,0.03) 0%, transparent 35%);
-      animation: celestialFloat 20s ease-in-out infinite;
-      pointer-events: none;
-      z-index: -1;
-    }
-
-    @keyframes celestialFloat {
-      0%, 100% { opacity: 0.6; transform: translateY(0px); }
-      50% { opacity: 1; transform: translateY(-10px); }
-    }
-
-    /* 향상된 헤더 */
-    .hero {
-      text-align: center;
-      padding: 60px 20px 40px;
+    /* ===============================
+       Enhanced Header with Geometric Design
+       =============================== */
+    .header {
       position: relative;
+      padding: 32px 0 40px;
+      background: linear-gradient(145deg, 
+        rgba(13, 27, 42, 0.95) 0%, 
+        rgba(0, 8, 13, 0.98) 50%, 
+        rgba(0, 30, 53, 0.95) 100%);
+      backdrop-filter: var(--blur-medium);
+      border-bottom: 2px solid var(--border-1);
+      box-shadow: var(--shadow-soft);
       overflow: hidden;
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.08) 0%, 
-        rgba(10,15,26,0.95) 30%, 
-        rgba(10,15,26,0.95) 70%, 
-        rgba(212,183,126,0.08) 100%);
-      border-bottom: 1px solid rgba(212,183,126,0.15);
-      backdrop-filter: blur(10px);
     }
 
-    .hero::before {
+    .header::before {
       content: '';
       position: absolute;
-      top: -50%;
-      left: -20%;
-      right: -20%;
-      height: 200%;
-      background: conic-gradient(from 0deg, 
-        rgba(212,183,126,0.12) 0deg, 
-        transparent 60deg,
-        rgba(212,183,126,0.08) 120deg, 
-        transparent 180deg, 
-        rgba(212,183,126,0.12) 240deg, 
-        transparent 300deg, 
-        rgba(212,183,126,0.12) 360deg);
-      animation: heroOrbit 60s linear infinite;
-      pointer-events: none;
-      z-index: -1;
+      top: 0;
+      left: -50%;
+      right: -50%;
+      height: 100%;
+      background: linear-gradient(45deg, 
+        transparent 30%, 
+        rgba(220, 199, 162, 0.05) 50%, 
+        transparent 70%);
+      animation: shimmer 8s ease-in-out infinite;
     }
 
-    @keyframes heroOrbit {
-      0% { transform: rotate(0deg) scale(1); }
-      100% { transform: rotate(360deg) scale(1); }
-    }
-
-    .admin-brand {
-      font-family: var(--serif);
-      font-weight: 900;
-      font-size: clamp(2.5rem, 6vw, 4rem);
-      background: linear-gradient(135deg, 
-        var(--gold-bright) 0%, 
-        var(--gold-shimmer) 25%, 
-        var(--gold) 50%, 
-        var(--gold-light) 75%,
-        var(--gold-bright) 100%);
-      background-size: 300% 300%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: titleShimmer 4s ease-in-out infinite;
-      text-shadow: 0 0 30px rgba(212,183,126,0.3);
+    .header-content {
       position: relative;
-      letter-spacing: 0.08em;
-    }
-
-    @keyframes titleShimmer {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-    }
-
-    .admin-brand::after {
-      content: '✦ 관리자 ✧';
-      position: absolute;
-      top: -15px;
-      right: -80px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: var(--gold);
-      background: linear-gradient(135deg, 
-        rgba(212,183,126,0.2), 
-        rgba(212,183,126,0.1));
-      border: 1px solid var(--gold);
-      border-radius: 20px;
-      padding: 6px 16px;
-      letter-spacing: 0.05em;
-      animation: badgeTwinkle 3s ease-in-out infinite;
-    }
-
-    @keyframes badgeTwinkle {
-      0%, 100% { opacity: 0.8; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.05); }
-    }
-
-    /* 메인 컨테이너 - 3열 그리드 레이아웃 */
-    .container {
       max-width: 1600px;
       margin: 0 auto;
-      padding: 40px 24px;
-      position: relative;
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 32px;
-      align-items: start;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
 
-    /* 연결 상태 개선 */
+    .brand-container {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .brand-logo {
+      position: relative;
+    }
+
+    .brand-title {
+      font-family: var(--serif);
+      font-size: clamp(2.5rem, 4vw, 3.5rem);
+      font-weight: 700;
+      color: var(--gold-bright);
+      text-shadow: 0 4px 16px rgba(220, 199, 162, 0.4);
+      letter-spacing: 0.1em;
+      position: relative;
+    }
+
+    .brand-title::before {
+      content: '✦';
+      position: absolute;
+      left: -40px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.5rem;
+      color: var(--gold-bright);
+      animation: twinkle 3s ease-in-out infinite;
+    }
+
+    .brand-title::after {
+      content: '✧';
+      position: absolute;
+      right: -40px;
+      top: 20%;
+      font-size: 1rem;
+      color: var(--gold-dark);
+      animation: twinkle 3s ease-in-out infinite 1.5s;
+    }
+
+    .star-field {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .star {
+      position: absolute;
+      background: var(--gold-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--gold-bright);
+    }
+
+    .star-1 { 
+      top: 15%; left: 10%; 
+      width: 2px; height: 2px;
+      animation: star-twinkle 4s ease-in-out infinite;
+    }
+    .star-2 { 
+      top: 25%; right: 15%; 
+      width: 1px; height: 1px;
+      animation: star-twinkle 3s ease-in-out infinite 1s;
+    }
+    .star-3 { 
+      top: 55%; left: 20%; 
+      width: 3px; height: 3px;
+      animation: star-twinkle 5s ease-in-out infinite 2s;
+    }
+    .star-4 { 
+      top: 75%; right: 25%; 
+      width: 1.5px; height: 1.5px;
+      animation: star-twinkle 3.5s ease-in-out infinite 0.5s;
+    }
+    .star-5 { 
+      top: 40%; left: 55%; 
+      width: 2.5px; height: 2.5px;
+      animation: star-twinkle 4.5s ease-in-out infinite 1.5s;
+    }
+    .star-6 { 
+      top: 65%; right: 45%; 
+      width: 1px; height: 1px;
+      animation: star-twinkle 3s ease-in-out infinite 2.5s;
+    }
+
+    /* 메인 렌즈 플레어 효과 */
+    .lens-flare {
+      position: absolute;
+      top: 25%;
+      right: 20%;
+      width: 200px;
+      height: 200px;
+      pointer-events: none;
+    }
+
+    .lens-flare-core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      background: radial-gradient(circle, 
+        rgba(255, 255, 255, 1) 0%,
+        rgba(220, 199, 162, 0.9) 20%,
+        rgba(220, 199, 162, 0.4) 50%,
+        transparent 100%);
+      border-radius: 50%;
+      box-shadow: 
+        0 0 20px rgba(255, 255, 255, 0.8),
+        0 0 40px rgba(220, 199, 162, 0.6),
+        0 0 80px rgba(220, 199, 162, 0.3);
+      animation: core-pulse 3s ease-in-out infinite;
+    }
+
+    .lens-flare-rays {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 180px;
+      height: 180px;
+    }
+
+    .lens-flare-rays::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: 180px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 35%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 65%,
+        transparent 100%);
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+    }
+
+    .lens-flare-rays::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(90deg);
+      width: 2px;
+      height: 180px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 35%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 65%,
+        transparent 100%);
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+    }
+
+    .lens-flare-diagonal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(45deg);
+      width: 1px;
+      height: 140px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.6) 40%,
+        rgba(255, 255, 255, 0.8) 50%,
+        rgba(255, 255, 255, 0.6) 60%,
+        transparent 100%);
+      box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+    }
+
+    .lens-flare-diagonal2 {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-45deg);
+      width: 1px;
+      height: 140px;
+      background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.6) 40%,
+        rgba(255, 255, 255, 0.8) 50%,
+        rgba(255, 255, 255, 0.6) 60%,
+        transparent 100%);
+      box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+    }
+
+    /* 렌즈 플레어 보케 효과 */
+    .lens-bokeh {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, 
+        rgba(220, 199, 162, 0.4) 0%, 
+        rgba(220, 199, 162, 0.2) 40%, 
+        transparent 70%);
+      animation: bokeh-float 6s ease-in-out infinite;
+    }
+
+    .bokeh-1 {
+      top: 30%;
+      right: 35%;
+      width: 40px;
+      height: 40px;
+      animation-delay: 0s;
+    }
+
+    .bokeh-2 {
+      top: 45%;
+      right: 50%;
+      width: 25px;
+      height: 25px;
+      animation-delay: 1s;
+    }
+
+    .bokeh-3 {
+      top: 60%;
+      right: 30%;
+      width: 35px;
+      height: 35px;
+      animation-delay: 2s;
+    }
+
+    .bokeh-4 {
+      top: 70%;
+      right: 45%;
+      width: 20px;
+      height: 20px;
+      animation-delay: 3s;
+    }
+
+    .bokeh-5 {
+      top: 80%;
+      right: 60%;
+      width: 15px;
+      height: 15px;
+      animation-delay: 4s;
+    }
+
+    .constellation-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--gold-bright);
+      border-radius: 50%;
+      position: relative;
+      box-shadow: 0 0 8px rgba(220, 199, 162, 0.8);
+      animation: constellation-pulse 3s ease-in-out infinite;
+    }
+
+    .constellation-dot::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 12px;
+      border: 1px solid rgba(220, 199, 162, 0.4);
+      border-radius: 50%;
+      animation: expand-ring 4s ease-in-out infinite;
+    }
+
     .status-indicator {
-      position: fixed;
-      top: 20px;
-      right: 20px;
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(8,13,25,0.95);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(212,183,126,0.25);
-      border-radius: var(--radius-large);
       padding: 12px 20px;
-      font-weight: 600;
-      z-index: 1000;
-      box-shadow: var(--shadow-deep);
+      background: var(--glass-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      backdrop-filter: var(--blur-light);
     }
 
-    /* 카드 시스템 개선 */
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      background: #22C55E;
+      border-radius: 50%;
+      box-shadow: 0 0 16px rgba(34, 197, 94, 0.4);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .status-text {
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+
+    /* ===============================
+       Main Layout
+       =============================== */
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 32px 24px;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 32px;
+    }
+
+    .control-column,
+    .participants-column,
+    .log-chat-column {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ===============================
+       Enhanced Card System
+       =============================== */
     .card {
-      background: linear-gradient(145deg, 
-        rgba(15,20,25,0.85) 0%, 
-        rgba(25,31,42,0.75) 50%, 
-        rgba(15,20,25,0.85) 100%);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius-large);
+      background: var(--surface-1);
+      border: 1px solid var(--border-1);
+      border-radius: var(--radius);
       padding: 32px;
-      margin-bottom: 32px;
       position: relative;
       overflow: hidden;
-      transition: all var(--transition-normal);
+      transition: var(--transition-normal);
+      backdrop-filter: var(--blur-light);
       box-shadow: var(--shadow-soft), var(--shadow-inset);
     }
 
@@ -190,32 +462,35 @@
       height: 1px;
       background: linear-gradient(90deg, 
         transparent, 
-        rgba(212,183,126,0.4), 
+        rgba(220, 199, 162, 0.4), 
         transparent);
     }
 
     .card:hover {
       transform: translateY(-4px);
-      border-color: rgba(212,183,126,0.3);
+      border-color: var(--border-2);
       box-shadow: var(--shadow-medium), 
                   var(--shadow-inset), 
-                  0 0 40px rgba(212,183,126,0.1);
+                  0 0 40px rgba(220, 199, 162, 0.1);
     }
 
-    /* 섹션 제목 개선 */
+    /* ===============================
+       Section Headers with Enhanced Style
+       =============================== */
     .section-header {
-      margin-bottom: 28px;
+      margin-bottom: 32px;
       position: relative;
     }
 
     .section-title {
       font-family: var(--serif);
-      font-size: 1.5rem;
+      font-size: 1.6rem;
       font-weight: 700;
       color: var(--gold-bright);
       position: relative;
-      padding-left: 24px;
+      padding-left: 28px;
       letter-spacing: 0.02em;
+      text-shadow: 0 2px 8px rgba(220, 199, 162, 0.3);
     }
 
     .section-title::before {
@@ -225,34 +500,115 @@
       top: 50%;
       transform: translateY(-50%);
       width: 8px;
-      height: 70%;
+      height: 80%;
       background: linear-gradient(to bottom, 
         var(--gold-bright), 
         var(--gold-dark));
       border-radius: 4px;
-      box-shadow: 0 0 12px rgba(212,183,126,0.4);
+      box-shadow: 0 0 12px rgba(220, 199, 162, 0.4);
     }
 
-    /* 폼 레이아웃 개선 */
+    /* ===============================
+       Enhanced Button System
+       =============================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 24px;
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-normal);
+      position: relative;
+      overflow: hidden;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.2), 
+        transparent);
+      transition: left 0.6s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      color: var(--deep-navy);
+      box-shadow: 0 4px 16px rgba(220, 199, 162, 0.3);
+    }
+
+    .btn-gold:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(220, 199, 162, 0.4);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #22C55E, #16A34A);
+      color: white;
+      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(34, 197, 94, 0.4);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #EF4444, #DC2626);
+      color: white;
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* ===============================
+       Battle Size Toggle Enhancement
+       =============================== */
     .battle-size-toggle {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 32px;
     }
 
     .battle-size-toggle label {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 16px 20px;
-      background: rgba(8,13,25,0.6);
-      border: 2px solid rgba(212,183,126,0.15);
+      padding: 18px 22px;
+      background: var(--surface-2);
+      border: 2px solid var(--border-subtle);
       border-radius: var(--radius);
       font-weight: 600;
       color: var(--text-dim);
       cursor: pointer;
-      transition: all var(--transition-normal);
+      transition: var(--transition-normal);
       position: relative;
       overflow: hidden;
     }
@@ -262,18 +618,18 @@
       position: absolute;
       inset: 0;
       background: linear-gradient(135deg, 
-        rgba(212,183,126,0.1), 
+        rgba(220, 199, 162, 0.1), 
         transparent 50%, 
-        rgba(212,183,126,0.05));
+        rgba(220, 199, 162, 0.05));
       opacity: 0;
       transition: opacity var(--transition-normal);
     }
 
     .battle-size-toggle label:hover {
-      border-color: var(--gold);
+      border-color: var(--gold-dark);
       color: var(--gold-bright);
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(212,183,126,0.15);
+      box-shadow: 0 8px 20px rgba(220, 199, 162, 0.15);
     }
 
     .battle-size-toggle label:hover::before {
@@ -281,8 +637,8 @@
     }
 
     .battle-size-toggle input[type="radio"] {
-      margin-right: 10px;
-      accent-color: var(--gold);
+      margin-right: 12px;
+      accent-color: var(--gold-bright);
     }
 
     .battle-size-toggle input[type="radio"]:checked + label,
@@ -292,11 +648,13 @@
         var(--gold-dark));
       color: var(--deep-navy);
       border-color: var(--gold-bright);
-      box-shadow: 0 0 25px rgba(212,183,126,0.4);
+      box-shadow: 0 0 25px rgba(220, 199, 162, 0.4);
       font-weight: 700;
     }
 
-    /* 필드 스타일링 개선 */
+    /* ===============================
+       Form Elements Enhancement
+       =============================== */
     .field {
       margin-bottom: 24px;
     }
@@ -313,80 +671,83 @@
     .input, .select {
       width: 100%;
       padding: 16px 20px;
-      background: rgba(8,13,25,0.8);
-      border: 2px solid rgba(212,183,126,0.15);
+      background: var(--surface-2);
+      border: 2px solid var(--border-subtle);
       border-radius: var(--radius);
       color: var(--text);
       font-size: 16px;
       font-weight: 500;
-      transition: all var(--transition-normal);
-      backdrop-filter: blur(8px);
+      transition: var(--transition-normal);
+      backdrop-filter: var(--blur-light);
     }
 
     .input:focus, .select:focus {
       outline: none;
-      border-color: var(--gold);
-      background: rgba(8,13,25,0.95);
-      box-shadow: 0 0 0 4px rgba(212,183,126,0.15),
-                  0 0 20px rgba(212,183,126,0.1);
+      border-color: var(--gold-bright);
+      background: rgba(28, 45, 73, 0.8);
+      box-shadow: 0 0 0 4px rgba(220, 199, 162, 0.15),
+                  0 0 20px rgba(220, 199, 162, 0.1);
     }
 
-    /* 행 레이아웃 */
-    .row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 24px;
-      margin-bottom: 24px;
-    }
-
-    /* 3열 컬럼 스타일 */
-    .control-column,
-    .participants-column,
-    .log-chat-column {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    /* 제어 액션 버튼들 */
-    .control-actions {
+    .stats-grid, .items-grid {
       display: grid;
       gap: 16px;
+      margin: 20px 0;
+      padding: 24px;
+      background: var(--glass-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      backdrop-filter: var(--blur-light);
     }
 
-    .control-actions .btn {
-      font-size: 14px;
-      padding: 14px 20px;
-      font-weight: 700;
+    .stats-grid {
+      grid-template-columns: repeat(4, 1fr);
     }
 
-    /* 팀 로스터 레이아웃 */
-    .team-roster {
+    .items-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stats-grid .field, .items-grid .field {
+      margin-bottom: 0;
+    }
+
+    /* ===============================
+       Team Composition (팀 구성) Enhancement
+       =============================== */
+    .team-composition {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 20px;
+      gap: 24px;
+      margin-top: 32px;
     }
 
-    .team-column {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+    .team-section {
+      background: linear-gradient(145deg, 
+        rgba(13, 27, 42, 0.8), 
+        rgba(28, 45, 73, 0.6));
+      border: 1px solid var(--border-1);
+      border-radius: var(--radius);
+      padding: 24px;
+      backdrop-filter: var(--blur-light);
+      box-shadow: var(--shadow-soft);
     }
 
     .team-header {
       text-align: center;
       font-family: var(--serif);
       font-weight: 700;
-      font-size: 16px;
+      font-size: 18px;
       color: var(--gold-bright);
-      padding: 14px 16px;
+      padding: 16px 20px;
       background: linear-gradient(135deg, 
-        rgba(212,183,126,0.15), 
-        rgba(212,183,126,0.08));
-      border: 1px solid rgba(212,183,126,0.25);
+        rgba(220, 199, 162, 0.15), 
+        rgba(220, 199, 162, 0.08));
+      border: 1px solid var(--border-1);
       border-radius: var(--radius);
       position: relative;
-      text-shadow: 0 2px 8px rgba(212,183,126,0.3);
+      text-shadow: 0 2px 8px rgba(220, 199, 162, 0.3);
+      margin-bottom: 20px;
     }
 
     .team-header::before {
@@ -402,198 +763,124 @@
         transparent);
     }
 
-    .team-header.phoenix {
-      background: linear-gradient(135deg, 
-        rgba(231,76,60,0.15), 
-        rgba(231,76,60,0.08));
-      border-color: rgba(231,76,60,0.4);
-      color: #FF6B6B;
+    .player-list {
+      display: grid;
+      gap: 16px;
     }
 
-    .team-header.death-eater {
-      background: linear-gradient(135deg, 
-        rgba(46,125,50,0.15), 
-        rgba(46,125,50,0.08));
-      border-color: rgba(46,125,50,0.4);
-      color: #66BB6A;
-    }
-
-    /* 플레이어 카드 */
     .player-card {
-      background: linear-gradient(135deg, 
-        rgba(15,20,25,0.9), 
-        rgba(25,31,42,0.8));
-      border: 1px solid rgba(212,183,126,0.15);
+      display: grid;
+      grid-template-columns: 64px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 18px;
+      background: linear-gradient(145deg, 
+        rgba(21, 34, 56, 0.9), 
+        rgba(28, 45, 73, 0.7));
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius);
-      padding: 16px;
-      transition: all var(--transition-normal);
-      position: relative;
+      transition: var(--transition-normal);
+      box-shadow: var(--shadow-subtle);
     }
 
     .player-card:hover {
       transform: translateY(-2px);
-      border-color: rgba(212,183,126,0.3);
-      box-shadow: var(--shadow-soft);
+      border-color: var(--border-1);
+      box-shadow: var(--shadow-soft), var(--shadow-glow);
+    }
+
+    .player-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      border: 2px solid var(--border-1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--deep-navy);
+      box-shadow: 0 4px 12px rgba(220, 199, 162, 0.2);
+    }
+
+    .player-info {
+      flex: 1;
     }
 
     .player-name {
-      font-size: 16px;
       font-weight: 700;
-      color: var(--gold-bright);
-      margin-bottom: 8px;
-      text-align: center;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 4px;
     }
 
     .player-stats {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px;
       font-size: 12px;
       color: var(--text-dim);
-    }
-
-    .stat-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 2px 6px;
-      background: rgba(0,0,0,0.2);
-      border-radius: 3px;
-    }
-
-    .stat-label {
-      font-weight: 600;
-    }
-
-    .stat-value {
-      color: var(--gold);
-      font-weight: 700;
-    }
-
-    .player-remove {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 20px;
-      height: 20px;
-      border: none;
-      background: var(--danger);
-      color: white;
-      border-radius: 50%;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity var(--transition-fast);
-    }
-
-    .player-card:hover .player-remove {
-      opacity: 1;
-    }
-
-    .player-remove:hover {
-      background: #c0392b;
-      transform: scale(1.1);
-    }
-
-    /* 채팅 입력 컨테이너 */
-    .chat-input-container {
       display: flex;
       gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
     }
 
-    .chat-input-container .select {
-      min-width: 100px;
-      font-weight: 600;
+    .player-actions {
+      display: flex;
+      gap: 8px;
     }
 
-    .chat-input-container .input {
-      flex: 1;
-      min-width: 200px;
-      font-weight: 500;
-    }
-
-    .chat-input-container .btn {
-      min-width: 80px;
-      padding: 12px 20px;
-    }
-
-    /* 스탯 그리드 */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin: 16px 0;
-      padding: 20px;
-      background: rgba(212,183,126,0.03);
-      border: 1px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius);
-      backdrop-filter: blur(8px);
-    }
-
-    .items-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin: 16px 0;
-      padding: 20px;
-      background: rgba(212,183,126,0.03);
-      border: 1px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius);
-    }
-
-    /* 플레이어 목록 */
-    .player-list {
-      display: grid;
-      gap: 20px;
-      margin-top: 24px;
-    }
-
-    .player-card {
-      background: linear-gradient(135deg, 
-        rgba(15,20,25,0.9), 
-        rgba(25,31,42,0.8));
-      border: 1px solid rgba(212,183,126,0.2);
+    /* ===============================
+       Log & Chat Enhancement
+       =============================== */
+    .battle-log, .chat-messages {
+      height: 400px;
+      background: linear-gradient(145deg, 
+        rgba(13, 27, 42, 0.95), 
+        rgba(21, 34, 56, 0.92));
+      border: 1px solid var(--border-1);
       border-radius: var(--radius);
       padding: 24px;
-      transition: all var(--transition-normal);
+      overflow-y: auto;
+      backdrop-filter: var(--blur-light);
+      box-shadow: inset 0 4px 16px rgba(0, 8, 13, 0.3);
     }
 
-    .player-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-medium);
-      border-color: var(--gold);
+    .chat-input-container {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 12px;
+      margin-top: 16px;
     }
 
-    /* 링크 섹션 */
+    /* ===============================
+       링크 시스템 개선
+       =============================== */
     .link-item {
       display: flex;
       gap: 16px;
       align-items: center;
       margin-bottom: 16px;
       padding: 20px;
-      background: rgba(8,13,25,0.6);
-      border: 1px solid rgba(212,183,126,0.15);
+      background: var(--surface-2);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius);
-      transition: all var(--transition-normal);
+      transition: var(--transition-normal);
+      backdrop-filter: var(--blur-light);
     }
 
     .link-item:hover {
-      background: rgba(8,13,25,0.8);
-      border-color: var(--gold);
+      background: var(--surface-1);
+      border-color: var(--border-1);
       transform: translateY(-2px);
     }
 
     .link-input {
       flex: 1;
       padding: 12px 16px;
-      background: rgba(5,15,28,0.8);
-      border: 1px solid rgba(212,183,126,0.1);
+      background: rgba(13, 27, 42, 0.8);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-small);
       color: var(--text);
       font-size: 13px;
       font-weight: 500;
+      font-family: 'Courier New', monospace;
     }
 
     .copy-btn {
@@ -604,170 +891,284 @@
       border-radius: var(--radius-small);
       font-weight: 700;
       cursor: pointer;
-      transition: all var(--transition-normal);
+      transition: var(--transition-normal);
       min-width: 100px;
     }
 
     .copy-btn:hover {
       transform: translateY(-2px) scale(1.02);
-      box-shadow: 0 8px 20px rgba(212,183,126,0.3);
+      box-shadow: 0 8px 20px rgba(220, 199, 162, 0.3);
     }
 
-    /* 로그 섹션 */
-    .battle-log, .chat-messages {
-      height: 400px;
-      background: linear-gradient(145deg, 
-        rgba(5,15,28,0.95), 
-        rgba(8,20,35,0.92));
-      border: 1px solid rgba(212,183,126,0.2);
-      border-radius: var(--radius);
-      padding: 24px;
-      overflow-y: auto;
-      backdrop-filter: blur(12px);
-      box-shadow: inset 0 4px 16px rgba(0,0,0,0.3);
+    .copy-btn.copied {
+      background: linear-gradient(135deg, #22C55E, #16A34A);
+      color: white;
     }
 
-    /* 반응형 개선 */
+    /* ===============================
+       Responsive Design
+       =============================== */
     @media (max-width: 1400px) {
-      .container {
-        grid-template-columns: 1fr 1fr;
-        gap: 28px;
-      }
-      
-      .card {
-        padding: 24px;
-        margin-bottom: 24px;
-      }
-      
-      /* 로그&채팅 섹션을 두 번째 행으로 */
-      #logChatSection {
-        grid-column: 1 / -1;
-      }
-    }
-
-    @media (max-width: 1000px) {
       .container {
         grid-template-columns: 1fr;
         gap: 24px;
-        padding: 32px 20px;
-      }
-      
-      .card {
-        padding: 24px;
-        margin-bottom: 24px;
       }
     }
 
     @media (max-width: 768px) {
-      .hero {
-        padding: 40px 16px 24px;
+      .header-content {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
       }
-      
-      .admin-brand {
-        font-size: 2.5rem;
-      }
-      
-      .admin-brand::after {
-        top: -12px;
-        right: -60px;
-        font-size: 0.7rem;
-        padding: 4px 12px;
-      }
-      
-      .battle-size-toggle {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
-      }
-      
-      .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
-        padding: 16px;
-      }
-      
-      .items-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-        padding: 16px;
-      }
-      
-      .team-roster {
-        grid-template-columns: 1fr;
-        gap: 16px;
-      }
-      
-      .chat-input-container {
+
+      .geometric-ornament {
         flex-direction: column;
         gap: 12px;
       }
-      
-      .chat-input-container .select,
-      .chat-input-container .input {
-        width: 100%;
-        min-width: auto;
+
+      .container {
+        padding: 20px 16px;
+      }
+
+      .card {
+        padding: 24px 20px;
+      }
+
+      .team-composition {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .chat-input-container {
+        grid-template-columns: 1fr;
       }
     }
 
     @media (max-width: 480px) {
-      .container {
-        padding: 24px 16px;
+      .stats-grid, .items-grid {
+        grid-template-columns: 1fr;
       }
-      
-      .card {
-        padding: 20px;
-        margin-bottom: 20px;
-      }
-      
+
       .battle-size-toggle {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
       }
-      
-      .stats-grid {
-        grid-template-columns: 1fr;
+    }
+
+    /* ===============================
+       Animations
+       =============================== */
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    @keyframes star-twinkle {
+      0%, 100% { 
+        opacity: 0.3; 
+        transform: scale(1);
+        box-shadow: 0 0 6px var(--gold-bright);
       }
-      
-      .control-actions {
-        gap: 12px;
+      25% { 
+        opacity: 1; 
+        transform: scale(1.5);
+        box-shadow: 0 0 15px var(--gold-bright), 0 0 25px rgba(220, 199, 162, 0.5);
       }
-      
-      .status-indicator {
-        position: static;
-        margin-bottom: 20px;
-        justify-self: center;
+      50% { 
+        opacity: 0.7; 
+        transform: scale(1.2);
+        box-shadow: 0 0 10px var(--gold-bright);
       }
+      75% { 
+        opacity: 1; 
+        transform: scale(1.3);
+        box-shadow: 0 0 12px var(--gold-bright), 0 0 20px rgba(220, 199, 162, 0.4);
+      }
+    }
+
+    @keyframes constellation-pulse {
+      0%, 100% { 
+        opacity: 0.6; 
+        transform: scale(1);
+        box-shadow: 0 0 8px rgba(220, 199, 162, 0.8);
+      }
+      50% { 
+        opacity: 1; 
+        transform: scale(1.4);
+        box-shadow: 0 0 16px rgba(220, 199, 162, 1), 0 0 24px rgba(220, 199, 162, 0.6);
+      }
+    }
+
+    @keyframes expand-ring {
+      0% { 
+        transform: translate(-50%, -50%) scale(1); 
+        opacity: 0.6; 
+      }
+      50% { 
+        transform: translate(-50%, -50%) scale(2.5); 
+        opacity: 0.2; 
+      }
+      100% { 
+        transform: translate(-50%, -50%) scale(4); 
+        opacity: 0; 
+      }
+    }
+
+    @keyframes core-pulse {
+      0%, 100% { 
+        opacity: 0.8; 
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 
+          0 0 20px rgba(255, 255, 255, 0.8),
+          0 0 40px rgba(220, 199, 162, 0.6),
+          0 0 80px rgba(220, 199, 162, 0.3);
+      }
+      50% { 
+        opacity: 1; 
+        transform: translate(-50%, -50%) scale(1.2);
+        box-shadow: 
+          0 0 30px rgba(255, 255, 255, 1),
+          0 0 60px rgba(220, 199, 162, 0.8),
+          0 0 120px rgba(220, 199, 162, 0.5);
+      }
+    }
+
+    @keyframes bokeh-float {
+      0%, 100% { 
+        opacity: 0.3; 
+        transform: translateY(0px) scale(1);
+      }
+      25% { 
+        opacity: 0.6; 
+        transform: translateY(-10px) scale(1.1);
+      }
+      50% { 
+        opacity: 0.8; 
+        transform: translateY(-5px) scale(1.05);
+      }
+      75% { 
+        opacity: 0.5; 
+        transform: translateY(-15px) scale(1.15);
+      }
+    }
+
+    /* ===============================
+       Utility Classes
+       =============================== */
+    .hidden {
+      display: none !important;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .mb-0 {
+      margin-bottom: 0 !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--surface-2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold-bright));
     }
   </style>
 </head>
 <body>
-  <!-- 연결 상태 -->
-  <div id="connectionStatus" class="status-indicator">
-    <div class="status-dot waiting" id="connectionDot"></div>
-    <span id="connectionText">연결 대기중...</span>
-  </div>
+  <!-- Enhanced Header with Realistic Lens Flare & Stars -->
+  <header class="header">
+    <div class="star-field">
+      <div class="star star-1"></div>
+      <div class="star star-2"></div>
+      <div class="star star-3"></div>
+      <div class="star star-4"></div>
+      <div class="star star-5"></div>
+      <div class="star star-6"></div>
+    </div>
+    
+    <div class="lens-flare">
+      <div class="lens-flare-core"></div>
+      <div class="lens-flare-rays"></div>
+      <div class="lens-flare-diagonal"></div>
+      <div class="lens-flare-diagonal2"></div>
+      <div class="lens-bokeh bokeh-1"></div>
+      <div class="lens-bokeh bokeh-2"></div>
+      <div class="lens-bokeh bokeh-3"></div>
+      <div class="lens-bokeh bokeh-4"></div>
+      <div class="lens-bokeh bokeh-5"></div>
+    </div>
+    
+    <div class="header-content">
+      <div class="brand-container">
+        <div class="geometric-ornament">
+          <div class="constellation-dot"></div>
+          <div class="constellation-dot"></div>
+          <div class="constellation-dot"></div>
+        </div>
+        <div class="brand-logo">
+          <h1 class="brand-title">PYXIS</h1>
+        </div>
+        <div class="geometric-ornament">
+          <div class="constellation-dot"></div>
+          <div class="constellation-dot"></div>
+          <div class="constellation-dot"></div>
+        </div>
+      </div>
+      <div class="status-indicator">
+        <div class="status-dot"></div>
+        <span class="status-text">시스템 준비됨</span>
+      </div>
+    </div>
+  </header>
 
-  <!-- 헤더 -->
-  <div class="hero">
-    <h1 class="admin-brand">PYXIS</h1>
-  </div>
-
+  <!-- Main Container -->
   <div class="container">
-    <!-- 좌측 컬럼: 전투 제어 -->
+    <!-- Left Column: Control System -->
     <div class="control-column">
       <!-- 전투 생성 -->
       <div class="card">
         <div class="section-header">
           <h2 class="section-title">전투 생성</h2>
         </div>
-        <div class="field">
-          <label>전투 규모</label>
-          <div class="battle-size-toggle">
-            <label><input type="radio" name="battleSize" value="1v1"> 1 vs 1</label>
-            <label><input type="radio" name="battleSize" value="2v2"> 2 vs 2</label>
-            <label><input type="radio" name="battleSize" value="3v3"> 3 vs 3</label>
-            <label><input type="radio" name="battleSize" value="4v4"> 4 vs 4</label>
+        <form id="battleCreateForm">
+          <div class="field">
+            <label>전투 모드 선택</label>
+            <div class="battle-size-toggle">
+              <label><input type="radio" name="battleSize" value="1v1" checked> 1 vs 1</label>
+              <label><input type="radio" name="battleSize" value="2v2"> 2 vs 2</label>
+              <label><input type="radio" name="battleSize" value="3v3"> 3 vs 3</label>
+              <label><input type="radio" name="battleSize" value="4v4"> 4 vs 4</label>
+            </div>
           </div>
-        </div>
-        <button id="createBattleBtn" class="btn btn-gold">전투 생성</button>
+          <button type="submit" class="btn btn-gold">전투 생성</button>
+        </form>
       </div>
 
       <!-- 전투 제어 -->
@@ -782,8 +1183,29 @@
         </div>
       </div>
 
+      <!-- 전투 정보 -->
+      <div id="battleInfoCard" class="card hidden">
+        <div class="section-header">
+          <h2 class="section-title">전투 정보</h2>
+        </div>
+        <div class="battle-info">
+          <div class="field">
+            <label>전투 ID</label>
+            <div id="battleIdDisplay" class="info-display">-</div>
+          </div>
+          <div class="field">
+            <label>관리자 OTP</label>
+            <div id="adminOtpDisplay" class="info-display">-</div>
+          </div>
+          <div class="field mb-0">
+            <label>관전자 OTP</label>
+            <div id="spectatorOtpDisplay" class="info-display">-</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 링크 생성 -->
-      <div id="linksSection" class="card" style="display: none;">
+      <div id="linksSection" class="card hidden">
         <div class="section-header">
           <h2 class="section-title">참여자 링크</h2>
         </div>
@@ -792,9 +1214,9 @@
       </div>
     </div>
 
-    <!-- 중앙 컬럼: 참여자 관리 -->
+    <!-- Center Column: Participants Management -->
     <div class="participants-column">
-      <!-- 플레이어 등록 -->
+      <!-- 플레이어 추가 -->
       <div class="card">
         <div class="section-header">
           <h2 class="section-title">플레이어 추가</h2>
@@ -802,11 +1224,12 @@
         <form id="playerForm">
           <div class="field">
             <label>플레이어 이름</label>
-            <input type="text" id="playerName" name="playerName" class="input" required />
+            <input type="text" id="playerName" name="playerName" class="input" required placeholder="플레이어 이름을 입력하세요" />
           </div>
           <div class="field">
             <label>팀</label>
             <select id="playerTeam" name="playerTeam" class="select" required>
+              <option value="">팀을 선택하세요</option>
               <option value="A">불사조 기사단</option>
               <option value="B">죽음을 먹는 자들</option>
             </select>
@@ -855,54 +1278,5 @@
         </form>
       </div>
 
-      <!-- 팀 로스터 -->
-      <div class="card">
-        <div class="section-header">
-          <h2 class="section-title">팀 로스터</h2>
-        </div>
-        <div class="team-roster">
-          <div class="team-column">
-            <div class="team-header phoenix">불사조 기사단</div>
-            <div id="teamAPlayers" class="player-list"></div>
-          </div>
-          <div class="team-column">
-            <div class="team-header death-eater">죽음을 먹는 자들</div>
-            <div id="teamBPlayers" class="player-list"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 우측 컬럼: 로그 & 채팅 -->
-    <div class="log-chat-column" id="logChatSection">
-      <!-- 실시간 로그 -->
-      <div class="card">
-        <div class="section-header">
-          <h2 class="section-title">실시간 로그</h2>
-        </div>
-        <div id="battleLog" class="battle-log"></div>
-      </div>
-
-      <!-- 채팅 -->
-      <div class="card">
-        <div class="section-header">
-          <h2 class="section-title">채팅 입력</h2>
-        </div>
-        <div class="chat-input-container">
-          <select id="chatChannel" class="select">
-            <option value="all">전체</option>
-            <option value="admin">관리자</option>
-          </select>
-          <input type="text" id="chatInput" class="input" placeholder="메시지 입력..." />
-          <button id="chatSend" class="btn btn-gold">전송</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- JS -->
-  <script src="/assets/js/core/socket-manager.js"></script>
-  <script src="/assets/js/core/ui-helpers.js"></script>
-  <script src="/assets/js/core/pages/admin.js"></script>
-</body>
-</html>
+      <!-- 팀 구성 (renamed from 팀 로스터) -->
+      <div class
