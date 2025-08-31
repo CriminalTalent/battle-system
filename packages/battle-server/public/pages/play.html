@@ -966,8 +966,12 @@
       </div>
       <form id="authForm">
         <div class="field">
-          <label for="playerToken">플레이어 토큰</label>
-          <input type="text" id="playerToken" class="input" placeholder="플레이어 토큰을 입력하세요" required />
+          <label for="playerName">플레이어 이름</label>
+          <input type="text" id="playerName" class="input" placeholder="플레이어 이름을 입력하세요" required />
+        </div>
+        <div class="field">
+          <label for="playerToken">플레이어 OTP</label>
+          <input type="text" id="playerToken" class="input" placeholder="발급받은 OTP를 입력하세요" required />
         </div>
         <button type="submit" class="btn btn-gold">전투 참여</button>
       </form>
@@ -986,19 +990,19 @@
             <div class="info-grid">
               <div class="info-item">
                 <div class="info-label">이름</div>
-                <div class="info-value" id="playerName">-</div>
+                <div class="info-value" id="myPlayerName">-</div>
               </div>
               <div class="info-item">
                 <div class="info-label">팀</div>
-                <div class="info-value" id="playerTeam">-</div>
+                <div class="info-value" id="myPlayerTeam">-</div>
               </div>
               <div class="info-item">
                 <div class="info-label">HP</div>
-                <div class="info-value hp" id="playerHp">100/100</div>
+                <div class="info-value hp" id="myPlayerHp">100/100</div>
               </div>
               <div class="info-item">
                 <div class="info-label">상태</div>
-                <div class="info-value" id="playerStatus">대기 중</div>
+                <div class="info-value" id="myPlayerStatus">대기 중</div>
               </div>
             </div>
             
@@ -1116,6 +1120,8 @@
         this.currentTurn = false;
         this.selectedAction = null;
         this.selectedTarget = null;
+        this.battleTimer = null;
+        this.turnTimer = null;
 
         this.init();
       }
@@ -1149,21 +1155,27 @@
 
       checkUrlParams() {
         const params = new URLSearchParams(window.location.search);
+        const name = params.get('name');
         const token = params.get('token');
         const battleId = params.get('battleId');
 
-        if (token && battleId) {
+        if (name && token && battleId) {
+          document.getElementById('playerName').value = decodeURIComponent(name);
           document.getElementById('playerToken').value = token;
-          this.authenticatePlayer();
+          // 자동 인증 실행
+          setTimeout(() => {
+            this.authenticatePlayer();
+          }, 500);
         }
       }
 
       async authenticatePlayer() {
         try {
+          const name = document.getElementById('playerName').value.trim();
           const token = document.getElementById('playerToken').value.trim();
           
-          if (!token) {
-            this.addLog('error', '토큰을 입력해주세요');
+          if (!name || !token) {
+            this.addLog('system', '이름과 OTP를 모두 입력해주세요');
             return;
           }
 
@@ -1174,8 +1186,8 @@
           
           this.playerData = {
             id: this.generateId(),
-            name: '플레이어' + Math.floor(Math.random() * 1000),
-            team: Math.random() > 0.5 ? 'A' : 'B',
+            name: name,
+            team: Math.random() > 0.5 ? 'phoenix' : 'death-eater',
             stats: {
               attack: Math.floor(Math.random() * 5) + 1,
               defense: Math.floor(Math.random() * 5) + 1,
@@ -1194,11 +1206,19 @@
           this.isAuthenticated = true;
           this.showGameInterface();
           this.updateConnectionStatus('connected', '연결됨');
-          this.addLog('system', '전투에 참여했습니다!');
+          this.addLog('system', `${name}님이 전투에 참여했습니다!`);
+          this.startBattleTimer();
+
+          // 5초 후 첫 턴 시뮬레이션
+          setTimeout(() => {
+            if (this.isAuthenticated) {
+              this.simulateMyTurn();
+            }
+          }, 5000);
 
         } catch (error) {
           console.error('[PYXIS Player] Auth error:', error);
-          this.addLog('error', '인증 실패: ' + error.message);
+          this.addLog('system', '인증 실패: ' + error.message);
         }
       }
 
@@ -1214,12 +1234,12 @@
       updatePlayerInfo() {
         if (!this.playerData) return;
 
-        document.getElementById('playerName').textContent = this.playerData.name;
-        document.getElementById('playerTeam').textContent = 
-          this.playerData.team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
-        document.getElementById('playerHp').textContent = 
+        document.getElementById('myPlayerName').textContent = this.playerData.name;
+        document.getElementById('myPlayerTeam').textContent = 
+          this.playerData.team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자들';
+        document.getElementById('myPlayerHp').textContent = 
           `${this.playerData.hp}/${this.playerData.maxHp}`;
-        document.getElementById('playerStatus').textContent = '대기 중';
+        document.getElementById('myPlayerStatus').textContent = '준비됨';
 
         document.getElementById('statAttack').textContent = this.playerData.stats.attack;
         document.getElementById('statDefense').textContent = this.playerData.stats.defense;
@@ -1227,7 +1247,7 @@
         document.getElementById('statLuck').textContent = this.playerData.stats.luck;
 
         // Update HP color based on health
-        const hpElement = document.getElementById('playerHp');
+        const hpElement = document.getElementById('myPlayerHp');
         if (this.playerData.hp <= 30) {
           hpElement.classList.add('low-hp');
         } else {
@@ -1239,7 +1259,7 @@
         const teamMembers = document.getElementById('teamMembers');
         if (!teamMembers) return;
 
-        // Sample team members
+        // Sample team members (same team as player)
         const members = [
           { name: '팀원1', hp: 85, maxHp: 100, status: '준비됨' },
           { name: '팀원2', hp: 100, maxHp: 100, status: '대기 중' }
@@ -1286,10 +1306,55 @@
         });
       }
 
+      startBattleTimer() {
+        // 전투 제한 시간: 1시간 (3600초)
+        let remainingTime = 3600;
+        
+        this.battleTimer = setInterval(() => {
+          remainingTime--;
+          
+          if (remainingTime <= 0) {
+            this.addLog('system', '전투 시간이 종료되었습니다!');
+            clearInterval(this.battleTimer);
+            this.endBattle();
+          }
+        }, 1000);
+      }
+
+      simulateMyTurn() {
+        this.currentTurn = true;
+        this.setActionButtonsEnabled(true);
+        this.updateTurnIndicator(true, '당신의 턴입니다!');
+        this.addLog('system', '당신의 턴입니다! 액션을 선택하세요.');
+        
+        // 5분 자동 패스 타이머
+        this.startTurnTimer();
+      }
+
+      startTurnTimer() {
+        let turnTime = 300; // 5분 = 300초
+        
+        this.turnTimer = setInterval(() => {
+          turnTime--;
+          
+          if (turnTime <= 0) {
+            this.addLog('system', '시간 초과로 자동 패스됩니다.');
+            this.selectAction('pass');
+            clearInterval(this.turnTimer);
+          }
+        }, 1000);
+      }
+
       selectAction(action) {
         if (!this.currentTurn) {
-          this.addLog('error', '당신의 턴이 아닙니다');
+          this.addLog('system', '당신의 턴이 아닙니다');
           return;
+        }
+
+        // 턴 타이머 정리
+        if (this.turnTimer) {
+          clearInterval(this.turnTimer);
+          this.turnTimer = null;
         }
 
         this.selectedAction = action;
@@ -1337,7 +1402,7 @@
         const actionName = this.getActionName(this.selectedAction);
         this.addLog('action', `${actionName}을(를) 실행합니다!`);
 
-        // Simulate action execution
+        // Simulate action execution with game mechanics
         this.simulateActionResult();
         
         // Disable action buttons
@@ -1349,27 +1414,106 @@
         // Reset selections
         this.selectedAction = null;
         this.selectedTarget = null;
+
+        // Simulate next turn after delay
+        setTimeout(() => {
+          this.simulateOpponentTurn();
+        }, 3000);
       }
 
       simulateActionResult() {
-        const results = [
-          '강력한 공격이 성공했습니다! 25 데미지!',
-          '방어에 성공했습니다! 받는 데미지 감소!',
-          '화려하게 회피했습니다!',
-          '아이템 사용 완료!',
-          '턴을 넘깁니다'
-        ];
+        const action = this.selectedAction;
+        let resultMessage = '';
 
-        const randomResult = results[Math.floor(Math.random() * results.length)];
-        this.addLog('action', randomResult);
+        switch(action) {
+          case 'attack':
+            const attackRoll = Math.floor(Math.random() * 20) + 1;
+            const totalAttack = this.playerData.stats.attack + attackRoll;
+            const damage = Math.max(1, totalAttack - 3); // 가정: 적 방어력 3
+            
+            // 치명타 체크
+            const criticalChance = 20 - Math.floor(this.playerData.stats.luck / 2);
+            const isCritical = attackRoll >= criticalChance;
+            const finalDamage = isCritical ? damage * 2 : damage;
+            
+            resultMessage = `공격 성공! ${isCritical ? '치명타! ' : ''}${finalDamage} 데미지를 가했습니다! (주사위: ${attackRoll})`;
+            break;
+            
+          case 'defend':
+            resultMessage = '방어 자세를 취했습니다! 받는 데미지가 감소합니다.';
+            break;
+            
+          case 'dodge':
+            const dodgeRoll = Math.floor(Math.random() * 20) + 1;
+            const dodgeSuccess = (this.playerData.stats.agility + dodgeRoll) >= 15;
+            resultMessage = dodgeSuccess ? 
+              `회피 성공! (주사위: ${dodgeRoll})` : 
+              `회피 실패... (주사위: ${dodgeRoll})`;
+            break;
+            
+          case 'item':
+            resultMessage = '디터니를 사용했습니다! HP가 10 회복됩니다.';
+            this.playerData.hp = Math.min(this.playerData.maxHp, this.playerData.hp + 10);
+            this.playerData.items.dittany = Math.max(0, this.playerData.items.dittany - 1);
+            this.updatePlayerInfo();
+            this.updateItemsList();
+            break;
+            
+          case 'pass':
+            resultMessage = '턴을 패스합니다.';
+            break;
+        }
 
-        // Simulate some battle progression
+        this.addLog(action === 'attack' && resultMessage.includes('치명타') ? 'damage' : 'action', resultMessage);
+      }
+
+      simulateOpponentTurn() {
+        this.addLog('system', '상대방이 행동 중입니다...');
+        
         setTimeout(() => {
-          this.addLog('system', '다음 턴이 시작됩니다');
-          this.currentTurn = true;
-          this.setActionButtonsEnabled(true);
-          this.updateTurnIndicator(true, '당신의 턴');
-        }, 3000);
+          const opponentActions = ['공격', '방어', '회피', '아이템 사용'];
+          const randomAction = opponentActions[Math.floor(Math.random() * opponentActions.length)];
+          
+          this.addLog('action', `상대방이 ${randomAction}을(를) 선택했습니다.`);
+          
+          // Simulate opponent result
+          if (randomAction === '공격') {
+            const damage = Math.floor(Math.random() * 15) + 5;
+            this.playerData.hp = Math.max(0, this.playerData.hp - damage);
+            this.addLog('damage', `당신이 ${damage} 데미지를 받았습니다! (HP: ${this.playerData.hp}/${this.playerData.maxHp})`);
+            this.updatePlayerInfo();
+            
+            if (this.playerData.hp <= 0) {
+              this.addLog('system', '전투에서 패배했습니다...');
+              this.endBattle();
+              return;
+            }
+          }
+          
+          // Start next turn
+          setTimeout(() => {
+            if (this.isAuthenticated) {
+              this.simulateMyTurn();
+            }
+          }, 2000);
+          
+        }, 2000);
+      }
+
+      endBattle() {
+        this.setActionButtonsEnabled(false);
+        this.currentTurn = false;
+        this.updateTurnIndicator(false, '전투 종료');
+        
+        if (this.battleTimer) {
+          clearInterval(this.battleTimer);
+          this.battleTimer = null;
+        }
+        
+        if (this.turnTimer) {
+          clearInterval(this.turnTimer);
+          this.turnTimer = null;
+        }
       }
 
       setActionButtonsEnabled(enabled) {
@@ -1432,6 +1576,12 @@
         
         logViewer.appendChild(logEntry);
         logViewer.scrollTop = logViewer.scrollHeight;
+
+        // 로그 최대 개수 제한
+        const entries = logViewer.querySelectorAll('.log-entry');
+        if (entries.length > 100) {
+          entries[0].remove();
+        }
       }
 
       getTimeString() {
@@ -1449,24 +1599,29 @@
       delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
       }
+
+      // 정리
+      cleanup() {
+        if (this.battleTimer) {
+          clearInterval(this.battleTimer);
+        }
+        if (this.turnTimer) {
+          clearInterval(this.turnTimer);
+        }
+      }
     }
 
     // Initialize player system
     const player = new PyxisPlayer();
 
-    // Additional event listeners for demo
+    // Global cleanup
+    window.addEventListener('beforeunload', () => {
+      player.cleanup();
+    });
+
+    // Event listeners
     document.addEventListener('DOMContentLoaded', () => {
       console.log('[PYXIS Player] System loaded successfully');
-      
-      // Simulate receiving turn after 5 seconds if authenticated
-      setTimeout(() => {
-        if (player.isAuthenticated) {
-          player.currentTurn = true;
-          player.setActionButtonsEnabled(true);
-          player.updateTurnIndicator(true, '당신의 턴');
-          player.addLog('system', '당신의 턴입니다! 액션을 선택하세요.');
-        }
-      }, 5000);
     });
   </script>
 </body>
