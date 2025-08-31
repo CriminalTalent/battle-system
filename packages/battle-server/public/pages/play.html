@@ -168,13 +168,13 @@
       white-space: nowrap;
     }
 
-    /* 메인 컨테이너 */
+    /* 메인 컨테이너 - 3열 그리드 */
     .container {
       max-width: 1400px;
       margin: 0 auto;
       padding: 40px 24px;
       display: grid;
-      grid-template-columns: 1fr 400px 1fr;
+      grid-template-columns: 300px 1fr 350px;
       gap: 32px;
       align-items: start;
     }
@@ -652,13 +652,21 @@
     /* 반응형 디자인 */
     @media (max-width: 1200px) {
       .container {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
         gap: 24px;
         padding: 32px 20px;
       }
 
-      .action-panel {
-        position: static;
+      .team-section {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 800px) {
+      .container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+        padding: 24px 16px;
       }
     }
 
@@ -687,13 +695,47 @@
         margin-bottom: 20px;
       }
 
-      .action-buttons {
-        grid-template-columns: repeat(2, 1fr);
+      .action-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
       }
 
-      .btn {
-        padding: 16px 20px;
-        font-size: 15px;
+      .action-btn {
+        padding: 12px 8px;
+        min-height: 60px;
+        gap: 4px;
+      }
+
+      .btn-icon {
+        font-size: 16px;
+      }
+
+      .btn-text {
+        font-size: 11px;
+      }
+
+      .my-info-layout {
+        grid-template-columns: 60px 1fr;
+        gap: 12px;
+      }
+
+      .avatar-frame {
+        width: 50px;
+        height: 50px;
+      }
+
+      .my-stats {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .chat-input-group {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chat-select {
+        min-width: 60px;
       }
     }
 
@@ -707,19 +749,23 @@
         margin-bottom: 16px;
       }
 
-      .action-buttons {
-        grid-template-columns: 1fr;
-      }
-
-      .player-info {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
+      .action-grid {
+        grid-template-columns: 1fr 1fr;
       }
 
       .connection-status {
         position: static;
         margin: 16px;
         justify-self: center;
+      }
+
+      .chat-input-group {
+        flex-direction: column;
+      }
+
+      .chat-select,
+      .chat-input {
+        width: 100%;
       }
     }
   </style>
@@ -759,127 +805,137 @@
       </form>
     </section>
 
-    <!-- 좌측: 아군 정보 -->
-    <section id="allyTeam" class="team-section" style="display:none;">
+    <!-- 좌측: 팀원 정보 -->
+    <section id="teamSection" class="team-section" style="display:none;">
       <div class="card">
-        <div class="team-header" id="allyTeamName">아군</div>
-        <div id="allyUnits"></div>
+        <div class="section-title">팀원 정보</div>
+        <div class="team-header" id="myTeamName">아군</div>
+        <div id="teamUnits" class="team-units"></div>
+      </div>
+      
+      <div class="card">
+        <div class="section-title">적군 정보</div>
+        <div class="team-header enemy" id="enemyTeamName">적군</div>
+        <div id="enemyUnits" class="team-units"></div>
       </div>
     </section>
 
-    <!-- 중앙: 액션 패널 -->
-    <section id="actionPanel" class="action-panel" style="display:none;">
-      <div class="card">
+    <!-- 중앙: 플레이어 액션 -->
+    <section id="actionSection" class="action-section" style="display:none;">
+      <!-- 내 정보 -->
+      <div class="card my-info-card">
         <div class="section-title">내 정보</div>
-        <div class="player-info" id="playerInfo">
-          <div class="info-item">
-            <div class="info-label">이름</div>
-            <div class="info-value" id="myName">-</div>
+        <div class="my-info-layout">
+          <div class="avatar-section">
+            <div class="avatar-frame" id="myAvatar">
+              <div class="avatar-placeholder">👤</div>
+            </div>
           </div>
-          <div class="info-item">
-            <div class="info-label">팀</div>
-            <div class="info-value" id="myTeam">-</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">상태</div>
-            <div class="info-value" id="turnStatus">대기중</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label">HP</div>
-            <div class="info-value" id="myHpText">100/100</div>
-          </div>
-        </div>
-
-        <!-- 스탯 정보 -->
-        <div class="unit-stats" style="margin: 20px 0;">
-          <div class="stat-item">
-            <span class="stat-label">공격</span>
-            <span class="stat-value" id="statAttack">-</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">방어</span>
-            <span class="stat-value" id="statDefense">-</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">민첩</span>
-            <span class="stat-value" id="statAgility">-</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">행운</span>
-            <span class="stat-value" id="statLuck">-</span>
+          <div class="stats-hp-section">
+            <div class="my-stats">
+              <div class="stat-row">
+                <span class="stat-label">공격</span>
+                <span class="stat-value" id="statAttack">-</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">방어</span>
+                <span class="stat-value" id="statDefense">-</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">민첩</span>
+                <span class="stat-value" id="statAgility">-</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">행운</span>
+                <span class="stat-value" id="statLuck">-</span>
+              </div>
+            </div>
+            <div class="hp-section">
+              <div class="hp-bar">
+                <div class="hp-fill" id="myHpFill" style="width: 100%;"></div>
+              </div>
+              <div class="hp-text" id="myHpText">100/100 HP</div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <!-- HP 바 -->
-        <div class="hp-bar">
-          <div class="hp-fill" id="myHpFill" style="width: 100%;"></div>
+      <!-- 턴 정보 -->
+      <div class="card turn-info-card">
+        <div class="section-title">턴 정보</div>
+        <div class="turn-status">
+          <div class="turn-indicator" id="turnIndicator">
+            <div class="turn-name" id="myName">-</div>
+            <div class="turn-team" id="myTeam">-</div>
+            <div class="turn-state" id="turnStatus">대기중</div>
+          </div>
         </div>
-
+        
         <!-- 아이템 정보 -->
-        <div class="unit-stats">
-          <div class="stat-item">
-            <span class="stat-label">디터니</span>
-            <span class="stat-value" id="itemDittany">-</span>
+        <div class="items-info">
+          <div class="item-slot">
+            <span class="item-name">디터니</span>
+            <span class="item-count" id="itemDittany">0</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">공격 보정기</span>
-            <span class="stat-value" id="itemAttackBoost">-</span>
+          <div class="item-slot">
+            <span class="item-name">공격 보정기</span>
+            <span class="item-count" id="itemAttackBoost">0</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">방어 보정기</span>
-            <span class="stat-value" id="itemDefenseBoost">-</span>
+          <div class="item-slot">
+            <span class="item-name">방어 보정기</span>
+            <span class="item-count" id="itemDefenseBoost">0</span>
           </div>
         </div>
       </div>
 
       <!-- 액션 버튼들 -->
-      <div class="card">
-        <div class="section-title">행동 선택</div>
-        <div class="action-buttons">
-          <button id="btnAttack" class="btn btn-attack" data-key="1">
-            공격
+      <div class="card action-buttons-card">
+        <div class="section-title">액션 선택</div>
+        <div class="action-grid">
+          <button id="btnAttack" class="btn action-btn btn-attack" data-key="1">
+            <span class="btn-icon">⚔️</span>
+            <span class="btn-text">공격</span>
           </button>
-          <button id="btnDefend" class="btn btn-defend" data-key="2">
-            방어
+          <button id="btnDefend" class="btn action-btn btn-defend" data-key="2">
+            <span class="btn-icon">🛡️</span>
+            <span class="btn-text">방어</span>
           </button>
-          <button id="btnDodge" class="btn btn-dodge" data-key="3">
-            회피
+          <button id="btnDodge" class="btn action-btn btn-dodge" data-key="3">
+            <span class="btn-icon">💨</span>
+            <span class="btn-text">회피</span>
           </button>
-          <button id="btnUseItem" class="btn btn-item" data-key="4">
-            아이템
+          <button id="btnUseItem" class="btn action-btn btn-item" data-key="4">
+            <span class="btn-icon">💊</span>
+            <span class="btn-text">아이템</span>
           </button>
-          <button id="btnPass" class="btn btn-pass" data-key="5">
-            패스
+          <button id="btnPass" class="btn action-btn btn-pass" data-key="5">
+            <span class="btn-icon">⏭️</span>
+            <span class="btn-text">패스</span>
           </button>
         </div>
       </div>
     </section>
 
-    <!-- 우측: 적군 정보 -->
-    <section id="enemyTeam" class="team-section" style="display:none;">
-      <div class="card">
-        <div class="team-header" id="enemyTeamName">적군</div>
-        <div id="enemyUnits"></div>
+    <!-- 우측: 채팅 & 로그 -->
+    <section id="chatLogSection" class="chat-log-section" style="display:none;">
+      <!-- 채팅 -->
+      <div class="card chat-card">
+        <div class="section-title">채팅</div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-group">
+          <select id="chatChannel" class="select chat-select">
+            <option value="all">전체</option>
+            <option value="team">팀</option>
+          </select>
+          <input type="text" id="chatInput" class="input chat-input" placeholder="메시지 입력..." />
+          <button id="chatSendBtn" class="btn btn-gold chat-send">전송</button>
+        </div>
       </div>
-    </section>
 
-    <!-- 전투 로그 -->
-    <section id="battleLogCard" class="card" style="display:none;">
-      <div class="section-title">전투 로그</div>
-      <div id="logViewer" class="battle-log"></div>
-    </section>
-
-    <!-- 채팅 -->
-    <section id="chatPanel" class="card" style="display:none;">
-      <div class="section-title">채팅</div>
-      <div id="chatMessages" class="chat-messages"></div>
-      <div style="display: flex; gap: 12px; margin-top: 16px;">
-        <select id="chatChannel" class="select" style="min-width: 80px;">
-          <option value="all">전체</option>
-          <option value="team">팀</option>
-        </select>
-        <input type="text" id="chatInput" class="input" placeholder="메시지 입력..." style="flex: 1;" />
-        <button id="chatSendBtn" class="btn btn-gold">전송</button>
+      <!-- 전투 로그 -->
+      <div class="card log-card">
+        <div class="section-title">전투 로그</div>
+        <div id="logViewer" class="battle-log"></div>
       </div>
     </section>
   </main>
