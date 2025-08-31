@@ -4,15 +4,725 @@
   <meta charset="utf-8" />
   <title>PYXIS | 플레이어</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- 파비콘 -->
   <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  <!-- 폰트 & 테마 -->
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/pyxis-theme.css">
   <link rel="stylesheet" href="/assets/css/core.css">
   <link rel="stylesheet" href="/assets/css/components.css">
   <link rel="stylesheet" href="/assets/css/player.css">
   <script src="/socket.io/socket.io.js"></script>
+  <style>
+    /* 플레이어 페이지 전용 고급 스타일 */
+    body {
+      background: linear-gradient(135deg, 
+        var(--deep-navy) 0%, 
+        var(--midnight) 25%, 
+        var(--navy-mist) 50%, 
+        var(--midnight) 75%, 
+        var(--deep-navy) 100%);
+      background-attachment: fixed;
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* 우주 배경 효과 */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 20% 30%, rgba(212,183,126,0.03) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(212,183,126,0.02) 0%, transparent 35%),
+        radial-gradient(circle at 40% 80%, rgba(212,183,126,0.04) 0%, transparent 45%),
+        radial-gradient(circle at 70% 60%, rgba(212,183,126,0.02) 0%, transparent 30%);
+      animation: starField 25s ease-in-out infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes starField {
+      0%, 100% { opacity: 0.5; transform: rotate(0deg) scale(1); }
+      50% { opacity: 1; transform: rotate(0.5deg) scale(1.02); }
+    }
+
+    /* 연결 상태 */
+    .connection-status {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(8,13,25,0.95);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(212,183,126,0.25);
+      border-radius: var(--radius-large);
+      padding: 12px 20px;
+      font-weight: 600;
+      z-index: 1000;
+      box-shadow: var(--shadow-deep);
+    }
+
+    .connection-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--warning);
+      animation: connectionPulse 2s ease-in-out infinite;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .connection-dot.connected {
+      background: var(--success);
+      color: var(--success);
+    }
+
+    .connection-dot.disconnected {
+      background: var(--danger);
+      color: var(--danger);
+      animation: none;
+    }
+
+    @keyframes connectionPulse {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* 플레이어 헤더 */
+    .player-header {
+      text-align: center;
+      padding: 80px 20px 60px;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.1) 0%, 
+        rgba(10,15,26,0.95) 25%, 
+        rgba(10,15,26,0.95) 75%, 
+        rgba(212,183,126,0.1) 100%);
+      border-bottom: 2px solid rgba(212,183,126,0.2);
+    }
+
+    .player-header::before {
+      content: '';
+      position: absolute;
+      top: -100%;
+      left: -50%;
+      right: -50%;
+      height: 300%;
+      background: conic-gradient(from 45deg, 
+        rgba(212,183,126,0.08) 0deg, 
+        transparent 90deg,
+        rgba(212,183,126,0.05) 180deg, 
+        transparent 270deg, 
+        rgba(212,183,126,0.08) 360deg);
+      animation: playerOrbit 40s linear infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes playerOrbit {
+      0% { transform: rotate(0deg) scale(1); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+
+    .player-brand {
+      font-family: var(--serif);
+      font-weight: 800;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      background: linear-gradient(135deg, 
+        var(--gold-bright) 0%, 
+        var(--gold-shimmer) 30%, 
+        var(--gold) 60%, 
+        var(--gold-light) 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: playerShimmer 3s ease-in-out infinite;
+      letter-spacing: 0.05em;
+      position: relative;
+    }
+
+    @keyframes playerShimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .player-brand::after {
+      content: '⚔️ 전사 ⚔️';
+      position: absolute;
+      bottom: -35px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--gold);
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.15), 
+        rgba(212,183,126,0.08));
+      border: 1px solid rgba(212,183,126,0.4);
+      border-radius: 25px;
+      padding: 8px 20px;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    /* 메인 컨테이너 */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      display: grid;
+      grid-template-columns: 1fr 400px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    /* 카드 스타일 */
+    .card {
+      background: linear-gradient(145deg, 
+        rgba(15,20,25,0.9) 0%, 
+        rgba(25,31,42,0.8) 50%, 
+        rgba(15,20,25,0.9) 100%);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(212,183,126,0.18);
+      border-radius: var(--radius-large);
+      padding: 28px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+      transition: all var(--transition-normal);
+      box-shadow: var(--shadow-soft), var(--shadow-inset);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 25%;
+      right: 25%;
+      height: 1px;
+      background: linear-gradient(90deg, 
+        transparent, 
+        rgba(212,183,126,0.5), 
+        transparent);
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(212,183,126,0.35);
+      box-shadow: var(--shadow-medium), 
+                  var(--shadow-inset), 
+                  0 0 30px rgba(212,183,126,0.12);
+    }
+
+    /* 섹션 제목 */
+    .section-title {
+      font-family: var(--serif);
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--gold-bright);
+      margin-bottom: 20px;
+      position: relative;
+      padding-left: 20px;
+      letter-spacing: 0.02em;
+    }
+
+    .section-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 6px;
+      height: 65%;
+      background: linear-gradient(to bottom, 
+        var(--gold-bright), 
+        var(--gold-dark));
+      border-radius: 3px;
+      box-shadow: 0 0 10px rgba(212,183,126,0.4);
+    }
+
+    /* 인증 폼 */
+    #authSection {
+      grid-column: 1 / -1;
+      max-width: 600px;
+      justify-self: center;
+    }
+
+    .field {
+      margin-bottom: 24px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .input {
+      width: 100%;
+      padding: 16px 20px;
+      background: rgba(8,13,25,0.8);
+      border: 2px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 500;
+      transition: all var(--transition-normal);
+      backdrop-filter: blur(8px);
+    }
+
+    .input::placeholder {
+      color: var(--text-muted);
+      opacity: 0.8;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--gold);
+      background: rgba(8,13,25,0.95);
+      box-shadow: 0 0 0 4px rgba(212,183,126,0.15),
+                  0 0 20px rgba(212,183,126,0.1);
+    }
+
+    /* 플레이어 정보 바 */
+    .player-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 20px;
+      padding: 24px;
+      background: rgba(212,183,126,0.05);
+      border: 1px solid rgba(212,183,126,0.2);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+    }
+
+    .info-item {
+      text-align: center;
+      padding: 16px;
+      background: rgba(8,13,25,0.6);
+      border-radius: var(--radius-small);
+      border: 1px solid rgba(212,183,126,0.1);
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .info-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--gold-bright);
+    }
+
+    /* 액션 버튼들 */
+    .action-panel {
+      position: sticky;
+      top: 20px;
+    }
+
+    .action-buttons {
+      display: grid;
+      gap: 16px;
+    }
+
+    .btn {
+      padding: 18px 24px;
+      background: linear-gradient(145deg, 
+        rgba(30,37,47,0.95), 
+        rgba(20,26,36,0.95));
+      border: 2px solid rgba(212,183,126,0.2);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-normal);
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.1), 
+        transparent 50%, 
+        rgba(212,183,126,0.05));
+      opacity: 0;
+      transition: opacity var(--transition-normal);
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-3px);
+      border-color: var(--gold);
+      color: var(--gold-bright);
+      box-shadow: var(--shadow-medium), 
+                  0 0 25px rgba(212,183,126,0.2);
+    }
+
+    .btn:hover:not(:disabled)::before {
+      opacity: 1;
+    }
+
+    .btn:active {
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* 특수 버튼 스타일 */
+    .btn-attack {
+      background: linear-gradient(145deg, 
+        rgba(231,76,60,0.9), 
+        rgba(192,57,43,0.9));
+      border-color: var(--danger);
+      color: white;
+    }
+
+    .btn-defend {
+      background: linear-gradient(145deg, 
+        rgba(52,152,219,0.9), 
+        rgba(41,128,185,0.9));
+      border-color: var(--info);
+      color: white;
+    }
+
+    .btn-dodge {
+      background: linear-gradient(145deg, 
+        rgba(46,125,50,0.9), 
+        rgba(27,94,32,0.9));
+      border-color: var(--success);
+      color: white;
+    }
+
+    .btn-item {
+      background: linear-gradient(145deg, 
+        rgba(156,39,176,0.9), 
+        rgba(123,31,162,0.9));
+      border-color: #9c27b0;
+      color: white;
+    }
+
+    .btn-pass {
+      background: linear-gradient(145deg, 
+        rgba(97,97,97,0.9), 
+        rgba(66,66,66,0.9));
+      border-color: #616161;
+      color: white;
+    }
+
+    /* 액션 단축키 힌트 */
+    .btn::after {
+      content: attr(data-key);
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      background: rgba(0,0,0,0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* 팀 정보 */
+    .team-section {
+      padding: 0;
+    }
+
+    .team-header {
+      text-align: center;
+      font-family: var(--serif);
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--gold-bright);
+      padding: 16px;
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.15), 
+        rgba(212,183,126,0.08));
+      border: 1px solid rgba(212,183,126,0.25);
+      border-radius: var(--radius);
+      margin-bottom: 20px;
+      position: relative;
+      text-shadow: 0 2px 8px rgba(212,183,126,0.3);
+    }
+
+    .team-header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 30%;
+      right: 30%;
+      height: 1px;
+      background: linear-gradient(90deg, 
+        transparent, 
+        var(--gold-bright), 
+        transparent);
+    }
+
+    .unit-card {
+      background: linear-gradient(135deg, 
+        rgba(15,20,25,0.8), 
+        rgba(25,31,42,0.7));
+      border: 1px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: all var(--transition-normal);
+    }
+
+    .unit-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(212,183,126,0.3);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .unit-card.active {
+      border-color: var(--gold);
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.08), 
+        rgba(15,20,25,0.9));
+      box-shadow: 0 0 20px rgba(212,183,126,0.15);
+    }
+
+    .unit-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      margin-bottom: 12px;
+    }
+
+    .unit-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .stat-label {
+      font-weight: 600;
+    }
+
+    .stat-value {
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    /* HP 바 */
+    .hp-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+      border: 1px solid rgba(212,183,126,0.2);
+    }
+
+    .hp-fill {
+      height: 100%;
+      background: linear-gradient(90deg, 
+        var(--success), 
+        var(--warning) 50%, 
+        var(--danger) 100%);
+      transition: width 0.5s ease;
+      position: relative;
+    }
+
+    .hp-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255,255,255,0.3), 
+        transparent);
+      animation: hpShimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes hpShimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    /* 로그 및 채팅 */
+    .battle-log, .chat-messages {
+      height: 350px;
+      background: linear-gradient(145deg, 
+        rgba(5,15,28,0.95), 
+        rgba(8,20,35,0.92));
+      border: 1px solid rgba(212,183,126,0.2);
+      border-radius: var(--radius);
+      padding: 20px;
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 4px 16px rgba(0,0,0,0.4);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* 타겟 선택 오버레이 */
+    .target-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,8,13,0.95);
+      backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      animation: overlayFadeIn 0.3s ease;
+    }
+
+    @keyframes overlayFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .target-card-container {
+      background: linear-gradient(145deg, 
+        rgba(15,20,25,0.95), 
+        rgba(25,31,42,0.9));
+      border: 2px solid rgba(212,183,126,0.3);
+      border-radius: var(--radius-large);
+      padding: 40px;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-deep);
+      backdrop-filter: blur(16px);
+    }
+
+    .target-list {
+      display: grid;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .target-card {
+      padding: 20px;
+      background: rgba(8,13,25,0.8);
+      border: 2px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all var(--transition-normal);
+    }
+
+    .target-card:hover {
+      border-color: var(--gold);
+      background: rgba(8,13,25,0.95);
+      transform: translateY(-2px);
+    }
+
+    .target-card.selected {
+      border-color: var(--gold-bright);
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.1), 
+        rgba(8,13,25,0.9));
+      box-shadow: 0 0 20px rgba(212,183,126,0.2);
+    }
+
+    /* 반응형 디자인 */
+    @media (max-width: 1200px) {
+      .container {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 32px 20px;
+      }
+
+      .action-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .player-header {
+        padding: 60px 16px 40px;
+      }
+
+      .player-brand {
+        font-size: 2rem;
+      }
+
+      .player-brand::after {
+        bottom: -30px;
+        font-size: 0.8rem;
+        padding: 6px 16px;
+      }
+
+      .container {
+        padding: 24px 16px;
+        gap: 20px;
+      }
+
+      .card {
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .action-buttons {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .btn {
+        padding: 16px 20px;
+        font-size: 15px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 20px 12px;
+      }
+
+      .card {
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      .action-buttons {
+        grid-template-columns: 1fr;
+      }
+
+      .player-info {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .connection-status {
+        position: static;
+        margin: 16px;
+        justify-self: center;
+      }
+    }
+  </style>
 </head>
 <body>
   <!-- 연결 상태 -->
@@ -23,11 +733,11 @@
 
   <!-- 헤더 -->
   <header class="player-header">
-    <div class="player-brand sparkle-effect">Pyxis Player</div>
+    <div class="player-brand">PYXIS</div>
   </header>
 
   <main class="container">
-    <!-- 인증 -->
+    <!-- 인증 섹션 -->
     <section id="authSection" class="card">
       <div class="section-header">
         <h2 class="section-title">플레이어 입장</h2>
@@ -35,92 +745,161 @@
       <form id="authForm">
         <div class="field">
           <label for="authBattleId">전투 ID</label>
-          <input type="text" id="authBattleId" name="authBattleId" class="input" placeholder="전투 ID" required />
+          <input type="text" id="authBattleId" name="authBattleId" class="input" placeholder="전투 ID 입력" required />
         </div>
         <div class="field">
           <label for="authToken">플레이어 OTP</label>
-          <input type="text" id="authToken" name="authToken" class="input" placeholder="발급된 OTP" required />
+          <input type="text" id="authToken" name="authToken" class="input" placeholder="발급된 OTP 입력" required />
         </div>
         <div class="field">
           <label for="authName">플레이어 이름</label>
           <input type="text" id="authName" name="authName" class="input" placeholder="이름 입력" required maxlength="20" />
         </div>
-        <button type="submit" class="btn btn-gold">입장하기</button>
+        <button type="submit" class="btn btn-gold">전투 입장</button>
       </form>
     </section>
 
-    <!-- 플레이어 UI -->
-    <section id="playerInfoBar" class="card" style="display:none;">
-      <div class="section-header">
-        <h2 class="section-title">내 정보</h2>
-      </div>
-      <div class="player-info">
-        <div id="playerName">-</div>
-        <div id="playerTeam">-</div>
-        <div id="turnStatus">대기중</div>
-        <div id="gameHint"></div>
+    <!-- 좌측: 아군 정보 -->
+    <section id="allyTeam" class="team-section" style="display:none;">
+      <div class="card">
+        <div class="team-header" id="allyTeamName">아군</div>
+        <div id="allyUnits"></div>
       </div>
     </section>
 
-    <section id="battlePortrait" class="card" style="display:none;">
-      <div id="portraitChar" class="portrait"></div>
-      <div id="portraitStats" class="portrait-stats"></div>
+    <!-- 중앙: 액션 패널 -->
+    <section id="actionPanel" class="action-panel" style="display:none;">
+      <div class="card">
+        <div class="section-title">내 정보</div>
+        <div class="player-info" id="playerInfo">
+          <div class="info-item">
+            <div class="info-label">이름</div>
+            <div class="info-value" id="myName">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">팀</div>
+            <div class="info-value" id="myTeam">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">상태</div>
+            <div class="info-value" id="turnStatus">대기중</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">HP</div>
+            <div class="info-value" id="myHpText">100/100</div>
+          </div>
+        </div>
+
+        <!-- 스탯 정보 -->
+        <div class="unit-stats" style="margin: 20px 0;">
+          <div class="stat-item">
+            <span class="stat-label">공격</span>
+            <span class="stat-value" id="statAttack">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">방어</span>
+            <span class="stat-value" id="statDefense">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">민첩</span>
+            <span class="stat-value" id="statAgility">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">행운</span>
+            <span class="stat-value" id="statLuck">-</span>
+          </div>
+        </div>
+
+        <!-- HP 바 -->
+        <div class="hp-bar">
+          <div class="hp-fill" id="myHpFill" style="width: 100%;"></div>
+        </div>
+
+        <!-- 아이템 정보 -->
+        <div class="unit-stats">
+          <div class="stat-item">
+            <span class="stat-label">디터니</span>
+            <span class="stat-value" id="itemDittany">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">공격 보정기</span>
+            <span class="stat-value" id="itemAttackBoost">-</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">방어 보정기</span>
+            <span class="stat-value" id="itemDefenseBoost">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 액션 버튼들 -->
+      <div class="card">
+        <div class="section-title">행동 선택</div>
+        <div class="action-buttons">
+          <button id="btnAttack" class="btn btn-attack" data-key="1">
+            공격
+          </button>
+          <button id="btnDefend" class="btn btn-defend" data-key="2">
+            방어
+          </button>
+          <button id="btnDodge" class="btn btn-dodge" data-key="3">
+            회피
+          </button>
+          <button id="btnUseItem" class="btn btn-item" data-key="4">
+            아이템
+          </button>
+          <button id="btnPass" class="btn btn-pass" data-key="5">
+            패스
+          </button>
+        </div>
+      </div>
     </section>
 
-    <!-- 아군 -->
-    <section id="allyUnits" class="grid"></section>
-
-    <!-- 액션 -->
-    <section id="actionBar" class="card action-panel">
-      <div class="section-header">
-        <h2 class="section-title">행동 선택</h2>
-      </div>
-      <div class="action-buttons">
-        <button id="btnAttack" class="btn">공격</button>
-        <button id="btnDefend" class="btn">방어</button>
-        <button id="btnDodge" class="btn">회피</button>
-        <button id="btnUseItem" class="btn">아이템</button>
-        <button id="btnPass" class="btn">패스</button>
+    <!-- 우측: 적군 정보 -->
+    <section id="enemyTeam" class="team-section" style="display:none;">
+      <div class="card">
+        <div class="team-header" id="enemyTeamName">적군</div>
+        <div id="enemyUnits"></div>
       </div>
     </section>
 
     <!-- 전투 로그 -->
     <section id="battleLogCard" class="card" style="display:none;">
-      <div class="section-header">
-        <h2 class="section-title">전투 로그</h2>
-      </div>
-      <div id="battleLog" class="battle-log"></div>
+      <div class="section-title">전투 로그</div>
+      <div id="logViewer" class="battle-log"></div>
     </section>
 
     <!-- 채팅 -->
     <section id="chatPanel" class="card" style="display:none;">
-      <div class="section-header">
-        <h2 class="section-title">채팅</h2>
-      </div>
-      <div class="chat-controls">
-        <select id="chatChannel" class="select">
+      <div class="section-title">채팅</div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div style="display: flex; gap: 12px; margin-top: 16px;">
+        <select id="chatChannel" class="select" style="min-width: 80px;">
           <option value="all">전체</option>
           <option value="team">팀</option>
         </select>
-        <input type="text" id="chatInput" class="input" placeholder="메시지를 입력하세요" />
-        <button id="chatSend" class="btn btn-success">전송</button>
+        <input type="text" id="chatInput" class="input" placeholder="메시지 입력..." style="flex: 1;" />
+        <button id="chatSendBtn" class="btn btn-gold">전송</button>
       </div>
-      <div id="chatMessages" class="chat-messages"></div>
     </section>
+  </main>
 
-    <!-- 타겟 선택 -->
-    <div id="targetOverlay" class="target-overlay" style="display:none;">
-      <div class="target-card-container">
-        <h3 id="targetTitle"></h3>
-        <div id="targetList" class="target-list"></div>
-        <button id="cancelTarget" class="btn btn-danger">취소</button>
+  <!-- 타겟 선택 오버레이 -->
+  <div id="targetOverlay" class="target-overlay" style="display:none;">
+    <div class="target-card-container">
+      <h3 id="targetTitle" class="section-title">대상 선택</h3>
+      <div id="targetList" class="target-list"></div>
+      <div style="display: flex; gap: 16px; margin-top: 24px;">
+        <button id="cancelTarget" class="btn btn-danger" style="flex: 1;">취소</button>
+        <button id="confirmTarget" class="btn btn-gold" style="flex: 1;">확인</button>
       </div>
     </div>
-  </main>
+  </div>
 
   <!-- JS -->
   <script src="/assets/js/core/socket-manager.js"></script>
   <script src="/assets/js/core/ui-helpers.js"></script>
-  <script src="/assets/js/core/pages/player.js"></script>
+  <script src="/assets/js/components/target-selector.js"></script>
+  <script src="/assets/js/pages/play.js"></script>
 </body>
 </html>
