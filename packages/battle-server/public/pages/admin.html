@@ -4,27 +4,519 @@
   <meta charset="utf-8" />
   <title>PYXIS | 전투 관리석</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- 파비콘 경로 수정 -->
   <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/pyxis-theme.css">
   <link rel="stylesheet" href="/assets/css/core.css">
   <link rel="stylesheet" href="/assets/css/components.css">
   <link rel="stylesheet" href="/assets/css/admin.css">
   <script src="/socket.io/socket.io.js"></script>
+  <style>
+    /* 개선된 관리자 페이지 전용 스타일 */
+    body {
+      background: linear-gradient(135deg, 
+        var(--deep-navy) 0%, 
+        var(--midnight) 25%, 
+        var(--navy-mist) 50%, 
+        var(--midnight) 75%, 
+        var(--deep-navy) 100%);
+      background-attachment: fixed;
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* 천체 배경 효과 */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle at 15% 25%, rgba(212,183,126,0.04) 0%, transparent 50%),
+        radial-gradient(circle at 85% 75%, rgba(212,183,126,0.03) 0%, transparent 40%),
+        radial-gradient(circle at 60% 10%, rgba(212,183,126,0.02) 0%, transparent 30%),
+        radial-gradient(circle at 40% 85%, rgba(212,183,126,0.03) 0%, transparent 35%);
+      animation: celestialFloat 20s ease-in-out infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes celestialFloat {
+      0%, 100% { opacity: 0.6; transform: translateY(0px); }
+      50% { opacity: 1; transform: translateY(-10px); }
+    }
+
+    /* 향상된 헤더 */
+    .hero {
+      text-align: center;
+      padding: 60px 20px 40px;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.08) 0%, 
+        rgba(10,15,26,0.95) 30%, 
+        rgba(10,15,26,0.95) 70%, 
+        rgba(212,183,126,0.08) 100%);
+      border-bottom: 1px solid rgba(212,183,126,0.15);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -20%;
+      right: -20%;
+      height: 200%;
+      background: conic-gradient(from 0deg, 
+        rgba(212,183,126,0.12) 0deg, 
+        transparent 60deg,
+        rgba(212,183,126,0.08) 120deg, 
+        transparent 180deg, 
+        rgba(212,183,126,0.12) 240deg, 
+        transparent 300deg, 
+        rgba(212,183,126,0.12) 360deg);
+      animation: heroOrbit 60s linear infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes heroOrbit {
+      0% { transform: rotate(0deg) scale(1); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+
+    .admin-brand {
+      font-family: var(--serif);
+      font-weight: 900;
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      background: linear-gradient(135deg, 
+        var(--gold-bright) 0%, 
+        var(--gold-shimmer) 25%, 
+        var(--gold) 50%, 
+        var(--gold-light) 75%,
+        var(--gold-bright) 100%);
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: titleShimmer 4s ease-in-out infinite;
+      text-shadow: 0 0 30px rgba(212,183,126,0.3);
+      position: relative;
+      letter-spacing: 0.08em;
+    }
+
+    @keyframes titleShimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .admin-brand::after {
+      content: '✦ 관리자 ✧';
+      position: absolute;
+      top: -15px;
+      right: -80px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--gold);
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.2), 
+        rgba(212,183,126,0.1));
+      border: 1px solid var(--gold);
+      border-radius: 20px;
+      padding: 6px 16px;
+      letter-spacing: 0.05em;
+      animation: badgeTwinkle 3s ease-in-out infinite;
+    }
+
+    @keyframes badgeTwinkle {
+      0%, 100% { opacity: 0.8; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+
+    /* 메인 컨테이너 */
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      position: relative;
+    }
+
+    /* 연결 상태 개선 */
+    .status-indicator {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(8,13,25,0.95);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(212,183,126,0.25);
+      border-radius: var(--radius-large);
+      padding: 12px 20px;
+      font-weight: 600;
+      z-index: 1000;
+      box-shadow: var(--shadow-deep);
+    }
+
+    /* 카드 시스템 개선 */
+    .card {
+      background: linear-gradient(145deg, 
+        rgba(15,20,25,0.85) 0%, 
+        rgba(25,31,42,0.75) 50%, 
+        rgba(15,20,25,0.85) 100%);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius-large);
+      padding: 32px;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+      transition: all var(--transition-normal);
+      box-shadow: var(--shadow-soft), var(--shadow-inset);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 20%;
+      right: 20%;
+      height: 1px;
+      background: linear-gradient(90deg, 
+        transparent, 
+        rgba(212,183,126,0.4), 
+        transparent);
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(212,183,126,0.3);
+      box-shadow: var(--shadow-medium), 
+                  var(--shadow-inset), 
+                  0 0 40px rgba(212,183,126,0.1);
+    }
+
+    /* 섹션 제목 개선 */
+    .section-header {
+      margin-bottom: 28px;
+      position: relative;
+    }
+
+    .section-title {
+      font-family: var(--serif);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--gold-bright);
+      position: relative;
+      padding-left: 24px;
+      letter-spacing: 0.02em;
+    }
+
+    .section-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 70%;
+      background: linear-gradient(to bottom, 
+        var(--gold-bright), 
+        var(--gold-dark));
+      border-radius: 4px;
+      box-shadow: 0 0 12px rgba(212,183,126,0.4);
+    }
+
+    /* 폼 레이아웃 개선 */
+    .battle-size-toggle {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .battle-size-toggle label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 20px;
+      background: rgba(8,13,25,0.6);
+      border: 2px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      font-weight: 600;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all var(--transition-normal);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .battle-size-toggle label::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, 
+        rgba(212,183,126,0.1), 
+        transparent 50%, 
+        rgba(212,183,126,0.05));
+      opacity: 0;
+      transition: opacity var(--transition-normal);
+    }
+
+    .battle-size-toggle label:hover {
+      border-color: var(--gold);
+      color: var(--gold-bright);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(212,183,126,0.15);
+    }
+
+    .battle-size-toggle label:hover::before {
+      opacity: 1;
+    }
+
+    .battle-size-toggle input[type="radio"] {
+      margin-right: 10px;
+      accent-color: var(--gold);
+    }
+
+    .battle-size-toggle input[type="radio"]:checked + label,
+    .battle-size-toggle label:has(input:checked) {
+      background: linear-gradient(135deg, 
+        var(--gold-bright), 
+        var(--gold-dark));
+      color: var(--deep-navy);
+      border-color: var(--gold-bright);
+      box-shadow: 0 0 25px rgba(212,183,126,0.4);
+      font-weight: 700;
+    }
+
+    /* 필드 스타일링 개선 */
+    .field {
+      margin-bottom: 24px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .input, .select {
+      width: 100%;
+      padding: 16px 20px;
+      background: rgba(8,13,25,0.8);
+      border: 2px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 500;
+      transition: all var(--transition-normal);
+      backdrop-filter: blur(8px);
+    }
+
+    .input:focus, .select:focus {
+      outline: none;
+      border-color: var(--gold);
+      background: rgba(8,13,25,0.95);
+      box-shadow: 0 0 0 4px rgba(212,183,126,0.15),
+                  0 0 20px rgba(212,183,126,0.1);
+    }
+
+    /* 행 레이아웃 */
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    /* 스탯 그리드 */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+      padding: 24px;
+      background: rgba(212,183,126,0.03);
+      border: 1px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      backdrop-filter: blur(8px);
+    }
+
+    .items-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+      padding: 24px;
+      background: rgba(212,183,126,0.03);
+      border: 1px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+    }
+
+    /* 플레이어 목록 */
+    .player-list {
+      display: grid;
+      gap: 20px;
+      margin-top: 24px;
+    }
+
+    .player-card {
+      background: linear-gradient(135deg, 
+        rgba(15,20,25,0.9), 
+        rgba(25,31,42,0.8));
+      border: 1px solid rgba(212,183,126,0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      transition: all var(--transition-normal);
+    }
+
+    .player-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-medium);
+      border-color: var(--gold);
+    }
+
+    /* 링크 섹션 */
+    .link-item {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 20px;
+      background: rgba(8,13,25,0.6);
+      border: 1px solid rgba(212,183,126,0.15);
+      border-radius: var(--radius);
+      transition: all var(--transition-normal);
+    }
+
+    .link-item:hover {
+      background: rgba(8,13,25,0.8);
+      border-color: var(--gold);
+      transform: translateY(-2px);
+    }
+
+    .link-input {
+      flex: 1;
+      padding: 12px 16px;
+      background: rgba(5,15,28,0.8);
+      border: 1px solid rgba(212,183,126,0.1);
+      border-radius: var(--radius-small);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .copy-btn {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-dark));
+      color: var(--deep-navy);
+      border: none;
+      border-radius: var(--radius-small);
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition-normal);
+      min-width: 100px;
+    }
+
+    .copy-btn:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 8px 20px rgba(212,183,126,0.3);
+    }
+
+    /* 로그 섹션 */
+    .battle-log, .chat-messages {
+      height: 400px;
+      background: linear-gradient(145deg, 
+        rgba(5,15,28,0.95), 
+        rgba(8,20,35,0.92));
+      border: 1px solid rgba(212,183,126,0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    /* 반응형 개선 */
+    @media (max-width: 1200px) {
+      .container {
+        padding: 32px 20px;
+      }
+      
+      .card {
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .hero {
+        padding: 40px 16px 24px;
+      }
+      
+      .admin-brand {
+        font-size: 2.5rem;
+      }
+      
+      .admin-brand::after {
+        top: -12px;
+        right: -60px;
+        font-size: 0.7rem;
+        padding: 4px 12px;
+      }
+      
+      .battle-size-toggle {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      
+      .row {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 24px 16px;
+      }
+      
+      .card {
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      
+      .battle-size-toggle {
+        grid-template-columns: 1fr;
+      }
+      
+      .status-indicator {
+        position: static;
+        margin-bottom: 20px;
+        justify-self: center;
+      }
+    }
+  </style>
 </head>
 <body>
+  <!-- 연결 상태 -->
+  <div id="connectionStatus" class="status-indicator">
+    <div class="status-dot waiting" id="connectionDot"></div>
+    <span id="connectionText">연결 대기중...</span>
+  </div>
+
+  <!-- 헤더 -->
   <div class="hero">
-    <h1 class="admin-brand">PYXIS 전투 관리석</h1>
+    <h1 class="admin-brand">PYXIS</h1>
   </div>
 
   <div class="container">
-    <!-- 연결 상태 -->
-    <div id="connectionStatus" class="status-indicator">
-      <span id="connectionDot" class="status-dot waiting"></span>
-      <span id="connectionText">연결 대기중...</span>
-    </div>
-
     <!-- 전투 생성 -->
     <div class="card">
       <div class="section-header">
@@ -39,7 +531,7 @@
           <label><input type="radio" name="battleSize" value="4v4"> 4 vs 4</label>
         </div>
       </div>
-      <button id="createBattleBtn" class="btn btn-gold">전투 시작</button>
+      <button id="createBattleBtn" class="btn btn-gold">전투 생성</button>
     </div>
 
     <!-- 플레이어 등록 -->
@@ -61,7 +553,8 @@
             </select>
           </div>
         </div>
-        <div class="row">
+        
+        <div class="stats-grid">
           <div class="field">
             <label>공격</label>
             <input type="number" id="statAtk" name="statAtk" class="input" min="1" max="5" value="1" required />
@@ -70,47 +563,84 @@
             <label>방어</label>
             <input type="number" id="statDef" name="statDef" class="input" min="1" max="5" value="1" required />
           </div>
-        </div>
-        <div class="row">
           <div class="field">
             <label>민첩</label>
             <input type="number" id="statAgi" name="statAgi" class="input" min="1" max="5" value="1" required />
           </div>
           <div class="field">
             <label>행운</label>
-            <input type="number" id="statLuk" name="statLuk" class="input" min="1" max="5" value="1" required />
+            <input type="number" id="statLck" name="statLck" class="input" min="1" max="5" value="1" required />
           </div>
         </div>
-        <button type="submit" class="btn btn-success">플레이어 추가</button>
+
+        <div class="items-grid">
+          <div class="field">
+            <label>디터니 (회복)</label>
+            <input type="number" id="itemDittany" name="itemDittany" class="input" min="0" max="3" value="1" />
+          </div>
+          <div class="field">
+            <label>공격 보정기</label>
+            <input type="number" id="itemAttackBoost" name="itemAttackBoost" class="input" min="0" max="3" value="1" />
+          </div>
+          <div class="field">
+            <label>방어 보정기</label>
+            <input type="number" id="itemDefenseBoost" name="itemDefenseBoost" class="input" min="0" max="3" value="1" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>아바타 이미지 (선택)</label>
+          <input type="file" id="avatarImage" name="avatarImage" class="input" accept="image/*" />
+        </div>
+
+        <button type="submit" class="btn btn-gold">플레이어 추가</button>
       </form>
+
+      <!-- 플레이어 목록 -->
+      <div id="playerList" class="player-list"></div>
     </div>
 
-    <!-- 플레이어 목록 -->
+    <!-- 링크 생성 -->
+    <div id="linksSection" class="card" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">참여자 링크</h2>
+      </div>
+      <div id="linksList"></div>
+      <button id="generateLinksBtn" class="btn btn-gold">플레이어별 링크 생성</button>
+    </div>
+
+    <!-- 전투 제어 -->
     <div class="card">
       <div class="section-header">
-        <h2 class="section-title">플레이어 목록</h2>
+        <h2 class="section-title">전투 제어</h2>
       </div>
-      <div id="playerList" class="grid"></div>
+      <div class="row">
+        <button id="adminLoginBtn" class="btn btn-gold">관리자 로그인</button>
+        <button id="startBattleBtn" class="btn btn-success" disabled>전투 시작</button>
+        <button id="endBattleBtn" class="btn btn-danger" disabled>전투 종료</button>
+      </div>
     </div>
 
-    <!-- OTP 발행 -->
-    <div class="card">
-      <div class="section-header">
-        <h2 class="section-title">접속 링크</h2>
-      </div>
-      <div id="otpLinks" class="grid"></div>
-    </div>
-
-    <!-- 전투 로그 -->
+    <!-- 실시간 로그 -->
     <div class="card">
       <div class="section-header">
         <h2 class="section-title">전투 로그</h2>
       </div>
-      <div id="battleLog" class="log-viewer"></div>
+      <div id="battleLog" class="battle-log"></div>
+      
+      <!-- 채팅 입력 -->
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <select id="chatChannel" class="select" style="min-width: 120px;">
+          <option value="all">전체</option>
+          <option value="admin">관리자</option>
+        </select>
+        <input type="text" id="chatInput" class="input" placeholder="메시지 입력..." style="flex: 1;" />
+        <button id="chatSend" class="btn btn-gold">전송</button>
+      </div>
     </div>
   </div>
 
-  <!-- 스크립트 -->
+  <!-- JS -->
   <script src="/assets/js/core/socket-manager.js"></script>
   <script src="/assets/js/core/ui-helpers.js"></script>
   <script src="/assets/js/core/pages/admin.js"></script>
