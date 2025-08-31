@@ -151,7 +151,7 @@
     }
 
     .spectator-brand::after {
-      content: '👁️ 관측소 🔭';
+      content: '관측소';
       position: absolute;
       bottom: -40px;
       left: 50%;
@@ -183,13 +183,13 @@
       }
     }
 
-    /* 메인 컨테이너 */
+    /* 메인 컨테이너 - 3열 그리드 */
     .container {
       max-width: 1600px;
       margin: 0 auto;
       padding: 50px 24px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 300px 1fr 350px;
       gap: 40px;
       align-items: start;
     }
@@ -365,22 +365,215 @@
       transform: none;
     }
 
-    /* 전투장 뷰 */
-    .battlefield {
+    /* 인증 섹션 */
+    #authSection {
+      grid-column: 1 / -1;
+      max-width: 700px;
+      justify-self: center;
+    }
+
+    /* 3개 컬럼 섹션들 */
+    .team-section,
+    .battle-section {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* 로그&채팅 섹션 - 하단 전체 너비 */
+    .log-chat-section {
+      grid-column: 1 / -1;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 32px;
-      margin-bottom: 32px;
+      margin-top: 20px;
     }
 
-    .team-panel {
-      background: linear-gradient(135deg, 
-        rgba(15,20,25,0.85), 
-        rgba(25,31,42,0.8));
+    /* 팀 정보 스타일 */
+    .team-units {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 전투 현황 카드 */
+    .battle-status-card {
+      min-height: 150px;
+    }
+
+    .battle-info {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .battle-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .battle-stat .stat-label {
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .battle-stat .stat-value {
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    .battle-status {
+      color: var(--success) !important;
+      font-weight: 700 !important;
+      background: rgba(39,174,96,0.2) !important;
+      padding: 2px 8px !important;
+      border-radius: 8px !important;
+    }
+
+    .battle-status.ended {
+      color: var(--danger) !important;
+      background: rgba(231,76,60,0.2) !important;
+    }
+
+    /* 턴 표시 카드 */
+    .turn-display-card {
+      min-height: 120px;
+    }
+
+    .turn-display {
+      text-align: center;
+      padding: 20px;
+      background: rgba(212,183,126,0.05);
       border: 1px solid rgba(212,183,126,0.15);
-      border-radius: var(--radius-large);
-      padding: 24px;
-      backdrop-filter: blur(12px);
+      border-radius: var(--radius);
+    }
+
+    .turn-player {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .player-name {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--gold-bright);
+    }
+
+    .player-team {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    .turn-action {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      background: var(--info);
+      color: white;
+      border-radius: 12px;
+      display: inline-block;
+      margin-top: 4px;
+    }
+
+    .turn-action.waiting {
+      background: var(--warning);
+    }
+
+    .turn-action.active {
+      background: var(--success);
+      animation: turnPulse 2s ease-in-out infinite;
+    }
+
+    /* 응원 카드 */
+    .cheer-card {
+      flex: 1;
+    }
+
+    .cheer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .cheer-btn {
+      padding: 12px 16px;
+      background: linear-gradient(135deg, 
+        rgba(52,152,219,0.8), 
+        rgba(41,128,185,0.8));
+      border: 1px solid var(--info);
+      border-radius: var(--radius-small);
+      color: white;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      text-align: center;
+      position: relative;
+    }
+
+    .cheer-btn:hover {
+      transform: translateY(-2px);
+      background: linear-gradient(135deg, 
+        var(--info), 
+        rgba(41,128,185,0.9));
+      box-shadow: 0 4px 12px rgba(52,152,219,0.3);
+    }
+
+    .cheer-btn:active {
+      transform: translateY(0);
+    }
+
+    .cheer-btn::after {
+      content: attr(data-key);
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      background: rgba(0,0,0,0.3);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    /* 채팅 & 로그 */
+    .log-card {
+      min-height: 350px;
+    }
+
+    .chat-card {
+      min-height: 350px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-messages {
+      height: 250px;
+      margin-bottom: 16px;
+      flex: 1;
+    }
+
+    .chat-input-group {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .chat-input {
+      flex: 1;
+      font-size: 14px;
+      padding: 12px 16px;
+    }
+
+    .chat-send {
+      min-width: 80px;
+      font-size: 13px;
+      padding: 12px 20px;
     }
 
     .team-header {
@@ -687,14 +880,21 @@
     /* 반응형 디자인 */
     @media (max-width: 1200px) {
       .container {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
         gap: 32px;
         padding: 40px 20px;
       }
 
-      .battlefield {
+      .battle-section {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 800px) {
+      .container {
         grid-template-columns: 1fr;
         gap: 24px;
+        padding: 32px 16px;
       }
     }
 
@@ -723,14 +923,24 @@
         margin-bottom: 24px;
       }
 
-      .cheer-buttons {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
+      .cheer-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
       }
 
-      .unit-stats {
+      .cheer-btn {
+        padding: 10px 12px;
+        font-size: 12px;
+      }
+
+      .battle-info {
         grid-template-columns: 1fr;
-        gap: 6px;
+        gap: 8px;
+      }
+
+      .log-chat-section {
+        grid-template-columns: 1fr;
+        gap: 20px;
       }
     }
 
@@ -741,11 +951,16 @@
 
       .card {
         padding: 20px;
-        margin-bottom: 20px;
       }
 
-      .cheer-buttons {
-        grid-template-columns: 1fr;
+      .cheer-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .cheer-btn {
+        padding: 8px 10px;
+        font-size: 11px;
       }
 
       .connection-status {
@@ -754,12 +969,13 @@
         justify-self: center;
       }
 
-      .chat-input-container {
+      .chat-input-group {
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
 
-      .chat-input-container .input {
+      .chat-input,
+      .chat-send {
         width: 100%;
       }
     }
@@ -828,54 +1044,93 @@
       </form>
     </section>
 
-    <!-- 전투장 뷰 -->
-    <section id="battlefieldSection" style="display:none;">
+    <!-- 좌측: 팀 A 정보 -->
+    <section id="teamASection" class="team-section" style="display:none;">
       <div class="card">
-        <div class="section-title">실시간 전투장</div>
-        <div class="battlefield">
-          <!-- 팀 A -->
-          <div class="team-panel">
-            <div class="team-header phoenix" id="teamAHeader">불사조 기사단</div>
-            <div id="teamAUnits"></div>
-          </div>
+        <div class="section-title">불사조 기사단</div>
+        <div class="team-header phoenix" id="teamAHeader">불사조 기사단</div>
+        <div id="teamAUnits" class="team-units"></div>
+      </div>
+    </section>
 
-          <!-- 팀 B -->
-          <div class="team-panel">
-            <div class="team-header death-eater" id="teamBHeader">죽음을 먹는 자들</div>
-            <div id="teamBUnits"></div>
+    <!-- 중앙: 전투 현황 & 응원 -->
+    <section id="battleSection" class="battle-section" style="display:none;">
+      <!-- 전투 상태 정보 -->
+      <div class="card battle-status-card">
+        <div class="section-title">전투 현황</div>
+        <div class="battle-info">
+          <div class="battle-stat">
+            <span class="stat-label">전투 모드</span>
+            <span class="stat-value" id="battleMode">-</span>
+          </div>
+          <div class="battle-stat">
+            <span class="stat-label">현재 턴</span>
+            <span class="stat-value" id="currentTurnInfo">-</span>
+          </div>
+          <div class="battle-stat">
+            <span class="stat-label">전투 시간</span>
+            <span class="stat-value" id="battleTime">-</span>
+          </div>
+          <div class="battle-stat">
+            <span class="stat-label">전투 상태</span>
+            <span class="battle-status" id="battleStatus">진행중</span>
           </div>
         </div>
+      </div>
 
-        <!-- 응원 섹션 -->
-        <div class="cheer-section">
-          <div class="section-title" style="font-size: 1.1rem; margin-bottom: 16px;">응원하기</div>
-          <div class="cheer-buttons">
-            <button class="cheer-btn" data-cheer="파이팅!">파이팅!</button>
-            <button class="cheer-btn" data-cheer="멋져요!">멋져요!</button>
-            <button class="cheer-btn" data-cheer="대단해!">대단해!</button>
-            <button class="cheer-btn" data-cheer="화이팅!">화이팅!</button>
-            <button class="cheer-btn" data-cheer="굿굿!">굿굿!</button>
-            <button class="cheer-btn" data-cheer="최고다!">최고다!</button>
-            <button class="cheer-btn" data-cheer="잘한다!">잘한다!</button>
-            <button class="cheer-btn" data-cheer="끝내준다!">끝내준다!</button>
+      <!-- 턴 정보 -->
+      <div class="card turn-display-card">
+        <div class="section-title">현재 턴</div>
+        <div class="turn-display">
+          <div class="turn-player" id="currentPlayer">
+            <div class="player-name" id="currentPlayerName">-</div>
+            <div class="player-team" id="currentPlayerTeam">-</div>
+            <div class="turn-action" id="currentAction">행동 대기중</div>
           </div>
+        </div>
+      </div>
+
+      <!-- 응원 버튼들 -->
+      <div class="card cheer-card">
+        <div class="section-title">응원하기</div>
+        <div class="cheer-grid">
+          <button class="cheer-btn" data-cheer="파이팅!" data-key="1">파이팅!</button>
+          <button class="cheer-btn" data-cheer="멋져요!" data-key="2">멋져요!</button>
+          <button class="cheer-btn" data-cheer="대단해!" data-key="3">대단해!</button>
+          <button class="cheer-btn" data-cheer="화이팅!" data-key="4">화이팅!</button>
+          <button class="cheer-btn" data-cheer="굿굿!" data-key="5">굿굿!</button>
+          <button class="cheer-btn" data-cheer="최고다!" data-key="6">최고다!</button>
+          <button class="cheer-btn" data-cheer="잘한다!" data-key="7">잘한다!</button>
+          <button class="cheer-btn" data-cheer="끝내준다!" data-key="8">끝내준다!</button>
         </div>
       </div>
     </section>
 
-    <!-- 전투 로그 -->
-    <section id="logSection" class="card" style="display:none;">
-      <div class="section-title">전투 기록</div>
-      <div id="battleLog" class="battle-log"></div>
+    <!-- 우측: 팀 B 정보 -->
+    <section id="teamBSection" class="team-section" style="display:none;">
+      <div class="card">
+        <div class="section-title">죽음을 먹는 자들</div>
+        <div class="team-header death-eater" id="teamBHeader">죽음을 먹는 자들</div>
+        <div id="teamBUnits" class="team-units"></div>
+      </div>
     </section>
 
-    <!-- 채팅 -->
-    <section id="chatSection" class="card" style="display:none;">
-      <div class="section-title">관전자 채팅</div>
-      <div id="chatMessages" class="chat-messages"></div>
-      <div class="chat-input-container">
-        <input type="text" id="chatInput" class="input" placeholder="응원 메시지를 입력하세요..." />
-        <button id="chatSendBtn" class="btn" style="min-width: 80px; padding: 12px 20px;">전송</button>
+    <!-- 하단: 로그 & 채팅 -->
+    <section id="logChatSection" class="log-chat-section" style="display:none;">
+      <!-- 전투 로그 -->
+      <div class="card log-card">
+        <div class="section-title">전투 기록</div>
+        <div id="battleLog" class="battle-log"></div>
+      </div>
+
+      <!-- 채팅 -->
+      <div class="card chat-card">
+        <div class="section-title">관전자 채팅</div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-group">
+          <input type="text" id="chatInput" class="input chat-input" placeholder="응원 메시지를 입력하세요..." />
+          <button id="chatSendBtn" class="btn chat-send">전송</button>
+        </div>
       </div>
     </section>
   </main>
@@ -914,17 +1169,31 @@
         this.authToken = document.getElementById('authToken');
         this.spectatorNameInput = document.getElementById('spectatorName');
 
-        // 전투장
-        this.battlefieldSection = document.getElementById('battlefieldSection');
+        // 팀 섹션들
+        this.teamASection = document.getElementById('teamASection');
+        this.teamBSection = document.getElementById('teamBSection');
+        this.battleSection = document.getElementById('battleSection');
+        this.logChatSection = document.getElementById('logChatSection');
+
+        // 전투장 요소들
         this.teamAHeader = document.getElementById('teamAHeader');
         this.teamBHeader = document.getElementById('teamBHeader');
         this.teamAUnits = document.getElementById('teamAUnits');
         this.teamBUnits = document.getElementById('teamBUnits');
 
+        // 전투 상태
+        this.battleMode = document.getElementById('battleMode');
+        this.currentTurnInfo = document.getElementById('currentTurnInfo');
+        this.battleTime = document.getElementById('battleTime');
+        this.battleStatus = document.getElementById('battleStatus');
+        
+        // 현재 턴 정보
+        this.currentPlayerName = document.getElementById('currentPlayerName');
+        this.currentPlayerTeam = document.getElementById('currentPlayerTeam');
+        this.currentAction = document.getElementById('currentAction');
+
         // 로그 & 채팅
-        this.logSection = document.getElementById('logSection');
         this.battleLog = document.getElementById('battleLog');
-        this.chatSection = document.getElementById('chatSection');
         this.chatMessages = document.getElementById('chatMessages');
         this.chatInput = document.getElementById('chatInput');
         this.chatSendBtn = document.getElementById('chatSendBtn');
@@ -1089,9 +1358,10 @@
         this.authSection.style.display = 'none';
 
         // 전투 관련 섹션 보이기
-        this.battlefieldSection.style.display = 'block';
-        this.logSection.style.display = 'block';
-        this.chatSection.style.display = 'block';
+        this.teamASection.style.display = 'block';
+        this.teamBSection.style.display = 'block';
+        this.battleSection.style.display = 'block';
+        this.logChatSection.style.display = 'block';
 
         // 초기 상태 업데이트
         if (data.battleState) {
@@ -1103,6 +1373,24 @@
 
       updateBattleState(battleState) {
         if (!battleState || !battleState.teams) return;
+
+        // 전투 정보 업데이트
+        if (this.battleMode) {
+          this.battleMode.textContent = battleState.mode || '알 수 없음';
+        }
+        
+        if (this.battleStatus) {
+          this.battleStatus.textContent = battleState.status === 'ended' ? '종료' : '진행중';
+          this.battleStatus.className = `battle-status ${battleState.status === 'ended' ? 'ended' : ''}`;
+        }
+
+        // 현재 턴 정보 업데이트
+        if (battleState.currentTurn && this.currentPlayerName) {
+          this.currentPlayerName.textContent = battleState.currentTurn.playerName || '알 수 없음';
+          this.currentPlayerTeam.textContent = battleState.currentTurn.team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
+          this.currentAction.textContent = battleState.currentTurn.action || '행동 대기중';
+          this.currentAction.className = `turn-action ${battleState.currentTurn.isActive ? 'active' : 'waiting'}`;
+        }
 
         // 팀 정보 업데이트
         const teamA = battleState.teams.A;
@@ -1129,28 +1417,70 @@
           const isDefeated = player.stats.hp <= 0;
 
           const unitCard = document.createElement('div');
-          unitCard.className = `unit-card ${isCurrentTurn ? 'current-turn' : ''} ${isDefeated ? 'defeated' : ''}`;
+          unitCard.className = `team-unit ${isCurrentTurn ? 'current-turn' : ''} ${isDefeated ? 'defeated' : ''}`;
 
           const hpPercent = Math.max(0, (player.stats.hp / player.stats.maxHp) * 100);
 
           unitCard.innerHTML = `
             <div class="unit-name">${player.name}</div>
-            <div class="unit-stats">
-              <div class="stat-item">
-                <span class="stat-label">공격</span>
-                <span class="stat-value">${player.stats.attack}</span>
+            <div class="unit-mini-stats">
+              <div class="mini-stat">
+                <span>공격</span>
+                <span>${player.stats.attack}</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">방어</span>
-                <span class="stat-value">${player.stats.defense}</span>
+              <div class="mini-stat">
+                <span>방어</span>
+                <span>${player.stats.defense}</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">민첩</span>
-                <span class="stat-value">${player.stats.agility}</span>
+              <div class="mini-stat">
+                <span>민첩</span>
+                <span>${player.stats.agility}</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">행운</span>
-                <span class="stat-value">${player.stats.luck}</span>
+              <div class="mini-stat">
+                <span>행운</span>
+                <span>${player.stats.luck}</span>
+              </div>
+            </div>
+            <div class="hp-bar">
+              <div class="hp-fill" style="width: ${hpPercent}%;"></div>
+            </div>
+            <div class="hp-text">${player.stats.hp}/${player.stats.maxHp} HP</div>
+          `;
+
+          container.appendChild(unitCard);
+        });
+      }      renderTeam(team, container, currentTurn) {
+        if (!team.players) return;
+
+        container.innerHTML = '';
+
+        team.players.forEach(player => {
+          const isCurrentTurn = currentTurn && currentTurn.playerId === player.id;
+          const isDefeated = player.stats.hp <= 0;
+
+          const unitCard = document.createElement('div');
+          unitCard.className = `team-unit ${isCurrentTurn ? 'current-turn' : ''} ${isDefeated ? 'defeated' : ''}`;
+
+          const hpPercent = Math.max(0, (player.stats.hp / player.stats.maxHp) * 100);
+
+          unitCard.innerHTML = `
+            <div class="unit-name">${player.name}</div>
+            <div class="unit-mini-stats">
+              <div class="mini-stat">
+                <span>공격</span>
+                <span>${player.stats.attack}</span>
+              </div>
+              <div class="mini-stat">
+                <span>방어</span>
+                <span>${player.stats.defense}</span>
+              </div>
+              <div class="mini-stat">
+                <span>민첩</span>
+                <span>${player.stats.agility}</span>
+              </div>
+              <div class="mini-stat">
+                <span>행운</span>
+                <span>${player.stats.luck}</span>
               </div>
             </div>
             <div class="hp-bar">
@@ -1266,6 +1596,12 @@
           btn.disabled = true;
           btn.style.opacity = '0.5';
         });
+
+        // 전투 상태 업데이트
+        if (this.battleStatus) {
+          this.battleStatus.textContent = '종료';
+          this.battleStatus.className = 'battle-status ended';
+        }
 
         this.showInfo('전투가 종료되었습니다.');
       }
