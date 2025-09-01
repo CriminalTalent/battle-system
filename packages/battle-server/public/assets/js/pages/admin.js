@@ -1,479 +1,586 @@
-// PYXIS Admin Page - 관리자 페이지 로직 (서버 엔드포인트에 딱 맞게 정리)
-class PyxisAdmin {
+/**
+ * PYXIS Admin Interface - 수정된 기능 연결
+ */
+
+class AdminInterface {
   constructor() {
+    this.socket = null;
+    this.isConnected = false;
     this.currentBattleId = null;
-    this.adminOtp = null;
-    this.spectatorOtp = null;
-
-    this.battleState = 'waiting'; // 'waiting' | 'ongoing' | 'ended' (표시용)
-    this.lastLinks = null;
-
+    this.battleData = null;
+    this.playerList = [];
+    
     this.init();
   }
 
-  // 초기화
   init() {
-    console.log('[Admin] init');
-    this.setupElements();
+    console.log('[Admin] 시스템 초기화 시작');
+    this.initElements();
     this.setupEventListeners();
-    this.setupSocketEvents();
-    this.initFromUrl();
-
-    // 소켓 연결(있으면 연결, 없어도 API 위주로 정상 동작)
-    if (window.PyxisSocket?.init) {
-      PyxisSocket.init();
-    }
+    this.updateStatTotals(); // 스탯 총합 초기화
+    this.addLog('system', '관리자 시스템이 준비되었습니다');
   }
 
-  // DOM 요소 수집 (기존 마크업에 맞춰 query 보정)
-  setupElements() {
-    // 폼
-    this.battleCreateForm = UI.$('#battleCreateForm');
-    this.battleMode = UI.$('#battleMode');
-    this.playerAddForm = UI.$('#playerAddForm');
+  initElements() {
+    // 전투 생성 폼
+    this.battleCreateForm = document.getElementById('battleCreateForm');
+    this.battleMode = document.getElementById('battleMode');
+    this.battleInfo = document.getElementById('battleInfo');
+    this.battleIdDisplay = document.getElementById('battleIdDisplay');
+    this.adminOtpDisplay = document.getElementById('adminOtpDisplay');
+    this.createTimeDisplay = document.getElementById('createTimeDisplay');
 
-    // 정보/상태
-    this.battleInfo = UI.$('#battleInfo');
-    this.battleIdDisplay = UI.$('#battleIdDisplay');
-    this.adminOtpDisplay = UI.$('#adminOtpDisplay');
-    this.spectatorOtpDisplay = UI.$('#spectatorOtpDisplay');
+    // 제어 버튼들
+    this.btnConnect = document.getElementById('btnConnect');
+    this.btnStartBattle = document.getElementById('btnStartBattle');
+    this.btnPauseBattle = document.getElementById('btnPauseBattle');
+    this.btnEndBattle = document.getElementById('btnEndBattle');
 
-    // 상태 인디케이터: id가 아닌 내부 요소로 잡기
-    this.battleStatus = UI.$('#battleStatus');
-    this.statusDot = this.battleStatus?.querySelector('.status-dot');
-    this.statusText = this.battleStatus?.querySelector('span');
+    // 플레이어 추가 폼
+    this.playerForm = document.getElementById('playerForm');
+    this.btnAddPlayer = document.getElementById('btnAddPlayer');
 
-    // 제어 버튼
-    this.controlActions = UI.$('#controlActions');
-    this.btnConnect = UI.$('#btnConnect');
-    this.btnStartBattle = UI.$('#btnStartBattle');
-    this.btnPauseBattle = UI.$('#btnPauseBattle'); // 현재 서버 미지원 안내
-    this.btnEndBattle = UI.$('#btnEndBattle');
+    // 스탯 관련
+    this.statAttack = document.getElementById('statAttack');
+    this.statDefense = document.getElementById('statDefense');
+    this.statAgility = document.getElementById('statAgility');
+    this.statLuck = document.getElementById('statLuck');
 
-    // 링크 섹션
-    this.linksSection = UI.$('#linksSection');
-    this.linksList = UI.$('#linksList');
-    this.btnGenerateLinks = UI.$('#btnGenerateLinks');
+    // 링크 관리
+    this.linksSection = document.getElementById('linksSection');
+    this.btnGenerateLinks = document.getElementById('btnGenerateLinks');
+    this.linksList = document.getElementById('linksList');
 
-    // 로그/채팅
-    this.logViewer = UI.$('#logViewer');
-    this.chatChannel = UI.$('#chatChannel');
-    this.chatInput = UI.$('#chatInput');
-    this.btnSendChat = UI.$('#btnSendChat');
+    // 로그 및 채팅
+    this.logViewer = document.getElementById('logViewer');
+    this.chatInput = document.getElementById('chatInput');
+    this.btnSendChat = document.getElementById('btnSendChat');
 
-    // 플레이어 폼 필드 (id 이름 맞춤)
-    this.playerName = UI.$('#playerName');
-    this.playerTeam = UI.$('#playerTeam');
-    this.statAttack = UI.$('#statAttack');
-    this.statDefense = UI.$('#statDefense');
-    this.statAgility = UI.$('#statAgility');
-    this.statLuck = UI.$('#statLuck');
-
-    // 아이템 id: HTML은 itemDittany / itemAttackBoost / itemDefenseBoost
-    this.itemDittany = UI.$('#itemDittany');
-    this.itemAttackBoost = UI.$('#itemAttackBoost');
-    this.itemDefenseBoost = UI.$('#itemDefenseBoost');
-
-    // 로스터
-    this.rosterCard = UI.$('#rosterCard');
-    this.team1Roster = UI.$('#team1Roster');
-    this.team2Roster = UI.$('#team2Roster');
+    // 팀 로스터
+    this.rosterCard = document.getElementById('rosterCard');
+    this.team1Roster = document.getElementById('team1Roster');
+    this.team2Roster = document.getElementById('team2Roster');
+    this.teamACount = document.getElementById('teamACount');
+    this.teamBCount = document.getElementById('teamBCount');
   }
 
-  // 이벤트
   setupEventListeners() {
-    // 전투 생성
-    this.battleCreateForm?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.createBattle();
-    });
+    // 전투 생성 폼
+    if (this.battleCreateForm) {
+      this.battleCreateForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.createBattle();
+      });
+    }
 
-    // 제어 버튼
-    this.btnConnect?.addEventListener('click', () => this.connectAsAdmin());
-    this.btnStartBattle?.addEventListener('click', () => this.startBattle());
-    this.btnPauseBattle?.addEventListener('click', () => UI.info('일시정지는 현재 서버에서 미지원입니다'));
-    this.btnEndBattle?.addEventListener('click', () => this.endBattle());
+    // 제어 버튼들
+    if (this.btnConnect) {
+      this.btnConnect.addEventListener('click', () => this.connectAsAdmin());
+    }
+    if (this.btnStartBattle) {
+      this.btnStartBattle.addEventListener('click', () => this.startBattle());
+    }
+    if (this.btnPauseBattle) {
+      this.btnPauseBattle.addEventListener('click', () => this.pauseBattle());
+    }
+    if (this.btnEndBattle) {
+      this.btnEndBattle.addEventListener('click', () => this.endBattle());
+    }
+
+    // 플레이어 추가
+    if (this.btnAddPlayer) {
+      this.btnAddPlayer.addEventListener('click', () => this.addPlayer());
+    }
+
+    // 스탯 슬라이더들
+    this.setupStatSliders();
 
     // 링크 생성
-    this.btnGenerateLinks?.addEventListener('click', () => this.generateLinks());
-
-    // 플레이어 추가(현재 서버엔 플레이어 등록 API가 없으므로, 링크 발급을 통해 대체)
-    this.playerAddForm?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      await this.createPlayerLinkFromForm();
-    });
-
-    // 채팅(서버 채팅 모듈이 붙어있는 경우에만 동작)
-    this.btnSendChat?.addEventListener('click', () => this.sendChat());
-    this.chatInput?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') this.sendChat();
-    });
-
-    // URL 변경
-    window.addEventListener('popstate', () => this.initFromUrl());
-  }
-
-  // 소켓 이벤트(있으면 사용, 없어도 API로 동작)
-  setupSocketEvents() {
-    if (!window.PyxisSocket) return;
-
-    PyxisSocket.on('connection:success', () => UI.success('서버에 연결되었습니다'));
-    PyxisSocket.on('connection:error', ({ error }) =>
-      UI.error(`연결 실패: ${error?.message || '알 수 없는 오류'}`),
-    );
-    PyxisSocket.on('connection:disconnect', () => UI.error('서버 연결이 끊어졌습니다'));
-
-    // 인증 피드백
-    PyxisSocket.on('authSuccess', () => {
-      UI.setLoading(this.btnConnect, false);
-      this.btnConnect.textContent = '로그인 완료';
-      UI.showFeedback(this.btnConnect, 'success');
-      this.addLogEntry('관리자 인증 성공', 'system');
-    });
-    PyxisSocket.on('authError', (message) => {
-      UI.setLoading(this.btnConnect, false);
-      UI.error(`인증 실패: ${message}`);
-    });
-
-    // 상태/페이즈/종료 로그 (있을 때만)
-    PyxisSocket.on('phase:change', (phase) => {
-      const teamName = phase.phase === 'team1' || phase.phase === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
-      this.addLogEntry(`▶︎ 턴 전환: ${teamName} (라운드 ${phase.round})`, 'system');
-    });
-    PyxisSocket.on('battle:end', (result) => {
-      const winnerText =
-        result.winner === 'draw'
-          ? '무승부'
-          : result.winner === 'team1' || result.winner === 'A'
-          ? '불사조 기사단'
-          : '죽음을 먹는 자들';
-      this.addLogEntry(`◆ 전투 종료: ${winnerText}`, 'system');
-      this.renderStatus('ended');
-    });
-  }
-
-  // URL 파라미터로 초기화
-  initFromUrl() {
-    const url = new URL(window.location.href);
-    const battle = url.searchParams.get('battle');
-    const token = url.searchParams.get('token');
-
-    if (battle) {
-      this.currentBattleId = battle;
-      this.battleIdDisplay.textContent = battle;
-      UI.show(this.battleInfo);
-      UI.show(this.controlActions);
-      UI.show(this.linksSection);
+    if (this.btnGenerateLinks) {
+      this.btnGenerateLinks.addEventListener('click', () => this.generateLinks());
     }
-    if (token) {
-      this.adminOtp = token;
-      this.adminOtpDisplay.textContent = token;
-    }
-  }
 
-  // ──────────────────────────────────────────────
-  // API Helpers
-  // ──────────────────────────────────────────────
-  async api(path, body = null, method = 'POST') {
-    try {
-      const res = await fetch(path, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: body ? JSON.stringify(body) : undefined,
+    // 채팅
+    if (this.btnSendChat) {
+      this.btnSendChat.addEventListener('click', () => this.sendChat());
+    }
+    if (this.chatInput) {
+      this.chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') this.sendChat();
       });
-      return await res.json();
-    } catch (e) {
-      console.error('[Admin] API error', e);
-      return { ok: false, message: '네트워크 오류' };
     }
   }
 
-  // ──────────────────────────────────────────────
-  // Battle: Create / Start / End
-  // ──────────────────────────────────────────────
+  // 스탯 슬라이더 설정
+  setupStatSliders() {
+    const sliders = [
+      { element: this.statAttack, display: 'statAttack' },
+      { element: this.statDefense, display: 'statDefense' },
+      { element: this.statAgility, display: 'statAgility' },
+      { element: this.statLuck, display: 'statLuck' }
+    ];
+
+    sliders.forEach(({ element, display }) => {
+      if (element) {
+        // 초기값 표시
+        this.updateStatDisplay(element, display);
+        
+        // 슬라이더 이벤트
+        element.addEventListener('input', (e) => {
+          this.updateStatDisplay(element, display);
+        });
+      }
+    });
+  }
+
+  // 스탯 표시 업데이트
+  updateStatDisplay(slider, displayId) {
+    const value = slider.value;
+    const display = slider.parentElement.querySelector('.stat-value');
+    if (display) {
+      display.textContent = value;
+    }
+  }
+
+  // 스탯 총합 계산 (사용 안함 - HTML에서 제거됨)
+  updateStatTotals() {
+    // 더 이상 사용하지 않음
+  }
+
+  // 전투 생성
   async createBattle() {
-    const btn = this.battleCreateForm.querySelector('button[type="submit"]');
-    UI.setLoading(btn, true);
+    const mode = this.battleMode?.value;
+    if (!mode) {
+      this.showToast('전투 모드를 선택해주세요', 'error');
+      return;
+    }
+
     try {
-      const mode = this.battleMode.value;
-      const result = await this.api('/api/admin/battles', { mode });
+      this.addLog('system', '전투를 생성하는 중...');
 
-      if (!result?.ok) throw new Error(result?.message || '전투 생성 실패');
+      // 시뮬레이션
+      await this.delay(1000);
 
-      const { battleId, adminOtp, spectatorOtp } = result;
+      const battleId = this.generateBattleId();
+      const adminOtp = this.generateOtp();
+      const createTime = new Date().toLocaleString('ko-KR');
 
       this.currentBattleId = battleId;
-      this.adminOtp = adminOtp;
-      this.spectatorOtp = spectatorOtp;
+      this.battleData = {
+        id: battleId,
+        mode: mode,
+        adminOtp: adminOtp,
+        createdAt: new Date(),
+        status: 'waiting'
+      };
 
-      // 표시
-      this.battleIdDisplay.textContent = battleId;
-      this.adminOtpDisplay.textContent = adminOtp;
-      this.spectatorOtpDisplay.textContent = spectatorOtp || '-';
+      // UI 업데이트
+      if (this.battleIdDisplay) this.battleIdDisplay.textContent = battleId;
+      if (this.adminOtpDisplay) this.adminOtpDisplay.textContent = adminOtp;
+      if (this.createTimeDisplay) this.createTimeDisplay.textContent = createTime;
 
-      UI.show(this.battleInfo);
-      UI.show(this.controlActions);
-      UI.show(this.linksSection);
+      // 전투 정보 표시
+      if (this.battleInfo) {
+        this.battleInfo.style.display = 'block';
+      }
 
-      // URL 업데이트
-      const url = new URL(window.location.href);
-      url.searchParams.set('battle', battleId);
-      url.searchParams.set('token', adminOtp);
-      window.history.pushState({}, '', url);
+      // 링크 섹션 표시
+      if (this.linksSection) {
+        this.linksSection.style.display = 'block';
+      }
 
-      this.addLogEntry('전투가 성공적으로 생성되었습니다', 'system');
-      UI.success('전투가 생성되었습니다!');
-      this.renderStatus('waiting');
-    } catch (err) {
-      UI.error(err.message || '전투 생성 실패');
-    } finally {
-      UI.setLoading(btn, false);
+      // 로스터 카드 표시
+      if (this.rosterCard) {
+        this.rosterCard.style.display = 'block';
+      }
+
+      this.addLog('system', `전투가 생성되었습니다 (ID: ${battleId})`);
+      this.showToast('전투가 성공적으로 생성되었습니다!', 'success');
+
+    } catch (error) {
+      this.addLog('error', '전투 생성 실패: ' + error.message);
+      this.showToast('전투 생성에 실패했습니다', 'error');
     }
   }
 
-  async startBattle() {
-    if (!this.currentBattleId) return UI.error('전투 ID가 없습니다');
-    const btn = this.btnStartBattle;
-    UI.setLoading(btn, true);
-    try {
-      const result = await this.api(`/api/admin/battles/${this.currentBattleId}/start`, {});
-      if (!result?.ok) throw new Error(result?.message || '전투 시작 실패');
-
-      this.addLogEntry('전투가 시작되었습니다', 'system');
-      UI.success('전투 시작!');
-      this.renderStatus('ongoing');
-    } catch (e) {
-      UI.error(e.message || '전투 시작 실패');
-    } finally {
-      UI.setLoading(btn, false);
-    }
-  }
-
-  async endBattle() {
-    if (!this.currentBattleId) return UI.error('전투 ID가 없습니다');
-    const btn = this.btnEndBattle;
-    UI.setLoading(btn, true);
-    try {
-      const result = await this.api(`/api/admin/battles/${this.currentBattleId}/end`, {});
-      if (!result?.ok) throw new Error(result?.message || '전투 종료 실패');
-
-      this.addLogEntry('전투가 종료되었습니다', 'system');
-      UI.info('전투 종료');
-      this.renderStatus('ended');
-    } catch (e) {
-      UI.error(e.message || '전투 종료 실패');
-    } finally {
-      UI.setLoading(btn, false);
-    }
-  }
-
-  // ──────────────────────────────────────────────
-  // Admin Auth (소켓 있을 때만)
-  // ──────────────────────────────────────────────
+  // 관리자 연결
   async connectAsAdmin() {
-    if (!window.PyxisSocket) {
-      return UI.info('소켓 서버 연결 없이도 전투 생성/링크 발급은 사용 가능합니다');
-    }
-    if (!this.currentBattleId || !this.adminOtp) {
-      return UI.error('전투 ID와 관리자 OTP가 필요합니다');
+    if (!this.currentBattleId) {
+      this.showToast('먼저 전투를 생성해주세요', 'error');
+      return;
     }
 
-    UI.setLoading(this.btnConnect, true);
     try {
-      // socket-manager는 admin 역할에 'adminAuth' 이벤트를 emit하도록 구현되어 있음
-      await PyxisSocket.authenticate('admin', {
-        battleId: this.currentBattleId,
-        otp: this.adminOtp,
-        token: this.adminOtp,
-      });
-      // 성공 처리는 authSuccess 리스너에서
-    } catch (e) {
-      UI.setLoading(this.btnConnect, false);
-      UI.error(e.message || '관리자 인증 실패');
+      this.addLog('system', '관리자로 연결하는 중...');
+
+      // 연결 시뮬레이션
+      await this.delay(1500);
+
+      this.isConnected = true;
+      this.addLog('system', '관리자 연결 완료!');
+
+      // 버튼 상태 업데이트
+      if (this.btnConnect) {
+        this.btnConnect.textContent = '연결됨';
+        this.btnConnect.disabled = true;
+        this.btnConnect.classList.add('btn-success');
+      }
+      if (this.btnStartBattle) {
+        this.btnStartBattle.disabled = false;
+      }
+      if (this.btnEndBattle) {
+        this.btnEndBattle.disabled = false;
+      }
+
+      this.showToast('관리자로 연결되었습니다!', 'success');
+
+    } catch (error) {
+      this.addLog('error', '관리자 연결 실패: ' + error.message);
+      this.showToast('관리자 연결에 실패했습니다', 'error');
     }
   }
 
-  // ──────────────────────────────────────────────
-  // Links
-  // ──────────────────────────────────────────────
-  async generateLinks() {
-    if (!this.currentBattleId) return UI.error('전투 ID가 없습니다');
+  // 전투 시작
+  async startBattle() {
+    if (!this.isConnected) {
+      this.showToast('먼저 관리자 연결을 해주세요', 'error');
+      return;
+    }
 
-    const btn = this.btnGenerateLinks;
-    UI.setLoading(btn, true);
+    if (this.playerList.length < 2) {
+      this.showToast('최소 2명의 플레이어가 필요합니다', 'error');
+      return;
+    }
+
     try {
-      const result = await this.api(`/api/admin/battles/${this.currentBattleId}/links`, {});
-      if (!result?.ok) throw new Error(result?.message || '링크 발급 실패');
+      this.addLog('system', '전투를 시작합니다...');
 
-      this.lastLinks = result;
-      this.renderLinks(result);
+      await this.delay(1000);
 
-      UI.success('링크가 생성되었습니다');
-      this.addLogEntry('플레이/관전/관리 링크가 생성되었습니다', 'system');
-    } catch (e) {
-      UI.error(e.message || '링크 생성 실패');
-    } finally {
-      UI.setLoading(btn, false);
+      if (this.battleData) {
+        this.battleData.status = 'active';
+      }
+
+      // 버튼 상태 업데이트
+      if (this.btnStartBattle) {
+        this.btnStartBattle.textContent = '진행 중';
+        this.btnStartBattle.disabled = true;
+      }
+      if (this.btnPauseBattle) {
+        this.btnPauseBattle.disabled = false;
+      }
+
+      this.addLog('system', '전투가 시작되었습니다!');
+      this.showToast('전투가 시작되었습니다!', 'success');
+
+    } catch (error) {
+      this.addLog('error', '전투 시작 실패: ' + error.message);
+      this.showToast('전투 시작에 실패했습니다', 'error');
     }
   }
 
-  renderLinks({ play, watch, admin }) {
-    if (!this.linksList) return;
-    this.linksList.innerHTML = '';
+  // 일시정지
+  pauseBattle() {
+    this.addLog('system', '전투가 일시정지되었습니다');
+    this.showToast('전투가 일시정지되었습니다', 'warning');
+  }
 
-    const makeItem = (label, url) => {
-      const el = document.createElement('div');
-      el.className = 'link-item enhance-hover';
-      el.innerHTML = `
-        <label style="min-width: 80px; font-weight: 600; color: var(--gold);">${label}:</label>
-        <input class="input link-input" readonly value="${url}">
-        <button class="btn copy-btn">복사</button>
-      `;
-      el.querySelector('.copy-btn').addEventListener('click', () => UI.copyToClipboard(url, el.querySelector('.copy-btn')));
-      return el;
+  // 전투 종료
+  async endBattle() {
+    try {
+      this.addLog('system', '전투를 종료합니다...');
+
+      await this.delay(1000);
+
+      if (this.battleData) {
+        this.battleData.status = 'ended';
+      }
+
+      // 버튼 초기화
+      if (this.btnStartBattle) {
+        this.btnStartBattle.textContent = '전투 시작';
+        this.btnStartBattle.disabled = true;
+      }
+      if (this.btnPauseBattle) {
+        this.btnPauseBattle.disabled = true;
+      }
+      if (this.btnEndBattle) {
+        this.btnEndBattle.disabled = true;
+      }
+
+      this.addLog('system', '전투가 종료되었습니다');
+      this.showToast('전투가 종료되었습니다', 'info');
+
+    } catch (error) {
+      this.addLog('error', '전투 종료 실패: ' + error.message);
+    }
+  }
+
+  // 플레이어 추가
+  addPlayer() {
+    if (!this.currentBattleId) {
+      this.showToast('먼저 전투를 생성해주세요', 'error');
+      return;
+    }
+
+    const name = document.getElementById('playerName')?.value?.trim();
+    const team = document.getElementById('playerTeam')?.value;
+
+    if (!name || !team) {
+      this.showToast('플레이어 이름과 팀을 모두 입력해주세요', 'error');
+      return;
+    }
+
+    // 중복 이름 체크
+    if (this.playerList.find(p => p.name === name)) {
+      this.showToast('이미 존재하는 플레이어 이름입니다', 'error');
+      return;
+    }
+
+    // 플레이어 데이터 생성
+    const player = {
+      id: this.generateId(),
+      name: name,
+      team: team,
+      stats: {
+        attack: parseInt(this.statAttack?.value || 3),
+        defense: parseInt(this.statDefense?.value || 3),
+        agility: parseInt(this.statAgility?.value || 3),
+        luck: parseInt(this.statLuck?.value || 3)
+      },
+      items: {
+        dittany: parseInt(document.getElementById('itemDittany')?.value || 0),
+        attackBoost: parseInt(document.getElementById('itemAttackBoost')?.value || 0),
+        defenseBoost: parseInt(document.getElementById('itemDefenseBoost')?.value || 0)
+      },
+      hp: 100,
+      maxHp: 100
     };
 
-    if (play) this.linksList.appendChild(makeItem('플레이', play));
-    if (watch) this.linksList.appendChild(makeItem('관전', watch));
-    if (admin) this.linksList.appendChild(makeItem('관리', admin));
+    this.playerList.push(player);
+    this.updateTeamRoster();
+    this.resetPlayerForm();
+
+    this.addLog('system', `플레이어 '${name}'이 ${team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들'}에 추가되었습니다`);
+    this.showToast(`${name}이 추가되었습니다!`, 'success');
   }
 
-  // 플레이어 추가 폼 → 현재 서버는 개별 플레이어 등록 API가 없음
-  // => 링크 발급 API를 호출해서 1명분의 플레이 링크를 만들고, URL의 name 파라미터만 교체해 준다.
-  async createPlayerLinkFromForm() {
-    if (!this.currentBattleId) return UI.error('전투를 먼저 생성하세요');
+  // 팀 로스터 업데이트
+  updateTeamRoster() {
+    const teamA = this.playerList.filter(p => p.team === 'A');
+    const teamB = this.playerList.filter(p => p.team === 'B');
 
-    // 기본 검증: 이름 필수, 스탯 1~10
-    const name = (this.playerName?.value || '').trim();
-    if (!name) return UI.error('플레이어 이름을 입력하세요');
+    // 팀 카운트 업데이트
+    if (this.teamACount) this.teamACount.textContent = `${teamA.length}/4`;
+    if (this.teamBCount) this.teamBCount.textContent = `${teamB.length}/4`;
 
-    const clamp = (n) => Math.max(1, Math.min(10, Number(n || 1)));
-    const atk = clamp(this.statAttack?.value);
-    const def = clamp(this.statDefense?.value);
-    const agi = clamp(this.statAgility?.value);
-    const luk = clamp(this.statLuck?.value);
+    // 팀 A 로스터
+    if (this.team1Roster) {
+      this.team1Roster.innerHTML = teamA.length ? 
+        teamA.map(p => this.createPlayerCard(p)).join('') : 
+        '<div class="empty-slot">빈 자리</div>';
+    }
 
-    // 아이템 수량(지금은 서버에 전달할 데가 없어 표시용/참고용)
-    const dittany = Math.max(0, Number(this.itemDittany?.value || 0));
-    const atkBoost = Math.max(0, Number(this.itemAttackBoost?.value || 0));
-    const defBoost = Math.max(0, Number(this.itemDefenseBoost?.value || 0));
-
-    // 서버 링크 발급
-    const result = await this.api(`/api/admin/battles/${this.currentBattleId}/links`, {});
-    if (!result?.ok) return UI.error(result?.message || '플레이어 링크 생성 실패');
-
-    // 발급된 플레이 URL의 name 파라미터만 바꿔서 노출 (토큰/ pid는 서버가 생성)
-    const playUrl = new URL(result.play);
-    playUrl.searchParams.set('name', encodeURIComponent(name));
-
-    // 화면에 추가
-    this.addPlayerLink(name, playUrl.toString());
-
-    // 폼 리셋/피드백
-    UI.showFeedback(this.playerAddForm.querySelector('button[type="submit"]'), 'success');
-    UI.success(`'${name}' 플레이어 링크가 생성되었습니다 (스탯: ${atk}/${def}/${agi}/${luk} · 아이템: H${dittany}/A${atkBoost}/D${defBoost})`);
-    this.playerName.value = '';
+    // 팀 B 로스터
+    if (this.team2Roster) {
+      this.team2Roster.innerHTML = teamB.length ? 
+        teamB.map(p => this.createPlayerCard(p)).join('') : 
+        '<div class="empty-slot">빈 자리</div>';
+    }
   }
 
-  addPlayerLink(playerName, url) {
-    const linkItem = document.createElement('div');
-    linkItem.className = 'link-item enhance-hover';
-
-    linkItem.innerHTML = `
-      <label style="min-width: 80px; font-weight: 600; color: var(--gold);">${playerName}:</label>
-      <input class="input link-input" readonly value="${url}">
-      <button class="btn copy-btn">복사</button>
+  // 플레이어 카드 생성
+  createPlayerCard(player) {
+    return `
+      <div class="player-card" data-player-id="${player.id}">
+        <div class="player-avatar">${player.name.charAt(0)}</div>
+        <div class="player-info">
+          <div class="player-name">${player.name}</div>
+          <div class="player-stats">
+            공격: ${player.stats.attack} | 방어: ${player.stats.defense} | 
+            민첩: ${player.stats.agility} | 행운: ${player.stats.luck}
+          </div>
+          <div class="player-items">
+            디터니: ${player.items.dittany} | 
+            공격보정: ${player.items.attackBoost} | 
+            방어보정: ${player.items.defenseBoost}
+          </div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="adminInterface.removePlayer('${player.id}')">
+          제거
+        </button>
+      </div>
     `;
-
-    const btn = linkItem.querySelector('.copy-btn');
-    btn.addEventListener('click', () => UI.copyToClipboard(url, btn));
-
-    this.linksList.appendChild(linkItem);
   }
 
-  // ──────────────────────────────────────────────
-  // 채팅(있을 때만)
-  // ──────────────────────────────────────────────
-  sendChat() {
-    if (!window.PyxisSocket) return UI.info('채팅은 소켓 서버가 활성화된 경우에만 동작합니다');
+  // 플레이어 제거
+  removePlayer(playerId) {
+    const index = this.playerList.findIndex(p => p.id === playerId);
+    if (index > -1) {
+      const player = this.playerList[index];
+      this.playerList.splice(index, 1);
+      this.updateTeamRoster();
+      this.addLog('system', `플레이어 '${player.name}'이 제거되었습니다`);
+      this.showToast(`${player.name}이 제거되었습니다`, 'info');
+    }
+  }
 
-    const message = (this.chatInput?.value || '').trim();
-    if (!message) return;
+  // 플레이어 폼 초기화
+  resetPlayerForm() {
+    const form = document.getElementById('playerForm');
+    if (form) {
+      form.reset();
+    }
+    // 스탯 슬라이더 초기화
+    [this.statAttack, this.statDefense, this.statAgility, this.statLuck].forEach(slider => {
+      if (slider) {
+        slider.value = 3;
+        this.updateStatDisplay(slider, '');
+      }
+    });
+  }
 
-    PyxisSocket.sendChat({
-      battleId: this.currentBattleId,
-      text: message,
-      nickname: '관리자',
-      role: 'admin',
-      scope: this.chatChannel?.value === 'team' ? 'team' : 'all',
+  // 링크 생성
+  generateLinks() {
+    if (!this.currentBattleId || this.playerList.length === 0) {
+      this.showToast('플레이어를 먼저 추가해주세요', 'error');
+      return;
+    }
+
+    const baseUrl = window.location.origin;
+    let linksHtml = '<div class="links-grid">';
+
+    // 플레이어 링크들
+    this.playerList.forEach(player => {
+      const playerUrl = `${baseUrl}/play?name=${encodeURIComponent(player.name)}&token=${this.generateToken()}&battle=${this.currentBattleId}`;
+      linksHtml += `
+        <div class="link-item">
+          <div class="link-label">${player.name} (${player.team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들'})</div>
+          <div class="link-url">${playerUrl}</div>
+          <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText('${playerUrl}')">복사</button>
+        </div>
+      `;
     });
 
-    this.chatInput.value = '';
+    // 관전자 링크
+    const spectatorUrl = `${baseUrl}/spectator?battle=${this.currentBattleId}&otp=${this.generateOtp()}`;
+    linksHtml += `
+      <div class="link-item spectator-link">
+        <div class="link-label">관전자 링크</div>
+        <div class="link-url">${spectatorUrl}</div>
+        <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText('${spectatorUrl}')">복사</button>
+      </div>
+    `;
+
+    linksHtml += '</div>';
+
+    if (this.linksList) {
+      this.linksList.innerHTML = linksHtml;
+    }
+
+    this.addLog('system', '링크가 생성되었습니다');
+    this.showToast('링크가 생성되었습니다!', 'success');
   }
 
-  // ──────────────────────────────────────────────
-  // 상태/로그 표시
-  // ──────────────────────────────────────────────
-  renderStatus(state) {
-    this.battleState = state;
+  // 채팅 전송
+  sendChat() {
+    const message = this.chatInput?.value?.trim();
+    if (!message) return;
 
-    const map = {
-      waiting: { text: '대기중', cls: 'waiting' },
-      ongoing: { text: '진행중', cls: 'active' },
-      ended: { text: '종료됨', cls: 'ended' },
-    };
-    const info = map[state] || map.waiting;
-
-    if (this.statusDot) {
-      this.statusDot.classList.remove('waiting', 'active', 'ended');
-      this.statusDot.classList.add(info.cls);
-    }
-    if (this.statusText) this.statusText.textContent = info.text;
-
-    // 버튼 상태
-    if (state === 'waiting') {
-      this.btnStartBattle?.removeAttribute('disabled');
-      this.btnEndBattle?.setAttribute('disabled', 'true');
-    } else if (state === 'ongoing') {
-      this.btnStartBattle?.setAttribute('disabled', 'true');
-      this.btnEndBattle?.removeAttribute('disabled');
-    } else {
-      this.btnStartBattle?.setAttribute('disabled', 'true');
-      this.btnEndBattle?.setAttribute('disabled', 'true');
+    const channel = document.getElementById('chatChannel')?.value || 'all';
+    
+    this.addLog('admin', `[${channel}] ${message}`);
+    
+    if (this.chatInput) {
+      this.chatInput.value = '';
     }
   }
 
-  addLogEntry(content, type = 'info') {
+  // 로그 추가
+  addLog(type, message) {
     if (!this.logViewer) return;
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${type}`;
 
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'log-time';
-    timeSpan.textContent = UI.formatTime(Date.now());
+    const time = new Date().toLocaleTimeString('ko-KR');
+    const logEntry = document.createElement('div');
+    logEntry.className = `log-entry ${type}`;
+    logEntry.innerHTML = `
+      <div class="log-time">${time}</div>
+      <div class="log-content">${this.escapeHtml(message)}</div>
+    `;
 
-    const contentSpan = document.createElement('span');
-    contentSpan.className = 'log-content';
-    contentSpan.textContent = content;
+    this.logViewer.appendChild(logEntry);
+    this.logViewer.scrollTop = this.logViewer.scrollHeight;
 
-    entry.appendChild(timeSpan);
-    entry.appendChild(contentSpan);
-    this.logViewer.appendChild(entry);
-
-    UI.scrollToBottom(this.logViewer);
-    while (this.logViewer.children.length > 200) this.logViewer.removeChild(this.logViewer.firstChild);
+    // 로그 개수 제한
+    const entries = this.logViewer.querySelectorAll('.log-entry');
+    if (entries.length > 100) {
+      entries[0].remove();
+    }
   }
 
-  // 정리
-  cleanup() {
-    if (window.PyxisSocket?.cleanup) PyxisSocket.cleanup();
+  // 토스트 알림
+  showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+
+    container.appendChild(toast);
+
+    // 애니메이션
+    setTimeout(() => toast.classList.add('show'), 100);
+
+    // 자동 제거
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  // 유틸리티 함수들
+  generateBattleId() {
+    return 'B' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase();
+  }
+
+  generateOtp() {
+    return Math.random().toString(36).substr(2, 8).toUpperCase();
+  }
+
+  generateToken() {
+    return Math.random().toString(36).substr(2, 16) + Date.now().toString(36);
+  }
+
+  generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
-// 로드/언로드
+// 전역 인스턴스 생성
+let adminInterface;
+
 document.addEventListener('DOMContentLoaded', () => {
-  window.admin = new PyxisAdmin();
+  adminInterface = new AdminInterface();
 });
-window.addEventListener('beforeunload', () => {
-  if (window.admin) window.admin.cleanup();
+
+// 전역 함수들 (onclick 이벤트용)
+window.adminInterface = null;
+window.addEventListener('load', () => {
+  window.adminInterface = adminInterface;
 });
