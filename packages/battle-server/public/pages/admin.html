@@ -4,390 +4,147 @@
   <meta charset="utf-8" />
   <title>PYXIS | 전투 관리석</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link href="/assets/pyxis-theme.css" rel="stylesheet" />
-  <script src="/socket.io/socket.io.js"></script>
+  <link href="/assets/css/pyxis-theme.css" rel="stylesheet" />
 </head>
 <body>
   <main class="container">
-    <!-- 연결/동기화 -->
-    <section class="panel">
-      <h2>실시간 수신 설정</h2>
-      <div class="grid">
-        <div>
-          <label>전투 ID</label>
-          <input id="battleId" type="text" placeholder="예: b_xxxxxx" />
-        </div>
-        <div>
-          <label>관전자 OTP (관리자 수신용)</label>
-          <input id="watchOtp" type="text" placeholder="관리자용 관전자 OTP" />
-        </div>
-      </div>
-      <button id="btnConnect">실시간 수신 시작</button>
-      <span id="connMsg" class="hint"></span>
-    </section>
-
     <!-- 전투 생성 -->
     <section class="panel">
       <h2>전투 생성</h2>
-      <div class="grid">
+      <form id="battleCreateForm" class="grid">
         <div>
-          <label>모드</label>
-          <select id="mode">
+          <label for="battleMode">모드</label>
+          <select id="battleMode" required>
             <option value="1v1">1v1</option>
             <option value="2v2">2v2</option>
             <option value="3v3">3v3</option>
             <option value="4v4">4v4</option>
           </select>
         </div>
+        <button class="btn btn-primary btn-create" type="submit">전투 생성</button>
+      </form>
+
+      <div id="battleInfo" style="display:none; margin-top:8px;">
+        <div>전투 ID: <strong id="battleIdDisplay">-</strong></div>
+        <div>관리자 OTP: <strong id="adminOtpDisplay">-</strong></div>
+        <div>생성 시각: <span id="createTimeDisplay">-</span></div>
+        <div style="margin-top:8px;">
+          <button id="btnConnect" class="btn">관리자로 연결</button>
+        </div>
       </div>
-      <button id="btnCreate">전투 생성</button>
-      <div class="hint">
-        현재 전투: <strong id="currentBattle">-</strong>
-        <button id="btnCopyBattle" type="button">ID 복사</button>
-      </div>
-      <div id="createMsg" class="hint"></div>
     </section>
 
-    <!-- 플레이어 추가 -->
+    <!-- 전투 제어 -->
+    <section class="panel">
+      <h2>전투 제어</h2>
+      <button id="btnStartBattle" class="btn" disabled>전투 시작</button>
+      <button id="btnPauseBattle" class="btn" disabled>일시정지</button>
+      <button id="btnEndBattle" class="btn" disabled>전투 종료</button>
+    </section>
+
+    <!-- 플레이어 추가 (이미지 업로드 포함) -->
     <section class="panel">
       <h2>플레이어 추가</h2>
-      <div class="grid">
+      <form id="playerForm" class="grid" onsubmit="return false;">
         <div>
-          <label>이름</label>
-          <input id="pName" type="text" />
+          <label for="playerName">이름</label>
+          <input id="playerName" type="text" required />
         </div>
         <div>
-          <label>팀</label>
-          <select id="pTeam">
-            <option value="불사조 기사단">불사조 기사단</option>
-            <option value="죽음을 먹는 자들">죽음을 먹는 자들</option>
+          <label for="playerTeam">팀</label>
+          <select id="playerTeam" required>
+            <option value="A">불사조 기사단</option>
+            <option value="B">죽음을 먹는 자들</option>
           </select>
         </div>
-      </div>
-      <div class="grid">
         <div>
-          <label>공격 (1~5)</label>
-          <input id="pAtk" type="number" min="1" max="5" value="1" />
+          <label>공격(1~5)</label>
+          <input id="statAttack" type="number" min="1" max="5" value="3" />
         </div>
         <div>
-          <label>방어 (1~5)</label>
-          <input id="pDef" type="number" min="1" max="5" value="1" />
+          <label>방어(1~5)</label>
+          <input id="statDefense" type="number" min="1" max="5" value="3" />
         </div>
         <div>
-          <label>민첩 (1~5)</label>
-          <input id="pAgi" type="number" min="1" max="5" value="1" />
+          <label>민첩(1~5)</label>
+          <input id="statAgility" type="number" min="1" max="5" value="3" />
         </div>
         <div>
-          <label>행운 (1~5)</label>
-          <input id="pLuk" type="number" min="1" max="5" value="1" />
+          <label>행운(1~5)</label>
+          <input id="statLuck" type="number" min="1" max="5" value="3" />
         </div>
-      </div>
-      <div>
-        <label>아이템(쉼표로 구분)</label>
-        <input id="pItems" type="text" placeholder="예: 물약,방패" />
-      </div>
-      <button id="btnAddPlayer">플레이어 등록</button>
+        <div>
+          <label for="itemDittany">디터니</label>
+          <input id="itemDittany" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="itemAttackBoost">공격보정</label>
+          <input id="itemAttackBoost" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="itemDefenseBoost">방어보정</label>
+          <input id="itemDefenseBoost" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="playerAvatar">플레이어 이미지</label>
+          <input id="playerAvatar" type="file" accept="image/*" />
+        </div>
+        <div style="align-self:end;">
+          <button id="btnAddPlayer" class="btn btn-primary" type="button">플레이어 등록</button>
+        </div>
+      </form>
       <div id="playerMsg" class="hint"></div>
     </section>
 
-    <!-- OTP 발급 -->
-    <section class="panel">
-      <h2>OTP 발급</h2>
-      <div class="grid">
-        <div>
-          <label>플레이어 선택</label>
-          <select id="playerSelect"></select>
-        </div>
-        <div>
-          <label>표시 이름(선택)</label>
-          <input id="otpName" type="text" placeholder="플레이어/관전자 표시 이름" />
-        </div>
+    <!-- 링크/OTP -->
+    <section id="linksSection" class="panel" style="display:none;">
+      <h2>접속 링크/OTP</h2>
+      <div style="margin-bottom:6px;">
+        <button id="btnGeneratePlayerOTP" class="btn" disabled>플레이어 OTP 생성</button>
+        <button id="btnGenerateSpectatorOTP" class="btn" disabled>관전자 OTP 생성</button>
       </div>
-      <div class="grid">
-        <button id="btnOtpPlayer">플레이어 OTP 발급</button>
-        <button id="btnOtpSpectator">관전자 OTP 발급</button>
-      </div>
-      <div id="otpMsg" class="hint"></div>
-      <div class="hint small">
-        발급 후 테스트 수신을 위해 위의 “관전자 OTP(관리자 수신용)”에 붙여넣어 연결하면<br />
-        이 페이지에서도 실시간 로스터/로그가 보입니다.
+      <div id="otpDisplay" style="display:none;">
+        <h3>플레이어 링크</h3>
+        <div id="playerOtpList"></div>
+        <h3>관전자 링크</h3>
+        <div id="spectatorOtpDisplay"></div>
       </div>
     </section>
 
-    <!-- 실시간 정보 -->
-    <section class="panel">
+    <!-- 팀 로스터 -->
+    <section id="rosterCard" class="panel" style="display:none;">
       <h2>플레이어 목록</h2>
-      <ul id="playerList"></ul>
+      <div class="grid">
+        <div>
+          <h3>불사조 기사단 (<span id="teamACount">0/4</span>)</h3>
+          <div id="team1Roster"></div>
+        </div>
+        <div>
+          <h3>죽음을 먹는 자들 (<span id="teamBCount">0/4</span>)</h3>
+          <div id="team2Roster"></div>
+        </div>
+      </div>
     </section>
 
+    <!-- 실시간 로그/채팅 -->
     <section class="panel">
       <h2>실시간 로그</h2>
-      <div id="logBox" class="logbox"></div>
+      <div id="logViewer" class="logbox"></div>
+    </section>
+    <section class="panel">
+      <h2>관리자 채팅</h2>
+      <div class="grid">
+        <select id="chatChannel">
+          <option value="all">전체</option>
+        </select>
+        <input id="chatInput" type="text" placeholder="메시지" />
+        <button id="btnSendChat" class="btn">보내기</button>
+      </div>
     </section>
   </main>
 
-  <script>
-  (function(){
-    'use strict';
-    const $ = id => document.getElementById(id);
-
-    // 엘리먼트
-    const battleIdEl = $('battleId');
-    const watchOtpEl = $('watchOtp');
-    const btnConnect = $('btnConnect');
-    const connMsg = $('connMsg');
-
-    const modeEl = $('mode');
-    const btnCreate = $('btnCreate');
-    const currentBattleEl = $('currentBattle');
-    const btnCopyBattle = $('btnCopyBattle');
-    const createMsg = $('createMsg');
-
-    const pNameEl = $('pName');
-    const pTeamEl = $('pTeam');
-    const pAtkEl = $('pAtk');
-    const pDefEl = $('pDef');
-    const pAgiEl = $('pAgi');
-    const pLukEl = $('pLuk');
-    const pItemsEl = $('pItems');
-    const btnAddPlayer = $('btnAddPlayer');
-    const playerMsg = $('playerMsg');
-
-    const playerSelect = $('playerSelect');
-    const otpNameEl = $('otpName');
-    const btnOtpPlayer = $('btnOtpPlayer');
-    const btnOtpSpectator = $('btnOtpSpectator');
-    const otpMsg = $('otpMsg');
-
-    const playerListEl = $('playerList');
-    const logBox = $('logBox');
-
-    // 상태
-    let socket = null;
-    let state = {
-      battleId: '',
-      connected: false,
-      players: []
-    };
-
-    // 유틸
-    function appendLog(entry) {
-      const line = document.createElement('div');
-      const dt = new Date(entry.ts || Date.now());
-      line.textContent = `[${dt.toLocaleTimeString()}] ${entry.text}`;
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-    function renderRoster(players) {
-      state.players = players || [];
-      // 목록
-      playerListEl.innerHTML = '';
-      state.players.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
-        playerListEl.appendChild(li);
-      });
-      // 셀렉트
-      playerSelect.innerHTML = '';
-      state.players.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.team} | ${p.name}`;
-        playerSelect.appendChild(opt);
-      });
-    }
-    function csvToArray(s) {
-      if (!s) return [];
-      return s.split(',').map(t => t.trim()).filter(Boolean);
-    }
-    function copyText(s) {
-      navigator.clipboard.writeText(s).catch(()=>{});
-    }
-
-    // 전투 생성
-    btnCreate.addEventListener('click', async () => {
-      createMsg.textContent = '';
-      try {
-        const payload = { mode: modeEl.value };
-        const r = await fetch('/api/battles', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify(payload)
-        }).then(r=>r.json());
-        if (!r.ok) {
-          createMsg.textContent = '생성 실패: ' + (r.error || '');
-          return;
-        }
-        state.battleId = r.id;
-        battleIdEl.value = r.id;
-        currentBattleEl.textContent = r.id;
-        createMsg.textContent = '전투가 생성되었습니다.';
-        logBox.innerHTML = '';
-      } catch(e) {
-        createMsg.textContent = '오류 발생';
-      }
-    });
-
-    // 전투 ID 복사
-    btnCopyBattle.addEventListener('click', () => {
-      const id = state.battleId || battleIdEl.value.trim();
-      if (!id) return;
-      copyText(id);
-    });
-
-    // 플레이어 추가
-    btnAddPlayer.addEventListener('click', async () => {
-      playerMsg.textContent = '';
-      const id = (state.battleId || battleIdEl.value.trim());
-      if (!id) {
-        playerMsg.textContent = '전투 ID를 먼저 설정하세요.';
-        return;
-      }
-      const name = pNameEl.value.trim();
-      const team = pTeamEl.value;
-      const stats = {
-        atk: Number(pAtkEl.value || 1),
-        def: Number(pDefEl.value || 1),
-        agi: Number(pAgiEl.value || 1),
-        luk: Number(pLukEl.value || 1),
-      };
-      const items = csvToArray(pItemsEl.value);
-
-      if (!name) {
-        playerMsg.textContent = '이름을 입력하세요.';
-        return;
-      }
-
-      try {
-        const r = await fetch(`/api/battles/${id}/players`, {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ name, team, stats, items })
-        }).then(r=>r.json());
-        if (!r.ok) {
-          playerMsg.textContent = '등록 실패: ' + (r.error || '');
-          return;
-        }
-        playerMsg.textContent = '등록 완료';
-        // 방금 추가한 내용은 소켓 수신으로도 갱신되지만,
-        // 혹시 소켓 미연결 시를 대비해 수동으로도 갱신
-        renderRoster([ ...(state.players||[]), r.player ]);
-        appendLog({ ts: Date.now(), text: `플레이어 "${r.player.name}" 등록` });
-      } catch(e) {
-        playerMsg.textContent = '오류 발생';
-      }
-    });
-
-    // OTP 발급 (플레이어)
-    btnOtpPlayer.addEventListener('click', async () => {
-      otpMsg.textContent = '';
-      const id = (state.battleId || battleIdEl.value.trim());
-      if (!id) {
-        otpMsg.textContent = '전투 ID를 먼저 설정하세요.';
-        return;
-      }
-      const playerId = playerSelect.value;
-      if (!playerId) {
-        otpMsg.textContent = '플레이어를 선택하세요.';
-        return;
-      }
-      const name = otpNameEl.value.trim() || undefined;
-
-      try {
-        const r = await fetch('/api/otp', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ role:'player', battleId:id, playerId, name })
-        }).then(r=>r.json());
-        if (!r.ok) {
-          otpMsg.textContent = '발급 실패: ' + (r.error || '');
-          return;
-        }
-        const otp = r.otp;
-        const link = `${location.origin}/play.html?battleId=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}&name=${encodeURIComponent(name||'')}&role=player`;
-        otpMsg.textContent = `플레이어 OTP: ${otp}`;
-        // 필요 시 링크 복사
-        copyText(link);
-      } catch(e) {
-        otpMsg.textContent = '오류 발생';
-      }
-    });
-
-    // OTP 발급 (관전자)
-    btnOtpSpectator.addEventListener('click', async () => {
-      otpMsg.textContent = '';
-      const id = (state.battleId || battleIdEl.value.trim());
-      if (!id) {
-        otpMsg.textContent = '전투 ID를 먼저 설정하세요.';
-        return;
-      }
-      const name = otpNameEl.value.trim() || undefined;
-
-      try {
-        const r = await fetch('/api/otp', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ role:'spectator', battleId:id, name })
-        }).then(r=>r.json());
-        if (!r.ok) {
-          otpMsg.textContent = '발급 실패: ' + (r.error || '');
-          return;
-        }
-        const otp = r.otp;
-        const link = `${location.origin}/watch.html?battleId=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}&name=${encodeURIComponent(name||'')}&role=spectator`;
-        otpMsg.textContent = `관전자 OTP: ${otp}`;
-        // 필요 시 링크 복사
-        copyText(link);
-      } catch(e) {
-        otpMsg.textContent = '오류 발생';
-      }
-    });
-
-    // 소켓 연결(수신 전용: 관전자 권한)
-    btnConnect.addEventListener('click', () => {
-      connMsg.textContent = '';
-      const id = battleIdEl.value.trim();
-      const otp = watchOtpEl.value.trim();
-      if (!id || !otp) {
-        connMsg.textContent = '전투 ID와 관전자 OTP를 입력하세요.';
-        return;
-      }
-      state.battleId = id;
-
-      if (socket) {
-        try { socket.disconnect(); } catch(_) {}
-        socket = null;
-      }
-
-      socket = io();
-      socket.on('connect', () => {
-        socket.emit('session:init', { role:'spectator', battleId:id, otp, name:'관리' });
-        connMsg.textContent = '연결됨';
-        logBox.innerHTML = '';
-      });
-
-      socket.on('log:bootstrap', (logs) => {
-        (logs||[]).forEach(appendLog);
-      });
-      socket.on('log:append', appendLog);
-
-      socket.on('roster:update', (payload) => {
-        if (payload && payload.players) renderRoster(payload.players);
-      });
-
-      // 전투 목록 갱신 브로드캐스트
-      socket.on('battle:list:update', (b) => {
-        // 현재 보고 있는 배틀과 다르면 무시
-        if (!b || b.id !== state.battleId) return;
-        appendLog({ ts: Date.now(), text: `전투 목록 갱신: ${b.id}` });
-      });
-
-      socket.on('disconnect', () => {
-        connMsg.textContent = '연결 종료';
-      });
-    });
-
-  })();
-  </script>
+  <!-- 스크립트 -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/pages/admin.js"></script>
 </body>
 </html>
