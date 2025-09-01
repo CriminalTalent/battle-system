@@ -1,11 +1,12 @@
 // packages/battle-server/index.js
 // 기능 요약:
+// - 정적 서빙 + 예쁜 URL(/admin, /play, /watch)
 // - OTP 인증(admin | player | spectator)
 // - 실시간 브로드캐스트(로스터/로그)
 // - 플레이어 아바타 업로드
 // - 관리자/플레이어 채팅 송신, 관전자 채팅 금지
 // - 관전자 응원(화이트리스트, 3초 레이트리밋)
-// - ★ 관전자 OTP별 동시접속 최대 30명 제한 추가
+// - 관전자 OTP별 동시접속 최대 30명 제한
 // 디자인/스타일 변경 없음. 이모지 없음.
 
 const path = require('path');
@@ -33,6 +34,12 @@ app.use(express.urlencoded({ extended: true }));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC_DIR));
 
+// === 예쁜 URL 라우트 ===
+const serve = (file) => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
+app.get('/admin', serve('admin.html'));
+app.get('/play', serve('play.html'));
+app.get('/watch', serve('watch.html'));
+
 // 업로드 경로
 const UPLOAD_DIR = process.env.UPLOAD_PATH || path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -59,9 +66,7 @@ const otps = Object.create(null);
 // 관전자 OTP 동시접속 카운트(track by battleId+otp)
 const spectatorUsage = Object.create(null);
 /*
- spectatorUsage[battleId] = {
-   [otp]: currentCountNumber
- }
+ spectatorUsage[battleId] = { [otp]: currentCountNumber }
 */
 const SPECTATOR_LIMIT_PER_OTP = 30;
 
@@ -233,15 +238,12 @@ io.on('connection', (socket) => {
 
     // ★ 관전자 동시접속 제한 처리(OTP 단위)
     if (role === 'spectator') {
-      // 이름은 로그/응원 표시에 쓰이므로 비워두지 않게 강제(선호)
       if (!name || !String(name).trim()) {
-        // 이름이 비었으면 입장 불가로 처리
         socket.emit('log:append', { ts: now(), text: '이름을 입력해야 관전 입장이 가능합니다.', type: 'system' });
         return;
       }
       const current = spectatorUsage[battleId]?.[otp] || 0;
       if (current >= SPECTATOR_LIMIT_PER_OTP) {
-        // 정중히 거절(소켓은 입장하지 않음)
         socket.emit('log:append', { ts: now(), text: `관전자 정원(OTP당 ${SPECTATOR_LIMIT_PER_OTP}명)을 초과했습니다.`, type: 'system' });
         return;
       }
