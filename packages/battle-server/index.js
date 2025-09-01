@@ -1,6 +1,8 @@
 // packages/battle-server/index.js
-// 최소 변경 패치: OTP 인증/실시간 브로드캐스트/관전자·플레이어 접속/아바타 업로드 복구
-// 디자인/규칙/이모지 변경 없음
+// 최소 변경 패치(최신): OTP 인증 통합( admin | player | spectator ),
+// 실시간 브로드캐스트(로스터/로그), 관전자/플레이어/관리자 룸 조인,
+// 플레이어 아바타 업로드, 관리자 채팅 송신 허용.
+// 디자인/규칙 변경 없음. 이모지 없음.
 
 const path = require('path');
 const fs = require('fs');
@@ -23,7 +25,7 @@ const io = new Server(server, {
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 정적 파일 (디자인/자산 그대로 사용)
+// 정적 파일
 const PUBLIC_DIR = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC_DIR));
 
@@ -96,8 +98,7 @@ app.post('/api/battles', (req, res) => {
   return res.json({ ok: true, id });
 });
 
-// 플레이어 추가 (+ 기본값 보정)
-// 관리자 UI에서 호출된다고 가정
+// 플레이어 추가
 app.post('/api/battles/:id/players', (req, res) => {
   const { id } = req.params;
   const b = battles[id];
@@ -131,12 +132,10 @@ app.post('/api/battles/:id/players', (req, res) => {
   return res.json({ ok: true, player: p });
 });
 
-// OTP 발급 (관리자 UI에서 플레이어/관전자용 생성)
-// role: 'player' | 'spectator'
-// player의 경우 playerId 필요
+// OTP 발급 (admin | player | spectator)
 app.post('/api/otp', (req, res) => {
   const { role, battleId, playerId, name } = req.body || {};
-  if (!['player', 'spectator'].includes(role)) {
+  if (!['admin','player','spectator'].includes(role)) {
     return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
   }
   const b = battles[battleId];
@@ -158,7 +157,7 @@ app.post('/api/otp', (req, res) => {
   return res.json({ ok: true, otp: token });
 });
 
-// (선택) OTP 단발 인증 확인 API (UI가 필요하면 사용)
+// OTP 검증(선택)
 app.post('/api/auth', (req, res) => {
   const { otp, battleId, role } = req.body || {};
   const ticket = otps[otp];
@@ -178,8 +177,7 @@ app.post('/api/auth', (req, res) => {
   return res.json({ ok: true, player });
 });
 
-// 플레이어 아바타 업로드 (폼필드: avatar)
-// 인증은 소켓에서 이미 완료되었다고 가정하고, 여기서는 최소 검증
+// 플레이어 아바타 업로드
 app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
   const { id } = req.params;
   const { playerId } = req.body || {};
@@ -190,7 +188,7 @@ app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
   if (!player) return res.status(400).json({ ok: false, error: 'PLAYER_NOT_FOUND' });
   if (!req.file) return res.status(400).json({ ok: false, error: 'NO_FILE' });
 
-  player.avatar = req.file.filename; // 저장된 파일명
+  player.avatar = req.file.filename;
   broadcastRoster(id);
   pushLog(id, `플레이어 "${player.name}" 아바타가 업데이트되었습니다.`);
   return res.json({ ok: true, file: req.file.filename });
@@ -201,7 +199,7 @@ io.on('connection', (socket) => {
   // 접속 클라이언트가 즉시 호출
   socket.on('session:init', ({ role, battleId, otp, name }) => {
     const ticket = otps[otp];
-    if (!ticket) return; // 무시
+    if (!ticket) return;
     if (ticket.exp < now()) return;
     if (ticket.battleId !== battleId) return;
     if (ticket.role !== role) return;
@@ -209,13 +207,12 @@ io.on('connection', (socket) => {
     const b = battles[battleId];
     if (!b) return;
 
-    socket.data.role = role;
+    socket.data.role = role; // 'admin'|'player'|'spectator'
     socket.data.battleId = battleId;
     socket.data.name = name || ticket.name || role;
 
-    let playerObj = null;
     if (role === 'player') {
-      playerObj = b.players.find(x => x.id === ticket.playerId);
+      const playerObj = b.players.find(x => x.id === ticket.playerId);
       if (!playerObj) return;
       socket.data.playerId = playerObj.id;
     }
@@ -226,9 +223,10 @@ io.on('connection', (socket) => {
     socket.emit('roster:update', { id: b.id, players: b.players });
     socket.emit('log:bootstrap', b.logs);
 
-    pushLog(battleId, `${socket.data.name} 님이 ${role === 'player' ? '플레이어' : '관전자'}로 입장했습니다.`);
+    const roleLabel = role === 'player' ? '플레이어' : role === 'admin' ? '관리자' : '관전자';
+    pushLog(battleId, `${socket.data.name} 님이 ${roleLabel}로 입장했습니다.`);
 
-    // 채팅: 관전자는 송신 금지
+    // 채팅: 관전자는 송신 금지, 관리자/플레이어는 송신 허용
     socket.on('chat:message', (msg) => {
       if (!socket.data || socket.data.battleId !== battleId) return;
       if (socket.data.role === 'spectator') return;
@@ -243,7 +241,6 @@ io.on('connection', (socket) => {
 
     // 연결 종료
     socket.on('disconnect', () => {
-      // 알림만 남김 (플레이어 제거 X)
       pushLog(battleId, `${socket.data.name} 님이 퇴장했습니다.`);
     });
   });
