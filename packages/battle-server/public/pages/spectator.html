@@ -9,6 +9,7 @@
 </head>
 <body>
   <main class="container">
+    <!-- 접속 -->
     <section id="auth" class="panel">
       <h2>관전자 접속</h2>
       <div>
@@ -21,23 +22,42 @@
       </div>
       <div>
         <label>표시 이름</label>
-        <input id="displayName" type="text" placeholder="선택 사항" />
+        <input id="displayName" type="text" placeholder="이름은 필수" />
       </div>
       <button id="btnJoin">접속</button>
       <div id="authMsg" class="hint"></div>
     </section>
 
+    <!-- 응원 -->
+    <section id="cheer" class="panel" style="display:none;">
+      <h2>응원</h2>
+      <!-- 팀별 버튼(플레이어 로스터 기반으로 자동 구성) -->
+      <div id="teamCheer" class="grid"></div>
+
+      <!-- 공통 문구 버튼 -->
+      <div id="commonCheer" class="grid" style="margin-top:8px;">
+        <button data-cheer="화이팅" class="cheer-btn">화이팅</button>
+        <button data-cheer="좋아요" class="cheer-btn">좋아요</button>
+        <button data-cheer="멋져요" class="cheer-btn">멋져요</button>
+        <button data-cheer="잘한다" class="cheer-btn">잘한다</button>
+        <button data-cheer="역전 가자" class="cheer-btn">역전 가자</button>
+        <button data-cheer="죽으면 죽어!" class="cheer-btn">죽으면 죽어!</button>
+        <button data-cheer="죽지마! 살아서 보자." class="cheer-btn">죽지마! 살아서 보자.</button>
+      </div>
+      <div class="hint small">과도한 반복은 자동으로 제한됩니다.</div>
+    </section>
+
+    <!-- 로스터 -->
     <section id="roster" class="panel" style="display:none;">
       <h2>플레이어</h2>
       <ul id="playerList"></ul>
     </section>
 
+    <!-- 로그 -->
     <section id="logs" class="panel" style="display:none;">
       <h2>실시간 로그</h2>
       <div id="logBox" class="logbox"></div>
     </section>
-
-    <!-- 관전자는 송신 금지: UI만 제거/미표기 -->
   </main>
 
   <script>
@@ -45,6 +65,7 @@
     'use strict';
     const $ = id => document.getElementById(id);
 
+    // 요소
     const battleIdEl = $('battleId');
     const otpEl = $('otp');
     const nameEl = $('displayName');
@@ -56,9 +77,22 @@
     const logsSec = $('logs');
     const logBox = $('logBox');
 
-    let socket = null;
-    let state = { battleId:null, otp:null, name:null };
+    const cheerSec = $('cheer');
+    const teamCheer = $('teamCheer');
 
+    let socket = null;
+    let joined = false;
+
+    // 유틸
+    function qs() {
+      const p = {};
+      (location.search || '').replace(/^\?/, '').split('&').forEach(kv => {
+        if (!kv) return;
+        const [k,v] = kv.split('=');
+        p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+      });
+      return p;
+    }
     function appendLog(entry) {
       const line = document.createElement('div');
       const dt = new Date(entry.ts || Date.now());
@@ -66,16 +100,50 @@
       logBox.appendChild(line);
       logBox.scrollTop = logBox.scrollHeight;
     }
-
     function renderRoster(players) {
+      // 목록
       playerList.innerHTML = '';
       players.forEach(p => {
         const li = document.createElement('li');
         li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
         playerList.appendChild(li);
       });
+
+      // 팀별 응원 버튼(중복 제거)
+      const teams = Array.from(new Set(players.map(p => p.team))).filter(Boolean);
+      teamCheer.innerHTML = '';
+      teams.forEach(team => {
+        const wrap = document.createElement('div');
+        const title = document.createElement('div');
+        title.textContent = team;
+        title.className = 'hint';
+        wrap.appendChild(title);
+
+        // 팀 타겟 버튼 3개(텍스트만, 이모지 없음)
+        ['화이팅','잘한다','역전 가자'].forEach(txt => {
+          const b = document.createElement('button');
+          b.className = 'cheer-btn';
+          b.textContent = txt;
+          b.addEventListener('click', () => sendCheer(txt, team));
+          wrap.appendChild(b);
+        });
+
+        teamCheer.appendChild(wrap);
+      });
+    }
+    // 공통 문구 버튼 위임
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t && t.classList && t.classList.contains('cheer-btn') && t.dataset.cheer) {
+        sendCheer(t.dataset.cheer, '');
+      }
+    });
+    function sendCheer(text, team) {
+      if (!joined || !socket) return;
+      socket.emit('cheer', { text, team });
     }
 
+    // 접속
     btnJoin.addEventListener('click', async () => {
       const battleId = battleIdEl.value.trim();
       const otp = otpEl.value.trim();
@@ -85,9 +153,13 @@
         authMsg.textContent = '전투 ID와 OTP를 입력하세요.';
         return;
       }
+      if (!displayName) {
+        authMsg.textContent = '이름을 입력하세요.';
+        return;
+      }
 
       try {
-        // 사전 검증 (선택)
+        // 서버 사전 검증
         const r = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type':'application/json' },
@@ -98,31 +170,42 @@
           return;
         }
 
-        state.battleId = battleId;
-        state.otp = otp;
-        state.name = displayName || '';
-
         socket = io();
         socket.on('connect', () => {
-          socket.emit('session:init', { role:'spectator', battleId, otp, name: state.name });
+          socket.emit('session:init', { role:'spectator', battleId, otp, name: displayName });
         });
 
         socket.on('log:bootstrap', (logs) => {
           logsSec.style.display = '';
           rosterSec.style.display = '';
+          cheerSec.style.display = '';
           logBox.innerHTML = '';
           (logs || []).forEach(appendLog);
           authMsg.textContent = '연결 성공';
+          joined = true;
         });
 
         socket.on('log:append', appendLog);
         socket.on('roster:update', (payload) => renderRoster(payload.players || []));
 
-        // 관전자는 채팅 송신 불가 (UI 없음)
+        // 서버에서 오는 cheer 이벤트(확장용) → 로그에 반영
+        socket.on('cheer', (c) => {
+          const teamPart = c.team ? `[${c.team}] ` : '';
+          appendLog({ ts: c.ts, text: `${c.name} 관전자 응원: ${teamPart}${c.text}` });
+        });
+
       } catch(e) {
         authMsg.textContent = '연결 오류';
       }
     });
+
+    // 쿼리스트링으로 자동 채우기 (편의)
+    (function autofill() {
+      const p = qs();
+      if (p.battleId) battleIdEl.value = p.battleId;
+      if (p.otp) otpEl.value = p.otp;
+      if (p.name) nameEl.value = p.name;
+    })();
   })();
   </script>
 </body>
