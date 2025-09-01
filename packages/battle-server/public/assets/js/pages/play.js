@@ -6,13 +6,10 @@ class PyxisPlayer {
     this.myPlayerId = null;
     this.myPlayerData = null;
     this.joined = false;
-
     this.battleTimerStarted = false;
-
     this.init();
   }
 
-  // 초기화
   init() {
     this.setupElements();
     this.setupEventListeners();
@@ -24,7 +21,6 @@ class PyxisPlayer {
     PyxisFX.enhanceClicks(document);
   }
 
-  // DOM
   setupElements() {
     this.connectionDot = UI.$('#connectionDot');
     this.connectionText = UI.$('#connectionText');
@@ -35,7 +31,6 @@ class PyxisPlayer {
     this.authToken = UI.$('#authToken');
     this.authName = UI.$('#authName');
 
-    // 주요 영역
     this.playerInfo = UI.$('#playerInfo');
     this.myNameEl   = UI.$('#myName');
     this.myTeamEl   = UI.$('#myTeam');
@@ -46,12 +41,10 @@ class PyxisPlayer {
     this.myHpFill   = UI.$('#myHpFill');
     this.myHpText   = UI.$('#myHpText');
 
-    // 아이템
     this.itemDittany = UI.$('#itemDittany .item-count');
     this.itemAtkBoost= UI.$('#itemAttackBoost .item-count');
     this.itemDefBoost= UI.$('#itemDefenseBoost .item-count');
 
-    // 액션
     this.btnAttack = UI.$('#btnAttack');
     this.btnDefend = UI.$('#btnDefend');
     this.btnDodge  = UI.$('#btnDodge');
@@ -59,36 +52,26 @@ class PyxisPlayer {
     this.btnPass   = UI.$('#btnPass');
     this.actionArea= UI.$('#actionArea');
 
-    // 채팅/로그
     this.chatMessages = UI.$('#chatMessages');
     this.chatInput    = UI.$('#chatInput');
     this.chatSendBtn  = UI.$('#chatSendBtn');
     this.logViewer    = UI.$('#logViewer');
 
-    // 타겟 선택(전역 TargetSelector도 존재)
     this.targetSelector = window.PyxisTarget;
   }
 
-  // 이벤트
   setupEventListeners() {
-    // 인증
-    this.authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.authenticate();
-    });
+    this.authForm.addEventListener('submit', (e) => { e.preventDefault(); this.authenticate(); });
 
-    // 액션 버튼
     this.btnAttack.addEventListener('click', () => this.doAttack());
     this.btnDefend.addEventListener('click', () => this.sendAction('defend'));
     this.btnDodge .addEventListener('click', () => this.sendAction('evade'));
     this.btnUseItem.addEventListener('click', () => this.doUseItem());
     this.btnPass  .addEventListener('click', () => this.confirmPass());
 
-    // 채팅
     this.chatSendBtn.addEventListener('click', () => this.sendChat());
     this.chatInput.addEventListener('keypress', (e)=>{ if (e.key==='Enter') this.sendChat(); });
 
-    // 단축키
     document.addEventListener('keydown', (e)=>{
       if (!this.isMyTurn()) return;
       if (this.targetSelector?.isShown()) return;
@@ -103,7 +86,6 @@ class PyxisPlayer {
       }
     });
 
-    // 화면 복귀 시 상태 동기화
     document.addEventListener('visibilitychange', ()=>{
       if (!document.hidden && this.joined && this.currentBattleId){
         PyxisSocket.socket.emit('requestState', { battleId: this.currentBattleId });
@@ -111,46 +93,28 @@ class PyxisPlayer {
     });
   }
 
-  // 소켓
   setupSocketEvents() {
-    // 연결 상태
-    PyxisSocket.on('connection:success', ()=>{
-      this.connectionDot.classList.add('active');
-      this.connectionText.textContent = '연결됨';
-    });
-    PyxisSocket.on('connection:disconnect', ()=>{
-      this.connectionDot.classList.remove('active');
-      this.connectionText.textContent = '연결 끊김';
-    });
+    PyxisSocket.on('connection:success', ()=>{ this.connectionDot.classList.add('active'); this.connectionText.textContent='연결됨'; });
+    PyxisSocket.on('connection:disconnect', ()=>{ this.connectionDot.classList.remove('active'); this.connectionText.textContent='연결 끊김'; });
 
-    // 인증
     PyxisSocket.on('authSuccess', (data)=> this.handleAuthSuccess(data));
     PyxisSocket.on('authError', (msg)=> UI.error(`인증 실패: ${msg}`));
 
-    // 상태
     PyxisSocket.on('state:update', (s)=> this.handleStateUpdate(s));
     PyxisSocket.on('state', (s)=> this.handleStateUpdate(s));
 
-    // 턴/페이즈
     PyxisSocket.on('phase:change', (phase)=>{
       this.addLog(`[턴 전환] ${phase.phase==='A'||phase.phase==='team1'?'불사조 기사단':'죽음을 먹는 자들'} (라운드 ${phase.round})`, 'system');
-      if (this.isMyTurn()) {
-        this.startMyTurnTimer();
-      } else {
-        PyxisFX.stopTurnTimer();
-      }
+      if (this.isMyTurn()) this.startMyTurnTimer(); else PyxisFX.stopTurnTimer();
     });
 
-    // 액션 결과(표준)
     PyxisSocket.on('action:success', (result)=> this.handleActionFX(result));
     PyxisSocket.on('actionSuccess',   (result)=> this.handleActionFX(result));
 
-    // 로그/채팅
     PyxisSocket.on('log:new', (ev)=> ev?.text && this.addLog(ev.text, ev.type||'action'));
     PyxisSocket.on('chat:new', (msg)=> this.renderChat(msg));
   }
 
-  // URL 파라미터
   initFromUrl() {
     const q = new URLSearchParams(location.search);
     const b = q.get('battle'); const t = q.get('token'); const n = q.get('name');
@@ -164,7 +128,6 @@ class PyxisPlayer {
     }
   }
 
-  // 인증
   async authenticate(){
     const v = UI.validateForm(this.authForm, {
       authBattleId: { required:true, label:'전투 ID' },
@@ -182,9 +145,7 @@ class PyxisPlayer {
         playerId: v.data.authName,
         otp: v.data.authToken
       });
-    }catch(e){
-      UI.error(`인증 실패: ${e.message}`);
-    }
+    }catch(e){ UI.error(`인증 실패: ${e.message}`); }
   }
 
   handleAuthSuccess(data){
@@ -197,13 +158,10 @@ class PyxisPlayer {
     UI.success('전투 입장 완료!');
     this.renderAll();
 
-    // 전투 타이머 (1시간) – 전투 시작 시점부터
     if (!this.battleTimerStarted){
       PyxisFX.startBattleTimer(60*60*1000);
       this.battleTimerStarted = true;
     }
-
-    // 내 턴이면 5분 타이머 시작
     if (this.isMyTurn()) this.startMyTurnTimer();
   }
 
@@ -213,16 +171,12 @@ class PyxisPlayer {
       this.myPlayerData = state.players[this.myPlayerId] || this.myPlayerData;
     }
     this.renderAll();
-
-    if (this.isMyTurn()) this.startMyTurnTimer();
-    else PyxisFX.stopTurnTimer();
+    if (this.isMyTurn()) this.startMyTurnTimer(); else PyxisFX.stopTurnTimer();
   }
 
-  // 렌더
   renderAll(){
     if (!this.battleState || !this.myPlayerData) return;
 
-    // 내 정보
     this.myNameEl.textContent = this.myPlayerData.name || '-';
     this.myTeamEl.textContent = UI.getTeamName(this.myPlayerData.team);
 
@@ -241,18 +195,15 @@ class PyxisPlayer {
     this.myHpFill.style.width = `${hpPct}%`;
     this.myHpText.textContent = `${this.myPlayerData.hp}/${this.myPlayerData.maxHp||100}`;
 
-    // 아이템
     const items = this.myPlayerData.items || {};
     this.itemDittany.textContent = items.dittany ?? items.Dittany ?? 0;
     this.itemAtkBoost.textContent= items.atkBoost ?? 0;
     this.itemDefBoost.textContent= items.defBoost ?? 0;
 
-    // 버튼 활성
     const canAct = this.isMyTurn() && this.myPlayerData.alive !== false;
     [this.btnAttack,this.btnDefend,this.btnDodge,this.btnUseItem,this.btnPass].forEach(b=> b.disabled = !canAct);
   }
 
-  // 채팅/로그
   renderChat(message){
     const el = document.createElement('div');
     el.className = `chat-message ${message.type || (message.scope==='team'?'team':'')}`;
@@ -275,29 +226,23 @@ class PyxisPlayer {
     while (this.logViewer.children.length > 100) this.logViewer.removeChild(this.logViewer.firstChild);
   }
 
-  // 턴/타이머
   isMyTurn(){
     const cur = this.battleState?.turn?.pending?.[0] || this.battleState?.turn?.actor;
     return !!(cur && cur === this.myPlayerId && this.myPlayerData?.alive !== false);
   }
   startMyTurnTimer(){
-    // 액션 영역 상단에 붙여서 표기
     PyxisFX.attachTurnTimer(this.actionArea, ()=> this.autoPass());
-    PyxisFX.startTurnTimer(5*60*1000); // 5분
-    // 햅틱 + 토스트
+    PyxisFX.startTurnTimer(5*60*1000);
     PyxisFX.vibrate([40,40,40]);
     UI.info('당신의 턴입니다! (5분 제한)');
   }
   async autoPass(){
-    if (!this.isMyTurn()) return; // 이미 턴이 넘어갔으면 무시
+    if (!this.isMyTurn()) return;
     UI.warning('5분 경과로 자동 패스됩니다');
     await this.sendAction('pass');
   }
-  confirmPass(){
-    if (confirm('정말로 턴을 넘기시겠습니까?')) this.sendAction('pass');
-  }
+  confirmPass(){ if (confirm('정말로 턴을 넘기시겠습니까?')) this.sendAction('pass'); }
 
-  // 액션
   async sendAction(type, extra={}){
     if (!PyxisSocket.isConnected()) return UI.error('서버에 연결되어 있지 않습니다');
     try{
@@ -348,41 +293,26 @@ class PyxisPlayer {
     });
   }
 
-  // 액션 결과 이펙트 연동 (서버에서 주는 표준 형태 가정)
   handleActionFX(result){
     if (!result) return;
-    // result: { type: 'attack'|'defend'|'evade'|'useItem'|'pass', actorPid, targetPid, damage, healed, crit, dodge, block, item }
     const targetEl = document.querySelector(`.unit[data-player-id="${result.targetPid}"]`)
                       || document.querySelector(`.player-card[data-player-id="${result.targetPid}"]`)
-                      || this.playerInfo; // fallback
+                      || this.playerInfo;
     if (result.type === 'attack'){
-      if (result.dodge) {
-        PyxisFX.showDodge(targetEl);
-        this.addLog(`회피 성공!`, 'action');
-      } else {
-        PyxisFX.showHit(targetEl, result.damage||0, {crit: !!result.crit, blocked: !!result.block});
-        this.addLog(`${result.crit?'치명타! ':''}${result.damage||0} 피해`, 'action');
-      }
+      if (result.dodge) PyxisFX.showDodge(targetEl);
+      else PyxisFX.showHit(targetEl, result.damage||0, {crit: !!result.crit, blocked: !!result.block});
     } else if (result.type === 'useItem'){
-      if (result.item === '디터니'){
-        PyxisFX.showHeal(targetEl, result.healed||10);
-        this.addLog(`디터니 사용: +${result.healed||10} 회복`, 'action');
-      } else if (result.item){
-        PyxisFX.sparkAt(targetEl, {ring:true});
-        this.addLog(`${result.item} 사용`, 'action');
-      }
+      if (result.item === '디터니') PyxisFX.showHeal(targetEl, result.healed||10);
+      else PyxisFX.sparkAt(targetEl, {ring:true});
     } else if (result.type === 'defend'){
       PyxisFX.sparkAt(targetEl, {ring:true});
-      this.addLog(`방어 태세`, 'action');
     } else if (result.type === 'evade'){
       PyxisFX.showDodge(targetEl);
-      this.addLog(`회피 시도`, 'action');
     } else if (result.type === 'pass'){
-      this.addLog(`패스`, 'action');
+      // no-op visual
     }
   }
 
-  // 채팅
   sendChat(){
     const msg = this.chatInput.value.trim();
     if (!msg || !this.currentBattleId) return;
