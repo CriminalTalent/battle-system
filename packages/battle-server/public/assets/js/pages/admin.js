@@ -92,8 +92,8 @@ class AdminInterface {
       this.btnAddPlayer.addEventListener('click', () => this.addPlayer());
     }
 
-    // 스탯 슬라이더들
-    this.setupStatSliders();
+    // 스탯 입력들
+    this.setupStatInputs();
 
     // 링크 생성
     if (this.btnGenerateLinks) {
@@ -111,35 +111,34 @@ class AdminInterface {
     }
   }
 
-  // 스탯 슬라이더 설정
-  setupStatSliders() {
-    const sliders = [
-      { element: this.statAttack, display: 'statAttack' },
-      { element: this.statDefense, display: 'statDefense' },
-      { element: this.statAgility, display: 'statAgility' },
-      { element: this.statLuck, display: 'statLuck' }
-    ];
+  // 스탯 입력 설정 (숫자 입력으로 변경)
+  setupStatInputs() {
+    const inputs = [this.statAttack, this.statDefense, this.statAgility, this.statLuck];
 
-    sliders.forEach(({ element, display }) => {
-      if (element) {
-        // 초기값 표시
-        this.updateStatDisplay(element, display);
-        
-        // 슬라이더 이벤트
-        element.addEventListener('input', (e) => {
-          this.updateStatDisplay(element, display);
+    inputs.forEach(input => {
+      if (input) {
+        // 입력 제한 이벤트
+        input.addEventListener('input', (e) => {
+          let value = parseInt(e.target.value);
+          if (isNaN(value) || value < 1) value = 1;
+          if (value > 5) value = 5;
+          e.target.value = value;
+        });
+
+        // 키보드 이벤트 (위/아래 화살표)
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            let value = parseInt(e.target.value) || 1;
+            if (value < 5) e.target.value = value + 1;
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            let value = parseInt(e.target.value) || 1;
+            if (value > 1) e.target.value = value - 1;
+          }
         });
       }
     });
-  }
-
-  // 스탯 표시 업데이트
-  updateStatDisplay(slider, displayId) {
-    const value = slider.value;
-    const display = slider.parentElement.querySelector('.stat-value');
-    if (display) {
-      display.textContent = value;
-    }
   }
 
   // 스탯 총합 계산 (사용 안함 - HTML에서 제거됨)
@@ -431,11 +430,10 @@ class AdminInterface {
     if (form) {
       form.reset();
     }
-    // 스탯 슬라이더 초기화
-    [this.statAttack, this.statDefense, this.statAgility, this.statLuck].forEach(slider => {
-      if (slider) {
-        slider.value = 3;
-        this.updateStatDisplay(slider, '');
+    // 스탯 입력 초기화
+    [this.statAttack, this.statDefense, this.statAgility, this.statLuck].forEach(input => {
+      if (input) {
+        input.value = 3;
       }
     });
   }
