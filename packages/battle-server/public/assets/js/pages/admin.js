@@ -51,10 +51,12 @@ class AdminInterface {
     this.btnGenerateLinks = document.getElementById('btnGenerateLinks');
     this.linksList = document.getElementById('linksList');
 
-    // 로그 및 채팅
-    this.logViewer = document.getElementById('logViewer');
-    this.chatInput = document.getElementById('chatInput');
-    this.btnSendChat = document.getElementById('btnSendChat');
+    // OTP 생성 버튼들
+    this.btnGeneratePlayerOTP = document.getElementById('btnGeneratePlayerOTP');
+    this.btnGenerateSpectatorOTP = document.getElementById('btnGenerateSpectatorOTP');
+    this.otpDisplay = document.getElementById('otpDisplay');
+    this.playerOtpList = document.getElementById('playerOtpList');
+    this.spectatorOtpDisplay = document.getElementById('spectatorOtpDisplay');
 
     // 팀 로스터
     this.rosterCard = document.getElementById('rosterCard');
@@ -95,9 +97,12 @@ class AdminInterface {
     // 스탯 입력들
     this.setupStatInputs();
 
-    // 링크 생성
-    if (this.btnGenerateLinks) {
-      this.btnGenerateLinks.addEventListener('click', () => this.generateLinks());
+    // OTP 생성 버튼들
+    if (this.btnGeneratePlayerOTP) {
+      this.btnGeneratePlayerOTP.addEventListener('click', () => this.generatePlayerOTPs());
+    }
+    if (this.btnGenerateSpectatorOTP) {
+      this.btnGenerateSpectatorOTP.addEventListener('click', () => this.generateSpectatorOTP());
     }
 
     // 채팅
@@ -173,14 +178,23 @@ class AdminInterface {
         status: 'waiting'
       };
 
-      // UI 업데이트
-      if (this.battleIdDisplay) this.battleIdDisplay.textContent = battleId;
-      if (this.adminOtpDisplay) this.adminOtpDisplay.textContent = adminOtp;
-      if (this.createTimeDisplay) this.createTimeDisplay.textContent = createTime;
+      // UI 업데이트 - 즉시 표시
+      if (this.battleIdDisplay) {
+        this.battleIdDisplay.textContent = battleId;
+      }
+      if (this.adminOtpDisplay) {
+        this.adminOtpDisplay.textContent = adminOtp;
+      }
+      if (this.createTimeDisplay) {
+        this.createTimeDisplay.textContent = createTime;
+      }
 
-      // 전투 정보 표시
+      // 전투 정보 섹션 표시
       if (this.battleInfo) {
         this.battleInfo.style.display = 'block';
+        // 강제로 보이게 하기
+        this.battleInfo.style.visibility = 'visible';
+        this.battleInfo.style.opacity = '1';
       }
 
       // 링크 섹션 표시
@@ -193,12 +207,40 @@ class AdminInterface {
         this.rosterCard.style.display = 'block';
       }
 
+      // 전투 생성 버튼 비활성화
+      const createBtn = document.querySelector('.btn-create');
+      if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.textContent = '전투 생성됨';
+        createBtn.classList.remove('btn-primary');
+        createBtn.classList.add('btn-success');
+      }
+
+      // OTP 생성 버튼들 활성화
+      if (this.btnGeneratePlayerOTP) {
+        this.btnGeneratePlayerOTP.disabled = false;
+      }
+      if (this.btnGenerateSpectatorOTP) {
+        this.btnGenerateSpectatorOTP.disabled = false;
+      }
+
       this.addLog('system', `전투가 생성되었습니다 (ID: ${battleId})`);
+      this.addLog('system', `관리자 OTP: ${adminOtp}`);
       this.showToast('전투가 성공적으로 생성되었습니다!', 'success');
+
+      // 디버깅용 콘솔 출력
+      console.log('[Admin] 전투 생성 완료:', {
+        battleId,
+        adminOtp,
+        createTime,
+        battleInfo: this.battleInfo,
+        visible: this.battleInfo ? this.battleInfo.style.display : 'none'
+      });
 
     } catch (error) {
       this.addLog('error', '전투 생성 실패: ' + error.message);
       this.showToast('전투 생성에 실패했습니다', 'error');
+      console.error('[Admin] 전투 생성 오류:', error);
     }
   }
 
@@ -438,46 +480,88 @@ class AdminInterface {
     });
   }
 
-  // 링크 생성
-  generateLinks() {
+  // 플레이어 OTP 생성
+  generatePlayerOTPs() {
     if (!this.currentBattleId || this.playerList.length === 0) {
       this.showToast('플레이어를 먼저 추가해주세요', 'error');
       return;
     }
 
-    const baseUrl = window.location.origin;
-    let linksHtml = '<div class="links-grid">';
+    try {
+      this.addLog('system', '플레이어 OTP를 생성하는 중...');
 
-    // 플레이어 링크들
-    this.playerList.forEach(player => {
-      const playerUrl = `${baseUrl}/play?name=${encodeURIComponent(player.name)}&token=${this.generateToken()}&battle=${this.currentBattleId}`;
-      linksHtml += `
-        <div class="link-item">
-          <div class="link-label">${player.name} (${player.team === 'A' ? '불사조 기사단' : '죽음을 먹는 자들'})</div>
-          <div class="link-url">${playerUrl}</div>
-          <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText('${playerUrl}')">복사</button>
-        </div>
-      `;
-    });
+      const playerOTPs = [];
+      this.playerList.forEach(player => {
+        const otp = this.generateOtp();
+        playerOTPs.push({
+          playerId: player.id,
+          playerName: player.name,
+          team: player.team,
+          otp: otp,
+          url: `${window.location.origin}/play?name=${encodeURIComponent(player.name)}&token=${otp}&battle=${this.currentBattleId}`
+        });
+      });
 
-    // 관전자 링크
-    const spectatorUrl = `${baseUrl}/spectator?battle=${this.currentBattleId}&otp=${this.generateOtp()}`;
-    linksHtml += `
-      <div class="link-item spectator-link">
-        <div class="link-label">관전자 링크</div>
-        <div class="link-url">${spectatorUrl}</div>
-        <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText('${spectatorUrl}')">복사</button>
-      </div>
-    `;
+      // 플레이어 OTP 목록 표시
+      if (this.playerOtpList) {
+        this.playerOtpList.innerHTML = playerOTPs.map(item => `
+          <div class="otp-item">
+            <span class="otp-player">${item.playerName} (${item.team === 'A' ? '불사조' : '죽음을 먹는 자들'})</span>
+            <span class="otp-code">${item.otp}</span>
+            <button class="otp-copy" onclick="navigator.clipboard.writeText('${item.url}').then(() => adminInterface.showToast('링크 복사됨!', 'success'))">복사</button>
+          </div>
+        `).join('');
+      }
 
-    linksHtml += '</div>';
+      // OTP 표시 영역 보이기
+      if (this.otpDisplay) {
+        this.otpDisplay.style.display = 'block';
+      }
 
-    if (this.linksList) {
-      this.linksList.innerHTML = linksHtml;
+      this.addLog('system', `${playerOTPs.length}개의 플레이어 OTP가 생성되었습니다`);
+      this.showToast('플레이어 OTP가 생성되었습니다!', 'success');
+
+    } catch (error) {
+      this.addLog('error', '플레이어 OTP 생성 실패: ' + error.message);
+      this.showToast('플레이어 OTP 생성에 실패했습니다', 'error');
+    }
+  }
+
+  // 관전자 OTP 생성
+  generateSpectatorOTP() {
+    if (!this.currentBattleId) {
+      this.showToast('먼저 전투를 생성해주세요', 'error');
+      return;
     }
 
-    this.addLog('system', '링크가 생성되었습니다');
-    this.showToast('링크가 생성되었습니다!', 'success');
+    try {
+      this.addLog('system', '관전자 OTP를 생성하는 중...');
+
+      const spectatorOtp = this.generateOtp();
+      const spectatorUrl = `${window.location.origin}/spectator?battle=${this.currentBattleId}&otp=${spectatorOtp}`;
+
+      // 관전자 OTP 표시
+      if (this.spectatorOtpDisplay) {
+        this.spectatorOtpDisplay.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-family: monospace; font-weight: 700;">${spectatorOtp}</span>
+            <button class="otp-copy" onclick="navigator.clipboard.writeText('${spectatorUrl}').then(() => adminInterface.showToast('관전자 링크 복사됨!', 'success'))">링크 복사</button>
+          </div>
+        `;
+      }
+
+      // OTP 표시 영역 보이기
+      if (this.otpDisplay) {
+        this.otpDisplay.style.display = 'block';
+      }
+
+      this.addLog('system', `관전자 OTP가 생성되었습니다: ${spectatorOtp}`);
+      this.showToast('관전자 OTP가 생성되었습니다!', 'success');
+
+    } catch (error) {
+      this.addLog('error', '관전자 OTP 생성 실패: ' + error.message);
+      this.showToast('관전자 OTP 생성에 실패했습니다', 'error');
+    }
   }
 
   // 채팅 전송
