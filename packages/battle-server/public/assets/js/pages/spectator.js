@@ -4,7 +4,6 @@ class PyxisSpectator {
     this.currentBattleId = null;
     this.spectatorName = null;
     this.joined = false;
-
     this.init();
   }
 
@@ -76,8 +75,7 @@ class PyxisSpectator {
       UI.show(this.spectatorArea);
       this.handleStateUpdate(data.state || data.battle);
       UI.success('관전 시작!');
-      // 배틀 타이머 (1시간, 관전도 동일하게 표시)
-      PyxisFX.startBattleTimer(60*60*1000);
+      PyxisFX.startBattleTimer(60*60*1000); // 관전자도 표시
     });
 
     PyxisSocket.on('state:update', (s)=> this.handleStateUpdate(s));
@@ -95,7 +93,6 @@ class PyxisSpectator {
 
   handleStateUpdate(s){
     if (!s) return;
-    // 팀원 목록 (간단 렌더)
     const all = Object.values(s.players||{});
     const A = all.filter(p=> p.team==='A'||p.team==='team1');
     const B = all.filter(p=> p.team==='B'||p.team==='team2');
@@ -125,7 +122,6 @@ class PyxisSpectator {
     render(this.phoenixMembers, A);
     render(this.deathMembers,   B);
 
-    // 전투 상태 라벨
     const statusText = {waiting:'전투 대기 중', active:'전투 진행 중', ended:'전투 종료'};
     this.battlePhaseEl.textContent = statusText[s.status] || '전투 상황';
   }
