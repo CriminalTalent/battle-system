@@ -9,6 +9,7 @@
       this.battleEndsAt = null; // Date.now() + 1h
       this.onTurnExpire = null;
       this.boundRippleTargets = new WeakSet();
+      this.battleChip = null; // 추가: 전역 배틀 타이머 chip 참조 보관
     }
 
     mount(){
@@ -30,6 +31,7 @@
       return { x: r.left + r.width/2, y: r.top + r.height/2 };
     }
     _place(el, x, y){
+      el.style.position = 'absolute'; // 추가: 절대좌표로 배치
       el.style.left = `${x}px`;
       el.style.top  = `${y}px`;
       this.layer.appendChild(el);
