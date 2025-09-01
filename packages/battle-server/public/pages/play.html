@@ -5,11 +5,9 @@
   <title>PYXIS 플레이어</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="/socket.io/socket.io.js"></script>
-  <!-- 디자인/스타일은 기존 public 자산을 그대로 사용한다는 가정 -->
   <link href="/assets/pyxis-theme.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- 디자인은 유지. 아래 인증/업로드 컨트롤만 최소 추가 -->
   <main class="container">
     <section id="auth" class="panel">
       <h2>플레이어 접속</h2>
@@ -129,7 +127,6 @@
       }
 
       try {
-        // 사전 검증 (선택)
         const r = await fetch('/api/auth', {
           method: 'POST',
           headers: { 'Content-Type':'application/json' },
@@ -144,13 +141,11 @@
         state.otp = otp;
         state.name = displayName || '';
 
-        // 소켓 연결
         socket = io();
         socket.on('connect', () => {
           socket.emit('session:init', { role:'player', battleId, otp, name: state.name });
         });
 
-        // 초기 부트스트랩
         socket.on('log:bootstrap', (logs) => {
           logsSec.style.display = '';
           statusSec.style.display = '';
@@ -165,7 +160,6 @@
 
         socket.on('roster:update', (payload) => {
           renderRoster(payload.players || []);
-          // 내 playerId 추론
           const me = (payload.players || []).find(p => p.name === (state.name || r.player?.name));
           if (me && !state.playerId) {
             state.playerId = me.id;
@@ -192,7 +186,6 @@
       chatInput.value = '';
     });
 
-    // 아바타 업로드
     avatarForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!state.battleId || !state.playerId) {
