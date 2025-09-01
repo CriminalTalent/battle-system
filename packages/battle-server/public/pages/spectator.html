@@ -1,326 +1,129 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PYXIS 전투 관전</title>
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  
-  <!-- Stylesheets -->
-  <link rel="stylesheet" href="/assets/css/pyxis-unified.css">
-  <link rel="stylesheet" href="/assets/css/spectator.css">
-  
-  <!-- Preconnect for better font loading -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <meta charset="utf-8" />
+  <title>PYXIS 관전자</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="/assets/pyxis-theme.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- Enhanced Header -->
-  <header class="header">
-    <div class="cosmic-background">
-      <div class="nebula nebula-1"></div>
-      <div class="nebula nebula-2"></div>
-      <div class="nebula nebula-3"></div>
-    </div>
-    
-    <div class="constellation">
-      <div class="constellation-star star-1"></div>
-      <div class="constellation-star star-2"></div>
-      <div class="constellation-star star-3"></div>
-      <div class="constellation-star star-4"></div>
-      <div class="constellation-star star-5"></div>
-      <div class="constellation-line line-1"></div>
-      <div class="constellation-line line-2"></div>
-      <div class="constellation-line line-3"></div>
-    </div>
-    
-    <div class="header-content">
-      <div class="brand-logo">
-        <h1 class="brand-title">PYXIS</h1>
-        <div class="brand-subtitle">전투 관전</div>
-      </div>
-      <div class="connection-status">
-        <div class="connection-dot" id="connectionDot"></div>
-        <span class="connection-text" id="connectionText">연결 중...</span>
-        <div class="spectator-count" id="spectatorCount">-</div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Container -->
   <main class="container">
-    
-    <!-- Login Section (Initial) -->
-    <section id="loginSection" class="login-section">
-      <div class="card login-card">
-        <div class="section-header">
-          <h2 class="section-title">관전자 입장</h2>
-        </div>
-        
-        <!-- Auto-login notice (hidden initially) -->
-        <div id="autoLoginInfo" class="auto-login-info" style="display: none;">
-          <!-- Auto-login info will be populated here -->
-        </div>
-        
-        <form id="loginForm" class="login-form">
-          <div class="field">
-            <label for="spectatorName">관전자 이름</label>
-            <input type="text" id="spectatorName" class="input" 
-                   placeholder="관전자 이름을 입력하세요" required>
-            <div class="input-hint">2-12글자 사이로 입력해주세요</div>
-          </div>
-          <button type="submit" class="btn btn-gold" id="loginBtn">
-            관전 시작
-          </button>
-        </form>
-        
-        <div class="login-tips">
-          <h4>관전 팁</h4>
-          <ul>
-            <li>키보드 1-0번으로 빠른 응원</li>
-            <li>실시간 전투 상황 관전</li>
-            <li>플레이어 클릭으로 상세 정보</li>
-          </ul>
-        </div>
+    <section id="auth" class="panel">
+      <h2>관전자 접속</h2>
+      <div>
+        <label>전투 ID</label>
+        <input id="battleId" type="text" placeholder="예: b_xxxxxx" />
       </div>
+      <div>
+        <label>관전자 OTP</label>
+        <input id="otp" type="text" placeholder="관리자 발급 OTP" />
+      </div>
+      <div>
+        <label>표시 이름</label>
+        <input id="displayName" type="text" placeholder="선택 사항" />
+      </div>
+      <button id="btnJoin">접속</button>
+      <div id="authMsg" class="hint"></div>
     </section>
 
-    <!-- Spectator Interface (Hidden initially) -->
-    <div id="spectatorInterface" class="spectator-layout" style="display: none;">
-      
-      <!-- Left Column: Battle Status -->
-      <div class="status-column">
-        <!-- Battle Overview -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">전투 현황</h2>
-          </div>
-          <div class="battle-overview">
-            <div class="status-grid">
-              <div class="status-item">
-                <div class="status-label">전투 상태</div>
-                <div class="status-value" id="battleStatus">준비 중</div>
-              </div>
-              <div class="status-item">
-                <div class="status-label">경과 시간</div>
-                <div class="status-value" id="battleTimer">00:00</div>
-              </div>
-              <div class="status-item">
-                <div class="status-label">현재 턴</div>
-                <div class="status-value" id="currentTurnInfo">-</div>
-              </div>
-              <div class="status-item">
-                <div class="status-label">전투 모드</div>
-                <div class="status-value" id="battleMode">-</div>
-              </div>
-            </div>
-          </div>
-        </section>
+    <section id="roster" class="panel" style="display:none;">
+      <h2>플레이어</h2>
+      <ul id="playerList"></ul>
+    </section>
 
-        <!-- Team Status -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">팀 상황</h2>
-          </div>
-          <div class="team-status">
-            <!-- Team A -->
-            <div class="team-section team-a">
-              <div class="team-header">
-                <h3 class="team-name">불사조 기사단</h3>
-                <div class="team-score" id="teamAScore">0</div>
-              </div>
-              <div class="team-players" id="team1Players">
-                <!-- Team A players will be populated here -->
-              </div>
-            </div>
+    <section id="logs" class="panel" style="display:none;">
+      <h2>실시간 로그</h2>
+      <div id="logBox" class="logbox"></div>
+    </section>
 
-            <!-- VS Separator -->
-            <div class="vs-separator">
-              <div class="vs-text">VS</div>
-              <div class="vs-effects"></div>
-            </div>
-
-            <!-- Team B -->
-            <div class="team-section team-b">
-              <div class="team-header">
-                <h3 class="team-name">죽음을 먹는 자들</h3>
-                <div class="team-score" id="teamBScore">0</div>
-              </div>
-              <div class="team-players" id="team2Players">
-                <!-- Team B players will be populated here -->
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Spectator List -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">관전자 목록</h2>
-          </div>
-          <div id="spectatorList" class="spectator-list">
-            <!-- Spectators will be populated here -->
-          </div>
-        </section>
-      </div>
-
-      <!-- Right Column: Interaction Panel -->
-      <div class="interaction-column">
-        <!-- Battle Log -->
-        <section class="card log-card">
-          <div class="section-header">
-            <h2 class="section-title">실시간 로그</h2>
-          </div>
-          <div class="battle-log" id="battleLogViewer">
-            <div class="log-entry system">관전자 모드로 연결되었습니다.</div>
-          </div>
-        </section>
-
-        <!-- Cheer Panel -->
-        <section class="card cheer-card">
-          <div class="section-header">
-            <h2 class="section-title">응원 패널</h2>
-          </div>
-          
-          <!-- Quick Cheer Buttons -->
-          <div class="quick-cheer-section">
-            <h4 class="subsection-title">빠른 응원</h4>
-            <div class="cheer-grid">
-              <button class="cheer-btn quick-cheer-btn" data-key="1">
-                <span class="cheer-key">[1]</span>
-                <span class="cheer-text">화이팅</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="2">
-                <span class="cheer-key">[2]</span>
-                <span class="cheer-text">멋져요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="3">
-                <span class="cheer-key">[3]</span>
-                <span class="cheer-text">힘내세요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="4">
-                <span class="cheer-key">[4]</span>
-                <span class="cheer-text">이길거예요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="5">
-                <span class="cheer-key">[5]</span>
-                <span class="cheer-text">운이 좋네요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="6">
-                <span class="cheer-key">[6]</span>
-                <span class="cheer-text">고수네요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="7">
-                <span class="cheer-key">[7]</span>
-                <span class="cheer-text">긴장돼요</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="8">
-                <span class="cheer-key">[8]</span>
-                <span class="cheer-text">역전 기회</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="9">
-                <span class="cheer-key">[9]</span>
-                <span class="cheer-text">승부사 혼</span>
-              </button>
-              <button class="cheer-btn quick-cheer-btn" data-key="0">
-                <span class="cheer-key">[0]</span>
-                <span class="cheer-text">전설의 순간</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Custom Cheer -->
-          <div class="custom-cheer-section">
-            <h4 class="subsection-title">자유 응원</h4>
-            <div class="custom-cheer-container">
-              <input type="text" id="customCheerInput" class="input cheer-input" 
-                     placeholder="응원 메시지를 입력하세요..." maxlength="100">
-              <button id="sendCheerBtn" class="btn btn-primary">
-                전송
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <!-- Match Statistics -->
-        <section class="card stats-card">
-          <div class="section-header">
-            <h2 class="section-title">경기 통계</h2>
-          </div>
-          <div class="match-stats" id="matchStats">
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-label">총 턴 수</div>
-                <div class="stat-value" id="totalTurns">0</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">총 데미지</div>
-                <div class="stat-value" id="totalDamage">0</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">치명타 횟수</div>
-                <div class="stat-value" id="criticalHits">0</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">아이템 사용</div>
-                <div class="stat-value" id="itemsUsed">0</div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-      
-    </div>
+    <!-- 관전자는 송신 금지: UI만 제거/미표기 -->
   </main>
 
-  <!-- Modal Templates -->
-  <!-- Player Stats Modal -->
-  <div id="playerStatsModal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">플레이어 상세 정보</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body" id="playerStatsContent">
-        <!-- Player stats will be populated here -->
-      </div>
-    </div>
-  </div>
+  <script>
+  (function(){
+    'use strict';
+    const $ = id => document.getElementById(id);
 
-  <!-- Battle Results Modal -->
-  <div id="battleResultModal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">전투 결과</h2>
-      </div>
-      <div class="modal-body" id="battleResultContent">
-        <!-- Battle results will be populated here -->
-      </div>
-      <div class="modal-actions">
-        <button id="closeBattleResult" class="btn btn-primary">확인</button>
-      </div>
-    </div>
-  </div>
+    const battleIdEl = $('battleId');
+    const otpEl = $('otp');
+    const nameEl = $('displayName');
+    const btnJoin = $('btnJoin');
+    const authMsg = $('authMsg');
 
-  <!-- Cheer Effects Container -->
-  <div id="cheerEffectsContainer" class="cheer-effects-container">
-    <!-- Dynamic cheer effects will appear here -->
-  </div>
+    const rosterSec = $('roster');
+    const playerList = $('playerList');
+    const logsSec = $('logs');
+    const logBox = $('logBox');
 
-  <!-- Toast Notifications Container -->
-  <div id="toastContainer" class="toast-container"></div>
+    let socket = null;
+    let state = { battleId:null, otp:null, name:null };
 
-  <!-- Loading Overlay -->
-  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">처리 중...</div>
-    </div>
-  </div>
+    function appendLog(entry) {
+      const line = document.createElement('div');
+      const dt = new Date(entry.ts || Date.now());
+      line.textContent = `[${dt.toLocaleTimeString()}] ${entry.text}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
 
-  <!-- Scripts -->
-  <script src="/assets/js/pages/spectator.js"></script>
+    function renderRoster(players) {
+      playerList.innerHTML = '';
+      players.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
+        playerList.appendChild(li);
+      });
+    }
+
+    btnJoin.addEventListener('click', async () => {
+      const battleId = battleIdEl.value.trim();
+      const otp = otpEl.value.trim();
+      const displayName = nameEl.value.trim();
+
+      if (!battleId || !otp) {
+        authMsg.textContent = '전투 ID와 OTP를 입력하세요.';
+        return;
+      }
+
+      try {
+        // 사전 검증 (선택)
+        const r = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ battleId, otp, role: 'spectator' })
+        }).then(r=>r.json());
+        if (!r.ok) {
+          authMsg.textContent = '인증 실패: ' + (r.error||'');
+          return;
+        }
+
+        state.battleId = battleId;
+        state.otp = otp;
+        state.name = displayName || '';
+
+        socket = io();
+        socket.on('connect', () => {
+          socket.emit('session:init', { role:'spectator', battleId, otp, name: state.name });
+        });
+
+        socket.on('log:bootstrap', (logs) => {
+          logsSec.style.display = '';
+          rosterSec.style.display = '';
+          logBox.innerHTML = '';
+          (logs || []).forEach(appendLog);
+          authMsg.textContent = '연결 성공';
+        });
+
+        socket.on('log:append', appendLog);
+        socket.on('roster:update', (payload) => renderRoster(payload.players || []));
+
+        // 관전자는 채팅 송신 불가 (UI 없음)
+      } catch(e) {
+        authMsg.textContent = '연결 오류';
+      }
+    });
+  })();
+  </script>
 </body>
 </html>
