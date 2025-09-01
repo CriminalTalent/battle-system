@@ -1,5 +1,4 @@
 // public/assets/js/pages/admin.js
-// 실제 API/소켓 연동: 전투 생성 → 관리자 OTP 발급 → 소켓 연결 → 플레이어 등록(+이미지 업로드) → 채팅/로스터/로그 수신
 class AdminInterface {
   constructor() {
     this.socket = null;
@@ -18,7 +17,7 @@ class AdminInterface {
   }
 
   initElements() {
-    // 전투 생성 폼/표시
+    // 전투 생성
     this.battleCreateForm = document.getElementById('battleCreateForm');
     this.battleMode = document.getElementById('battleMode');
     this.battleInfo = document.getElementById('battleInfo');
@@ -111,7 +110,6 @@ class AdminInterface {
     if (!mode) return this.showToast('전투 모드를 선택하세요', 'error');
 
     try {
-      // 1) 전투 생성
       const r = await fetch('/api/battles', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
@@ -121,17 +119,14 @@ class AdminInterface {
 
       this.currentBattleId = r.id;
 
-      // 2) 관리자 OTP 발급
       const otpRes = await fetch('/api/otp', {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({ role:'admin', battleId: this.currentBattleId, name:'관리' })
       }).then(r=>r.json());
       if (!otpRes.ok) throw new Error(otpRes.error || 'OTP_FAILED');
-
       this.currentAdminOtp = otpRes.otp;
 
-      // UI 업데이트
       this.battleIdDisplay.textContent = this.currentBattleId;
       this.adminOtpDisplay.textContent = this.currentAdminOtp;
       this.createTimeDisplay.textContent = new Date().toLocaleString('ko-KR');
@@ -140,9 +135,8 @@ class AdminInterface {
       this.linksSection.style.display = 'block';
       this.rosterCard.style.display = 'block';
 
-      document.querySelector('.btn-create')?.classList.replace('btn-primary','btn-success');
-      document.querySelector('.btn-create').textContent = '전투 생성됨';
-      document.querySelector('.btn-create').disabled = true;
+      const btn = document.querySelector('.btn-create');
+      if (btn) { btn.classList.replace('btn-primary','btn-success'); btn.textContent='전투 생성됨'; btn.disabled = true; }
 
       this.btnGeneratePlayerOTP.disabled = false;
       this.btnGenerateSpectatorOTP.disabled = false;
@@ -163,15 +157,9 @@ class AdminInterface {
 
     this.socket = io();
     this.socket.on('connect', () => {
-      this.socket.emit('session:init', {
-        role:'admin',
-        battleId: this.currentBattleId,
-        otp: this.currentAdminOtp,
-        name:'관리'
-      });
+      this.socket.emit('session:init', { role:'admin', battleId:this.currentBattleId, otp:this.currentAdminOtp, name:'관리' });
     });
 
-    // 초기 동기화
     this.socket.on('log:bootstrap', (logs=[]) => {
       logs.forEach((l)=>this.addLog('system', l.text));
       this.isConnected = true;
@@ -182,7 +170,6 @@ class AdminInterface {
       this.showToast('관리자 연결 성공', 'success');
     });
 
-    // 실시간 로그/로스터/채팅
     this.socket.on('log:append', (entry)=> this.addLog('system', entry.text));
     this.socket.on('roster:update', (p)=> this.syncRoster(p?.players||[]));
     this.socket.on('chat:message', (m)=> this.addLog('admin', `${m.name}: ${m.text}`));
@@ -199,10 +186,10 @@ class AdminInterface {
   async addPlayer() {
     if (!this.currentBattleId) return this.showToast('먼저 전투를 생성하세요', 'error');
     const name = document.getElementById('playerName')?.value?.trim();
-    const team = document.getElementById('playerTeam')?.value;
-    if (!name || !team) return this.showToast('이름/팀 필수', 'error');
+    const teamSel = document.getElementById('playerTeam')?.value; // A|B
+    if (!name || !teamSel) return this.showToast('이름/팀 필수', 'error');
 
-    // 서버 스키마로 변환
+    const team = (teamSel==='A' ? '불사조 기사단' : '죽음을 먹는 자들');
     const stats = {
       atk: Number(this.statAttack?.value || 3),
       def: Number(this.statDefense?.value || 3),
@@ -218,17 +205,15 @@ class AdminInterface {
     if (db>0) items.push(`방어보정:${db}`);
 
     try {
-      // 1) 등록
       const r = await fetch(`/api/battles/${this.currentBattleId}/players`, {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ name, team: (team==='A'?'불사조 기사단':'죽음을 먹는 자들'), stats, items })
+        body: JSON.stringify({ name, team, stats, items })
       }).then(r=>r.json());
       if (!r.ok) throw new Error(r.error || 'ADD_FAILED');
       const player = r.player;
       this.addLog('system', `플레이어 "${player.name}" 등록`);
 
-      // 2) 이미지 업로드(선택)
       const file = this.playerAvatar?.files?.[0];
       if (file) {
         const fd = new FormData();
@@ -239,15 +224,12 @@ class AdminInterface {
         else this.addLog('system', `플레이어 "${player.name}" 아바타 업로드 완료`);
       }
 
-      // 폼 초기화
       this.playerForm?.reset();
-      ['statAttack','statDefense','statAgility','statLuck'].forEach(id=>{
-        const el = document.getElementById(id); if (el) el.value = 3;
-      });
-      if (this.playerAvatar) this.playerAvatar.value = '';
+      ['statAttack','statDefense','statAgility','statLuck'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=3; });
+      if (this.playerAvatar) this.playerAvatar.value='';
 
-      // 목록 갱신(소켓이 오더라도 즉시 반영)
-      this.playerList.push(player);
+      // 즉시 반영 (소켓도 곧 동기화됨)
+      this.playerList = this.uniqueById([ ...this.playerList, player ]);
       this.updateTeamRoster();
       this.showToast(`${player.name} 등록 완료`, 'success');
     } catch(e) {
@@ -256,12 +238,13 @@ class AdminInterface {
     }
   }
 
-  // 플레이어 OTP 생성 (실제 API)
+  // 플레이어 OTP 생성 (중복 제거 + 예쁜 라벨)
   async generatePlayerOTPs() {
     if (!this.currentBattleId || this.playerList.length===0) return this.showToast('플레이어를 먼저 추가하세요', 'error');
     try {
+      const roster = this.uniqueById(this.playerList);
       const items = [];
-      for (const p of this.playerList) {
+      for (const p of roster) {
         const r = await fetch('/api/otp', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
@@ -281,7 +264,7 @@ class AdminInterface {
     }
   }
 
-  // 관전자 OTP 생성 (실제 API)
+  // 관전자 OTP 생성
   async generateSpectatorOTP() {
     if (!this.currentBattleId) return this.showToast('전투를 먼저 생성하세요','error');
     try {
@@ -294,20 +277,20 @@ class AdminInterface {
 
       const url = `${location.origin}/watch?battleId=${encodeURIComponent(this.currentBattleId)}&otp=${encodeURIComponent(r.otp)}`;
       this.spectatorOtpDisplay.innerHTML = `
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div class="otp-item">
+          <span class="team-badge">관전자</span>
           <span class="code">${r.otp}</span>
           <button class="otp-copy" onclick="navigator.clipboard.writeText('${url}')">링크 복사</button>
         </div>`;
       this.otpDisplay.style.display = 'block';
       this.showToast('관전자 OTP 생성 완료','success');
-      this.addLog('system', `관전자 OTP 생성됨`);
+      this.addLog('system', '관전자 OTP 생성됨');
     } catch(e) {
       this.addLog('error', `관전자 OTP 생성 실패: ${e.message}`);
       this.showToast('관전자 OTP 생성 실패','error');
     }
   }
 
-  // 채팅
   sendChat() {
     const text = this.chatInput?.value?.trim();
     if (!text || !this.socket) return;
@@ -317,7 +300,7 @@ class AdminInterface {
 
   // ===== 표시/로스터/로그 =====
   syncRoster(players) {
-    this.playerList = players || [];
+    this.playerList = this.uniqueById(players || []);
     this.updateTeamRoster();
   }
 
@@ -337,11 +320,30 @@ class AdminInterface {
         <div class="player-avatar">${initial}</div>
         <div class="player-info">
           <div class="player-name">${this.escapeHtml(p.name)}</div>
-          <div class="player-stats">HP ${p.hp}</div>
+          <div class="player-stats">${this.escapeHtml(p.team)} | HP ${p.hp}</div>
         </div>
       </div>`;
   }
 
+  renderPlayerOtpList(list) {
+    const html = list.map((it, idx) => {
+      const teamShort = it.team.includes('불사조') ? '불사조' : (it.team.includes('죽음') ? '죽먹자' : it.team);
+      const label = `플레이어${idx+1}`;
+      return `
+        <div class="otp-item">
+          <span class="otp-player">${this.escapeHtml(label)}</span>
+          <span class="team-badge">${this.escapeHtml(teamShort)}</span>
+          <span class="code">${this.escapeHtml(it.otp)}</span>
+          <button class="otp-copy" onclick="navigator.clipboard.writeText('${it.url}')">복사</button>
+        </div>
+      `;
+    }).join('');
+    this.playerOtpList.classList.add('otp-list');
+    this.playerOtpList.innerHTML = html;
+  }
+
+  // ===== 유틸 =====
+  uniqueById(arr){ const m=new Map(); (arr||[]).forEach(p=>{ if(p&&p.id) m.set(p.id,p); }); return [...m.values()]; }
   addLog(type, message) {
     if (!this.logViewer) return;
     const time = new Date().toLocaleTimeString('ko-KR');
@@ -353,32 +355,16 @@ class AdminInterface {
     const entries = this.logViewer.querySelectorAll('.log-entry');
     if (entries.length > 200) entries[0]?.remove();
   }
-
-  renderPlayerOtpList(list) {
-    this.playerOtpList.innerHTML = list.map(it => `
-      <div class="otp-item">
-        <span class="otp-player">${this.escapeHtml(it.name)} (${it.team.includes('불사조')?'불사조':'죽먹자'})</span>
-        <span class="otp-code">${it.otp}</span>
-        <button class="otp-copy" onclick="navigator.clipboard.writeText('${it.url}')">복사</button>
-      </div>
-    `).join('');
-  }
-
   showToast(message, type='info') {
     let c = document.getElementById('toastContainer');
     if (!c) { c = document.createElement('div'); c.id='toastContainer'; c.className='toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = `toast toast-${type}`;
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(()=>t.classList.add('show'), 50);
+    const t = document.createElement('div'); t.className = `toast toast-${type}`; t.textContent = message;
+    c.appendChild(t); setTimeout(()=>t.classList.add('show'), 50);
     setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(), 300); }, 3000);
   }
-
   escapeHtml(s){ const d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
 }
 
-// 전역 인스턴스
 let adminInterface;
 document.addEventListener('DOMContentLoaded', () => { adminInterface = new AdminInterface(); });
 window.adminInterface = null;
