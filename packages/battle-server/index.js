@@ -1,8 +1,12 @@
 // packages/battle-server/index.js
-// 최소 변경 패치(최신): OTP 인증 통합( admin | player | spectator ),
-// 실시간 브로드캐스트(로스터/로그), 관전자/플레이어/관리자 룸 조인,
-// 플레이어 아바타 업로드, 관리자 채팅 송신 허용.
-// 디자인/규칙 변경 없음. 이모지 없음.
+// 기능 요약:
+// - OTP 인증(admin | player | spectator)
+// - 실시간 브로드캐스트(로스터/로그)
+// - 플레이어 아바타 업로드
+// - 관리자/플레이어 채팅 송신, 관전자 채팅 금지
+// - 관전자 응원(화이트리스트, 3초 레이트리밋)
+// - ★ 관전자 OTP별 동시접속 최대 30명 제한 추가
+// 디자인/스타일 변경 없음. 이모지 없음.
 
 const path = require('path');
 const fs = require('fs');
@@ -52,6 +56,15 @@ const otps = Object.create(null);
   }
 */
 
+// 관전자 OTP 동시접속 카운트(track by battleId+otp)
+const spectatorUsage = Object.create(null);
+/*
+ spectatorUsage[battleId] = {
+   [otp]: currentCountNumber
+ }
+*/
+const SPECTATOR_LIMIT_PER_OTP = 30;
+
 // ===== 유틸 =====
 function rid(prefix, size = 8) {
   return prefix + '_' + crypto.randomBytes(size).toString('hex').slice(0, size);
@@ -68,6 +81,17 @@ function broadcastRoster(battleId) {
   const b = battles[battleId];
   if (!b) return;
   io.to(battleId).emit('roster:update', { id: b.id, players: b.players });
+}
+function incSpectatorCount(battleId, otp) {
+  spectatorUsage[battleId] = spectatorUsage[battleId] || Object.create(null);
+  spectatorUsage[battleId][otp] = (spectatorUsage[battleId][otp] || 0) + 1;
+  return spectatorUsage[battleId][otp];
+}
+function decSpectatorCount(battleId, otp) {
+  if (!spectatorUsage[battleId] || spectatorUsage[battleId][otp] == null) return;
+  spectatorUsage[battleId][otp] = Math.max(0, spectatorUsage[battleId][otp] - 1);
+  if (spectatorUsage[battleId][otp] === 0) delete spectatorUsage[battleId][otp];
+  if (Object.keys(spectatorUsage[battleId]).length === 0) delete spectatorUsage[battleId];
 }
 
 // ===== API =====
@@ -207,9 +231,28 @@ io.on('connection', (socket) => {
     const b = battles[battleId];
     if (!b) return;
 
+    // ★ 관전자 동시접속 제한 처리(OTP 단위)
+    if (role === 'spectator') {
+      // 이름은 로그/응원 표시에 쓰이므로 비워두지 않게 강제(선호)
+      if (!name || !String(name).trim()) {
+        // 이름이 비었으면 입장 불가로 처리
+        socket.emit('log:append', { ts: now(), text: '이름을 입력해야 관전 입장이 가능합니다.', type: 'system' });
+        return;
+      }
+      const current = spectatorUsage[battleId]?.[otp] || 0;
+      if (current >= SPECTATOR_LIMIT_PER_OTP) {
+        // 정중히 거절(소켓은 입장하지 않음)
+        socket.emit('log:append', { ts: now(), text: `관전자 정원(OTP당 ${SPECTATOR_LIMIT_PER_OTP}명)을 초과했습니다.`, type: 'system' });
+        return;
+      }
+      incSpectatorCount(battleId, otp);
+      socket.data.spectatorOtp = otp; // disconnect 시 감산용
+    }
+
     socket.data.role = role; // 'admin'|'player'|'spectator'
     socket.data.battleId = battleId;
-    socket.data.name = name || ticket.name || role;
+    socket.data.name = (name && String(name).trim()) || ticket.name || role;
+    socket.data.lastCheerTs = 0; // 관전자 응원 레이트리밋용
 
     if (role === 'player') {
       const playerObj = b.players.find(x => x.id === ticket.playerId);
@@ -239,9 +282,39 @@ io.on('connection', (socket) => {
       io.to(battleId).emit('chat:message', safe);
     });
 
+    // ===== 관전자 응원 =====
+    const ALLOWED_CHEERS = new Set([
+      '화이팅','좋아요','멋져요','잘한다','역전 가자',
+      '죽으면 죽어!','죽지마! 살아서 보자.'
+    ]);
+
+    socket.on('cheer', (payload) => {
+      if (!socket.data || socket.data.battleId !== battleId) return;
+      if (socket.data.role !== 'spectator') return; // 관전자만
+      const text = String(payload?.text || '').trim();
+      if (!ALLOWED_CHEERS.has(text)) return; // 허용 문구만
+
+      const t = now();
+      if (t - (socket.data.lastCheerTs || 0) < 3000) return; // 3초 제한
+      socket.data.lastCheerTs = t;
+
+      const team = payload?.team ? String(payload.team) : '';
+      const nameShown = socket.data.name || '관객';
+      const teamPart = team ? `[${team}] ` : '';
+
+      pushLog(battleId, `${nameShown} 관전자 응원: ${teamPart}${text}`, 'cheer');
+
+      io.to(battleId).emit('cheer', {
+        name: nameShown, team, text, ts: t
+      });
+    });
+
     // 연결 종료
     socket.on('disconnect', () => {
-      pushLog(battleId, `${socket.data.name} 님이 퇴장했습니다.`);
+      if (socket.data?.role === 'spectator' && socket.data?.spectatorOtp) {
+        decSpectatorCount(socket.data.battleId, socket.data.spectatorOtp);
+      }
+      pushLog(battleId, `${socket.data?.name || '알 수 없음'} 님이 퇴장했습니다.`);
     });
   });
 });
