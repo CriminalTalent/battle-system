@@ -1,285 +1,228 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PYXIS 전투 플레이어</title>
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
-  
-  <!-- Stylesheets -->
-  <link rel="stylesheet" href="/assets/css/pyxis-unified.css">
-  <link rel="stylesheet" href="/assets/css/player.css">
-  
-  <!-- Preconnect for better font loading -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <meta charset="utf-8" />
+  <title>PYXIS 플레이어</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- 디자인/스타일은 기존 public 자산을 그대로 사용한다는 가정 -->
+  <link href="/assets/pyxis-theme.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- Enhanced Header -->
-  <header class="header">
-    <div class="star-field">
-      <div class="star star-1"></div>
-      <div class="star star-2"></div>
-      <div class="star star-3"></div>
-      <div class="star star-4"></div>
-    </div>
-    
-    <div class="lens-flare">
-      <div class="lens-flare-core"></div>
-      <div class="lens-flare-rays"></div>
-      <div class="plasma-orb orb-1"></div>
-      <div class="plasma-orb orb-2"></div>
-    </div>
-    
-    <div class="header-content">
-      <div class="brand-logo">
-        <h1 class="brand-title">PYXIS</h1>
-      </div>
-      <div class="connection-status">
-        <div class="connection-dot" id="connectionDot"></div>
-        <span class="connection-text" id="connectionText">연결 중...</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Container -->
+  <!-- 디자인은 유지. 아래 인증/업로드 컨트롤만 최소 추가 -->
   <main class="container">
-    
-    <!-- Authentication Section (Initial) -->
-    <section id="authSection" class="auth-section">
-      <div class="card auth-card">
-        <div class="section-header">
-          <h2 class="section-title">플레이어 인증</h2>
-        </div>
-        
-        <!-- Auto-login notice (hidden initially) -->
-        <div id="autoLoginInfo" class="auto-login-notice" style="display: none;">
-          <!-- Auto-login info will be populated here -->
-        </div>
-        
-        <form id="authForm" class="auth-form">
-          <div class="field">
-            <label for="playerName">플레이어 이름</label>
-            <input type="text" id="playerName" class="input" 
-                   placeholder="플레이어 이름을 입력하세요" required>
-          </div>
-          <div class="field">
-            <label for="playerToken">플레이어 OTP</label>
-            <input type="text" id="playerToken" class="input" 
-                   placeholder="발급받은 OTP를 입력하세요" required>
-          </div>
-          <button type="submit" class="btn btn-gold">전투 참여</button>
+    <section id="auth" class="panel">
+      <h2>플레이어 접속</h2>
+      <div>
+        <label>전투 ID</label>
+        <input id="battleId" type="text" placeholder="예: b_xxxxxx" />
+      </div>
+      <div>
+        <label>플레이어 OTP</label>
+        <input id="otp" type="text" placeholder="관리자 발급 OTP" />
+      </div>
+      <div>
+        <label>표시 이름</label>
+        <input id="displayName" type="text" placeholder="선택 사항" />
+      </div>
+      <button id="btnJoin">접속</button>
+      <div id="authMsg" class="hint"></div>
+    </section>
+
+    <section id="status" class="panel" style="display:none;">
+      <h2>내 정보</h2>
+      <div>이름: <span id="meName">-</span></div>
+      <div>팀: <span id="meTeam">-</span></div>
+      <div>HP: <span id="meHP">-</span></div>
+      <div id="avatarBox">
+        <form id="avatarForm">
+          <input type="file" id="avatarFile" name="avatar" accept="image/*" />
+          <button type="submit">아바타 업로드</button>
         </form>
+        <div id="avatarMsg" class="hint"></div>
       </div>
     </section>
 
-    <!-- Game Interface (Hidden initially) -->
-    <div id="gameInterface" class="player-layout" style="display: none;">
-      
-      <!-- Left Column: Team Info -->
-      <div class="team-column">
-        <!-- My Player Info -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">내 정보</h2>
-          </div>
-          <div class="player-info-panel">
-            <!-- Basic Info Grid -->
-            <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">이름</div>
-                <div class="info-value" id="myPlayerName">-</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">팀</div>
-                <div class="info-value" id="myPlayerTeam">-</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">HP</div>
-                <div class="info-value hp" id="myPlayerHp">100/100</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">상태</div>
-                <div class="info-value" id="myPlayerStatus">대기 중</div>
-              </div>
-            </div>
-            
-            <!-- Stats Grid -->
-            <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">공격</div>
-                <div class="info-value" id="statAttack">-</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">방어</div>
-                <div class="info-value" id="statDefense">-</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">민첩</div>
-                <div class="info-value" id="statAgility">-</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">행운</div>
-                <div class="info-value" id="statLuck">-</div>
-              </div>
-            </div>
-          </div>
-        </section>
+    <section id="roster" class="panel" style="display:none;">
+      <h2>플레이어</h2>
+      <ul id="playerList"></ul>
+    </section>
 
-        <!-- Team Members -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">팀원 정보</h2>
-          </div>
-          <div id="teamMembers" class="team-members">
-            <!-- Team members will be populated here -->
-          </div>
-        </section>
-      </div>
+    <section id="logs" class="panel" style="display:none;">
+      <h2>실시간 로그</h2>
+      <div id="logBox" class="logbox"></div>
+    </section>
 
-      <!-- Center Column: Battle Area -->
-      <div class="battle-column">
-        <!-- Turn Indicator -->
-        <section class="card">
-          <div class="turn-indicator" id="turnIndicator">
-            <div class="turn-text" id="turnText">전투 대기 중...</div>
-            <div class="turn-timer" id="turnTimer" style="display: none;">
-              <span class="timer-label">남은 시간:</span>
-              <span class="timer-value" id="timerValue">5:00</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- Battle Log -->
-        <section class="card log-card">
-          <div class="section-header">
-            <h2 class="section-title">전투 로그</h2>
-          </div>
-          <div class="battle-log" id="battleLog">
-            <div class="log-entry system">전투 시스템에 연결되었습니다.</div>
-          </div>
-        </section>
-
-        <!-- Target Selection (Hidden initially) -->
-        <section id="targetSelection" class="card" style="display: none;">
-          <div class="section-header">
-            <h2 class="section-title">대상 선택</h2>
-          </div>
-          <div id="targetList" class="target-list">
-            <!-- Targets will be populated here -->
-          </div>
-          <div class="target-actions">
-            <button id="cancelTargetSelection" class="btn btn-secondary">취소</button>
-          </div>
-        </section>
-      </div>
-
-      <!-- Right Column: Action Panel -->
-      <div class="action-column">
-        <!-- Action Selection -->
-        <section class="card action-card">
-          <div class="section-header">
-            <h2 class="section-title">액션 선택</h2>
-          </div>
-          <div class="action-grid">
-            <button id="actionAttack" class="action-btn btn-attack" disabled>
-              <span class="action-text">공격</span>
-              <span class="action-key">[1]</span>
-            </button>
-            <button id="actionDefend" class="action-btn btn-defend" disabled>
-              <span class="action-text">방어</span>
-              <span class="action-key">[2]</span>
-            </button>
-            <button id="actionDodge" class="action-btn btn-dodge" disabled>
-              <span class="action-text">회피</span>
-              <span class="action-key">[3]</span>
-            </button>
-            <button id="actionItem" class="action-btn btn-item" disabled>
-              <span class="action-text">아이템</span>
-              <span class="action-key">[4]</span>
-            </button>
-            <button id="actionPass" class="action-btn btn-pass" disabled>
-              <span class="action-text">패스</span>
-              <span class="action-key">[5]</span>
-            </button>
-          </div>
-        </section>
-
-        <!-- Items Panel -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">보유 아이템</h2>
-          </div>
-          <div id="itemsList" class="items-list">
-            <div class="empty-items">아이템이 없습니다</div>
-          </div>
-        </section>
-
-        <!-- Chat Panel -->
-        <section class="card">
-          <div class="section-header">
-            <h2 class="section-title">채팅</h2>
-          </div>
-          <div class="chat-container">
-            <div id="chatMessages" class="chat-messages">
-              <!-- Chat messages will appear here -->
-            </div>
-            <div class="chat-input-container">
-              <select id="chatChannel" class="select chat-channel">
-                <option value="all">전체</option>
-                <option value="team">팀</option>
-              </select>
-              <input type="text" id="chatInput" class="input chat-input" 
-                     placeholder="메시지 입력..." maxlength="100">
-              <button id="btnSendChat" class="btn btn-primary">전송</button>
-            </div>
-          </div>
-        </section>
-      </div>
-      
-    </div>
+    <section id="chat" class="panel" style="display:none;">
+      <h2>채팅</h2>
+      <input id="chatInput" type="text" placeholder="메시지" />
+      <button id="btnChat">보내기</button>
+    </section>
   </main>
 
-  <!-- Modal Templates -->
-  <!-- Item Use Modal -->
-  <div id="itemModal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">아이템 사용</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body" id="itemModalContent">
-        <!-- Item selection will be populated here -->
-      </div>
-    </div>
-  </div>
+  <script>
+  (function(){
+    'use strict';
+    const $ = id => document.getElementById(id);
 
-  <!-- Battle Results Modal -->
-  <div id="battleResultModal" class="modal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 class="modal-title">전투 결과</h2>
-      </div>
-      <div class="modal-body" id="battleResultContent">
-        <!-- Battle results will be populated here -->
-      </div>
-    </div>
-  </div>
+    const battleIdEl = $('battleId');
+    const otpEl = $('otp');
+    const nameEl = $('displayName');
+    const btnJoin = $('btnJoin');
+    const authMsg = $('authMsg');
 
-  <!-- Toast Notifications Container -->
-  <div id="toastContainer" class="toast-container"></div>
+    const meName = $('meName');
+    const meTeam = $('meTeam');
+    const meHP = $('meHP');
 
-  <!-- Loading Overlay -->
-  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">처리 중...</div>
-    </div>
-  </div>
+    const rosterSec = $('roster');
+    const playerList = $('playerList');
+    const logsSec = $('logs');
+    const logBox = $('logBox');
+    const statusSec = $('status');
 
-  <!-- Scripts -->
-  <script src="/assets/js/pages/player.js"></script>
+    const chatSec = $('chat');
+    const chatInput = $('chatInput');
+    const btnChat = $('btnChat');
+
+    const avatarForm = $('avatarForm');
+    const avatarFile = $('avatarFile');
+    const avatarMsg = $('avatarMsg');
+
+    let socket = null;
+    let state = {
+      battleId: null,
+      otp: null,
+      playerId: null,
+      name: null,
+    };
+
+    function appendLog(entry) {
+      const line = document.createElement('div');
+      const dt = new Date(entry.ts || Date.now());
+      line.textContent = `[${dt.toLocaleTimeString()}] ${entry.text}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function renderRoster(players) {
+      playerList.innerHTML = '';
+      players.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
+        playerList.appendChild(li);
+        if (state.playerId && p.id === state.playerId) {
+          meTeam.textContent = p.team;
+          meHP.textContent = p.hp;
+        }
+      });
+    }
+
+    btnJoin.addEventListener('click', async () => {
+      const battleId = battleIdEl.value.trim();
+      const otp = otpEl.value.trim();
+      const displayName = nameEl.value.trim();
+
+      if (!battleId || !otp) {
+        authMsg.textContent = '전투 ID와 OTP를 입력하세요.';
+        return;
+      }
+
+      try {
+        // 사전 검증 (선택)
+        const r = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ battleId, otp, role: 'player' })
+        }).then(r=>r.json());
+        if (!r.ok) {
+          authMsg.textContent = '인증 실패: ' + (r.error||'');
+          return;
+        }
+
+        state.battleId = battleId;
+        state.otp = otp;
+        state.name = displayName || '';
+
+        // 소켓 연결
+        socket = io();
+        socket.on('connect', () => {
+          socket.emit('session:init', { role:'player', battleId, otp, name: state.name });
+        });
+
+        // 초기 부트스트랩
+        socket.on('log:bootstrap', (logs) => {
+          logsSec.style.display = '';
+          statusSec.style.display = '';
+          rosterSec.style.display = '';
+          chatSec.style.display = '';
+          logBox.innerHTML = '';
+          (logs || []).forEach(appendLog);
+          authMsg.textContent = '연결 성공';
+        });
+
+        socket.on('log:append', appendLog);
+
+        socket.on('roster:update', (payload) => {
+          renderRoster(payload.players || []);
+          // 내 playerId 추론
+          const me = (payload.players || []).find(p => p.name === (state.name || r.player?.name));
+          if (me && !state.playerId) {
+            state.playerId = me.id;
+            meName.textContent = me.name;
+            meTeam.textContent = me.team;
+            meHP.textContent = me.hp;
+          }
+        });
+
+        socket.on('chat:message', (m) => {
+          appendLog({ ts: m.ts, text: `${m.name}: ${m.text}` });
+        });
+
+      } catch (e) {
+        authMsg.textContent = '연결 오류';
+      }
+    });
+
+    btnChat.addEventListener('click', () => {
+      if (!socket) return;
+      const text = chatInput.value.trim();
+      if (!text) return;
+      socket.emit('chat:message', { text });
+      chatInput.value = '';
+    });
+
+    // 아바타 업로드
+    avatarForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.battleId || !state.playerId) {
+        avatarMsg.textContent = '접속 후 이용하세요.';
+        return;
+      }
+      const f = avatarFile.files && avatarFile.files[0];
+      if (!f) {
+        avatarMsg.textContent = '파일을 선택하세요.';
+        return;
+      }
+      const fd = new FormData();
+      fd.append('avatar', f);
+      fd.append('playerId', state.playerId);
+      try {
+        const r = await fetch(`/api/battles/${state.battleId}/avatar`, {
+          method: 'POST',
+          body: fd
+        }).then(r=>r.json());
+        if (!r.ok) {
+          avatarMsg.textContent = '업로드 실패: ' + (r.error||'');
+          return;
+        }
+        avatarMsg.textContent = '업로드 완료';
+      } catch(e) {
+        avatarMsg.textContent = '업로드 오류';
+      }
+    });
+
+  })();
+  </script>
 </body>
 </html>
