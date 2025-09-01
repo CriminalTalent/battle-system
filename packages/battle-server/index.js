@@ -1,6 +1,6 @@
 // packages/battle-server/index.js
 // 기능 요약:
-// - 정적 서빙 + 예쁜 URL(/admin, /play, /watch)
+// - 정적 서빙 + 예쁜 URL(/admin, /play, /watch) → public/pages/*.html
 // - OTP 인증(admin | player | spectator)
 // - 실시간 브로드캐스트(로스터/로그)
 // - 플레이어 아바타 업로드
@@ -30,15 +30,16 @@ const io = new Server(server, {
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 정적 파일
+// 정적 파일 루트: packages/battle-server/public
 const PUBLIC_DIR = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC_DIR));
 
-// === 예쁜 URL 라우트 ===
-const serve = (file) => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
-app.get('/admin', serve('admin.html'));
-app.get('/play', serve('play.html'));
-app.get('/watch', serve('watch.html'));
+// === 예쁜 URL 라우트 (파일은 public/pages/*.html 에 존재) ===
+const serve = (file) => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'pages', file));
+// 호환을 위해 *.html 도 함께 지원
+app.get(['/admin', '/admin.html'], serve('admin.html'));
+app.get(['/play',  '/play.html' ], serve('play.html'));
+app.get(['/watch', '/watch.html'], serve('watch.html'));
 
 // 업로드 경로
 const UPLOAD_DIR = process.env.UPLOAD_PATH || path.join(__dirname, 'uploads');
