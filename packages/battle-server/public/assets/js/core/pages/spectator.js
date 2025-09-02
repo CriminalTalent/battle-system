@@ -1,4 +1,6 @@
-// PYXIS Spectator Page - 관전자 페이지 로직
+// packages/battle-server/public/assets/js/pages/spectator.js
+// PYXIS Spectator Page - 관전자 페이지 로직 (디자인/스타일 변경 없음)
+
 class PyxisSpectator {
   constructor() {
     this.currentBattleId = null;
@@ -15,18 +17,22 @@ class PyxisSpectator {
     this.setupSocketEvents();
     this.initFromUrl();
 
-    PyxisSocket.init();
+    // 소켓 연결
+    PyxisSocket.init().catch(err => {
+      console.error('[Spectator] Socket init failed:', err);
+      UI?.toast?.('서버 연결에 실패했습니다', 'danger');
+    });
   }
 
   // DOM 요소
   setupElements() {
-    this.authForm = UI.$('#authForm');
+    this.authForm   = UI.$('#authForm');
     this.authBattleId = UI.$('#authBattleId');
-    this.authToken = UI.$('#authToken');
-    this.authName = UI.$('#authName');
+    this.authToken  = UI.$('#authToken');
+    this.authName   = UI.$('#authName');
 
-    this.playerList = UI.$('#playerList');
-    this.battleLog = UI.$('#battleLog');
+    this.playerList   = UI.$('#playerList');
+    this.battleLog    = UI.$('#battleLog');
     this.chatMessages = UI.$('#chatMessages');
 
     this.cheerButtons = document.querySelectorAll('.cheer-btn');
@@ -34,27 +40,51 @@ class PyxisSpectator {
 
   // 이벤트
   setupEventListeners() {
-    this.authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.authenticate();
-    });
+    if (this.authForm) {
+      this.authForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.authenticate();
+      });
+    }
 
     this.cheerButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        this.sendCheer(btn.dataset.cheer);
-      });
+        const msg = btn.dataset.cheer || '';
+        this.sendCheer(msg);
+      }, { passive: true });
     });
   }
 
-  // 소켓 이벤트
+  // 소켓 이벤트 (통합 소켓 매니저의 표준 이벤트명 사용)
   setupSocketEvents() {
-    PyxisSocket.on('authSuccess', (data) => this.handleAuthSuccess(data));
-    PyxisSocket.on('authError', (m) => UI.error(`인증 실패: ${m}`));
+    // 인증 결과
+    PyxisSocket.on('auth:ok', (data) => this.handleAuthSuccess(data));
+    PyxisSocket.on('auth:error', ({ message }) => {
+      UI?.toast?.(`인증 실패: ${message || '알 수 없는 오류'}`, 'danger');
+    });
 
-    PyxisSocket.on('state:update', (s) => this.handleStateUpdate(s));
+    // 상태 스냅샷/업데이트
+    PyxisSocket.on('state', (state) => this.handleStateUpdate(state));
 
-    PyxisSocket.on('chat:new', (m) => this.handleChat(m));
-    PyxisSocket.on('log:new', (e) => this.addLogEntry(e.text, 'system'));
+    // 채팅/로그
+    PyxisSocket.on('chat', (payload) => this.handleChat(payload));
+    PyxisSocket.on('log',  (e) => e?.text && this.addLogEntry(e.text, 'system'));
+
+    // 배틀/페이즈(선택)
+    PyxisSocket.on('battle', ({ event, data }) => {
+      if (event === 'battle:started') {
+        UI?.toast?.('전투가 시작되었습니다', 'success');
+      } else if (event === 'battle:ended' || event === 'battle:end') {
+        UI?.toast?.('전투가 종료되었습니다', 'info');
+      }
+    });
+    PyxisSocket.on('phase', (phase) => {
+      // 필요시 로그에 남김
+      if (phase?.phase && phase?.round != null) {
+        const teamName = (phase.phase === 'A' || phase.phase === 'team1') ? '불사조 기사단' : '죽음을 먹는 자들';
+        this.addLogEntry(`▶︎ 턴 전환: ${teamName} (라운드 ${phase.round})`, 'system');
+      }
+    });
   }
 
   // URL 자동 인증
@@ -64,95 +94,141 @@ class PyxisSpectator {
     const t = url.searchParams.get('token');
     const n = url.searchParams.get('name');
     if (b && t && n) {
-      this.authBattleId.value = b;
-      this.authToken.value = t;
-      this.authName.value = decodeURIComponent(n);
-      setTimeout(() => this.authenticate(), 300);
+      if (this.authBattleId) this.authBattleId.value = b;
+      if (this.authToken)    this.authToken.value = t;
+      if (this.authName)     this.authName.value = decodeURIComponent(n);
+      // 소켓 연결 이후 살짝 지연 후 인증
+      setTimeout(() => this.authenticate(), 400);
     }
   }
 
-  // 인증
+  // 인증 (통합 매니저 시그니처 사용)
   async authenticate() {
-    const battleId = this.authBattleId.value.trim();
-    const token = this.authToken.value.trim();
-    const name = this.authName.value.trim();
+    const battleId = (this.authBattleId?.value || '').trim();
+    const token    = (this.authToken?.value || '').trim();
+    const name     = (this.authName?.value || '').trim();
+
     if (!battleId || !token || !name) {
-      UI.error('모든 항목을 입력하세요');
+      UI?.toast?.('전투 ID / 관전자 OTP / 이름을 모두 입력하세요', 'warning');
       return;
     }
+
     try {
-      await PyxisSocket.authenticate('spectator', {
-        battleId, otp: token, name, spectatorId: name
-      });
+      await PyxisSocket.authAsSpectator({ battleId, otp: token, spectatorName: name });
     } catch (e) {
-      UI.error(e.message);
+      console.error('[Spectator] auth error:', e);
+      UI?.toast?.(e.message || '인증 실패', 'danger');
     }
   }
 
+  // 인증 성공 처리
   handleAuthSuccess(data) {
     this.joined = true;
-    this.currentBattleId = data.battleId;
-    this.battleState = data.state;
-    UI.success('관전 입장 성공');
+    this.currentBattleId = data?.battleId || data?.state?.battleId || this.currentBattleId;
+    this.battleState     = data?.state || data?.battle || this.battleState;
+
+    UI?.toast?.('관전 입장 완료', 'success');
     this.render();
   }
 
+  // 상태 업데이트 처리
   handleStateUpdate(state) {
     this.battleState = state;
     this.render();
   }
 
-  // 응원 전송
+  // 응원 전송 (표준 sendChat 사용)
   sendCheer(text) {
-    if (!this.currentBattleId) return;
+    const msg = (text || '').trim();
+    if (!msg || !this.currentBattleId) return;
+
     PyxisSocket.sendChat({
-      battleId: this.currentBattleId,
-      text,
-      nickname: this.authName.value || '관전자',
-      role: 'spectator',
-      type: 'cheer',
-      scope: 'all'
+      text: msg,                 // 본문
+      channel: 'all',            // 관전자는 전체
+      sender: this.authName?.value || '관전자',
+      battleId: this.currentBattleId
     });
   }
 
-  // 채팅 출력
+  // 채팅 출력 (소켓 매니저가 표준화한 페이로드 사용)
   handleChat(m) {
+    // 표준화된 형태: { text, scope, from: { nickname }, ts }
+    const nickname = (m?.from?.nickname) || m?.nickname || '익명';
+    const text = m?.text || m?.message || '';
+    if (!text) return;
+
     const el = document.createElement('div');
-    el.className = `chat-message ${m.type || ''}`;
-    el.innerHTML = `<span class="chat-time">${UI.formatTime(Date.now())}</span>
-      <span class="chat-content">${m.type === 'cheer' ? '[응원] ' : ''}${m.nickname}: ${m.text}</span>`;
-    this.chatMessages.appendChild(el);
-    UI.scrollToBottom(this.chatMessages);
+    el.className = `chat-message ${m?.type || (m?.scope === 'team' ? 'team' : '')}`;
+
+    const timeStr = this._formatTime(m?.ts || Date.now());
+    el.innerHTML = `
+      <span class="chat-time">${timeStr}</span>
+      <span class="chat-content">${nickname}: ${text}</span>
+    `;
+    this.chatMessages?.appendChild(el);
+    this._scrollToBottom(this.chatMessages);
   }
 
   // 로그 출력
   addLogEntry(content, type = 'info') {
+    if (!content || !this.battleLog) return;
     const el = document.createElement('div');
     el.className = `log-entry ${type}`;
-    el.innerHTML = `<span class="log-time">${UI.formatTime(Date.now())}</span>
-      <span class="log-content">${content}</span>`;
+    el.innerHTML = `
+      <span class="log-time">${this._formatTime(Date.now())}</span>
+      <span class="log-content">${content}</span>
+    `;
     this.battleLog.appendChild(el);
-    UI.scrollToBottom(this.battleLog);
+    this._scrollToBottom(this.battleLog);
   }
 
   // 렌더링
   render() {
-    if (!this.battleState) return;
+    if (!this.battleState || !this.playerList) return;
     this.playerList.innerHTML = '';
 
-    Object.values(this.battleState.players || {}).forEach((p) => {
+    const players = Object.values(this.battleState.players || {});
+    players.forEach((p) => {
       const d = document.createElement('div');
       d.className = `spectator-player ${p.alive === false ? 'defeated' : ''}`;
       d.innerHTML = `
-        <div class="player-name">${p.name}</div>
-        <div class="player-team">${UI.getTeamName(p.team)}</div>
-        <div class="player-hp">HP: ${p.hp}/${p.maxHp || 100}</div>`;
+        <div class="player-name">${p.name || '-'}</div>
+        <div class="player-team">${this._teamName(p.team)}</div>
+        <div class="player-hp">HP: ${p.hp}/${p.maxHp || 100}</div>
+      `;
       this.playerList.appendChild(d);
     });
   }
 
-  cleanup() { PyxisSocket.cleanup(); }
+  // 유틸
+  _formatTime(ts) {
+    // UI.formatTime 이 있으면 사용
+    if (typeof UI?.formatTime === 'function') return UI.formatTime(ts);
+    try {
+      return new Date(ts).toLocaleTimeString('ko-KR', { hour12: false });
+    } catch {
+      return '';
+    }
+  }
+  _scrollToBottom(el) {
+    if (!el) return;
+    try { el.scrollTop = el.scrollHeight; } catch (_) {}
+  }
+  _teamName(code) {
+    if (typeof UI?.getTeamName === 'function') return UI.getTeamName(code);
+    const a = (code === 'A' || code === 'team1');
+    return a ? '불사조 기사단' : '죽음을 먹는 자들';
+    }
+
+  // 정리
+  cleanup() {
+    try { PyxisSocket.destroy(); } catch (_) {}
+  }
 }
 
-document.addEventListener('DOMContentLoaded', () => { window.spectator = new PyxisSpectator(); });
-window.addEventListener('beforeunload', () => { if (window.spectator) window.spectator.cleanup(); });
+document.addEventListener('DOMContentLoaded', () => {
+  window.spectator = new PyxisSpectator();
+});
+window.addEventListener('beforeunload', () => {
+  if (window.spectator) window.spectator.cleanup();
+});
