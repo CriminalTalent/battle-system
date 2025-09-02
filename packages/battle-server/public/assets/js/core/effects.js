@@ -9,15 +9,18 @@
       this.battleEndsAt = null; // Date.now() + 1h
       this.onTurnExpire = null;
       this.boundRippleTargets = new WeakSet();
-      this.battleChip = null; // 추가: 전역 배틀 타이머 chip 참조 보관
+      this.battleChip = null; // 전역 배틀 타이머 chip 참조 보관
     }
 
     mount(){
       if (this.layer) return;
+      // 이펙트 전용 레이어(포인터 투명 + 화면 최상단 고정)
       this.layer = document.createElement('div');
       this.layer.id = 'fx-layer';
+      this.layer.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
       document.body.appendChild(this.layer);
-      // 전역 배틀 타이머 UI
+
+      // 전역 배틀 타이머 UI (스타일은 기존 CSS에 위임)
       const chip = document.createElement('div');
       chip.id = 'fx-battle-timer';
       chip.innerHTML = `<div class="ring"></div><div class="txt">--:--:--</div>`;
@@ -31,7 +34,7 @@
       return { x: r.left + r.width/2, y: r.top + r.height/2 };
     }
     _place(el, x, y){
-      el.style.position = 'absolute'; // 추가: 절대좌표로 배치
+      el.style.position = 'absolute'; // 절대좌표로 배치 (레이어가 fixed)
       el.style.left = `${x}px`;
       el.style.top  = `${y}px`;
       this.layer.appendChild(el);
@@ -55,7 +58,8 @@
       root.querySelectorAll(sel.join(',')).forEach(btn=>{
         if (this.boundRippleTargets.has(btn)) return;
         this.boundRippleTargets.add(btn);
-        btn.style.position = getComputedStyle(btn).position === 'static' ? 'relative' : getComputedStyle(btn).position;
+        const cs = getComputedStyle(btn);
+        btn.style.position = cs.position === 'static' ? 'relative' : cs.position;
         btn.addEventListener('pointerdown', (e)=>{
           const rip = document.createElement('span');
           rip.className = 'fx-ripple';
