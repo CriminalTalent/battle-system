@@ -17,14 +17,16 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
 export function on(el, evt, handler, opts) {
+  if (!el) return () => {};
   el.addEventListener(evt, handler, opts);
   return () => el.removeEventListener(evt, handler, opts);
 }
 
 // 이벤트 위임
 export function delegate(root, evt, selector, handler) {
+  if (!root) return () => {};
   return on(root, evt, (e) => {
-    const target = e.target.closest(selector);
+    const target = e.target && e.target.closest ? e.target.closest(selector) : null;
     if (target && root.contains(target)) handler(e, target);
   });
 }
@@ -388,3 +390,14 @@ const UiHelpers = {
 
 export default UiHelpers;
 
+/* =========================
+ * 전역 노출 (기존 코드 호환용)
+ * - admin.js / player.js / spectator.js 에서 window.UI 사용
+ * ========================= */
+try {
+  if (typeof window !== 'undefined') {
+    // ES Module 방식과 전역 호환 둘 다 지원
+    window.UiHelpers = UiHelpers;
+    window.UI = UiHelpers;
+  }
+} catch (_) {}
