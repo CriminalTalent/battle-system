@@ -238,7 +238,7 @@ class AdminInterface {
     }
   }
 
-  // 플레이어 OTP 생성 (중복 제거 + 예쁜 라벨)
+  // 플레이어 OTP 생성 (표준 URL로 수정)
   async generatePlayerOTPs() {
     if (!this.currentBattleId || this.playerList.length===0) return this.showToast('플레이어를 먼저 추가하세요', 'error');
     try {
@@ -251,7 +251,8 @@ class AdminInterface {
           body: JSON.stringify({ role:'player', battleId:this.currentBattleId, playerId:p.id, name:p.name })
         }).then(r=>r.json());
         if (!r.ok) throw new Error(r.error||'OTP_FAILED');
-        const url = `${location.origin}/play?battleId=${encodeURIComponent(this.currentBattleId)}&otp=${encodeURIComponent(r.otp)}&name=${encodeURIComponent(p.name)}&role=player`;
+        // ▼▼▼ 표준 파라미터: battle / player / otp
+        const url = `${location.origin}/play?battle=${encodeURIComponent(this.currentBattleId)}&player=${encodeURIComponent(p.id)}&otp=${encodeURIComponent(r.otp)}`;
         items.push({ name:p.name, team:p.team, otp:r.otp, url });
       }
       this.renderPlayerOtpList(items);
@@ -264,7 +265,7 @@ class AdminInterface {
     }
   }
 
-  // 관전자 OTP 생성
+  // 관전자 OTP 생성 (표준 URL로 수정)
   async generateSpectatorOTP() {
     if (!this.currentBattleId) return this.showToast('전투를 먼저 생성하세요','error');
     try {
@@ -275,7 +276,8 @@ class AdminInterface {
       }).then(r=>r.json());
       if (!r.ok) throw new Error(r.error||'OTP_FAILED');
 
-      const url = `${location.origin}/watch?battleId=${encodeURIComponent(this.currentBattleId)}&otp=${encodeURIComponent(r.otp)}`;
+      // ▼▼▼ 라우트/파라미터 정규화: /spectator?battle=...&token=...
+      const url = `${location.origin}/spectator?battle=${encodeURIComponent(this.currentBattleId)}&token=${encodeURIComponent(r.otp)}`;
       this.spectatorOtpDisplay.innerHTML = `
         <div class="otp-item">
           <span class="team-badge">관전자</span>
