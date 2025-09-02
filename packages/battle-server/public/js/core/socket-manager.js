@@ -1,24 +1,23 @@
 /* packages/battle-server/public/js/core/socket-manager.js
  * ─────────────────────────────────────────────────────────────
  * PYXIS Socket Manager (브라우저 전용, UMD 스타일)
- * - 동적 로더로 /socket.io/socket.io.js 주입
- * - 안정적 재연결(backoff), 이벤트 큐잉, 상태 추적
+ * - /socket.io/socket.io.js 동적 로딩
+ * - 안정적 재연결, 이벤트 큐잉, 상태 추적
  * - 역할별 인증(admin / player / spectator) 헬퍼
- * - 서버 브로드캐스트 이벤트 다중 호환명 수신
- * - 선택적 브라우저 알림 훅(onNotify) 제공(디자인 미변경)
- * - 전역 네임스페이스: window.PyxisSocket
+ * - 신/구 서버 이벤트명 호환 수신
+ * - sendChat / sendAction / sendPlayerAction / sendAdminCommand / apiCall 포함
+ * - 전역: window.PyxisSocket
  * ─────────────────────────────────────────────────────────────
  */
-
 (function (global) {
   'use strict';
 
   // ───────────────────────────────────────────────────────────
-  // 유틸
+  // 기본 옵션 / 유틸
   // ───────────────────────────────────────────────────────────
   const DEFAULTS = {
     url: null,                               // 기본: 현재 origin
-    path: '/socket.io/',                     // 서버 소켓 경로
+    path: '/socket.io/',
     transports: ['websocket', 'polling'],
     timeout: 10000,
     reconnection: true,
@@ -36,7 +35,15 @@
     // 페이즈/턴/배틀
     phaseChange: ['phase:change'],
     turnUpdate: ['turn:update'],
-    battleStatus: ['battle:status', 'battle:created', 'battle:started', 'battle:paused', 'battle:resumed', 'battle:ended', 'battle:end'],
+    battleStatus: [
+      'battle:status',
+      'battle:created',
+      'battle:started',
+      'battle:paused',
+      'battle:resumed',
+      'battle:ended',
+      'battle:end'
+    ],
     // 타이머/공지/로그
     timerSync: ['timer:sync'],
     notice: ['notice:update', 'noticeUpdate'],
@@ -44,8 +51,8 @@
     // 액션 결과(신/구)
     actionOk: ['action:success', 'actionSuccess'],
     actionErr: ['action:error', 'actionError'],
-    // 관전자 응원
-    cheer: ['spectator:cheer'],
+    // 관전자 응원 (양쪽 다 수신)
+    cheer: ['spectator:cheer', 'spectator:cheer:sent'],
     // 에러/시스템
     error: ['error'],
     system: ['system:message'],
@@ -65,10 +72,9 @@
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
-      // 이미 로드된 경우 중복 방지
-      if ([...document.scripts].some(s => s.src.endsWith('/socket.io/socket.io.js'))) {
-        return resolve();
-      }
+      // 중복 로딩 방지
+      const already = [...document.scripts].some(s => s.src.includes('/socket.io/socket.io.js'));
+      if (already) return resolve();
       const el = document.createElement('script');
       el.src = src;
       el.async = true;
@@ -78,59 +84,51 @@
     });
   }
 
-  function pick(list, handler) {
-    list.forEach(evt => handler(evt));
-  }
-
-  function now() { return Date.now(); }
+  function pick(list, handler) { list.forEach(evt => handler(evt)); }
+  const now = () => Date.now();
 
   // ───────────────────────────────────────────────────────────
   // SocketManager
   // ───────────────────────────────────────────────────────────
   class SocketManager {
     constructor() {
-      this.io = null;          // window.io (socket.io client factory)
-      this.socket = null;      // active socket instance
+      this.io = null;
+      this.socket = null;
       this.opts = { ...DEFAULTS };
       this.connected = false;
       this.connecting = false;
       this.lastError = null;
-      this._queue = [];        // emit 큐 (연결 전 송신 보관)
-      this._listeners = new Map(); // {evt -> Set(handler)}
-      this._notify = null;     // 알림 훅 (title, body) => void
-      this._roleCtx = null;    // { role, battleId, playerId?, spectatorName?, otp? }
-      this._latency = null;    // ping round-trip(ms)
+
+      this._queue = [];                 // emit 큐
+      this._listeners = new Map();      // {evt -> Set(handler)}
+      this._notify = null;              // (title, body) => void
+      this._roleCtx = null;             // { role, battleId, playerId?, spectatorName?, otp? }
+      this._latency = null;
+
       this._onVisibilityChange = this._onVisibilityChange.bind(this);
     }
 
-    // 알림 훅 등록(선택)
-    onNotify(fn) {
-      this._notify = typeof fn === 'function' ? fn : null;
-    }
+    // 선택적 알림 훅
+    onNotify(fn) { this._notify = (typeof fn === 'function') ? fn : null; }
 
-    // 초기화 및 연결 시작
+    // 초기화 + 연결
     async init(options = {}) {
-      // 옵션 병합
       this.opts = Object.assign({}, DEFAULTS, options);
-      if (!this.opts.url) {
-        this.opts.url = window.location.origin;
-      }
+      if (!this.opts.url) this.opts.url = window.location.origin;
 
-      // socket.io client 로더
+      // socket.io client 로드
       if (!('io' in global)) {
-        await loadScript((this.opts.url.replace(/\/+$/, '')) + '/socket.io/socket.io.js');
+        await loadScript(this.opts.url.replace(/\/+$/, '') + '/socket.io/socket.io.js');
       }
       this.io = global.io;
 
-      // 가시성 이벤트로 재연결 트리거
       document.addEventListener('visibilitychange', this._onVisibilityChange);
 
-      // 최초 연결
       await this._connect();
       return this;
     }
 
-    // 역할별 인증 헬퍼 (admin/player/spectator)
+    // ── 인증 헬퍼 ──
     async authAsAdmin({ battleId, otp }) {
       if (!battleId || !otp) throw new Error('battleId/otp required');
       this._roleCtx = { role: 'admin', battleId, otp };
@@ -152,7 +150,7 @@
       this.socket.emit('spectatorAuth', { battleId, otp, spectatorName: spectatorName || '관전자' });
     }
 
-    // 간단 조인(디버그 대시보드용)
+    // 구버전 대시보드용
     async joinBattle({ battleId, role }) {
       if (!battleId || !role) throw new Error('battleId/role required');
       this._roleCtx = { role, battleId };
@@ -160,41 +158,104 @@
       this.socket.emit('join-battle', { battleId, role });
     }
 
-    // 채팅 송신(자동 채널 prefix 처리: /t 팀채팅)
+    // ── 채팅 ──
     async sendChat({ text, channel = 'all', teamKey = null, sender = null, battleId = null }) {
       if (!text) return;
       await this._ensureConnected();
+
       const useTeamPrefix = channel === 'team' && !/^\s*\/t\b/i.test(text);
       const message = useTeamPrefix ? `/t ${text}` : text;
-
       const finalBattleId = battleId || this._roleCtx?.battleId;
       if (!finalBattleId) return;
 
-      // 서버가 신/구 이벤트를 모두 수신하도록 대표 이벤트 하나만 보낸다(서버가 양방향 변환)
-      this.socket.emit('send-chat', {
+      // 우선 최신 이벤트
+      this.socket.emit('chat:send', {
         battleId: finalBattleId,
         message,
         teamKey: teamKey || undefined,
         sender: sender || undefined,
+      }, (ack) => {
+        // 실패하면 중간/레거시 이벤트들도 시도
+        if (!ack || ack.ok === false) {
+          this.socket.emit('send-chat', {
+            battleId: finalBattleId,
+            message,
+            teamKey: teamKey || undefined,
+            sender: sender || undefined,
+          });
+        }
       });
     }
 
-    // 임의 emit(연결 전이면 큐잉)
-    emit(event, payload) {
-      if (this.socket && this.connected) {
-        this.socket.emit(event, payload);
-      } else {
-        this._queue.push({ event, payload });
+    // ── 액션 ──
+    // 통합 액션 (player.js에서 사용)
+    async sendAction(actionData, battleId = null, playerId = null) {
+      await this._ensureConnected();
+      const payload = Object.assign(
+        {
+          battleId: battleId || this._roleCtx?.battleId,
+          playerId: playerId || this._roleCtx?.playerId,
+        },
+        actionData || {}
+      );
+      if (!payload.battleId || !payload.playerId) throw new Error('battleId/playerId required');
+
+      return new Promise((resolve) => {
+        this.socket.emit('player:action', payload, (res) => {
+          if (res && res.ok) return resolve(res);
+          // 레거시 이벤트 폴백
+          this.socket.emit('playerAction', payload);
+          resolve({ ok: true });
+        });
+      });
+    }
+
+    // 구 시그니처 유지 (admin.js 등에서 사용될 수 있음)
+    async sendPlayerAction(action, targetId = null, battleId = null, playerId = null) {
+      return this.sendAction({ type: action, action, targetPid: targetId, targetId }, battleId, playerId);
+    }
+
+    // ── 관리자 명령 ──
+    async sendAdminCommand(command, data = {}) {
+      await this._ensureConnected();
+      const battleId = this._roleCtx?.battleId || data.battleId;
+      if (!battleId) throw new Error('battleId required');
+
+      return new Promise((resolve, reject) => {
+        this.socket.emit(`admin:${command}`, { battleId, ...data }, (res) => {
+          if (res && res.ok !== false) resolve(res || { ok: true });
+          else reject(new Error(res?.message || 'Command failed'));
+        });
+      });
+    }
+
+    // ── REST 래퍼 ──
+    async apiCall(endpoint, options = {}) {
+      try {
+        const res = await fetch(endpoint, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options
+        });
+        const data = await res.json().catch(() => ({}));
+        return data;
+      } catch (err) {
+        console.error('[SocketManager] API call failed:', err);
+        return { ok: false, message: 'API 호출 실패' };
       }
     }
 
-    // 이벤트 구독
+    // ── 범용 emit(연결 전 큐잉) ──
+    emit(event, payload) {
+      if (this.socket && this.connected) this.socket.emit(event, payload);
+      else this._queue.push({ event, payload });
+    }
+
+    // ── 이벤트 구독/해제 ──
     on(evt, handler) {
       if (!this._listeners.has(evt)) this._listeners.set(evt, new Set());
       this._listeners.get(evt).add(handler);
       return () => this.off(evt, handler);
     }
-
     off(evt, handler) {
       const set = this._listeners.get(evt);
       if (!set) return;
@@ -202,17 +263,23 @@
       if (set.size === 0) this._listeners.delete(evt);
     }
 
-    // 현재 상태 리드
+    // ── 상태 조회 ──
     isConnected() { return this.connected; }
     isConnecting() { return this.connecting; }
     getLastError() { return this.lastError; }
     getLatencyMs() { return this._latency; }
     getRoleContext() { return Object.assign({}, this._roleCtx || {}); }
 
-    // 정리(페이지 언마운트 시)
+    // ── 정리 ──
     destroy() {
       try { document.removeEventListener('visibilitychange', this._onVisibilityChange); } catch (_) {}
-      try { if (this.socket) { this.socket.close(); this.socket = null; } } catch (_) {}
+      try {
+        if (this.socket) {
+          this.socket.removeAllListeners?.();
+          this.socket.close();
+          this.socket = null;
+        }
+      } catch (_) {}
       this._listeners.clear();
       this._queue.length = 0;
       this.connected = false;
@@ -221,11 +288,10 @@
     }
 
     // ───────────────────────────────────────────
-    // 내부: 연결/재연결/리스너 바인딩
+    // 내부: 연결/재연결/바인딩
     // ───────────────────────────────────────────
     async _ensureConnected() {
-      if (this.connected) return;
-      if (this.connecting) return;
+      if (this.connected || this.connecting) return;
       await this._connect();
     }
 
@@ -237,11 +303,11 @@
 
       // 기존 소켓 정리
       if (this.socket) {
-        try { this.socket.removeAllListeners(); } catch (_) {}
+        try { this.socket.removeAllListeners?.(); } catch (_) {}
         try { this.socket.close(); } catch (_) {}
       }
 
-      // 소켓 생성
+      // 새 소켓
       this.socket = this.io(this.opts.url, {
         path: this.opts.path,
         transports: this.opts.transports,
@@ -253,15 +319,13 @@
         withCredentials: this.opts.withCredentials,
       });
 
-      // 기본 리스너
       this._bindSocketCoreEvents();
       this._bindBroadcastEvents();
 
-      // 연결 완료 대기
+      // 연결 완료 대기(최대 opts.timeout)
       await new Promise((resolve) => {
         const done = once(resolve);
         this.socket.once('connect', done);
-        // 너무 오래 걸리면 resolve (재시도는 소켓이 수행)
         setTimeout(done, Math.max(2000, this.opts.timeout));
       });
     }
@@ -274,13 +338,13 @@
         this.connecting = false;
         this.lastError = null;
 
-        // 대기 큐 flush
+        // 큐 flush
         if (this._queue.length) {
           const copies = this._queue.splice(0, this._queue.length);
           copies.forEach(({ event, payload }) => s.emit(event, payload));
         }
 
-        // 가벼운 ping(왕복측정)
+        // 가벼운 핑(왕복 측정)
         const t0 = now();
         try {
           s.timeout(3000).emit('state:pull', null, () => {
@@ -290,7 +354,7 @@
 
         this._fire('socket:connect', { id: s.id });
 
-        // 재연결 시 역할 컨텍스트 자동 인증
+        // 재연결 시 자동 재인증
         if (this._roleCtx) {
           const { role, battleId, playerId, spectatorName, otp } = this._roleCtx;
           if (role === 'admin' && battleId && otp) {
@@ -318,51 +382,48 @@
         this._fire('socket:disconnect', { reason });
       });
 
-      // 인증 결과 표준화 이벤트
+      // 인증 결과 표준화
       pick(EVENT_ALIASES.authOk, (evt) => {
         s.on(evt, (payload) => {
           this._fire('auth:ok', payload);
-          // 알림 훅(선택)
-          if (this._notify) {
-            this._notify('연결 완료', '서버 인증이 성공했습니다.');
-          }
+          if (this._notify) this._notify('연결 완료', '서버 인증이 성공했습니다.');
         });
       });
-
       pick(EVENT_ALIASES.authErr, (evt) => {
-        s.on(evt, (message) => {
-          this._fire('auth:error', { message });
-        });
+        s.on(evt, (message) => this._fire('auth:error', { message }));
       });
     }
 
     _bindBroadcastEvents() {
       const s = this.socket;
 
-      // 상태 스냅샷·업데이트
+      // 상태
       pick(EVENT_ALIASES.state, (evt) => {
-        s.on(evt, (state) => {
-          this._fire('state', state);
-        });
+        s.on(evt, (state) => this._fire('state', state));
       });
 
-      // 채팅
+      // 채팅 (레거시 페이로드 보정)
       pick(EVENT_ALIASES.chat, (evt) => {
         s.on(evt, (msg) => {
-          // 레거시 'chat-message' 형식 보정
-          const payload = msg && msg.message && !msg.text
-            ? { name: msg.name, message: msg.message, teamOnly: msg.teamOnly, teamKey: msg.teamKey, timestamp: msg.timestamp }
-            : msg;
+          let payload = msg;
+          if (msg && msg.message && !msg.text) {
+            payload = {
+              text: msg.message,
+              scope: msg.teamOnly ? 'team' : (msg.channel || 'all'),
+              from: { nickname: msg.name || msg.sender || '익명' },
+              ts: msg.timestamp || Date.now()
+            };
+          }
           this._fire('chat', payload);
         });
       });
 
-      // 페이즈/턴/배틀 상태
+      // 페이즈/턴/배틀
       pick(EVENT_ALIASES.phaseChange, (evt) => {
         s.on(evt, (data) => {
           this._fire('phase', data);
           if (this._notify && data?.phase) {
-            const phaseName = data.phase === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들';
+            const phaseName = data.phase === 'team1' || data.phase === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
             this._notify('턴 페이즈 변경', `${phaseName}의 차례입니다.`);
           }
         });
@@ -420,24 +481,18 @@
     _fire(evt, payload) {
       const set = this._listeners.get(evt);
       if (!set || set.size === 0) return;
-      // 핸들러 실행
-      set.forEach(fn => {
-        try { fn(payload); } catch (_) {}
-      });
+      set.forEach(fn => { try { fn(payload); } catch (_) {} });
     }
 
     _onVisibilityChange() {
       if (document.visibilityState === 'visible' && !this.connected && !this.connecting) {
-        // 포그라운드 복귀 시 재연결 시도
         this._connect().catch(() => {});
       }
     }
   }
 
-  // 싱글톤 노출
+  // ── 싱글톤/전역 노출 ──
   const instance = new SocketManager();
-
-  // 브라우저 전역에 공개
   global.PyxisSocket = instance;
 
   // CommonJS/AMD 호환(선택)
@@ -445,4 +500,3 @@
     module.exports = instance;
   }
 })(window);
-
