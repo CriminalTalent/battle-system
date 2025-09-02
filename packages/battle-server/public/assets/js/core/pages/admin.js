@@ -6,7 +6,7 @@
    변경사항:
    - 키보드 단축키 제거(Ctrl+Enter, Esc)
    - 플레이어 스탯 0~5로 클램프
-   - 링크 쿼리키 통일: play/spectator/admin 모두 battle, player, otp 사용
+   - 링크 쿼리키 통일: play/spectator/admin 모두 battle, player, otp/token 사용
    ═══════════════════════════════════════════════════════════════════════ */
 
 class PyxisAdmin {
@@ -132,7 +132,7 @@ class PyxisAdmin {
     const battleInfoCard = document.getElementById('battleInfoCard');
     const linksSection = document.getElementById('linksSection');
     const rosterCard = document.getElementById('rosterCard');
-// 전투 정보 표시
+    // 전투 정보 표시
     document.getElementById('battleIdDisplay').textContent = this.currentBattleId;
     document.getElementById('adminOtpDisplay').textContent = this.adminOtp;
     document.getElementById('spectatorOtpDisplay').textContent = this.spectatorOtp;
@@ -340,7 +340,7 @@ class PyxisAdmin {
       });
 
       // 관전자 / 관리자
-      const spectatorUrl = `${baseUrl}/spectator?battle=${this.currentBattleId}&otp=${this.spectatorOtp}`;
+      const spectatorUrl = `${baseUrl}/spectator?battle=${this.currentBattleId}&token=${this.spectatorOtp}`;
       const adminUrl     = `${baseUrl}/admin?battle=${this.currentBattleId}&otp=${this.adminOtp}`;
       this.addLink('관전자', spectatorUrl);
       this.addLink('관리자', adminUrl);
@@ -429,159 +429,4 @@ class PyxisAdmin {
 
       this.addLog('system', `전투가 시작되었습니다!`);
       this.addLog('system', `불사조 기사단 민첩성 합계: ${teamAAgi}, 죽음을 먹는 자들 민첩성 합계: ${teamBAgi}`);
-      this.addLog('system', `${firstTeam}이 선공합니다!`);
-
-      const startBattleBtn = document.getElementById('startBattleBtn');
-      const endBattleBtn = document.getElementById('endBattleBtn');
-      if (startBattleBtn) { startBattleBtn.disabled = true; startBattleBtn.textContent = '진행 중'; }
-      if (endBattleBtn) { endBattleBtn.disabled = false; }
-
-    } catch (error) {
-      console.error('전투 시작 실패:', error);
-      this.addLog('error', '전투 시작에 실패했습니다: ' + error.message);
-    }
-  }
-
-  async endBattle() {
-    if (!this.isConnected) {
-      this.addLog('error', '먼저 관리자로 로그인해주세요.');
-      return;
-    }
-
-    try {
-      this.addLog('system', '전투를 종료하는 중...');
-      await this.delay(600);
-
-      this.battleState = 'ended';
-      this.addLog('system', '관리자에 의해 전투가 종료되었습니다.');
-
-      const startBattleBtn = document.getElementById('startBattleBtn');
-      const endBattleBtn = document.getElementById('endBattleBtn');
-      if (startBattleBtn) { startBattleBtn.disabled = false; startBattleBtn.textContent = '전투 시작'; }
-      if (endBattleBtn) { endBattleBtn.disabled = true; endBattleBtn.textContent = '종료됨'; }
-
-    } catch (error) {
-      console.error('전투 종료 실패:', error);
-      this.addLog('error', '전투 종료에 실패했습니다: ' + error.message);
-    }
-  }
-
-  sendChat() {
-    const chatInput = document.getElementById('chatInput');
-    const chatChannel = document.getElementById('chatChannel');
-    if (!chatInput || !chatChannel) return;
-
-    const message = chatInput.value.trim();
-    if (!message) return;
-
-    const channel = chatChannel.value;
-    this.addChatMessage('관리자', message, channel);
-    chatInput.value = '';
-  }
-
-  addChatMessage(sender, message, channel = 'all') {
-    const chatMessages = document.getElementById('chatMessages');
-    if (!chatMessages) return;
-
-    const messageElement = document.createElement('div');
-    messageElement.className = 'log-entry';
-    messageElement.innerHTML = `
-      <strong>[${channel.toUpperCase()}] ${sender}:</strong> ${this.escapeHtml(message)}
-      <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">${new Date().toLocaleTimeString()}</span>
-    `;
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-  }
-
-  addLog(type, message, data = {}) {
-    const battleLog = document.getElementById('battleLog');
-    if (!battleLog) return;
-
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry ${type}`;
-    logEntry.innerHTML = `
-      ${this.escapeHtml(message)}
-      <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">${new Date().toLocaleTimeString()}</span>
-    `;
-    battleLog.appendChild(logEntry);
-    battleLog.scrollTop = battleLog.scrollHeight;
-
-    console.log(`[${type.toUpperCase()}] ${message}`, data);
-  }
-
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // 유틸리티
-  generateBattleId() { return 'B' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6); }
-  generateOtp() { return Math.random().toString(36).substr(2, 8).toUpperCase(); }
-  generateToken() { return Math.random().toString(36).substr(2, 16) + Date.now().toString(36); }
-  generatePlayerId() { return 'P' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6); }
-  delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-}
-
-// 전역 초기화
-const admin = new PyxisAdmin();
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[PYXIS] Admin page loaded successfully');
-});
-
-// 연결 상태 모니터링(간단)
-setInterval(() => {
-  const statusDot = document.querySelector('.status-dot');
-  const statusText = document.querySelector('.status-text');
-
-  if (admin.isConnected) {
-    if (statusDot) statusDot.style.background = '#22C55E';
-    if (statusText) statusText.textContent = '관리자 연결됨';
-  } else if (admin.currentBattleId) {
-    if (statusDot) statusDot.style.background = '#F39C12';
-    if (statusText) statusText.textContent = '전투 생성됨';
-  } else {
-    if (statusDot) statusDot.style.background = '#3498DB';
-    if (statusText) statusText.textContent = '시스템 준비됨';
-  }
-}, 1000);
-
-// 페이지 언로드 시 정리
-window.addEventListener('beforeunload', () => {
-  if (admin.socket && admin.socket.connected) admin.socket.disconnect();
-});
-
-// 개발자 도구 (개발 환경에서만) — 스탯 0~5 범위 준수
-if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-  window.PYXIS = {
-    admin: admin,
-    generateTestPlayers: () => {
-      const clamp5 = (v) => Math.max(0, Math.min(5, v));
-      const T = (name, team, a, d, g, l) => ({
-        name, team,
-        stats: { attack: clamp5(a), defense: clamp5(d), agility: clamp5(g), luck: clamp5(l) }
-      });
-      const testPlayers = [
-        T('해리 포터', 'A', 5, 4, 5, 5),
-        T('헤르미온느', 'A', 4, 5, 4, 5),
-        T('볼드모트',   'B', 5, 4, 5, 3),
-        T('벨라트릭스','B', 5, 3, 5, 4),
-      ];
-
-      testPlayers.forEach(player => {
-        document.getElementById('playerName').value = player.name;
-        document.getElementById('playerTeam').value = player.team;
-        document.getElementById('statAtk').value = player.stats.attack;
-        document.getElementById('statDef').value = player.stats.defense;
-        document.getElementById('statAgi').value = player.stats.agility;
-        document.getElementById('statLck').value = player.stats.luck;
-        admin.addPlayer();
-      });
-
-      console.log('테스트 플레이어 4명이 추가되었습니다.');
-    }
-  };
-  console.log('개발자 모드: window.PYXIS 객체를 사용할 수 있습니다.');
-  console.log('- PYXIS.generateTestPlayers() : 테스트 플레이어 자동 생성');
-}
+      this.addLog
