@@ -1,221 +1,54 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS 플레이어</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="/socket.io/socket.io.js"></script>
-  <link href="/assets/pyxis-theme.css" rel="stylesheet" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>플레이어 - PYXIS 전투</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+  <script defer src="/assets/js/play.js"></script>
 </head>
 <body>
-  <main class="container">
-    <section id="auth" class="panel">
-      <h2>플레이어 접속</h2>
-      <div>
-        <label>전투 ID</label>
-        <input id="battleId" type="text" placeholder="예: b_xxxxxx" />
-      </div>
-      <div>
-        <label>플레이어 OTP</label>
-        <input id="otp" type="text" placeholder="관리자 발급 OTP" />
-      </div>
-      <div>
-        <label>표시 이름</label>
-        <input id="displayName" type="text" placeholder="선택 사항" />
-      </div>
-      <button id="btnJoin">접속</button>
-      <div id="authMsg" class="hint"></div>
+  <header class="pyxis-header">PYXIS 플레이어 전투</header>
+  <main class="play-container">
+    <section class="team-status">
+      <h2>팀원 정보</h2>
+      <div id="team-list"></div>
     </section>
 
-    <section id="status" class="panel" style="display:none;">
+    <section class="player-panel">
       <h2>내 정보</h2>
-      <div>이름: <span id="meName">-</span></div>
-      <div>팀: <span id="meTeam">-</span></div>
-      <div>HP: <span id="meHP">-</span></div>
-      <div id="avatarBox">
-        <form id="avatarForm">
-          <input type="file" id="avatarFile" name="avatar" accept="image/*" />
-          <button type="submit">아바타 업로드</button>
-        </form>
-        <div id="avatarMsg" class="hint"></div>
+      <div class="avatar-block">
+        <img id="player-avatar" src="" alt="아바타" />
+      </div>
+      <div class="stats-block">
+        <div id="player-stats"></div>
+        <div id="player-hp"></div>
+      </div>
+      <div class="turn-block">
+        <p id="turn-info">대기 중...</p>
+        <p id="turn-timer">남은 시간: <span id="turn-timer-value">--</span></p>
       </div>
     </section>
 
-    <section id="roster" class="panel" style="display:none;">
-      <h2>플레이어</h2>
-      <ul id="playerList"></ul>
+    <section class="action-panel">
+      <h2>행동 선택</h2>
+      <div class="action-buttons">
+        <button id="action-attack">공격</button>
+        <button id="action-defend">방어</button>
+        <button id="action-evade">회피</button>
+        <button id="action-item">아이템</button>
+        <button id="action-pass">패스</button>
+      </div>
+      <div id="target-selector" style="display:none;"></div>
+      <div id="item-selector" style="display:none;"></div>
     </section>
 
-    <section id="logs" class="panel" style="display:none;">
-      <h2>실시간 로그</h2>
-      <div id="logBox" class="logbox"></div>
-    </section>
-
-    <section id="chat" class="panel" style="display:none;">
-      <h2>채팅</h2>
-      <input id="chatInput" type="text" placeholder="메시지" />
-      <button id="btnChat">보내기</button>
+    <section class="chat-log">
+      <h2>채팅 & 로그</h2>
+      <div id="battle-log"></div>
+      <input type="text" id="player-chat-input" placeholder="채팅 입력..." />
+      <button id="send-player-chat">전송</button>
     </section>
   </main>
-
-  <script>
-  (function(){
-    'use strict';
-    const $ = id => document.getElementById(id);
-
-    const battleIdEl = $('battleId');
-    const otpEl = $('otp');
-    const nameEl = $('displayName');
-    const btnJoin = $('btnJoin');
-    const authMsg = $('authMsg');
-
-    const meName = $('meName');
-    const meTeam = $('meTeam');
-    const meHP = $('meHP');
-
-    const rosterSec = $('roster');
-    const playerList = $('playerList');
-    const logsSec = $('logs');
-    const logBox = $('logBox');
-    const statusSec = $('status');
-
-    const chatSec = $('chat');
-    const chatInput = $('chatInput');
-    const btnChat = $('btnChat');
-
-    const avatarForm = $('avatarForm');
-    const avatarFile = $('avatarFile');
-    const avatarMsg = $('avatarMsg');
-
-    let socket = null;
-    let state = {
-      battleId: null,
-      otp: null,
-      playerId: null,
-      name: null,
-    };
-
-    function appendLog(entry) {
-      const line = document.createElement('div');
-      const dt = new Date(entry.ts || Date.now());
-      line.textContent = `[${dt.toLocaleTimeString()}] ${entry.text}`;
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-
-    function renderRoster(players) {
-      playerList.innerHTML = '';
-      players.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
-        playerList.appendChild(li);
-        if (state.playerId && p.id === state.playerId) {
-          meTeam.textContent = p.team;
-          meHP.textContent = p.hp;
-        }
-      });
-    }
-
-    btnJoin.addEventListener('click', async () => {
-      const battleId = battleIdEl.value.trim();
-      const otp = otpEl.value.trim();
-      const displayName = nameEl.value.trim();
-
-      if (!battleId || !otp) {
-        authMsg.textContent = '전투 ID와 OTP를 입력하세요.';
-        return;
-      }
-
-      try {
-        const r = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ battleId, otp, role: 'player' })
-        }).then(r=>r.json());
-        if (!r.ok) {
-          authMsg.textContent = '인증 실패: ' + (r.error||'');
-          return;
-        }
-
-        state.battleId = battleId;
-        state.otp = otp;
-        state.name = displayName || '';
-
-        socket = io();
-        socket.on('connect', () => {
-          socket.emit('session:init', { role:'player', battleId, otp, name: state.name });
-        });
-
-        socket.on('log:bootstrap', (logs) => {
-          logsSec.style.display = '';
-          statusSec.style.display = '';
-          rosterSec.style.display = '';
-          chatSec.style.display = '';
-          logBox.innerHTML = '';
-          (logs || []).forEach(appendLog);
-          authMsg.textContent = '연결 성공';
-        });
-
-        socket.on('log:append', appendLog);
-
-        socket.on('roster:update', (payload) => {
-          renderRoster(payload.players || []);
-          const me = (payload.players || []).find(p => p.name === (state.name || r.player?.name));
-          if (me && !state.playerId) {
-            state.playerId = me.id;
-            meName.textContent = me.name;
-            meTeam.textContent = me.team;
-            meHP.textContent = me.hp;
-          }
-        });
-
-        socket.on('chat:message', (m) => {
-          appendLog({ ts: m.ts, text: `${m.name}: ${m.text}` });
-        });
-
-      } catch (e) {
-        authMsg.textContent = '연결 오류';
-      }
-    });
-
-    btnChat.addEventListener('click', () => {
-      if (!socket) return;
-      const text = chatInput.value.trim();
-      if (!text) return;
-      socket.emit('chat:message', { text });
-      chatInput.value = '';
-    });
-
-    avatarForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!state.battleId || !state.playerId) {
-        avatarMsg.textContent = '접속 후 이용하세요.';
-        return;
-      }
-      const f = avatarFile.files && avatarFile.files[0];
-      if (!f) {
-        avatarMsg.textContent = '파일을 선택하세요.';
-        return;
-      }
-      const fd = new FormData();
-      fd.append('avatar', f);
-      fd.append('playerId', state.playerId);
-      try {
-        const r = await fetch(`/api/battles/${state.battleId}/avatar`, {
-          method: 'POST',
-          body: fd
-        }).then(r=>r.json());
-        if (!r.ok) {
-          avatarMsg.textContent = '업로드 실패: ' + (r.error||'');
-          return;
-        }
-        avatarMsg.textContent = '업로드 완료';
-      } catch(e) {
-        avatarMsg.textContent = '업로드 오류';
-      }
-    });
-
-  })();
-  </script>
 </body>
 </html>
