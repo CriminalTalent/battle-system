@@ -1,3 +1,4 @@
+<!-- packages/battle-server/public/pages/play.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -9,46 +10,73 @@
 </head>
 <body>
   <header class="pyxis-header">PYXIS 플레이어 전투</header>
-  <main class="play-container">
-    <section class="team-status">
-      <h2>팀원 정보</h2>
-      <div id="team-list"></div>
-    </section>
 
-    <section class="player-panel">
+  <!-- 연결 상태 표시 -->
+  <div class="connection-status">
+    <span id="connectionDot" class="dot"></span>
+    <span id="connectionText">연결 상태</span>
+  </div>
+
+  <!-- 인증 섹션 -->
+  <section id="authSection" class="auth-section">
+    <form id="authForm">
+      <input id="authBattleId" placeholder="전투 ID" required />
+      <input id="authToken" placeholder="플레이어 OTP" required />
+      <input id="authName" placeholder="플레이어 이름" required maxlength="20" />
+      <button type="submit">입장</button>
+    </form>
+  </section>
+
+  <!-- 메인 전투 UI -->
+  <main class="play-container" id="playerUI" style="display:none;">
+
+    <!-- 플레이어 정보 -->
+    <section id="playerInfo" class="player-info">
       <h2>내 정보</h2>
-      <div class="avatar-block">
-        <img id="player-avatar" src="" alt="아바타" />
+      <div class="info-line"><strong>이름:</strong> <span id="myName"></span></div>
+      <div class="info-line"><strong>팀:</strong> <span id="myTeam"></span></div>
+      <div class="stats">
+        <div>공격: <span id="statAttack"></span></div>
+        <div>방어: <span id="statDefense"></span></div>
+        <div>민첩: <span id="statAgility"></span></div>
+        <div>행운: <span id="statLuck"></span></div>
       </div>
-      <div class="stats-block">
-        <div id="player-stats"></div>
-        <div id="player-hp"></div>
+      <div class="hp-bar">
+        <div class="hp-fill" id="myHpFill" style="width:0%"></div>
+        <div class="hp-text" id="myHpText">0/0</div>
       </div>
-      <div class="turn-block">
-        <p id="turn-info">대기 중...</p>
-        <p id="turn-timer">남은 시간: <span id="turn-timer-value">--</span></p>
+      <div class="items">
+        <div id="itemDittany">디터니: <span class="item-count">0</span></div>
+        <div id="itemAttackBoost">공격 보정기: <span class="item-count">0</span></div>
+        <div id="itemDefenseBoost">방어 보정기: <span class="item-count">0</span></div>
       </div>
     </section>
 
+    <!-- 액션 버튼 -->
     <section class="action-panel">
       <h2>행동 선택</h2>
-      <div class="action-buttons">
-        <button id="action-attack">공격</button>
-        <button id="action-defend">방어</button>
-        <button id="action-evade">회피</button>
-        <button id="action-item">아이템</button>
-        <button id="action-pass">패스</button>
+      <div class="action-buttons" id="actionArea">
+        <button id="btnAttack">공격</button>
+        <button id="btnDefend">방어</button>
+        <button id="btnDodge">회피</button>
+        <button id="btnUseItem">아이템</button>
+        <button id="btnPass">패스</button>
       </div>
-      <div id="target-selector" style="display:none;"></div>
-      <div id="item-selector" style="display:none;"></div>
     </section>
 
+    <!-- 채팅 및 로그 -->
     <section class="chat-log">
-      <h2>채팅 & 로그</h2>
-      <div id="battle-log"></div>
-      <input type="text" id="player-chat-input" placeholder="채팅 입력..." />
-      <button id="send-player-chat">전송</button>
+      <h2>채팅</h2>
+      <div id="chatMessages" class="chat-messages"></div>
+      <input type="text" id="chatInput" placeholder="채팅 입력..." />
+      <button id="chatSendBtn">전송</button>
     </section>
+
+    <section class="log-section">
+      <h2>전투 로그</h2>
+      <div id="logViewer" class="log-viewer"></div>
+    </section>
+
   </main>
 </body>
 </html>
