@@ -17,28 +17,32 @@ class PyxisSpectator {
     this.setupSocketEvents();
     this.initFromUrl();
 
-    // 소켓 연결
-    PyxisSocket.init().catch(err => {
+    // 소켓 연결 (자동 재시도 포함)
+    PyxisSocket.init({
+      reconnect: true,               // 자동 재연결
+      maxRetries: 10,                // 최대 재시도 횟수
+      retryInterval: 3000            // 재시도 간격(ms)
+    }).catch(err => {
       console.error('[Spectator] Socket init failed:', err);
       UI?.toast?.('서버 연결에 실패했습니다', 'danger');
     });
   }
 
-  // DOM 요소
+  // DOM 요소 참조
   setupElements() {
-    this.authForm   = UI.$('#authForm');
-    this.authBattleId = UI.$('#authBattleId');
-    this.authToken  = UI.$('#authToken');
-    this.authName   = UI.$('#authName');
+    this.authForm      = UI.$('#authForm');
+    this.authBattleId  = UI.$('#authBattleId');
+    this.authToken     = UI.$('#authToken');
+    this.authName      = UI.$('#authName');
 
-    this.playerList   = UI.$('#playerList');
-    this.battleLog    = UI.$('#battleLog');
-    this.chatMessages = UI.$('#chatMessages');
+    this.playerList    = UI.$('#playerList');
+    this.battleLog     = UI.$('#battleLog');
+    this.chatMessages  = UI.$('#chatMessages');
 
-    this.cheerButtons = document.querySelectorAll('.cheer-btn');
+    this.cheerButtons  = document.querySelectorAll('.cheer-btn');
   }
 
-  // 이벤트
+  // 이벤트 바인딩
   setupEventListeners() {
     if (this.authForm) {
       this.authForm.addEventListener('submit', (e) => {
@@ -55,31 +59,28 @@ class PyxisSpectator {
     });
   }
 
-  // 소켓 이벤트 (통합 소켓 매니저의 표준 이벤트명 사용)
+    // 소켓 이벤트 설정
   setupSocketEvents() {
-    // 인증 결과
     PyxisSocket.on('auth:ok', (data) => this.handleAuthSuccess(data));
     PyxisSocket.on('auth:error', ({ message }) => {
       UI?.toast?.(`인증 실패: ${message || '알 수 없는 오류'}`, 'danger');
     });
 
-    // 상태 스냅샷/업데이트
     PyxisSocket.on('state', (state) => this.handleStateUpdate(state));
-
-    // 채팅/로그
     PyxisSocket.on('chat', (payload) => this.handleChat(payload));
-    PyxisSocket.on('log',  (e) => e?.text && this.addLogEntry(e.text, 'system'));
+    PyxisSocket.on('log', (e) => {
+      if (e?.text) this.addLogEntry(e.text, 'system');
+    });
 
-    // 배틀/페이즈(선택)
-    PyxisSocket.on('battle', ({ event, data }) => {
+    PyxisSocket.on('battle', ({ event }) => {
       if (event === 'battle:started') {
         UI?.toast?.('전투가 시작되었습니다', 'success');
       } else if (event === 'battle:ended' || event === 'battle:end') {
         UI?.toast?.('전투가 종료되었습니다', 'info');
       }
     });
+
     PyxisSocket.on('phase', (phase) => {
-      // 필요시 로그에 남김
       if (phase?.phase && phase?.round != null) {
         const teamName = (phase.phase === 'A' || phase.phase === 'team1') ? '불사조 기사단' : '죽음을 먹는 자들';
         this.addLogEntry(`▶︎ 턴 전환: ${teamName} (라운드 ${phase.round})`, 'system');
@@ -87,7 +88,7 @@ class PyxisSpectator {
     });
   }
 
-  // URL 자동 인증
+  // URL에서 battle/token/name 파라미터 가져와 자동 인증
   initFromUrl() {
     const url = new URL(window.location.href);
     const b = url.searchParams.get('battle');
@@ -97,12 +98,11 @@ class PyxisSpectator {
       if (this.authBattleId) this.authBattleId.value = b;
       if (this.authToken)    this.authToken.value = t;
       if (this.authName)     this.authName.value = decodeURIComponent(n);
-      // 소켓 연결 이후 살짝 지연 후 인증
       setTimeout(() => this.authenticate(), 400);
     }
   }
 
-  // 인증 (통합 매니저 시그니처 사용)
+  // 인증 요청
   async authenticate() {
     const battleId = (this.authBattleId?.value || '').trim();
     const token    = (this.authToken?.value || '').trim();
@@ -114,14 +114,17 @@ class PyxisSpectator {
     }
 
     try {
-      await PyxisSocket.authAsSpectator({ battleId, otp: token, spectatorName: name });
+      await PyxisSocket.authAsSpectator({
+        battleId,
+        otp: token,
+        spectatorName: name
+      });
     } catch (e) {
       console.error('[Spectator] auth error:', e);
       UI?.toast?.(e.message || '인증 실패', 'danger');
     }
   }
 
-  // 인증 성공 처리
   handleAuthSuccess(data) {
     this.joined = true;
     this.currentBattleId = data?.battleId || data?.state?.battleId || this.currentBattleId;
@@ -131,28 +134,25 @@ class PyxisSpectator {
     this.render();
   }
 
-  // 상태 업데이트 처리
   handleStateUpdate(state) {
     this.battleState = state;
     this.render();
   }
-
-  // 응원 전송 (표준 sendChat 사용)
+  // 응원 메시지 보내기
   sendCheer(text) {
     const msg = (text || '').trim();
     if (!msg || !this.currentBattleId) return;
 
     PyxisSocket.sendChat({
-      text: msg,                 // 본문
-      channel: 'all',            // 관전자는 전체
+      text: msg,
+      channel: 'all',
       sender: this.authName?.value || '관전자',
       battleId: this.currentBattleId
     });
   }
 
-  // 채팅 출력 (소켓 매니저가 표준화한 페이로드 사용)
+  // 채팅 메시지 렌더링
   handleChat(m) {
-    // 표준화된 형태: { text, scope, from: { nickname }, ts }
     const nickname = (m?.from?.nickname) || m?.nickname || '익명';
     const text = m?.text || m?.message || '';
     if (!text) return;
@@ -169,7 +169,7 @@ class PyxisSpectator {
     this._scrollToBottom(this.chatMessages);
   }
 
-  // 로그 출력
+  // 로그 메시지 렌더링
   addLogEntry(content, type = 'info') {
     if (!content || !this.battleLog) return;
     const el = document.createElement('div');
@@ -182,7 +182,7 @@ class PyxisSpectator {
     this._scrollToBottom(this.battleLog);
   }
 
-  // 렌더링
+  // 플레이어 목록 렌더링
   render() {
     if (!this.battleState || !this.playerList) return;
     this.playerList.innerHTML = '';
@@ -200,9 +200,8 @@ class PyxisSpectator {
     });
   }
 
-  // 유틸
+  // 시간 포맷 유틸
   _formatTime(ts) {
-    // UI.formatTime 이 있으면 사용
     if (typeof UI?.formatTime === 'function') return UI.formatTime(ts);
     try {
       return new Date(ts).toLocaleTimeString('ko-KR', { hour12: false });
@@ -210,15 +209,19 @@ class PyxisSpectator {
       return '';
     }
   }
+
+  // 스크롤 유틸
   _scrollToBottom(el) {
     if (!el) return;
     try { el.scrollTop = el.scrollHeight; } catch (_) {}
   }
+
+  // 팀 이름 변환 유틸
   _teamName(code) {
     if (typeof UI?.getTeamName === 'function') return UI.getTeamName(code);
     const a = (code === 'A' || code === 'team1');
     return a ? '불사조 기사단' : '죽음을 먹는 자들';
-    }
+  }
 
   // 정리
   cleanup() {
@@ -226,9 +229,11 @@ class PyxisSpectator {
   }
 }
 
+// 초기화
 document.addEventListener('DOMContentLoaded', () => {
   window.spectator = new PyxisSpectator();
 });
 window.addEventListener('beforeunload', () => {
   if (window.spectator) window.spectator.cleanup();
 });
+
