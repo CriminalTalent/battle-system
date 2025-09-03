@@ -617,7 +617,7 @@ class BattleEngine {
             duration: 1,
             timestamp: Date.now()
           });
-          this.addLog('action', `🛡️ ${player.name}의 방어 보정기가 성공했습니다! (다음 방어 1.5배)`, {
+          this.addLog('action', `${player.name}의 방어 보정기가 성공했습니다! (다음 방어 1.5배)`, {
             user: player.id,
             success: true
           });
