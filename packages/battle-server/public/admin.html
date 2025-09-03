@@ -3,80 +3,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>관리자 - PYXIS 전투 시스템</title>
+  <title>PYXIS 전투 관리자</title>
 
-  <!-- CSS 파일들 -->
-  <link rel="stylesheet" href="/assets/css/core.css" />
-  <link rel="stylesheet" href="/assets/css/components.css" />
-  <link rel="stylesheet" href="/assets/css/admin.css" />
-  <link rel="stylesheet" href="/assets/pyxis-theme.css" />
+  <!-- 스타일시트 -->
+  <link rel="stylesheet" href="/assets/css/core.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/admin.css">
+  <link rel="stylesheet" href="/assets/pyxis-theme.css">
 
-  <!-- JS -->
-  <script defer src="/assets/js/admin.js"></script>
+  <!-- 스크립트 -->
+  <script defer src="/socket.io/socket.io.js"></script>
+  <script defer src="/assets/js/pages/admin.js"></script>
 </head>
 <body>
   <header class="pyxis-header">PYXIS 전투 관리자</header>
+
   <main class="admin-container">
     <section class="battle-control">
       <h2>전투 제어</h2>
-      <button id="create-battle">전투 생성</button>
-      <select id="mode-select">
-        <option value="1v1">1v1</option>
-        <option value="2v2">2v2</option>
-        <option value="3v3">3v3</option>
-        <option value="4v4">4v4</option>
-      </select>
-      <button id="connect-server">관리자모드 연결</button>
-      <button id="pause-battle">일시정지</button>
-      <button id="end-battle">전투 종료</button>
+      <form id="battleCreateForm">
+        <label>모드:
+          <select id="battleMode">
+            <option value="1v1">1 vs 1</option>
+            <option value="2v2">2 vs 2</option>
+            <option value="3v3">3 vs 3</option>
+            <option value="4v4">4 vs 4</option>
+          </select>
+        </label>
+        <button type="submit" class="btn-create btn-primary">전투 생성</button>
+      </form>
+      <div id="battleInfo" style="display:none;">
+        <p>전투 ID: <span id="battleIdDisplay">-</span></p>
+        <p>관리자 OTP: <span id="adminOtpDisplay">-</span></p>
+        <p>생성 시간: <span id="createTimeDisplay">-</span></p>
+      </div>
+      <button id="btnConnect">관리자로 연결</button>
+      <button id="btnStartBattle" disabled>전투 시작</button>
+      <button id="btnPauseBattle">일시 정지</button>
+      <button id="btnEndBattle" disabled>전투 종료</button>
     </section>
 
     <section class="player-management">
-      <h2>참여자 관리</h2>
-      <div id="player-form">
-        <input type="text" id="player-name" placeholder="이름 (20자 이하)" maxlength="20"/>
-        <select id="player-team">
+      <h2>플레이어 추가</h2>
+      <form id="playerForm">
+        <input type="text" id="playerName" placeholder="이름" required maxlength="20"/>
+        <select id="playerTeam">
           <option value="A">불사조 기사단</option>
           <option value="B">죽음을 먹는 자들</option>
         </select>
         <div class="stats">
-          <label>공격 <input type="number" id="stat-attack" min="0" max="10" /></label>
-          <label>방어 <input type="number" id="stat-defense" min="0" max="10" /></label>
-          <label>민첩 <input type="number" id="stat-agility" min="0" max="10" /></label>
-          <label>행운 <input type="number" id="stat-luck" min="0" max="10" /></label>
+          <label>공격 <input type="number" id="statAttack" min="1" max="5" value="3"/></label>
+          <label>방어 <input type="number" id="statDefense" min="1" max="5" value="3"/></label>
+          <label>민첩 <input type="number" id="statAgility" min="1" max="5" value="3"/></label>
+          <label>행운 <input type="number" id="statLuck" min="1" max="5" value="3"/></label>
         </div>
         <div class="items">
-          <label><input type="checkbox" value="heal" /> 디터니</label>
-          <label><input type="checkbox" value="attackBoost" /> 공격 보정기</label>
-          <label><input type="checkbox" value="defenseBoost" /> 방어 보정기</label>
+          <label>디터니 <input type="number" id="itemDittany" min="0" max="9" value="0"/></label>
+          <label>공격 보정 <input type="number" id="itemAttackBoost" min="0" max="9" value="0"/></label>
+          <label>방어 보정 <input type="number" id="itemDefenseBoost" min="0" max="9" value="0"/></label>
         </div>
-        <input type="file" id="avatar-upload" accept="image/*" />
-        <button id="add-player">플레이어 추가</button>
-      </div>
+        <input type="file" id="playerAvatar" accept="image/*"/>
+        <button type="button" id="btnAddPlayer">플레이어 추가</button>
+      </form>
+    </section>
 
-      <div id="roster">
-        <h3>팀 로스터</h3>
-        <div class="team" id="team-A">불사조 기사단</div>
-        <div class="team" id="team-B">죽음을 먹는 자들</div>
+    <section class="roster-section" id="rosterCard" style="display:none;">
+      <h2>팀 로스터</h2>
+      <div class="team-roster">
+        <h3>불사조 기사단 (<span id="teamACount">0/4</span>)</h3>
+        <div id="team1Roster" class="roster-list"></div>
+      </div>
+      <div class="team-roster">
+        <h3>죽음을 먹는 자들 (<span id="teamBCount">0/4</span>)</h3>
+        <div id="team2Roster" class="roster-list"></div>
       </div>
     </section>
 
-    <section class="links">
+    <section class="otp-section" id="linksSection" style="display:none;">
       <h2>링크 생성</h2>
-      <button id="generate-links">플레이어 및 관전자 링크 생성</button>
-      <div id="link-output"></div>
+      <button id="btnGeneratePlayerOTP">플레이어 OTP 생성</button>
+      <button id="btnGenerateSpectatorOTP">관전자 OTP 생성</button>
+      <div id="otpDisplay" style="margin-top:1em; display:none;">
+        <h3>플레이어 링크</h3>
+        <div id="playerOtpList"></div>
+        <h3>관전자 링크</h3>
+        <div id="spectatorOtpDisplay"></div>
+      </div>
     </section>
 
     <section class="log-chat">
       <h2>로그 & 채팅</h2>
-      <div id="battle-log"></div>
-      <input type="text" id="admin-chat-input" placeholder="채팅 입력..." />
-      <select id="chat-scope">
+      <div id="logViewer" class="log-viewer"></div>
+      <input type="text" id="chatInput" placeholder="채팅 입력..." />
+      <select id="chatChannel">
         <option value="all">전체</option>
-        <option value="teamA">불사조 기사단</option>
-        <option value="teamB">죽음을 먹는 자들</option>
+        <option value="A">불사조 기사단</option>
+        <option value="B">죽음을 먹는 자들</option>
       </select>
-      <button id="send-chat">전송</button>
+      <button id="btnSendChat">전송</button>
     </section>
   </main>
 </body>
