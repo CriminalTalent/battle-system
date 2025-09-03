@@ -1,212 +1,51 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>PYXIS 관전자</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="/socket.io/socket.io.js"></script>
-  <link href="/assets/pyxis-theme.css" rel="stylesheet" />
-</head>
-<body>
-  <main class="container">
-    <!-- 접속 -->
-    <section id="auth" class="panel">
-      <h2>관전자 접속</h2>
-      <div>
-        <label>전투 ID</label>
-        <input id="battleId" type="text" placeholder="예: b_xxxxxx" />
-      </div>
-      <div>
-        <label>관전자 OTP</label>
-        <input id="otp" type="text" placeholder="관리자 발급 OTP" />
-      </div>
-      <div>
-        <label>표시 이름</label>
-        <input id="displayName" type="text" placeholder="이름은 필수" />
-      </div>
-      <button id="btnJoin">접속</button>
-      <div id="authMsg" class="hint"></div>
-    </section>
+/* packages/battle-server/public/assets/js/core/pages/spectator.js
+   디자인 미변경. 관전 접속만 담당.
+   URL 쿼리: ?battle=...&otp=...
+*/
+(function(){
+  'use strict';
+  const params = new URLSearchParams(location.search);
+  const battle = params.get('battle');
+  const otp = params.get('otp');
+  const name = localStorage.getItem('spectator_name') || '';
 
-    <!-- 응원 -->
-    <section id="cheer" class="panel" style="display:none;">
-      <h2>응원</h2>
-      <!-- 팀별 버튼(플레이어 로스터 기반으로 자동 구성) -->
-      <div id="teamCheer" class="grid"></div>
+  const $ = sel => document.querySelector(sel);
+  const elLog = $('#watchLog');
+  const elView = $('#watchView');
 
-      <!-- 공통 문구 버튼 -->
-      <div id="commonCheer" class="grid" style="margin-top:8px;">
-        <button data-cheer="화이팅" class="cheer-btn">화이팅</button>
-        <button data-cheer="좋아요" class="cheer-btn">좋아요</button>
-        <button data-cheer="멋져요" class="cheer-btn">멋져요</button>
-        <button data-cheer="잘한다" class="cheer-btn">잘한다</button>
-        <button data-cheer="역전 가자" class="cheer-btn">역전 가자</button>
-        <button data-cheer="죽으면 죽어!" class="cheer-btn">죽으면 죽어!</button>
-        <button data-cheer="죽지마! 살아서 보자." class="cheer-btn">죽지마! 살아서 보자.</button>
-      </div>
-      <div class="hint small">과도한 반복은 자동으로 제한됩니다.</div>
-    </section>
+  let socket = null;
 
-    <!-- 로스터 -->
-    <section id="roster" class="panel" style="display:none;">
-      <h2>플레이어</h2>
-      <ul id="playerList"></ul>
-    </section>
+  function append(line) {
+    if (!elLog) return;
+    elLog.value += line + '\n';
+    elLog.scrollTop = elLog.scrollHeight;
+  }
 
-    <!-- 로그 -->
-    <section id="logs" class="panel" style="display:none;">
-      <h2>실시간 로그</h2>
-      <div id="logBox" class="logbox"></div>
-    </section>
-  </main>
+  function render(s) {
+    if (!elView) return;
+    const aHp = s.players.filter(p => p.team === 'phoenix').reduce((k, p)=>k+p.hp,0);
+    const dHp = s.players.filter(p => p.team === 'death').reduce((k, p)=>k+p.hp,0);
+    elView.textContent = `phoenix HP=${aHp} / death HP=${dHp} | turn=${s.order?.team || '-'}`;
+  }
 
-  <script>
-  (function(){
-    'use strict';
-    const $ = id => document.getElementById(id);
-
-    // 요소
-    const battleIdEl = $('battleId');
-    const otpEl = $('otp');
-    const nameEl = $('displayName');
-    const btnJoin = $('btnJoin');
-    const authMsg = $('authMsg');
-
-    const rosterSec = $('roster');
-    const playerList = $('playerList');
-    const logsSec = $('logs');
-    const logBox = $('logBox');
-
-    const cheerSec = $('cheer');
-    const teamCheer = $('teamCheer');
-
-    let socket = null;
-    let joined = false;
-
-    // 유틸
-    function qs() {
-      const p = {};
-      (location.search || '').replace(/^\?/, '').split('&').forEach(kv => {
-        if (!kv) return;
-        const [k,v] = kv.split('=');
-        p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+  function connect() {
+    // eslint-disable-next-line no-undef
+    const s = io();
+    socket = s;
+    s.on('connect', () => {
+      s.emit('auth', { role: 'spectator', battle, otp, name }, (resp) => {
+        if (resp?.ok) render(resp.state);
+        else append(`[error] ${resp?.error || 'auth'}`);
       });
-      return p;
-    }
-    function appendLog(entry) {
-      const line = document.createElement('div');
-      const dt = new Date(entry.ts || Date.now());
-      line.textContent = `[${dt.toLocaleTimeString()}] ${entry.text}`;
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-    function renderRoster(players) {
-      // 목록
-      playerList.innerHTML = '';
-      players.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = `${p.team} | ${p.name} | HP ${p.hp}`;
-        playerList.appendChild(li);
-      });
-
-      // 팀별 응원 버튼(중복 제거)
-      const teams = Array.from(new Set(players.map(p => p.team))).filter(Boolean);
-      teamCheer.innerHTML = '';
-      teams.forEach(team => {
-        const wrap = document.createElement('div');
-        const title = document.createElement('div');
-        title.textContent = team;
-        title.className = 'hint';
-        wrap.appendChild(title);
-
-        // 팀 타겟 버튼 3개(텍스트만, 이모지 없음)
-        ['화이팅','잘한다','역전 가자'].forEach(txt => {
-          const b = document.createElement('button');
-          b.className = 'cheer-btn';
-          b.textContent = txt;
-          b.addEventListener('click', () => sendCheer(txt, team));
-          wrap.appendChild(b);
-        });
-
-        teamCheer.appendChild(wrap);
-      });
-    }
-    // 공통 문구 버튼 위임
-    document.addEventListener('click', (e) => {
-      const t = e.target;
-      if (t && t.classList && t.classList.contains('cheer-btn') && t.dataset.cheer) {
-        sendCheer(t.dataset.cheer, '');
-      }
     });
-    function sendCheer(text, team) {
-      if (!joined || !socket) return;
-      socket.emit('cheer', { text, team });
-    }
+    s.on('state', render);
+    s.on('chat', c => append(`[chat] ${c.name}: ${c.msg}`));
+  }
 
-    // 접속
-    btnJoin.addEventListener('click', async () => {
-      const battleId = battleIdEl.value.trim();
-      const otp = otpEl.value.trim();
-      const displayName = nameEl.value.trim();
+  $('#saveSpectatorName')?.addEventListener('click', () => {
+    const v = $('#spectatorName')?.value?.trim() || '';
+    localStorage.setItem('spectator_name', v);
+  });
 
-      if (!battleId || !otp) {
-        authMsg.textContent = '전투 ID와 OTP를 입력하세요.';
-        return;
-      }
-      if (!displayName) {
-        authMsg.textContent = '이름을 입력하세요.';
-        return;
-      }
-
-      try {
-        // 서버 사전 검증
-        const r = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({ battleId, otp, role: 'spectator' })
-        }).then(r=>r.json());
-        if (!r.ok) {
-          authMsg.textContent = '인증 실패: ' + (r.error||'');
-          return;
-        }
-
-        socket = io();
-        socket.on('connect', () => {
-          socket.emit('session:init', { role:'spectator', battleId, otp, name: displayName });
-        });
-
-        socket.on('log:bootstrap', (logs) => {
-          logsSec.style.display = '';
-          rosterSec.style.display = '';
-          cheerSec.style.display = '';
-          logBox.innerHTML = '';
-          (logs || []).forEach(appendLog);
-          authMsg.textContent = '연결 성공';
-          joined = true;
-        });
-
-        socket.on('log:append', appendLog);
-        socket.on('roster:update', (payload) => renderRoster(payload.players || []));
-
-        // 서버에서 오는 cheer 이벤트(확장용) → 로그에 반영
-        socket.on('cheer', (c) => {
-          const teamPart = c.team ? `[${c.team}] ` : '';
-          appendLog({ ts: c.ts, text: `${c.name} 관전자 응원: ${teamPart}${c.text}` });
-        });
-
-      } catch(e) {
-        authMsg.textContent = '연결 오류';
-      }
-    });
-
-    // 쿼리스트링으로 자동 채우기 (편의)
-    (function autofill() {
-      const p = qs();
-      if (p.battleId) battleIdEl.value = p.battleId;
-      if (p.otp) otpEl.value = p.otp;
-      if (p.name) nameEl.value = p.name;
-    })();
-  })();
-  </script>
-</body>
-</html>
+  connect();
+})();
