@@ -2,21 +2,20 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const { initializeSocketHandlers } = require('./src/socket/battle-handlers');
-const apiRouter = require('./src/api');  // ✅ 추가된 줄
+const apiRouter = require('./src/api');  // ✅ API 라우터 가져오기
 
 const app = express();
 const server = http.createServer(app);
 
-const PORT = process.env.PORT || 3001;
+// ✅ JSON 파서 → API 라우터 연결은 HTML 서빙보다 먼저!
+app.use(express.json());
+app.use('/api', apiRouter);
 
 // 정적 파일 서빙
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ JSON 파싱 및 API 라우터 연결
-app.use('/api', express.json(), apiRouter); // ✅ 반드시 이 순서대로 추가
-
-// 라우팅: HTML 페이지
+// HTML 페이지 라우팅
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/pages/admin.html'));
 });
@@ -39,6 +38,7 @@ app.get('/api/health', (req, res) => {
 initializeSocketHandlers(server);
 
 // 서버 시작
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`✅ PYXIS Battle System 서버 실행 중: http://localhost:${PORT}`);
 });
