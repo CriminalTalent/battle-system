@@ -1067,3 +1067,27 @@ module.exports = {
 
         console.log(`[Admin] 전투 재개: ${battleId}`);
       } catch (error) {
+      } catch (error) {
+        socket.emit('admin:error', error.message);
+      }
+    });
+
+  }); // end of io.on('connection')
+
+} // end of initializeSocketHandlers()
+
+// 모듈 내보내기
+module.exports = {
+  initializeSocketHandlers,
+  Battle,
+  createBattle,
+  getBattle,
+  addPlayerToBattle,
+  generatePlayerLinks,
+  getAllBattles,
+  deleteBattle,
+  getBattles: () => battles,
+  getPlayers: () => players,
+  getSpectators: () => spectators,
+  getAdmins: () => admins
+};
