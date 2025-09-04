@@ -1,415 +1,473 @@
 const express = require('express');
-const http = require('http');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 
-// 기본 설정
-const config = {
-  PORT: process.env.PORT || 3001,
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  MAX_FILE_SIZE: '5mb',
-  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3001'
-};
+// ═══════════════════════════════════════════════════════════════════════
+// PYXIS Battle System - 완전한 서버 구현
+// 우아한 네이비+골드 디자인, 게임풍 전투 시스템
+// ═══════════════════════════════════════════════════════════════════════
 
-// Express 앱 생성
 const app = express();
-const server = http.createServer(app);
-
-// ═══════════════════════════════════════════════════════════════════════
-// 필수 디렉토리 생성
-// ═══════════════════════════════════════════════════════════════════════
-
-const createDirectories = () => {
-  const dirs = ['uploads', 'logs', 'public/uploads'];
-  dirs.forEach(dir => {
-    const fullPath = path.join(__dirname, dir);
-    if (!fs.existsSync(fullPath)) {
-      fs.mkdirSync(fullPath, { recursive: true });
-      console.log(`📁 디렉토리 생성됨: ${dir}`);
-    }
-  });
-};
-
-// 시작 시 디렉토리 생성
-createDirectories();
-
-// ═══════════════════════════════════════════════════════════════════════
-// 간단한 로거
-// ═══════════════════════════════════════════════════════════════════════
-
-const logger = {
-  info: (message, data = {}) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] INFO: ${message}`, Object.keys(data).length ? data : '');
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || "*",
+    methods: ["GET", "POST"],
+    credentials: true
   },
-  warn: (message, data = {}) => {
-    const timestamp = new Date().toISOString();
-    console.warn(`[${timestamp}] WARN: ${message}`, Object.keys(data).length ? data : '');
-  },
-  error: (message, data = {}) => {
-    const timestamp = new Date().toISOString();
-    console.error(`[${timestamp}] ERROR: ${message}`, Object.keys(data).length ? data : '');
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════
-// 기본 미들웨어
-// ═══════════════════════════════════════════════════════════════════════
-
-// CORS 헤더 설정
-app.use((req, res, next) => {
-  const allowedOrigins = config.NODE_ENV === 'production' 
-    ? [config.CORS_ORIGIN] 
-    : ["http://localhost:3001", "http://127.0.0.1:3001"];
-    
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
-  // Preflight 요청 처리
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-    return;
-  }
-  
-  next();
+  transports: ['websocket', 'polling']
 });
 
-// 기본 보안 헤더
+// 환경 설정
+const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// 필요한 디렉토리 생성
+const ensureDir = (dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`📁 Created directory: ${dir}`);
+  }
+};
+
+ensureDir('./public/pages');
+ensureDir('./public/assets');
+ensureDir('./uploads');
+ensureDir('./logs');
+
+// 메모리 저장소 (개발용 - 프로덕션에서는 DB 사용 권장)
+const battles = new Map();
+const otpStore = new Map(); // OTP 저장소
+const rooms = new Map(); // Socket.io 룸 관리
+
+// 유틸리티 함수들
+function generateId(length = 8) {
+  return Math.random().toString(36).substr(2, length).toUpperCase();
+}
+
+function generateOTP() {
+  return Math.random().toString().substr(2, 6);
+}
+
+function logWithTimestamp(message, level = 'INFO') {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [${level}] ${message}`;
+  console.log(logMessage);
+  
+  // 로그 파일에 기록
+  const logFile = level === 'ERROR' ? './logs/error.log' : './logs/access.log';
+  fs.appendFileSync(logFile, logMessage + '\n');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 미들웨어 설정
+// ═══════════════════════════════════════════════════════════════════════
+
+// 보안 헤더
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
 
-// JSON 파서
-app.use(express.json({ limit: config.MAX_FILE_SIZE }));
-app.use(express.urlencoded({ extended: true, limit: config.MAX_FILE_SIZE }));
+// CORS 설정
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = process.env.CORS_ORIGIN === '*' ? '*' : 
+                        (process.env.CORS_ORIGIN || '').split(',');
+  
+  if (allowedOrigins === '*' || allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  }
+  
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  next();
+});
+
+// JSON 파싱 (크기 제한)
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // 요청 로깅
 app.use((req, res, next) => {
   const start = Date.now();
-  
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (config.NODE_ENV === 'development') {
-      console.log(`${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
-    }
+    logWithTimestamp(`${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
   });
-  
   next();
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-// 정적 파일 서빙
-// ═══════════════════════════════════════════════════════════════════════
-
-// 정적 파일 캐싱 설정
-const staticOptions = {
-  maxAge: config.NODE_ENV === 'production' ? 86400000 : 0, // 1일 or 0
+// 정적 파일 서빙 (캐싱 최적화)
+app.use('/assets', express.static(path.join(__dirname, 'public/assets'), {
+  maxAge: NODE_ENV === 'production' ? '1d' : 0,
   etag: true,
-  lastModified: true,
-  setHeaders: (res, path) => {
-    if (path.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    } else if (path.match(/\.(css|js)$/)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1년
-    }
-  }
-};
+  lastModified: true
+}));
 
-app.use(express.static(path.join(__dirname, 'public'), staticOptions));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  ...staticOptions,
-  maxAge: 604800000 // 7일
+  maxAge: '1h',
+  etag: true
 }));
 
 // ═══════════════════════════════════════════════════════════════════════
-// API 라우터 (간단한 버전)
+// API 엔드포인트
 // ═══════════════════════════════════════════════════════════════════════
 
-const apiRouter = express.Router();
-
-// 전투 데이터 저장소 (메모리 기반 - 프로덕션에서는 DB 사용 권장)
-const battles = new Map();
-const otpStore = new Map();
-
-// 헬스 체크
-apiRouter.get('/health', (req, res) => {
-  const healthData = {
+// 헬스체크
+app.get('/api/health', (req, res) => {
+  res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
-    },
-    version: process.version,
-    env: config.NODE_ENV,
-    battles: battles.size
-  };
-  
-  res.json(healthData);
-});
-
-// 서버 정보
-apiRouter.get('/info', (req, res) => {
-  res.json({
-    name: 'PYXIS Battle System',
-    version: '3.0.0',
-    description: '실시간 턴제 전투 시스템',
-    author: 'CriminalTalent',
-    features: [
-      '실시간 멀티플레이어 전투',
-      '관전자 모드',
-      '채팅 시스템',
-      '아바타 업로드',
-      'OTP 인증'
-    ]
+    version: '1.0.0',
+    battles: battles.size,
+    uptime: process.uptime()
   });
 });
 
 // 전투 생성
-apiRouter.post('/battles', (req, res) => {
+app.post('/api/battles', (req, res) => {
   try {
-    const battleId = generateBattleId();
+    const { mode = '1v1', name = 'New Battle', adminPassword } = req.body;
+    
+    const battleId = generateId();
+    const adminToken = generateId(16);
+    
     const battle = {
       id: battleId,
-      mode: req.body.mode || '1v1',
-      status: 'waiting',
-      players: [],
+      name,
+      mode,
+      adminToken,
+      adminPassword: adminPassword || generateId(8),
+      status: 'waiting', // waiting, active, finished
       createdAt: new Date().toISOString(),
-      adminOtp: generateOTP()
+      players: [],
+      teams: {
+        phoenix: [], // 불사조 기사단
+        eaters: []   // 죽음을 먹는 자들
+      },
+      currentTurn: null,
+      turnTimer: null,
+      gameTimer: null,
+      logs: [],
+      settings: {
+        turnTimeLimit: 5 * 60 * 1000, // 5분
+        gameTimeLimit: 60 * 60 * 1000, // 1시간
+        maxPlayersPerTeam: parseInt(mode.charAt(0))
+      }
     };
     
     battles.set(battleId, battle);
     
-    logger.info('Battle created', { battleId, mode: battle.mode });
+    logWithTimestamp(`Battle created: ${battleId} (${mode}) by admin`);
     
     res.json({
-      success: true,
-      battleId: battleId,
-      adminOtp: battle.adminOtp,
-      battle: battle
+      battleId,
+      adminToken,
+      adminPassword: battle.adminPassword,
+      adminUrl: `/admin?battle=${battleId}&token=${adminToken}`,
+      playerUrl: `/play?battle=${battleId}`,
+      spectatorUrl: `/spectator?battle=${battleId}`
     });
+    
   } catch (error) {
-    logger.error('Failed to create battle', { error: error.message });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create battle'
-    });
+    logWithTimestamp(`Error creating battle: ${error.message}`, 'ERROR');
+    res.status(500).json({ error: 'Failed to create battle' });
   }
 });
 
 // 플레이어 추가
-apiRouter.post('/battles/:battleId/players', (req, res) => {
+app.post('/api/battles/:battleId/players', (req, res) => {
   try {
     const { battleId } = req.params;
-    const battle = battles.get(battleId);
+    const { name, team, stats, avatar, items } = req.body;
     
+    const battle = battles.get(battleId);
     if (!battle) {
-      return res.status(404).json({
-        success: false,
-        error: 'Battle not found'
-      });
+      return res.status(404).json({ error: 'Battle not found' });
     }
     
+    if (battle.status !== 'waiting') {
+      return res.status(400).json({ error: 'Battle already started' });
+    }
+    
+    // 팀 인원 확인
+    if (battle.teams[team].length >= battle.settings.maxPlayersPerTeam) {
+      return res.status(400).json({ error: 'Team is full' });
+    }
+    
+    const playerId = generateId();
     const player = {
-      id: generatePlayerId(),
-      name: req.body.name,
-      team: req.body.team,
-      stats: req.body.stats || { attack: 3, defense: 3, agility: 3, luck: 3 },
-      items: req.body.items || { dittany: 0, attackBoost: 0, defenseBoost: 0 },
-      avatar: req.body.avatar || null,
-      hp: 50,
-      maxHp: 50
+      id: playerId,
+      name,
+      team,
+      stats: {
+        hp: stats.hp || 100,
+        maxHp: stats.hp || 100,
+        attack: stats.attack || 10,
+        defense: stats.defense || 5,
+        agility: stats.agility || 8,
+        luck: stats.luck || 5
+      },
+      avatar: avatar || null,
+      items: items || {
+        attackBooster: 0,
+        defenseBooster: 0,
+        potion: 0
+      },
+      status: 'alive', // alive, dead
+      effects: [], // 버프/디버프
+      lastAction: null,
+      joinedAt: new Date().toISOString()
     };
     
     battle.players.push(player);
+    battle.teams[team].push(playerId);
     
-    logger.info('Player added to battle', { 
-      battleId, 
-      playerId: player.id, 
-      playerName: player.name 
+    // Socket.io로 실시간 업데이트
+    io.to(`battle-${battleId}`).emit('playerJoined', {
+      player,
+      teams: battle.teams
     });
+    
+    logWithTimestamp(`Player ${name} joined battle ${battleId} as ${team}`);
     
     res.json({
-      success: true,
-      player: player,
-      battle: battle
+      playerId,
+      player,
+      battle: {
+        id: battle.id,
+        name: battle.name,
+        mode: battle.mode,
+        status: battle.status,
+        teams: battle.teams
+      }
     });
+    
   } catch (error) {
-    logger.error('Failed to add player', { error: error.message });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to add player'
-    });
+    logWithTimestamp(`Error adding player: ${error.message}`, 'ERROR');
+    res.status(500).json({ error: 'Failed to add player' });
   }
 });
 
-// OTP 생성
-apiRouter.post('/otp', (req, res) => {
+// OTP 생성 (관전자용)
+app.post('/api/otp', (req, res) => {
   try {
+    const { battleId, adminToken } = req.body;
+    
+    const battle = battles.get(battleId);
+    if (!battle || battle.adminToken !== adminToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
     const otp = generateOTP();
-    const otpData = {
-      otp: otp,
-      role: req.body.role,
-      battleId: req.body.battleId,
-      playerId: req.body.playerId,
-      playerName: req.body.playerName,
-      expiresAt: new Date(Date.now() + (req.body.expiresIn || 3600) * 1000),
-      maxUses: req.body.maxUses || 1,
-      usedCount: 0
-    };
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30분
     
-    otpStore.set(otp, otpData);
-    
-    // 만료된 OTP 정리
-    setTimeout(() => {
-      otpStore.delete(otp);
-    }, (req.body.expiresIn || 3600) * 1000);
-    
-    logger.info('OTP generated', { 
-      otp, 
-      role: otpData.role, 
-      battleId: otpData.battleId 
+    otpStore.set(otp, {
+      battleId,
+      expiresAt,
+      used: false,
+      maxUses: 30
     });
     
-    res.json({
-      ok: true,
-      otp: otp,
-      expiresAt: otpData.expiresAt
-    });
+    res.json({ otp, expiresAt });
+    
   } catch (error) {
-    logger.error('Failed to generate OTP', { error: error.message });
-    res.status(500).json({
-      ok: false,
-      error: 'Failed to generate OTP'
-    });
+    logWithTimestamp(`Error generating OTP: ${error.message}`, 'ERROR');
+    res.status(500).json({ error: 'Failed to generate OTP' });
   }
 });
 
 // OTP 검증
-apiRouter.post('/otp/verify', (req, res) => {
+app.post('/api/otp/verify', (req, res) => {
   try {
-    const { otp, battleId } = req.body;
+    const { otp } = req.body;
+    
     const otpData = otpStore.get(otp);
-    
     if (!otpData) {
-      return res.status(404).json({
-        valid: false,
-        error: 'Invalid or expired OTP'
-      });
+      return res.status(401).json({ error: 'Invalid OTP' });
     }
     
-    if (otpData.battleId !== battleId) {
-      return res.status(400).json({
-        valid: false,
-        error: 'OTP not valid for this battle'
-      });
-    }
-    
-    if (otpData.expiresAt < new Date()) {
+    if (new Date() > otpData.expiresAt) {
       otpStore.delete(otp);
-      return res.status(410).json({
-        valid: false,
-        error: 'OTP expired'
-      });
+      return res.status(401).json({ error: 'OTP expired' });
     }
     
-    if (otpData.usedCount >= otpData.maxUses) {
-      return res.status(429).json({
-        valid: false,
-        error: 'OTP usage limit exceeded'
-      });
+    if (otpData.used >= otpData.maxUses) {
+      return res.status(401).json({ error: 'OTP usage limit exceeded' });
     }
     
-    // 사용 횟수 증가
-    otpData.usedCount++;
-    
-    logger.info('OTP verified', { 
-      otp, 
-      battleId, 
-      role: otpData.role 
-    });
+    otpData.used++;
     
     res.json({
       valid: true,
-      role: otpData.role,
-      playerId: otpData.playerId,
-      playerName: otpData.playerName
+      battleId: otpData.battleId,
+      spectatorUrl: `/spectator?battle=${otpData.battleId}&otp=${otp}`
     });
+    
   } catch (error) {
-    logger.error('Failed to verify OTP', { error: error.message });
-    res.status(500).json({
-      valid: false,
-      error: 'Failed to verify OTP'
-    });
+    logWithTimestamp(`Error verifying OTP: ${error.message}`, 'ERROR');
+    res.status(500).json({ error: 'Failed to verify OTP' });
   }
 });
 
-// 전투 조회
-apiRouter.get('/battles/:battleId', (req, res) => {
-  const battle = battles.get(req.params.battleId);
-  if (!battle) {
-    return res.status(404).json({
-      success: false,
-      error: 'Battle not found'
-    });
-  }
+// ═══════════════════════════════════════════════════════════════════════
+// Socket.IO 이벤트 핸들러
+// ═══════════════════════════════════════════════════════════════════════
+
+io.on('connection', (socket) => {
+  logWithTimestamp(`Socket connected: ${socket.id}`);
   
-  res.json({
-    success: true,
-    battle: battle
+  // 전투 방 참가
+  socket.on('joinBattle', (data) => {
+    try {
+      const { battleId, role = 'spectator', playerId, adminToken, otp } = data;
+      
+      const battle = battles.get(battleId);
+      if (!battle) {
+        socket.emit('error', { message: 'Battle not found' });
+        return;
+      }
+      
+      // 권한 검증
+      let authorized = false;
+      
+      if (role === 'admin' && battle.adminToken === adminToken) {
+        authorized = true;
+      } else if (role === 'player' && battle.players.some(p => p.id === playerId)) {
+        authorized = true;
+      } else if (role === 'spectator') {
+        if (otp) {
+          const otpData = otpStore.get(otp);
+          authorized = otpData && otpData.battleId === battleId && new Date() <= otpData.expiresAt;
+        } else {
+          authorized = true; // 공개 관전
+        }
+      }
+      
+      if (!authorized) {
+        socket.emit('error', { message: 'Unauthorized access' });
+        return;
+      }
+      
+      const roomName = `battle-${battleId}`;
+      socket.join(roomName);
+      
+      socket.battleId = battleId;
+      socket.role = role;
+      socket.playerId = playerId;
+      
+      // 현재 전투 상태 전송
+      socket.emit('battleState', {
+        battle: {
+          ...battle,
+          adminToken: role === 'admin' ? battle.adminToken : undefined,
+          adminPassword: role === 'admin' ? battle.adminPassword : undefined
+        }
+      });
+      
+      logWithTimestamp(`Socket ${socket.id} joined battle ${battleId} as ${role}`);
+      
+    } catch (error) {
+      logWithTimestamp(`Socket joinBattle error: ${error.message}`, 'ERROR');
+      socket.emit('error', { message: 'Failed to join battle' });
+    }
+  });
+  
+  // 채팅 메시지
+  socket.on('chatMessage', (data) => {
+    try {
+      const { message, playerName } = data;
+      
+      if (!socket.battleId) {
+        socket.emit('error', { message: 'Not in a battle' });
+        return;
+      }
+      
+      const chatData = {
+        id: generateId(),
+        message: message.substring(0, 500), // 메시지 길이 제한
+        sender: playerName || 'Anonymous',
+        role: socket.role,
+        timestamp: new Date().toISOString()
+      };
+      
+      // 같은 방의 모든 클라이언트에게 전송
+      io.to(`battle-${socket.battleId}`).emit('chatMessage', chatData);
+      
+    } catch (error) {
+      logWithTimestamp(`Socket chatMessage error: ${error.message}`, 'ERROR');
+    }
+  });
+  
+  // 플레이어 액션
+  socket.on('playerAction', (data) => {
+    try {
+      const { action, target, itemType } = data;
+      
+      if (!socket.battleId || socket.role !== 'player') {
+        socket.emit('error', { message: 'Unauthorized action' });
+        return;
+      }
+      
+      const battle = battles.get(socket.battleId);
+      const player = battle.players.find(p => p.id === socket.playerId);
+      
+      if (!player || player.status !== 'alive') {
+        socket.emit('error', { message: 'Player cannot act' });
+        return;
+      }
+      
+      // TODO: 액션 처리 로직 구현
+      // - 공격, 방어, 회피, 아이템 사용, 패스
+      // - 주사위 굴리기, 데미지 계산
+      // - 턴 관리
+      
+      logWithTimestamp(`Player ${player.name} performed ${action} in battle ${socket.battleId}`);
+      
+    } catch (error) {
+      logWithTimestamp(`Socket playerAction error: ${error.message}`, 'ERROR');
+    }
+  });
+  
+  // 연결 해제
+  socket.on('disconnect', () => {
+    logWithTimestamp(`Socket disconnected: ${socket.id}`);
   });
 });
-
-app.use('/api', apiRouter);
 
 // ═══════════════════════════════════════════════════════════════════════
 // HTML 페이지 라우팅
 // ═══════════════════════════════════════════════════════════════════════
 
-// 페이지 서빙 함수
-const servePage = (pageName) => (req, res, next) => {
-  const filePath = path.join(__dirname, 'public', 'pages', `${pageName}.html`);
-  
-  if (!fs.existsSync(filePath)) {
-    logger.error(`Page not found: ${pageName}.html`);
-    return res.status(404).send(`
-      <html>
-        <head><title>페이지를 찾을 수 없음</title></head>
-        <body style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
-          <h1>🚫 페이지를 찾을 수 없습니다</h1>
-          <p>요청하신 페이지 '${pageName}'가 존재하지 않습니다.</p>
-          <p><a href="/admin">관리자 페이지로 돌아가기</a></p>
-        </body>
-      </html>
-    `);
-  }
-  
-  res.sendFile(filePath, (err) => {
-    if (err) {
-      logger.error(`Failed to serve ${pageName}.html`, { error: err.message });
-      next(err);
-    }
-  });
-};
+// 관리자 페이지
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/pages/admin.html'));
+});
 
-// 페이지 라우트들
-app.get('/admin', servePage('admin'));
-app.get('/play', servePage('play'));
-app.get('/player', servePage('play')); // 별칭
-app.get('/spectator', servePage('spectator'));
-app.get('/watch', servePage('spectator')); // 별칭
+// 플레이어 페이지
+app.get('/play', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/pages/play.html'));
+});
 
-// 루트 경로
+// 관전자 페이지
+app.get('/spectator', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/pages/spectator.html'));
+});
+
+// 메인 페이지 리다이렉트
 app.get('/', (req, res) => {
   res.redirect('/admin');
 });
@@ -420,198 +478,72 @@ app.get('/', (req, res) => {
 
 // 404 핸들러
 app.use((req, res) => {
-  logger.warn('404 Not Found', { path: req.path, method: req.method });
-  
-  if (req.path.startsWith('/api/')) {
-    res.status(404).json({
-      error: 'API endpoint not found',
-      path: req.path
-    });
-  } else {
-    res.redirect('/admin');
-  }
+  res.status(404).json({ error: 'Not found' });
 });
 
 // 글로벌 에러 핸들러
-app.use((err, req, res, next) => {
-  logger.error('Unhandled Error', {
-    error: err.message,
-    stack: config.NODE_ENV === 'development' ? err.stack : undefined,
-    path: req.path,
-    method: req.method
-  });
-  
-  const errorResponse = {
-    error: config.NODE_ENV === 'development' ? err.message : 'Internal Server Error',
-    timestamp: new Date().toISOString()
-  };
-  
-  if (config.NODE_ENV === 'development') {
-    errorResponse.stack = err.stack;
-  }
-  
-  res.status(err.status || 500).json(errorResponse);
+app.use((error, req, res, next) => {
+  logWithTimestamp(`Global error: ${error.message}`, 'ERROR');
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Socket.IO 초기화 (간단한 버전)
-// ═══════════════════════════════════════════════════════════════════════
-
-const { Server } = require('socket.io');
-
-const io = new Server(server, {
-  cors: {
-    origin: config.NODE_ENV === 'production' 
-      ? [config.CORS_ORIGIN] 
-      : ["http://localhost:3001", "http://127.0.0.1:3001"],
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
-
-// 간단한 Socket 핸들러
-io.on('connection', (socket) => {
-  logger.info('Client connected', { socketId: socket.id });
-  
-  socket.on('disconnect', () => {
-    logger.info('Client disconnected', { socketId: socket.id });
-  });
-  
-  // 여기에 실제 게임 로직을 추가할 수 있습니다
-  socket.on('joinBattle', (data) => {
-    socket.join(data.battleId);
-    logger.info('Player joined battle', { 
-      socketId: socket.id, 
-      battleId: data.battleId 
-    });
-  });
-  
-  socket.on('chatMessage', (data) => {
-    socket.to(data.battleId).emit('chatMessage', data);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// 유틸리티 함수들
-// ═══════════════════════════════════════════════════════════════════════
-
-function generateBattleId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-function generatePlayerId() {
-  return 'player_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-}
-
-function generateOTP() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// 서버 시작
-// ═══════════════════════════════════════════════════════════════════════
-
-const startServer = async () => {
-  try {
-    await new Promise((resolve, reject) => {
-      server.listen(config.PORT, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-    
-    logger.info('PYXIS Battle System 서버 시작됨', {
-      port: config.PORT,
-      env: config.NODE_ENV,
-      pid: process.pid
-    });
-    
-    console.log(`
-╔══════════════════════════════════════════════════════════════╗
-║                  PYXIS BATTLE SYSTEM                        ║
-║                                                              ║
-║  🌟 서버 실행 중: http://localhost:${config.PORT.toString().padEnd(28)} ║
-║  🎮 관리자: http://localhost:${config.PORT}/admin${' '.repeat(21)} ║
-║  ⚔️  플레이어: http://localhost:${config.PORT}/play${' '.repeat(20)} ║
-║  👁️  관전자: http://localhost:${config.PORT}/spectator${' '.repeat(15)} ║
-║  📊 상태: http://localhost:${config.PORT}/api/health${' '.repeat(16)} ║
-║                                                              ║
-║  환경: ${config.NODE_ENV.padEnd(52)} ║
-║  PID: ${process.pid.toString().padEnd(53)} ║
-╚══════════════════════════════════════════════════════════════╝
-    `);
-    
-  } catch (error) {
-    logger.error('Failed to start server', { 
-      error: error.message,
-      port: config.PORT 
-    });
-    
-    console.error(`❌ 서버 시작 실패 (포트 ${config.PORT}):`, error.message);
-    process.exit(1);
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════
-// 프로세스 이벤트 핸들러
+// 서버 시작 및 우아한 종료
 // ═══════════════════════════════════════════════════════════════════════
 
 // 우아한 종료
-const gracefulShutdown = (signal) => {
-  logger.info(`Received ${signal}, starting graceful shutdown...`);
+const gracefulShutdown = () => {
+  console.log('Shutting down gracefully...');
   
   server.close(() => {
-    logger.info('Server closed successfully');
+    console.log('HTTP server closed');
+    
+    // 진행 중인 전투 정리
+    battles.clear();
+    otpStore.clear();
+    
     process.exit(0);
   });
   
-  // 10초 후 강제 종료
+  // 강제 종료 (10초 후)
   setTimeout(() => {
-    logger.error('Forced shutdown due to timeout');
+    console.log('Forcing shutdown');
     process.exit(1);
   }, 10000);
 };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
-// 예외 처리
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection', { reason: reason.toString() });
-});
-
+// 처리되지 않은 예외 처리
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception', { error: error.message });
-  gracefulShutdown('UNCAUGHT_EXCEPTION');
+  logWithTimestamp(`Uncaught exception: ${error.message}`, 'ERROR');
+  console.error(error.stack);
+  gracefulShutdown();
 });
 
-// 메모리 모니터링 (개발 환경)
-if (config.NODE_ENV === 'development') {
-  setInterval(() => {
-    const usage = process.memoryUsage();
-    const heapUsedMB = Math.round(usage.heapUsed / 1024 / 1024);
-    
-    if (heapUsedMB > 100) {
-      logger.warn('High memory usage detected', {
-        heapUsed: heapUsedMB + 'MB',
-        heapTotal: Math.round(usage.heapTotal / 1024 / 1024) + 'MB'
-      });
-    }
-  }, 30000);
-}
+process.on('unhandledRejection', (reason, promise) => {
+  logWithTimestamp(`Unhandled rejection at ${promise}: ${reason}`, 'ERROR');
+});
 
 // 서버 시작
-startServer();
+server.listen(PORT, HOST, () => {
+  console.log(`
+=================================================================
+  PYXIS Battle System Server
+=================================================================
+  Environment: ${NODE_ENV}
+  Server: http://${HOST}:${PORT}
+  
+  Admin Panel: http://${HOST}:${PORT}/admin
+  Player Page: http://${HOST}:${PORT}/play  
+  Spectator: http://${HOST}:${PORT}/spectator
+  
+  API Health: http://${HOST}:${PORT}/api/health
+=================================================================
+  `);
+  
+  logWithTimestamp(`PYXIS server started on ${HOST}:${PORT} (${NODE_ENV})`);
+});
 
-// 모듈 익스포트 (테스트용)
-module.exports = { app, server, config, battles, otpStore };
+module.exports = { app, server, io };
