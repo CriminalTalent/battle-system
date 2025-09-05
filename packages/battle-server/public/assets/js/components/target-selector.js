@@ -1,5 +1,6 @@
 // PYXIS Target Selector Component - Enhanced Gaming Edition
 // 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
+// 스탯 시스템: 1-5 범위, 총합 제한 없음
 class PyxisTargetSelector {
   constructor(options = {}) {
     this.options = {
@@ -956,7 +957,7 @@ class PyxisTargetSelector {
       card.appendChild(hpContainer);
     }
 
-    // 스탯 정보
+    // 스탯 정보 (1-5 범위 적용)
     if (this.options.showStats && target.stats) {
       const statsContainer = document.createElement('div');
       statsContainer.className = 'target-stats';
@@ -973,7 +974,8 @@ class PyxisTargetSelector {
         const statEl = document.createElement('div');
         statEl.className = 'target-stat';
         
-        const value = stats[stat.key] ?? stats[stat.alt] ?? 0;
+        // 1-5 범위에 맞게 기본값 조정
+        const value = stats[stat.key] ?? stats[stat.alt] ?? 3;
         statEl.innerHTML = `
           <span>${stat.label}</span>
           <span>${value}</span>
@@ -1382,7 +1384,7 @@ window.PyxisTarget = new PyxisTargetSelector({
   showAvatar: true
 });
 
-// 사용 예시와 유틸리티 함수들
+// 사용 예시와 유틸리티 함수들 (1-5 스탯 범위 적용)
 window.PyxisTargetUtils = {
   // 팀별 타겟 필터링
   filterByTeam: (targets, team) => {
@@ -1403,7 +1405,7 @@ window.PyxisTargetUtils = {
     });
   },
 
-  // 스탯 총합으로 정렬
+  // 스탯 총합으로 정렬 (1-5 범위 적용)
   sortByTotalStats: (targets, ascending = false) => {
     return [...targets].sort((a, b) => {
       const statsA = a.stats ? Object.values(a.stats).reduce((sum, val) => sum + (val || 0), 0) : 0;
@@ -1417,7 +1419,7 @@ window.PyxisTargetUtils = {
     return target && target.alive !== false && target.hp > 0;
   },
 
-  // 타겟 데이터 정규화
+  // 타겟 데이터 정규화 (1-5 스탯 범위 적용)
   normalizeTarget: (target) => {
     return {
       id: target.id || target.name || Math.random().toString(36),
@@ -1426,10 +1428,10 @@ window.PyxisTargetUtils = {
       hp: Math.max(0, target.hp || 100),
       maxHp: target.maxHp || 100,
       stats: {
-        attack: target.stats?.attack || target.stats?.atk || 1,
-        defense: target.stats?.defense || target.stats?.def || 1,
-        agility: target.stats?.agility || target.stats?.agi || 1,
-        luck: target.stats?.luck || target.stats?.luk || 1
+        attack: Math.max(1, Math.min(5, target.stats?.attack || target.stats?.atk || 3)),
+        defense: Math.max(1, Math.min(5, target.stats?.defense || target.stats?.def || 3)),
+        agility: Math.max(1, Math.min(5, target.stats?.agility || target.stats?.agi || 3)),
+        luck: Math.max(1, Math.min(5, target.stats?.luck || target.stats?.luk || 3))
       },
       alive: target.alive !== false && (target.hp || 100) > 0,
       avatar: target.avatar || null,
