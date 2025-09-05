@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PYXIS 전투 관리자</title>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" href="/favicon.ico">
+  <link rel="icon" href="/favicon.ico"/>
 
   <style>
     :root{
@@ -58,8 +58,7 @@
       background:var(--surface-1); backdrop-filter:var(--blur-light);
       border:1px solid var(--border-subtle); border-radius:16px;
       box-shadow:var(--shadow-card); transition:all .3s ease; position:relative;
-      /* 핵심: 클리핑 해제 */
-      overflow:visible;
+      overflow:visible; /* 잘림 방지 */
     }
     .section-card::before{
       content:''; position:absolute; top:0; left:0; right:0; height:3px;
@@ -100,11 +99,10 @@
     .game-btn:disabled{opacity:.5; cursor:not-allowed}
     @media (max-width:768px){ .control-actions{grid-template-columns:1fr} }
 
-    /* 참여자 관리 (반응형 보강) */
+    /* 참여자 관리 */
     .player-form{display:grid; gap:var(--space-md); width:100%}
     .form-row{
       display:grid; gap:var(--space-sm);
-      /* 열이 너무 좁아질 때 자동 줄바꿈을 허용 */
       grid-template-columns: minmax(0,2fr) minmax(220px,1fr);
     }
     @media (max-width:1024px){ .form-row{ grid-template-columns:1fr } }
@@ -124,7 +122,6 @@
     .stats-title{font-weight:600; color:var(--text-bright); font-size:.9rem}
     .stats-remaining{background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.8rem}
 
-    /* 핵심: 카드 안 요소가 좁을 때 자동으로 줄바꿈되도록 */
     .stats-grid{display:grid; gap:var(--space-sm); grid-template-columns:repeat(auto-fit, minmax(160px,1fr))}
     .stat-control{display:flex; flex-direction:column; align-items:center; gap:var(--space-xs)}
     .stat-label{font-weight:600; color:var(--text-bright); font-size:.85rem}
@@ -152,7 +149,7 @@
     .player-hp{display:flex; align-items:center; gap:var(--space-xs)}
     .hp-bar{height:6px; background:var(--surface-2); border-radius:3px; overflow:hidden; width:60px}
     .hp-fill{height:100%; background:linear-gradient(90deg,var(--success),var(--warning))}
-    
+
     .log-chat-section{display:grid; gap:var(--space-lg)}
     .log-viewer,.chat-messages{height:200px; overflow-y:auto; background:var(--surface-2); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle)}
     .log-entry,.chat-entry{padding:var(--space-sm); margin-bottom:var(--space-xs); border-radius:6px; font-size:.9rem; line-height:1.4}
@@ -404,6 +401,7 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // 상태
     let socket=null, currentBattleId=null, currentMode='1v1', selectedTeam='phoenix';
     let players=[]; let stats={attack:3, defense:3, agility:3, luck:3}; let items={dittany:0, attackBoost:0, defenseBoost:0};
     window.__lastBattleUrls=null;
@@ -413,20 +411,30 @@
       initializeSocket(); setupEventListeners();
     });
 
+    /* Socket.IO */
     function initializeSocket(){
       socket=io();
-      socket.on('connect',()=>{console.log('서버에 연결되었습니다'); showToast('서버에 연결되었습니다','success')});
+      socket.on('connect',()=>{showToast('서버에 연결되었습니다','success')});
       socket.on('disconnect',()=>{showToast('서버 연결이 끊어졌습니다','error')});
-      socket.on('battleCreated',data=>applyBattleCreated(data));
+
+      // 서버가 소켓 이벤트를 제공할 때를 대비
+      socket.on('battleCreated',applyBattleCreated);
       socket.on('playerAdded',data=>{
-        if(data.success){ players.push(data.player); updateTeamRoster(); resetPlayerForm(); showToast('플레이어가 추가되었습니다','success'); addLogEntry(`플레이어 ${data.player.name}이(가) ${getTeamName(data.player.team)} 팀에 추가되었습니다`) }
-        else{ showToast('플레이어 추가 실패: '+data.error,'error') }
+        if(data?.success && data.player){
+          players.push(data.player); updateTeamRoster(); resetPlayerForm();
+          showToast('플레이어가 추가되었습니다','success');
+          addLogEntry(`플레이어 ${data.player.name}이(가) ${getTeamName(data.player.team)} 팀에 추가되었습니다`);
+        }
       });
-      socket.on('connectionUpdate',d=>{document.getElementById('connectedPlayers').textContent=d.players; document.getElementById('connectedSpectators').textContent=d.spectators});
       socket.on('chatMessage',d=>addChatMessage(d.sender,d.message));
+      socket.on('connectionUpdate',d=>{
+        document.getElementById('connectedPlayers').textContent=d.players;
+        document.getElementById('connectedSpectators').textContent=d.spectators;
+      });
       socket.on('battleStatusUpdate',updateBattleStatus);
     }
 
+    /* 이벤트 */
     function setupEventListeners(){
       document.querySelectorAll('.mode-btn').forEach(btn=>{
         btn.addEventListener('click',function(){
@@ -441,87 +449,144 @@
         });
       });
 
+      // 전투 생성: HTTP 호출
       document.getElementById('createBattleBtn').addEventListener('click', async ()=>{
         try{
           const res=await fetch('/api/battles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:currentMode})});
           if(!res.ok) throw new Error('Failed to create battle');
           const data=await res.json(); window.__lastBattleUrls=data; applyBattleCreated(data);
-        }catch(e){ console.error(e); showToast('전투 생성 실패','error') }
+        }catch(e){ console.error(e); showToast('전투 생성 실패','error'); }
       });
 
+      // 수동 관리자 연결 버튼(자동 연결 실패 대비)
       document.getElementById('connectAdminBtn').addEventListener('click',()=>{
-        if(currentBattleId){ socket.emit('connectAsAdmin',{battleId:currentBattleId}); document.getElementById('connectAdminBtn').disabled=true; document.getElementById('startBattleBtn').disabled=false; addLogEntry('관리자로 연결되었습니다'); }
+        if(currentBattleId){ socket.emit('connectAsAdmin',{battleId:currentBattleId}); addLogEntry('관리자 연결 시도'); }
       });
 
+      // 전투 시작(플레이어 0명이어도 서버 판단에 맡김)
       document.getElementById('startBattleBtn').addEventListener('click',()=>{
-        if(currentBattleId && players.length>0){ socket.emit('startBattle',{battleId:currentBattleId}); addLogEntry('전투를 시작합니다...'); }
-        else{ showToast('플레이어를 먼저 추가해주세요','error'); }
+        if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
+        try{ socket.emit('startBattle',{battleId:currentBattleId}); addLogEntry('전투 시작 요청 전송'); }
+        catch(e){ showToast('전투 시작 실패','error'); }
       });
 
+      // 전투 종료
       document.getElementById('endBattleBtn').addEventListener('click',()=>{ if(currentBattleId) socket.emit('endBattle',{battleId:currentBattleId}); });
 
+      // 플레이어 추가
       document.getElementById('playerForm').addEventListener('submit',e=>{ e.preventDefault(); addPlayer(); });
+
+      // 링크 생성
       document.getElementById('generateLinksBtn').addEventListener('click',()=>{ if(currentBattleId) generateLinks(); });
+
+      // 채팅
       document.getElementById('sendChatBtn').addEventListener('click',sendChatMessage);
       document.getElementById('chatInput').addEventListener('keypress',e=>{ if(e.key==='Enter') sendChatMessage(); });
     }
 
+    /* 전투 생성 후 UI 반영 + 자동 관리자 연결 */
     function applyBattleCreated(data){
-      currentBattleId=data.battleId;
-      document.getElementById('battleId').textContent=data.battleId;
-      document.getElementById('battleStatus').textContent='생성됨';
-      document.getElementById('battleStatus').className='status-value waiting';
-      document.getElementById('createBattleBtn').disabled=true;
-      document.getElementById('connectAdminBtn').disabled=false;
-      document.getElementById('linksSection').style.display='block';
+      currentBattleId = data.battleId;
+      document.getElementById('battleId').textContent = data.battleId;
+      document.getElementById('battleStatus').textContent = '생성됨';
+      document.getElementById('battleStatus').className = 'status-value waiting';
+      document.getElementById('createBattleBtn').disabled = true;
+      document.getElementById('connectAdminBtn').disabled = true; // 자동 연결 우선
+      document.getElementById('linksSection').style.display = 'block';
 
-      const base=window.location.origin;
-      document.getElementById('generatedLinks').style.display='block';
-      document.getElementById('adminLink').textContent = data.adminUrl ? (base+data.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
+      const base = window.location.origin;
+      document.getElementById('generatedLinks').style.display = 'block';
+      document.getElementById('adminLink').textContent     = data.adminUrl     ? (base+data.adminUrl)     : `${base}/admin?battle=${currentBattleId}&admin=true`;
       document.getElementById('spectatorLink').textContent = data.spectatorUrl ? (base+data.spectatorUrl) : `${base}/spectator?battle=${currentBattleId}`;
 
-      addLogEntry('전투가 생성되었습니다: '+data.battleId);
+      addLogEntry('전투가 생성되었습니다: ' + data.battleId);
       showToast('전투가 생성되었습니다','success');
+
+      // 관리자 자동 연결
+      try{
+        socket.emit('connectAsAdmin', { battleId: currentBattleId });
+        addLogEntry('관리자로 자동 연결 시도...');
+        // 자동 연결 후 시작 버튼 허용
+        document.getElementById('startBattleBtn').disabled = false;
+      }catch(e){ console.warn('connectAsAdmin emit failed', e); document.getElementById('connectAdminBtn').disabled=false; }
     }
 
+    /* 플레이어 추가: HTTP 우선 + 소켓 폴백 */
+    async function addPlayer(){
+      const name=document.getElementById('playerName').value.trim();
+      const avatarFile=document.getElementById('playerAvatar').files[0];
+      if(!name) return showToast('이름을 입력해주세요','error');
+      if(players.some(p=>p.name===name)) return showToast('이미 존재하는 이름입니다','error');
+      if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
+
+      const avatar = avatarFile ? URL.createObjectURL(avatarFile) : null;
+      const payload={ battleId:currentBattleId, name, team:selectedTeam, stats:{...stats}, items:{...items} };
+
+      const httpCandidates=[ `/api/battles/${encodeURIComponent(currentBattleId)}/players`, `/api/players` ];
+      for(const url of httpCandidates){
+        try{
+          const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          if(res.ok){
+            // 로컬 반영
+            players.push({ name, team:selectedTeam, stats:{...stats}, items:{...items}, avatar });
+            updateTeamRoster(); resetPlayerForm();
+            showToast('플레이어가 추가되었습니다','success'); addLogEntry(`플레이어 ${name} 추가 (HTTP: ${url})`);
+            return;
+          }
+        }catch(_){}
+      }
+      // 소켓 폴백
+      try{
+        socket.emit('addPlayer', { ...payload, avatar });
+        addLogEntry('플레이어 추가 요청을 소켓으로 전송했습니다');
+        // 서버에서 playerAdded 이벤트로 반영됨
+      }catch(e){ console.error(e); showToast('플레이어 추가 실패','error'); }
+    }
+
+    /* 채팅: HTTP 우선 + 소켓 폴백 */
+    async function sendChatMessage(){
+      const input=document.getElementById('chatInput'); const message=input.value.trim();
+      if(!message) return;
+      if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
+
+      const body={ battleId:currentBattleId, sender:'관리자', message };
+      const httpCandidates=[ `/api/battles/${encodeURIComponent(currentBattleId)}/chat`, `/api/chat` ];
+      for(const url of httpCandidates){
+        try{
+          const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+          if(res.ok){ addChatMessage('관리자', message); input.value=''; return; }
+        }catch(_){}
+      }
+      try{ socket.emit('chatMessage', body); addChatMessage('관리자', message); input.value=''; }
+      catch(e){ console.error(e); showToast('채팅 전송 실패','error'); }
+    }
+
+    /* 기타 UI 로직 */
     function changeStat(stat,delta){
       const cur=stats[stat];
       if(delta<0 && cur<=1){ showToast('최소값은 1입니다','error'); return; }
       if(delta>0 && cur>=10){ showToast('최대값은 10입니다','error'); return; }
       stats[stat]=cur+delta;
       document.getElementById(stat+'Value').textContent=stats[stat];
-      const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞';
+      const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞'; // 총합 제한 제거
     }
-
     function changeItem(item,delta){
       const cur=items[item]; if(delta<0 && cur<=0) return;
       if(delta>0 && cur>=9){ showToast('최대값은 9개입니다','error'); return; }
       items[item]=cur+delta; document.getElementById(item+'Value').textContent=items[item];
     }
-
-    function addPlayer(){
-      const name=document.getElementById('playerName').value.trim();
-      const avatar=document.getElementById('playerAvatar').files[0];
-      if(!name){ showToast('이름을 입력해주세요','error'); return; }
-      if(players.some(p=>p.name===name)){ showToast('이미 존재하는 이름입니다','error'); return; }
-      const playerData={ battleId:currentBattleId, name, team:selectedTeam, stats:{...stats}, items:{...items}, avatar: avatar? URL.createObjectURL(avatar):null };
-      socket.emit('addPlayer', playerData);
-    }
-
     function resetPlayerForm(){
       document.getElementById('playerName').value=''; document.getElementById('playerAvatar').value='';
       stats={attack:3, defense:3, agility:3, luck:3}; ['attack','defense','agility','luck'].forEach(k=>document.getElementById(k+'Value').textContent=stats[k]);
       const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞';
       items={dittany:0, attackBoost:0, defenseBoost:0}; ['dittany','attackBoost','defenseBoost'].forEach(k=>document.getElementById(k+'Value').textContent=items[k]);
     }
-
     function updateTeamRoster(){
       const ph=players.filter(p=>p.team==='phoenix'); const ea=players.filter(p=>p.team==='eaters');
       document.getElementById('phoenixCount').textContent=ph.length+'명';
       document.getElementById('eatersCount').textContent=ea.length+'명';
       updatePlayerList('phoenixPlayers',ph); updatePlayerList('eatersPlayers',ea);
     }
-
     function updatePlayerList(id,list){
       const c=document.getElementById(id);
       if(list.length===0){ c.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:var(--space-lg);">플레이어가 없습니다</div>'; return; }
@@ -536,7 +601,6 @@
         </div>
       `).join('');
     }
-
     function generateLinks(){
       const base=window.location.origin;
       const admin = window.__lastBattleUrls?.adminUrl ? (base+window.__lastBattleUrls.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
@@ -552,38 +616,32 @@
       document.getElementById('generatedLinks').style.display='block';
       showToast('링크가 생성되었습니다','success');
     }
-
-    function copyToClipboard(idOrText){
-      let text=idOrText; if(document.getElementById(idOrText)) text=document.getElementById(idOrText).textContent;
-      navigator.clipboard.writeText(text).then(()=>showToast('클립보드에 복사되었습니다','success')).catch(()=>showToast('복사에 실패했습니다','error'));
-    }
-
-    function sendChatMessage(){
-      const input=document.getElementById('chatInput'); const msg=input.value.trim(); if(!msg) return;
-      socket.emit('chatMessage',{battleId:currentBattleId, sender:'관리자', message:msg}); input.value='';
-    }
+    function copyToClipboard(idOrText){ let text=idOrText; if(document.getElementById(idOrText)) text=document.getElementById(idOrText).textContent;
+      navigator.clipboard.writeText(text).then(()=>showToast('클립보드에 복사되었습니다','success')).catch(()=>showToast('복사에 실패했습니다','error')); }
 
     function addChatMessage(sender,message){
       const c=document.getElementById('chatMessages'); const div=document.createElement('div');
       div.className='chat-entry'; div.innerHTML=`<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`; c.appendChild(div); c.scrollTop=c.scrollHeight;
       while(c.children.length>50) c.removeChild(c.firstChild);
     }
-
     function addLogEntry(message){
       const c=document.getElementById('logViewer'); const div=document.createElement('div');
       div.className='log-entry'; div.textContent=`[${new Date().toLocaleTimeString('ko-KR')}] ${message}`; c.appendChild(div); c.scrollTop=c.scrollHeight;
       while(c.children.length>100) c.removeChild(c.firstChild);
     }
-
     function updateBattleStatus(d){
-      if(d.status){ const el=document.getElementById('battleStatus'); el.textContent=d.status; el.className=`status-value ${getStatusClass(d.status)}` }
-      if(d.turn!==undefined) document.getElementById('battleTurn').textContent=d.turn;
-      if(d.message) addLogEntry(d.message);
+      if(d?.status){ const el=document.getElementById('battleStatus'); el.textContent=d.status; el.className=`status-value ${getStatusClass(d.status)}` }
+      if(d?.turn!==undefined) document.getElementById('battleTurn').textContent=d.turn;
+      if(d?.message) addLogEntry(d.message);
     }
     function getStatusClass(s){ switch(s){ case '진행중':return'active'; case '대기중': case '일시정지':return'waiting'; case '종료':return'finished'; default:return'' } }
     function getTeamName(t){ return t==='phoenix'?'불사조 기사단':'죽음을 먹는 자들' }
     function escapeHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML }
-    window.addEventListener('beforeunload',()=>{ if(socket) socket.disconnect() });
+    function showToast(message,type='info'){ let c=document.querySelector('.toast-container'); if(!c){ c=document.createElement('div'); c.className='toast-container'; document.body.appendChild(c); }
+      const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=message; c.appendChild(t);
+      setTimeout(()=>t.classList.add('show'),50); setTimeout(()=>{t.classList.remove('show'); setTimeout(()=>t.remove(),300)},3000); }
+
+    window.addEventListener('beforeunload',()=>{ if(socket) socket.disconnect(); });
   </script>
 </body>
 </html>
