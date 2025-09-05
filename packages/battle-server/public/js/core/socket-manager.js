@@ -1,11 +1,12 @@
 /* packages/battle-server/public/js/core/socket-manager.js
  * ─────────────────────────────────────────────────────────────
- * PYXIS Socket Manager (브라우저 전용, UMD 스타일)
+ * PYXIS Socket Manager - Enhanced Design Version
  * - /socket.io/socket.io.js 동적 로딩
  * - 안정적 재연결, 이벤트 큐잉, 상태 추적
  * - 역할별 인증(admin / player / spectator) 헬퍼
  * - 신/구 서버 이벤트명 호환 수신
  * - sendChat / sendAction / sendPlayerAction / sendAdminCommand / apiCall 포함
+ * - 게임적 효과 및 향상된 UX 연동
  * - 전역: window.PyxisSocket
  * ─────────────────────────────────────────────────────────────
  */
@@ -25,6 +26,10 @@
     reconnectionDelay: 800,
     reconnectionDelayMax: 8000,
     withCredentials: true,
+    gameEffects: true,                       // 게임 효과 활성화
+    notifications: true,                     // 알림 활성화
+    autoReconnect: true,                     // 자동 재연결
+    heartbeatInterval: 30000,                // 하트비트 간격 (30초)
   };
 
   const EVENT_ALIASES = Object.freeze({
@@ -59,7 +64,23 @@
     // 인증(직접 수신)
     authOk: ['authSuccess'],
     authErr: ['authError'],
+    // 게임 이벤트 추가
+    playerJoin: ['player:join', 'playerJoined'],
+    playerLeave: ['player:leave', 'playerLeft'],
+    playerDeath: ['player:death', 'playerDied'],
+    battleEnd: ['battle:end', 'battleEnded'],
+    turnStart: ['turn:start', 'turnStarted'],
+    turnEnd: ['turn:end', 'turnEnded'],
   });
+
+  // 연결 상태 타입
+  const CONNECTION_STATES = {
+    DISCONNECTED: 'disconnected',
+    CONNECTING: 'connecting',
+    CONNECTED: 'connected',
+    RECONNECTING: 'reconnecting',
+    ERROR: 'error'
+  };
 
   function once(fn, ctx) {
     let done = false;
@@ -87,39 +108,325 @@
   function pick(list, handler) { list.forEach(evt => handler(evt)); }
   const now = () => Date.now();
 
+  // 로그 헬퍼
+  function log(level, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const prefix = `[PyxisSocket][${timestamp}]`;
+    
+    if (level === 'error') {
+      console.error(prefix, message, data || '');
+    } else if (level === 'warn') {
+      console.warn(prefix, message, data || '');
+    } else if (level === 'debug' && window.location.hostname === 'localhost') {
+      console.log(prefix, message, data || '');
+    } else if (level === 'info') {
+      console.info(prefix, message, data || '');
+    }
+  }
+
   // ───────────────────────────────────────────────────────────
-  // SocketManager
+  // Enhanced SocketManager
   // ───────────────────────────────────────────────────────────
   class SocketManager {
     constructor() {
       this.io = null;
       this.socket = null;
       this.opts = { ...DEFAULTS };
-      this.connected = false;
-      this.connecting = false;
+      this.connectionState = CONNECTION_STATES.DISCONNECTED;
       this.lastError = null;
+      this.reconnectAttempts = 0;
+      this.maxReconnectAttempts = 10;
 
       this._queue = [];                 // emit 큐
       this._listeners = new Map();      // {evt -> Set(handler)}
-      this._notify = null;              // (title, body) => void
+      this._notify = null;              // (title, body, options) => void
       this._roleCtx = null;             // { role, battleId, playerId?, spectatorName?, otp? }
       this._latency = null;
+      this._heartbeatTimer = null;
+      this._connectionStartTime = null;
+      this._lastHeartbeat = null;
+      this._stats = {
+        totalConnections: 0,
+        totalDisconnections: 0,
+        totalReconnections: 0,
+        totalMessages: 0,
+        totalErrors: 0
+      };
+
+      // 게임 효과 관련
+      this._gameEffects = true;
+      this._connectionIndicators = new Set();
+      this._isPageVisible = !document.hidden;
 
       this._onVisibilityChange = this._onVisibilityChange.bind(this);
+      this._setupConnectionVisuals();
     }
 
-    // 선택적 알림 훅
-    onNotify(fn) { this._notify = (typeof fn === 'function') ? fn : null; }
+    // ───────────────────────────────────────────────────────────
+    // 게임적 시각 효과 설정
+    // ───────────────────────────────────────────────────────────
+    _setupConnectionVisuals() {
+      // 연결 상태 표시용 CSS 추가
+      if (!document.querySelector('#pyxis-socket-styles')) {
+        const style = document.createElement('style');
+        style.id = 'pyxis-socket-styles';
+        style.textContent = `
+          .pyxis-connection-pulse {
+            animation: pyxisConnectionPulse 2s infinite;
+          }
+          
+          @keyframes pyxisConnectionPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+          }
+          
+          .pyxis-connection-lost {
+            animation: pyxisConnectionLost 1s infinite;
+          }
+          
+          @keyframes pyxisConnectionLost {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+          }
+          
+          .pyxis-connection-good {
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+          }
+          
+          .pyxis-connection-poor {
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+          }
+          
+          .pyxis-connection-bad {
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+          }
+          
+          .pyxis-socket-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 8, 13, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 99999;
+            color: #E2E8F0;
+            font-family: 'Inter', sans-serif;
+          }
+          
+          .pyxis-socket-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(220, 199, 162, 0.3);
+            border-top: 3px solid #DCC7A2;
+            border-radius: 50%;
+            animation: pyxisSpinner 1s linear infinite;
+            margin-bottom: 20px;
+          }
+          
+          @keyframes pyxisSpinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          
+          .pyxis-socket-message {
+            font-size: 18px;
+            font-weight: 600;
+            color: #DCC7A2;
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          
+          .pyxis-socket-status {
+            font-size: 14px;
+            color: #94A3B8;
+            text-align: center;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
 
-    // 초기화 + 연결
+    _showConnectionOverlay(message, status = '') {
+      if (!this._gameEffects) return;
+      
+      this._hideConnectionOverlay();
+      
+      const overlay = document.createElement('div');
+      overlay.id = 'pyxis-socket-overlay';
+      overlay.className = 'pyxis-socket-overlay';
+      overlay.innerHTML = `
+        <div class="pyxis-socket-spinner"></div>
+        <div class="pyxis-socket-message">${message}</div>
+        <div class="pyxis-socket-status">${status}</div>
+      `;
+      
+      document.body.appendChild(overlay);
+    }
+
+    _hideConnectionOverlay() {
+      const overlay = document.getElementById('pyxis-socket-overlay');
+      if (overlay) {
+        overlay.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => {
+          if (overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+          }
+        }, 300);
+      }
+    }
+
+    _updateConnectionIndicators() {
+      this._connectionIndicators.forEach(indicator => {
+        if (!indicator || !indicator.parentNode) return;
+        
+        indicator.classList.remove(
+          'pyxis-connection-pulse', 
+          'pyxis-connection-lost',
+          'pyxis-connection-good',
+          'pyxis-connection-poor',
+          'pyxis-connection-bad'
+        );
+        
+        switch (this.connectionState) {
+          case CONNECTION_STATES.CONNECTED:
+            indicator.classList.add('pyxis-connection-good');
+            if (this._latency > 1000) {
+              indicator.classList.add('pyxis-connection-poor');
+            }
+            break;
+          case CONNECTION_STATES.CONNECTING:
+          case CONNECTION_STATES.RECONNECTING:
+            indicator.classList.add('pyxis-connection-pulse');
+            break;
+          case CONNECTION_STATES.DISCONNECTED:
+          case CONNECTION_STATES.ERROR:
+            indicator.classList.add('pyxis-connection-lost', 'pyxis-connection-bad');
+            break;
+        }
+      });
+    }
+
+    // 연결 상태 표시기 자동 탐지
+    document.addEventListener('DOMContentLoaded', () => {
+      const indicators = document.querySelectorAll('#connectionDot, .connection-status, .status-dot');
+      indicators.forEach(el => {
+        instance.registerConnectionIndicator(el);
+      });
+    });
+  }
+  
+  global.PyxisSocket = instance;
+
+  // CommonJS/AMD 호환(선택)
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = instance;
+  }
+  
+  // 전역 정리 이벤트
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+      instance.destroy();
+    });
+  }
+
+})(window); 등록
+    registerConnectionIndicator(element) {
+      if (element && element.nodeType === 1) {
+        this._connectionIndicators.add(element);
+        this._updateConnectionIndicators();
+      }
+    }
+
+    unregisterConnectionIndicator(element) {
+      this._connectionIndicators.delete(element);
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 알림 및 효과 설정
+    // ───────────────────────────────────────────────────────────
+    
+    // 선택적 알림 훅 (PyxisNotify 연동)
+    onNotify(fn) { 
+      this._notify = (typeof fn === 'function') ? fn : null;
+      log('debug', 'Notification handler registered');
+    }
+
+    setGameEffects(enabled) {
+      this._gameEffects = !!enabled;
+      log('info', `Game effects ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 하트비트 시스템
+    // ───────────────────────────────────────────────────────────
+    
+    _startHeartbeat() {
+      this._stopHeartbeat();
+      
+      if (!this.opts.heartbeatInterval || this.opts.heartbeatInterval <= 0) return;
+      
+      this._heartbeatTimer = setInterval(() => {
+        if (this.socket && this.connectionState === CONNECTION_STATES.CONNECTED) {
+          const startTime = now();
+          
+          this.socket.timeout(5000).emit('ping', { ts: startTime }, (response) => {
+            const latency = now() - startTime;
+            this._latency = latency;
+            this._lastHeartbeat = now();
+            
+            log('debug', `Heartbeat: ${latency}ms`);
+            
+            // 연결 품질 업데이트
+            this._updateConnectionIndicators();
+            
+            // 지연이 심한 경우 알림
+            if (latency > 3000 && this._notify) {
+              this._notify('연결 지연', '네트워크 연결이 느립니다', { type: 'warning' });
+            }
+          });
+        }
+      }, this.opts.heartbeatInterval);
+    }
+
+    _stopHeartbeat() {
+      if (this._heartbeatTimer) {
+        clearInterval(this._heartbeatTimer);
+        this._heartbeatTimer = null;
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 초기화 + 연결 (강화된 버전)
+    // ───────────────────────────────────────────────────────────
+    
     async init(options = {}) {
       this.opts = Object.assign({}, DEFAULTS, options);
       if (!this.opts.url) this.opts.url = window.location.origin;
 
+      log('info', 'Initializing PyxisSocket', this.opts);
+
       // socket.io client 로드
       if (!('io' in global)) {
-        await loadScript(this.opts.url.replace(/\/+$/, '') + '/socket.io/socket.io.js');
+        if (this._gameEffects) {
+          this._showConnectionOverlay('Socket.IO 로딩 중...', '클라이언트 라이브러리를 불러오고 있습니다');
+        }
+        
+        try {
+          await loadScript(this.opts.url.replace(/\/+$/, '') + '/socket.io/socket.io.js');
+          log('info', 'Socket.IO client loaded successfully');
+        } catch (error) {
+          log('error', 'Failed to load Socket.IO client', error);
+          if (this._notify) {
+            this._notify('연결 실패', 'Socket.IO 클라이언트를 로드할 수 없습니다', { type: 'error' });
+          }
+          throw error;
+        }
       }
+      
       this.io = global.io;
 
       document.addEventListener('visibilitychange', this._onVisibilityChange);
@@ -128,151 +435,441 @@
       return this;
     }
 
-    // ── 인증 헬퍼 ──
+    // ───────────────────────────────────────────────────────────
+    // 인증 헬퍼 (강화된 피드백)
+    // ───────────────────────────────────────────────────────────
+    
     async authAsAdmin({ battleId, otp }) {
       if (!battleId || !otp) throw new Error('battleId/otp required');
+      
+      log('info', 'Authenticating as admin', { battleId });
+      
       this._roleCtx = { role: 'admin', battleId, otp };
       await this._ensureConnected();
-      this.socket.emit('adminAuth', { battleId, otp });
+      
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Authentication timeout'));
+        }, 10000);
+        
+        const cleanup = () => {
+          clearTimeout(timeout);
+          this.off('auth:ok', onSuccess);
+          this.off('auth:error', onError);
+        };
+        
+        const onSuccess = (data) => {
+          cleanup();
+          log('info', 'Admin authentication successful');
+          resolve(data);
+        };
+        
+        const onError = (error) => {
+          cleanup();
+          log('error', 'Admin authentication failed', error);
+          reject(new Error(error.message || 'Authentication failed'));
+        };
+        
+        this.on('auth:ok', onSuccess);
+        this.on('auth:error', onError);
+        
+        this.socket.emit('adminAuth', { battleId, otp });
+      });
     }
 
-    async authAsPlayer({ battleId, playerId, otp }) {
+    async authAsPlayer({ battleId, playerId, otp, name }) {
       if (!battleId || !playerId || !otp) throw new Error('battleId/playerId/otp required');
-      this._roleCtx = { role: 'player', battleId, playerId, otp };
+      
+      log('info', 'Authenticating as player', { battleId, playerId, name });
+      
+      this._roleCtx = { role: 'player', battleId, playerId, otp, name };
       await this._ensureConnected();
-      this.socket.emit('playerAuth', { battleId, playerId, otp });
+      
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Authentication timeout'));
+        }, 10000);
+        
+        const cleanup = () => {
+          clearTimeout(timeout);
+          this.off('auth:ok', onSuccess);
+          this.off('auth:error', onError);
+        };
+        
+        const onSuccess = (data) => {
+          cleanup();
+          log('info', 'Player authentication successful');
+          if (this._notify) {
+            this._notify('입장 완료!', `${name || playerId}님, 전투에 참가하셨습니다`, { type: 'success' });
+          }
+          resolve(data);
+        };
+        
+        const onError = (error) => {
+          cleanup();
+          log('error', 'Player authentication failed', error);
+          if (this._notify) {
+            this._notify('입장 실패', error.message || '인증에 실패했습니다', { type: 'error' });
+          }
+          reject(new Error(error.message || 'Authentication failed'));
+        };
+        
+        this.on('auth:ok', onSuccess);
+        this.on('auth:error', onError);
+        
+        this.socket.emit('playerAuth', { battleId, playerId, otp, name });
+      });
     }
 
     async authAsSpectator({ battleId, otp, spectatorName }) {
       if (!battleId || !otp) throw new Error('battleId/otp required');
-      this._roleCtx = { role: 'spectator', battleId, spectatorName: spectatorName || '관전자', otp };
+      
+      const name = spectatorName || '관전자';
+      log('info', 'Authenticating as spectator', { battleId, name });
+      
+      this._roleCtx = { role: 'spectator', battleId, spectatorName: name, otp };
       await this._ensureConnected();
-      this.socket.emit('spectatorAuth', { battleId, otp, spectatorName: spectatorName || '관전자' });
+      
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Authentication timeout'));
+        }, 10000);
+        
+        const cleanup = () => {
+          clearTimeout(timeout);
+          this.off('auth:ok', onSuccess);
+          this.off('auth:error', onError);
+        };
+        
+        const onSuccess = (data) => {
+          cleanup();
+          log('info', 'Spectator authentication successful');
+          if (this._notify) {
+            this._notify('관전 시작!', `${name}님, 관전을 시작합니다`, { type: 'success' });
+          }
+          resolve(data);
+        };
+        
+        const onError = (error) => {
+          cleanup();
+          log('error', 'Spectator authentication failed', error);
+          if (this._notify) {
+            this._notify('관전 실패', error.message || '인증에 실패했습니다', { type: 'error' });
+          }
+          reject(new Error(error.message || 'Authentication failed'));
+        };
+        
+        this.on('auth:ok', onSuccess);
+        this.on('auth:error', onError);
+        
+        this.socket.emit('spectatorAuth', { battleId, otp, spectatorName: name });
+      });
     }
 
     // 구버전 대시보드용
     async joinBattle({ battleId, role }) {
       if (!battleId || !role) throw new Error('battleId/role required');
+      
+      log('info', 'Joining battle (legacy)', { battleId, role });
+      
       this._roleCtx = { role, battleId };
       await this._ensureConnected();
       this.socket.emit('join-battle', { battleId, role });
     }
 
-    // ── 채팅 ──
+    // ───────────────────────────────────────────────────────────
+    // 채팅 (향상된 피드백)
+    // ───────────────────────────────────────────────────────────
+    
     async sendChat({ text, channel = 'all', teamKey = null, sender = null, battleId = null }) {
       if (!text) return;
+      
+      this._stats.totalMessages++;
       await this._ensureConnected();
 
       const useTeamPrefix = channel === 'team' && !/^\s*\/t\b/i.test(text);
       const message = useTeamPrefix ? `/t ${text}` : text;
       const finalBattleId = battleId || this._roleCtx?.battleId;
-      if (!finalBattleId) return;
+      if (!finalBattleId) {
+        log('warn', 'No battleId for chat message');
+        return;
+      }
 
-      // 우선 최신 이벤트
-      this.socket.emit('chat:send', {
-        battleId: finalBattleId,
-        message,
-        teamKey: teamKey || undefined,
-        sender: sender || undefined,
-      }, (ack) => {
-        // 실패하면 중간/레거시 이벤트들도 시도
-        if (!ack || ack.ok === false) {
-          this.socket.emit('send-chat', {
-            battleId: finalBattleId,
-            message,
-            teamKey: teamKey || undefined,
-            sender: sender || undefined,
-          });
-        }
+      log('debug', 'Sending chat message', { channel, text: text.substring(0, 50) });
+
+      return new Promise((resolve) => {
+        // 우선 최신 이벤트
+        this.socket.emit('chat:send', {
+          battleId: finalBattleId,
+          message,
+          teamKey: teamKey || undefined,
+          sender: sender || undefined,
+        }, (ack) => {
+          if (ack && ack.ok !== false) {
+            log('debug', 'Chat message sent successfully');
+            resolve(true);
+          } else {
+            // 실패하면 레거시 이벤트 시도
+            log('debug', 'Fallback to legacy chat event');
+            this.socket.emit('send-chat', {
+              battleId: finalBattleId,
+              message,
+              teamKey: teamKey || undefined,
+              sender: sender || undefined,
+            });
+            resolve(false);
+          }
+        });
       });
     }
 
-    // ── 액션 ──
-    // 통합 액션 (player.js에서 사용)
+    // ───────────────────────────────────────────────────────────
+    // 액션 (강화된 에러 처리)
+    // ───────────────────────────────────────────────────────────
+    
     async sendAction(actionData, battleId = null, playerId = null) {
+      this._stats.totalMessages++;
       await this._ensureConnected();
+      
       const payload = Object.assign(
         {
           battleId: battleId || this._roleCtx?.battleId,
           playerId: playerId || this._roleCtx?.playerId,
+          timestamp: now()
         },
         actionData || {}
       );
-      if (!payload.battleId || !payload.playerId) throw new Error('battleId/playerId required');
+      
+      if (!payload.battleId || !payload.playerId) {
+        const error = new Error('battleId/playerId required');
+        log('error', 'Action failed: missing required fields', payload);
+        throw error;
+      }
 
-      return new Promise((resolve) => {
-        this.socket.emit('player:action', payload, (res) => {
-          if (res && res.ok) return resolve(res);
-          // 레거시 이벤트 폴백
-          this.socket.emit('playerAction', payload);
-          resolve({ ok: true });
-        });
-      });
-    }
-
-    // 구 시그니처 유지 (admin.js 등에서 사용될 수 있음)
-    async sendPlayerAction(action, targetId = null, battleId = null, playerId = null) {
-      return this.sendAction({ type: action, action, targetPid: targetId, targetId }, battleId, playerId);
-    }
-
-    // ── 관리자 명령 ──
-    async sendAdminCommand(command, data = {}) {
-      await this._ensureConnected();
-      const battleId = this._roleCtx?.battleId || data.battleId;
-      if (!battleId) throw new Error('battleId required');
+      log('debug', 'Sending player action', { type: payload.type, action: payload.action });
 
       return new Promise((resolve, reject) => {
-        this.socket.emit(`admin:${command}`, { battleId, ...data }, (res) => {
-          if (res && res.ok !== false) resolve(res || { ok: true });
-          else reject(new Error(res?.message || 'Command failed'));
+        const timeout = setTimeout(() => {
+          log('warn', 'Action timeout');
+          reject(new Error('Action timeout'));
+        }, 15000);
+        
+        this.socket.emit('player:action', payload, (res) => {
+          clearTimeout(timeout);
+          
+          if (res && res.ok !== false) {
+            log('debug', 'Action successful', res);
+            resolve(res);
+          } else {
+            log('debug', 'Fallback to legacy action event');
+            // 레거시 이벤트 폴백
+            this.socket.emit('playerAction', payload);
+            resolve({ ok: true, legacy: true });
+          }
         });
       });
     }
 
-    // ── REST 래퍼 ──
+    // 구 시그니처 유지
+    async sendPlayerAction(action, targetId = null, battleId = null, playerId = null) {
+      return this.sendAction({ 
+        type: action, 
+        action, 
+        targetPid: targetId, 
+        targetId 
+      }, battleId, playerId);
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 관리자 명령 (강화된 피드백)
+    // ───────────────────────────────────────────────────────────
+    
+    async sendAdminCommand(command, data = {}) {
+      this._stats.totalMessages++;
+      await this._ensureConnected();
+      
+      const battleId = this._roleCtx?.battleId || data.battleId;
+      if (!battleId) {
+        const error = new Error('battleId required');
+        log('error', 'Admin command failed: no battleId', { command, data });
+        throw error;
+      }
+
+      log('info', 'Sending admin command', { command, battleId });
+
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          log('warn', 'Admin command timeout', command);
+          reject(new Error(`Command '${command}' timeout`));
+        }, 20000);
+        
+        this.socket.emit(`admin:${command}`, { battleId, ...data }, (res) => {
+          clearTimeout(timeout);
+          
+          if (res && res.ok !== false) {
+            log('debug', 'Admin command successful', { command, result: res });
+            resolve(res || { ok: true });
+          } else {
+            const error = new Error(res?.message || `Command '${command}' failed`);
+            log('error', 'Admin command failed', { command, error: error.message });
+            reject(error);
+          }
+        });
+      });
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // REST 래퍼 (강화된 에러 처리)
+    // ───────────────────────────────────────────────────────────
+    
     async apiCall(endpoint, options = {}) {
       try {
+        log('debug', 'Making API call', { endpoint, method: options.method || 'GET' });
+        
         const res = await fetch(endpoint, {
           headers: { 'Content-Type': 'application/json' },
           ...options
         });
+        
         const data = await res.json().catch(() => ({}));
+        
+        if (!res.ok) {
+          log('warn', 'API call failed', { endpoint, status: res.status, data });
+          return { ok: false, status: res.status, message: data.message || 'API 호출 실패' };
+        }
+        
+        log('debug', 'API call successful', { endpoint, status: res.status });
         return data;
       } catch (err) {
-        console.error('[SocketManager] API call failed:', err);
-        return { ok: false, message: 'API 호출 실패' };
+        log('error', 'API call error', { endpoint, error: err.message });
+        return { ok: false, message: 'API 호출 실패: ' + err.message };
       }
     }
 
-    // ── 범용 emit(연결 전 큐잉) ──
+    // ───────────────────────────────────────────────────────────
+    // 범용 emit (연결 전 큐잉, 강화된 로깅)
+    // ───────────────────────────────────────────────────────────
+    
     emit(event, payload) {
-      if (this.socket && this.connected) this.socket.emit(event, payload);
-      else this._queue.push({ event, payload });
+      this._stats.totalMessages++;
+      
+      if (this.socket && this.connectionState === CONNECTION_STATES.CONNECTED) {
+        log('debug', 'Emitting event', { event, hasPayload: !!payload });
+        this.socket.emit(event, payload);
+      } else {
+        log('debug', 'Queueing event (not connected)', { event, queueSize: this._queue.length });
+        this._queue.push({ event, payload, timestamp: now() });
+        
+        // 큐 크기 제한
+        if (this._queue.length > 100) {
+          const removed = this._queue.splice(0, 50);
+          log('warn', 'Event queue overflow, removed old events', { removed: removed.length });
+        }
+      }
     }
 
-    // ── 이벤트 구독/해제 ──
+    // ───────────────────────────────────────────────────────────
+    // 이벤트 구독/해제 (강화된 관리)
+    // ───────────────────────────────────────────────────────────
+    
     on(evt, handler) {
+      if (typeof handler !== 'function') {
+        log('warn', 'Invalid event handler', { event: evt });
+        return () => {};
+      }
+      
       if (!this._listeners.has(evt)) this._listeners.set(evt, new Set());
       this._listeners.get(evt).add(handler);
+      
+      log('debug', 'Event listener added', { event: evt, totalListeners: this._listeners.get(evt).size });
+      
       return () => this.off(evt, handler);
     }
+    
     off(evt, handler) {
       const set = this._listeners.get(evt);
       if (!set) return;
+      
+      const wasPresent = set.has(handler);
       set.delete(handler);
+      
       if (set.size === 0) this._listeners.delete(evt);
+      
+      if (wasPresent) {
+        log('debug', 'Event listener removed', { event: evt, remainingListeners: set.size });
+      }
     }
 
-    // ── 상태 조회 ──
-    isConnected() { return this.connected; }
-    isConnecting() { return this.connecting; }
+    // 모든 리스너 제거
+    removeAllListeners(evt = null) {
+      if (evt) {
+        this._listeners.delete(evt);
+        log('debug', 'All listeners removed for event', { event: evt });
+      } else {
+        const totalEvents = this._listeners.size;
+        this._listeners.clear();
+        log('debug', 'All event listeners removed', { totalEvents });
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 상태 조회 (강화된 정보)
+    // ───────────────────────────────────────────────────────────
+    
+    isConnected() { return this.connectionState === CONNECTION_STATES.CONNECTED; }
+    isConnecting() { return this.connectionState === CONNECTION_STATES.CONNECTING; }
+    isReconnecting() { return this.connectionState === CONNECTION_STATES.RECONNECTING; }
+    hasError() { return this.connectionState === CONNECTION_STATES.ERROR; }
+    
+    getConnectionState() { return this.connectionState; }
     getLastError() { return this.lastError; }
     getLatencyMs() { return this._latency; }
     getRoleContext() { return Object.assign({}, this._roleCtx || {}); }
+    getReconnectAttempts() { return this.reconnectAttempts; }
+    getConnectionUptime() { 
+      return this._connectionStartTime ? now() - this._connectionStartTime : 0; 
+    }
+    
+    getStats() {
+      return {
+        ...this._stats,
+        connectionState: this.connectionState,
+        latency: this._latency,
+        uptime: this.getConnectionUptime(),
+        reconnectAttempts: this.reconnectAttempts,
+        queueSize: this._queue.length,
+        listenerCount: Array.from(this._listeners.values()).reduce((sum, set) => sum + set.size, 0)
+      };
+    }
 
-    // ── 정리 ──
+    // 연결 품질 평가
+    getConnectionQuality() {
+      if (!this.isConnected()) return 'disconnected';
+      if (this._latency === null) return 'unknown';
+      if (this._latency < 100) return 'excellent';
+      if (this._latency < 300) return 'good';
+      if (this._latency < 800) return 'fair';
+      if (this._latency < 2000) return 'poor';
+      return 'bad';
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // 정리 (강화된 클린업)
+    // ───────────────────────────────────────────────────────────
+    
     destroy() {
-      try { document.removeEventListener('visibilitychange', this._onVisibilityChange); } catch (_) {}
+      log('info', 'Destroying PyxisSocket', this.getStats());
+      
+      try { 
+        document.removeEventListener('visibilitychange', this._onVisibilityChange); 
+      } catch (_) {}
+      
+      this._stopHeartbeat();
+      this._hideConnectionOverlay();
+      
+      // 연결 표시기 정리
+      this._connectionIndicators.clear();
+      
       try {
         if (this.socket) {
           this.socket.removeAllListeners?.();
@@ -280,26 +877,49 @@
           this.socket = null;
         }
       } catch (_) {}
-      this._listeners.clear();
+      
+      this.removeAllListeners();
       this._queue.length = 0;
-      this.connected = false;
-      this.connecting = false;
+      this.connectionState = CONNECTION_STATES.DISCONNECTED;
       this.lastError = null;
+      this.reconnectAttempts = 0;
+      this._connectionStartTime = null;
+      this._lastHeartbeat = null;
     }
 
-    // ───────────────────────────────────────────
-    // 내부: 연결/재연결/바인딩
-    // ───────────────────────────────────────────
+    // ───────────────────────────────────────────────────────────
+    // 내부: 연결/재연결/바인딩 (대폭 강화)
+    // ───────────────────────────────────────────────────────────
+    
     async _ensureConnected() {
-      if (this.connected || this.connecting) return;
+      if (this.isConnected() || this.isConnecting()) return;
       await this._connect();
     }
 
     async _connect() {
-      this.connecting = true;
+      if (this.isConnecting() || this.isConnected()) return;
+      
+      this.connectionState = CONNECTION_STATES.CONNECTING;
       this.lastError = null;
+      this._stats.totalConnections++;
 
-      if (!this.io) throw new Error('socket.io client not loaded');
+      log('info', 'Attempting to connect', { 
+        attempt: this.reconnectAttempts + 1, 
+        url: this.opts.url 
+      });
+
+      if (this._gameEffects && !this._isPageVisible) {
+        this._showConnectionOverlay('서버에 연결 중...', `시도 ${this.reconnectAttempts + 1}회`);
+      }
+
+      this._updateConnectionIndicators();
+
+      if (!this.io) {
+        const error = new Error('socket.io client not loaded');
+        log('error', 'Connection failed: Socket.IO not loaded');
+        this._handleConnectionError(error);
+        throw error;
+      }
 
       // 기존 소켓 정리
       if (this.socket) {
@@ -322,87 +942,233 @@
       this._bindSocketCoreEvents();
       this._bindBroadcastEvents();
 
-      // 연결 완료 대기(최대 opts.timeout)
+      // 연결 완료 대기
       await new Promise((resolve) => {
         const done = once(resolve);
-        this.socket.once('connect', done);
-        setTimeout(done, Math.max(2000, this.opts.timeout));
+        
+        this.socket.once('connect', () => {
+          log('info', 'Socket connected successfully');
+          done();
+        });
+        
+        this.socket.once('connect_error', (error) => {
+          log('warn', 'Socket connection failed', error.message);
+          done();
+        });
+        
+        setTimeout(() => {
+          log('warn', 'Connection timeout');
+          done();
+        }, Math.max(5000, this.opts.timeout));
       });
+    }
+
+    _handleConnectionError(error) {
+      this.connectionState = CONNECTION_STATES.ERROR;
+      this.lastError = error;
+      this._stats.totalErrors++;
+      
+      log('error', 'Connection error', { 
+        message: error.message, 
+        attempts: this.reconnectAttempts 
+      });
+
+      if (this._notify) {
+        this._notify('연결 오류', error.message || '서버 연결에 실패했습니다', { 
+          type: 'error',
+          priority: 'high'
+        });
+      }
+
+      this._updateConnectionIndicators();
+
+      // 자동 재연결 시도
+      if (this.opts.autoReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this._scheduleReconnect();
+      } else {
+        log('error', 'Max reconnection attempts reached');
+        if (this._notify) {
+          this._notify('연결 포기', '최대 재연결 시도 횟수에 도달했습니다', { 
+            type: 'error',
+            priority: 'urgent'
+          });
+        }
+      }
+    }
+
+    _scheduleReconnect() {
+      this.connectionState = CONNECTION_STATES.RECONNECTING;
+      this.reconnectAttempts++;
+      this._stats.totalReconnections++;
+      
+      const delay = Math.min(
+        this.opts.reconnectionDelay * Math.pow(1.5, this.reconnectAttempts - 1),
+        this.opts.reconnectionDelayMax
+      );
+      
+      log('info', 'Scheduling reconnection', { 
+        attempt: this.reconnectAttempts, 
+        delay: delay + 'ms' 
+      });
+
+      if (this._gameEffects) {
+        this._showConnectionOverlay(
+          '재연결 중...', 
+          `${delay/1000}초 후 ${this.reconnectAttempts}번째 시도`
+        );
+      }
+
+      this._updateConnectionIndicators();
+
+      setTimeout(() => {
+        if (this.connectionState === CONNECTION_STATES.RECONNECTING) {
+          this._connect().catch((error) => {
+            this._handleConnectionError(error);
+          });
+        }
+      }, delay);
     }
 
     _bindSocketCoreEvents() {
       const s = this.socket;
 
       s.on('connect', () => {
-        this.connected = true;
-        this.connecting = false;
+        this.connectionState = CONNECTION_STATES.CONNECTED;
         this.lastError = null;
+        this.reconnectAttempts = 0;
+        this._connectionStartTime = now();
+        
+        log('info', 'Socket connected', { id: s.id });
+
+        // 오버레이 숨기기
+        this._hideConnectionOverlay();
+        this._updateConnectionIndicators();
+
+        // 하트비트 시작
+        this._startHeartbeat();
 
         // 큐 flush
         if (this._queue.length) {
           const copies = this._queue.splice(0, this._queue.length);
-          copies.forEach(({ event, payload }) => s.emit(event, payload));
+          log('info', 'Flushing queued events', { count: copies.length });
+          
+          copies.forEach(({ event, payload }) => {
+            try {
+              s.emit(event, payload);
+            } catch (error) {
+              log('warn', 'Failed to emit queued event', { event, error: error.message });
+            }
+          });
         }
 
-        // 가벼운 핑(왕복 측정)
+        // 초기 레이턴시 측정
         const t0 = now();
         try {
-          s.timeout(3000).emit('state:pull', null, () => {
+          s.timeout(3000).emit('ping', { ts: t0 }, () => {
             this._latency = now() - t0;
+            this._updateConnectionIndicators();
           });
         } catch (_) {}
 
-        this._fire('socket:connect', { id: s.id });
+        this._fire('socket:connect', { id: s.id, stats: this.getStats() });
+
+        // 알림
+        if (this._notify && this.reconnectAttempts > 0) {
+          this._notify('연결 복구!', '서버 연결이 복구되었습니다', { 
+            type: 'success',
+            priority: 'high'
+          });
+        }
 
         // 재연결 시 자동 재인증
         if (this._roleCtx) {
-          const { role, battleId, playerId, spectatorName, otp } = this._roleCtx;
-          if (role === 'admin' && battleId && otp) {
-            s.emit('adminAuth', { battleId, otp });
-          } else if (role === 'player' && battleId && playerId && otp) {
-            s.emit('playerAuth', { battleId, playerId, otp });
-          } else if (role === 'spectator' && battleId && otp) {
-            s.emit('spectatorAuth', { battleId, otp, spectatorName: spectatorName || '관전자' });
-          } else if (role && battleId) {
-            s.emit('join-battle', { battleId, role });
-          }
+          this._autoReauth();
         }
       });
 
       s.on('connect_error', (err) => {
-        this.connected = false;
-        this.connecting = false;
-        this.lastError = err;
-        this._fire('socket:error', { type: 'connect_error', message: err?.message || String(err || '') });
+        this._handleConnectionError(err);
+        this._fire('socket:error', { 
+          type: 'connect_error', 
+          message: err?.message || String(err || ''),
+          stats: this.getStats()
+        });
       });
 
       s.on('disconnect', (reason) => {
-        this.connected = false;
-        this.connecting = false;
-        this._fire('socket:disconnect', { reason });
+        this.connectionState = CONNECTION_STATES.DISCONNECTED;
+        this._stats.totalDisconnections++;
+        
+        log('warn', 'Socket disconnected', { reason });
+        
+        this._stopHeartbeat();
+        this._updateConnectionIndicators();
+        
+        this._fire('socket:disconnect', { reason, stats: this.getStats() });
+
+        // 예상치 못한 연결 끊김인 경우 재연결 시도
+        if (reason !== 'io client disconnect' && this.opts.autoReconnect) {
+          if (this._notify) {
+            this._notify('연결 끊김', '서버와의 연결이 끊어졌습니다', { 
+              type: 'warning',
+              priority: 'high'
+            });
+          }
+          
+          setTimeout(() => {
+            if (this.connectionState === CONNECTION_STATES.DISCONNECTED) {
+              this._scheduleReconnect();
+            }
+          }, 1000);
+        }
       });
 
-      // 인증 결과 표준화
+      // 인증 결과 표준화 (강화된 피드백)
       pick(EVENT_ALIASES.authOk, (evt) => {
         s.on(evt, (payload) => {
+          log('info', 'Authentication successful', { event: evt, role: this._roleCtx?.role });
           this._fire('auth:ok', payload);
-          if (this._notify) this._notify('연결 완료', '서버 인증이 성공했습니다.');
         });
       });
+      
       pick(EVENT_ALIASES.authErr, (evt) => {
-        s.on(evt, (message) => this._fire('auth:error', { message }));
+        s.on(evt, (message) => {
+          log('warn', 'Authentication failed', { event: evt, message });
+          this._fire('auth:error', { message });
+        });
       });
+    }
+
+    _autoReauth() {
+      if (!this._roleCtx) return;
+      
+      const { role, battleId, playerId, spectatorName, otp } = this._roleCtx;
+      
+      log('info', 'Auto re-authenticating', { role, battleId });
+      
+      if (role === 'admin' && battleId && otp) {
+        this.socket.emit('adminAuth', { battleId, otp });
+      } else if (role === 'player' && battleId && playerId && otp) {
+        this.socket.emit('playerAuth', { battleId, playerId, otp });
+      } else if (role === 'spectator' && battleId && otp) {
+        this.socket.emit('spectatorAuth', { battleId, otp, spectatorName: spectatorName || '관전자' });
+      } else if (role && battleId) {
+        this.socket.emit('join-battle', { battleId, role });
+      }
     }
 
     _bindBroadcastEvents() {
       const s = this.socket;
 
-      // 상태
+      // 상태 (게임 효과 추가)
       pick(EVENT_ALIASES.state, (evt) => {
-        s.on(evt, (state) => this._fire('state', state));
+        s.on(evt, (state) => {
+          log('debug', 'State update received', { event: evt });
+          this._fire('state', state);
+        });
       });
 
-      // 채팅 (레거시 페이로드 보정)
+      // 채팅 (레거시 페이로드 보정 + 알림)
       pick(EVENT_ALIASES.chat, (evt) => {
         s.on(evt, (msg) => {
           let payload = msg;
@@ -414,89 +1180,242 @@
               ts: msg.timestamp || Date.now()
             };
           }
+          
+          log('debug', 'Chat message received', { 
+            from: payload.from?.nickname, 
+            scope: payload.scope 
+          });
+          
           this._fire('chat', payload);
+          
+          // 페이지가 숨겨져 있으면 알림
+          if (!this._isPageVisible && this._notify && payload.text) {
+            this._notify('💬 새 메시지', payload.text.substring(0, 50), { 
+              type: 'general',
+              priority: 'normal'
+            });
+          }
         });
       });
 
-      // 페이즈/턴/배틀
+      // 페이즈/턴/배틀 (강화된 알림)
       pick(EVENT_ALIASES.phaseChange, (evt) => {
         s.on(evt, (data) => {
+          log('info', 'Phase change', { event: evt, phase: data?.phase });
           this._fire('phase', data);
+          
           if (this._notify && data?.phase) {
             const phaseName = data.phase === 'team1' || data.phase === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
-            this._notify('턴 페이즈 변경', `${phaseName}의 차례입니다.`);
+            this._notify('⚔️ 턴 변경', `${phaseName}의 차례입니다`, { 
+              type: 'turn',
+              priority: 'normal'
+            });
           }
         });
       });
 
       pick(EVENT_ALIASES.turnUpdate, (evt) => {
-        s.on(evt, (data) => this._fire('turn', data));
+        s.on(evt, (data) => {
+          log('debug', 'Turn update', { event: evt });
+          this._fire('turn', data);
+        });
       });
 
       pick(EVENT_ALIASES.battleStatus, (evt) => {
         s.on(evt, (data) => {
+          log('info', 'Battle status change', { event: evt });
           this._fire('battle', { event: evt, data });
+          
           if (this._notify) {
-            if (evt === 'battle:started') this._notify('전투 시작', '전투가 시작되었습니다.');
-            if (evt === 'battle:ended' || evt === 'battle:end') this._notify('전투 종료', '전투가 종료되었습니다.');
+            if (evt === 'battle:started') {
+              this._notify('⚔️ 전투 시작!', '전투가 시작되었습니다', { 
+                type: 'battle',
+                priority: 'high'
+              });
+            }
+            if (evt === 'battle:ended' || evt === 'battle:end') {
+              this._notify('🏁 전투 종료', '전투가 종료되었습니다', { 
+                type: 'victory',
+                priority: 'urgent'
+              });
+            }
+          }
+        });
+      });
+
+      // 게임 이벤트 (새로 추가)
+      pick(EVENT_ALIASES.playerJoin, (evt) => {
+        s.on(evt, (data) => {
+          log('info', 'Player joined', { player: data?.name });
+          this._fire('player:join', data);
+          
+          if (this._notify && data?.name) {
+            this._notify('👋 플레이어 입장', `${data.name}님이 입장했습니다`, { 
+              type: 'general',
+              priority: 'low'
+            });
+          }
+        });
+      });
+
+      pick(EVENT_ALIASES.playerLeave, (evt) => {
+        s.on(evt, (data) => {
+          log('info', 'Player left', { player: data?.name });
+          this._fire('player:leave', data);
+          
+          if (this._notify && data?.name) {
+            this._notify('👋 플레이어 퇴장', `${data.name}님이 퇴장했습니다`, { 
+              type: 'general',
+              priority: 'low'
+            });
+          }
+        });
+      });
+
+      pick(EVENT_ALIASES.playerDeath, (evt) => {
+        s.on(evt, (data) => {
+          log('info', 'Player death', { player: data?.name });
+          this._fire('player:death', data);
+          
+          if (this._notify && data?.name) {
+            this._notify('💀 플레이어 사망', `${data.name}님이 쓰러졌습니다`, { 
+              type: 'defeat',
+              priority: 'high'
+            });
           }
         });
       });
 
       // 타이머/공지/로그
       pick(EVENT_ALIASES.timerSync, (evt) => {
-        s.on(evt, (data) => this._fire('timer', data));
+        s.on(evt, (data) => {
+          log('debug', 'Timer sync', { event: evt });
+          this._fire('timer', data);
+        });
       });
 
       pick(EVENT_ALIASES.notice, (evt) => {
-        s.on(evt, (data) => this._fire('notice', data));
+        s.on(evt, (data) => {
+          log('info', 'Notice update', { event: evt });
+          this._fire('notice', data);
+        });
       });
 
       pick(EVENT_ALIASES.logNew, (evt) => {
-        s.on(evt, (line) => this._fire('log', line));
+        s.on(evt, (line) => {
+          log('debug', 'New log entry', { event: evt });
+          this._fire('log', line);
+        });
       });
 
-      // 액션 결과
+      // 액션 결과 (강화된 알림)
       pick(EVENT_ALIASES.actionOk, (evt) => {
-        s.on(evt, (res) => this._fire('action:ok', res));
+        s.on(evt, (res) => {
+          log('debug', 'Action successful', { event: evt, type: res?.type });
+          this._fire('action:ok', res);
+        });
       });
+      
       pick(EVENT_ALIASES.actionErr, (evt) => {
-        s.on(evt, (err) => this._fire('action:error', err));
+        s.on(evt, (err) => {
+          log('warn', 'Action failed', { event: evt, error: err });
+          this._fire('action:error', err);
+          
+          if (this._notify) {
+            this._notify('❌ 액션 실패', err?.message || '액션 수행에 실패했습니다', { 
+              type: 'error',
+              priority: 'normal'
+            });
+          }
+        });
       });
 
       // 관전자 응원
       pick(EVENT_ALIASES.cheer, (evt) => {
-        s.on(evt, (data) => this._fire('cheer', data));
+        s.on(evt, (data) => {
+          log('debug', 'Cheer received', { event: evt });
+          this._fire('cheer', data);
+        });
       });
 
       // 에러/시스템
       pick(EVENT_ALIASES.error, (evt) => {
-        s.on(evt, (e) => this._fire('error', e));
+        s.on(evt, (e) => {
+          log('error', 'Socket error event', { event: evt, error: e });
+          this._fire('error', e);
+          
+          if (this._notify) {
+            this._notify('⚠️ 오류', e?.message || '시스템 오류가 발생했습니다', { 
+              type: 'error',
+              priority: 'high'
+            });
+          }
+        });
       });
+      
       pick(EVENT_ALIASES.system, (evt) => {
-        s.on(evt, (e) => this._fire('system', e));
+        s.on(evt, (e) => {
+          log('info', 'System message', { event: evt });
+          this._fire('system', e);
+        });
       });
     }
 
     _fire(evt, payload) {
       const set = this._listeners.get(evt);
       if (!set || set.size === 0) return;
-      set.forEach(fn => { try { fn(payload); } catch (_) {} });
+      
+      set.forEach(fn => { 
+        try { 
+          fn(payload); 
+        } catch (error) {
+          log('error', 'Event handler error', { event: evt, error: error.message });
+        }
+      });
     }
 
     _onVisibilityChange() {
-      if (document.visibilityState === 'visible' && !this.connected && !this.connecting) {
-        this._connect().catch(() => {});
+      this._isPageVisible = !document.hidden;
+      
+      if (this._isPageVisible) {
+        log('debug', 'Page became visible');
+        this._hideConnectionOverlay();
+        
+        // 페이지가 보이게 되면 연결 확인
+        if (!this.isConnected() && !this.isConnecting() && this.opts.autoReconnect) {
+          log('info', 'Reconnecting on page visibility');
+          this._connect().catch((error) => {
+            this._handleConnectionError(error);
+          });
+        }
+      } else {
+        log('debug', 'Page became hidden');
       }
     }
   }
 
-  // ── 싱글톤/전역 노출 ──
+  // ───────────────────────────────────────────────────────────
+  // 싱글톤/전역 노출 (강화된 초기화)
+  // ───────────────────────────────────────────────────────────
+  
   const instance = new SocketManager();
-  global.PyxisSocket = instance;
-
-  // CommonJS/AMD 호환(선택)
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = instance;
-  }
-})(window);
+  
+  // PyxisNotify 연동
+  if (typeof window !== 'undefined') {
+    // PyxisNotify가 로드되면 자동 연동
+    const setupNotifications = () => {
+      if (window.PyxisNotify && typeof window.PyxisNotify.notify === 'function') {
+        instance.onNotify((title, body, options = {}) => {
+          window.PyxisNotify.notify(title, { body, ...options });
+        });
+        log('info', 'PyxisNotify integration enabled');
+      }
+    };
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupNotifications);
+    } else {
+      setupNotifications();
+    }
+    
+    // 연결 상태 표시기
