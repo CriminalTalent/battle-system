@@ -110,19 +110,11 @@ class Battle {
       throw new Error('잘못된 팀 선택입니다');
     }
     
-    // 스탯 검증
+    // 스탯 검증 - 각 스탯이 1-5 범위인지 확인
     const stats = playerData.stats || {};
-    const totalStats = (stats.attack || 1) + (stats.defense || 1) + 
-                      (stats.agility || 1) + (stats.luck || 1);
-                      
-    if (totalStats > 12) {
-      throw new Error('스탯 합계가 12를 초과할 수 없습니다');
-    }
-    
-    // 각 스탯이 1-10 범위인지 확인
     Object.values(stats).forEach(stat => {
-      if (stat < 1 || stat > 10) {
-        throw new Error('각 스탯은 1-10 범위여야 합니다');
+      if (stat < 1 || stat > 5) {
+        throw new Error('각 스탯은 1-5 범위여야 합니다');
       }
     });
     
@@ -146,10 +138,10 @@ class Battle {
       name: this.sanitizeString(playerData.name),
       team: playerData.team,
       stats: {
-        attack: Math.max(1, Math.min(10, playerData.stats?.attack || 1)),
-        defense: Math.max(1, Math.min(10, playerData.stats?.defense || 1)),
-        agility: Math.max(1, Math.min(10, playerData.stats?.agility || 1)),
-        luck: Math.max(1, Math.min(10, playerData.stats?.luck || 1))
+        attack: Math.max(1, Math.min(5, playerData.stats?.attack || 3)),
+        defense: Math.max(1, Math.min(5, playerData.stats?.defense || 3)),
+        agility: Math.max(1, Math.min(5, playerData.stats?.agility || 3)),
+        luck: Math.max(1, Math.min(5, playerData.stats?.luck || 3))
       },
       hp: playerData.maxHp || 100,
       maxHp: playerData.maxHp || 100,
