@@ -1,284 +1,186 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PYXIS 전투 관리자</title>
-
-  <!-- 폰트 -->
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="/favicon.ico">
 
   <style>
-    /* ═══════════════════════════════════════════════════════════════════════
-       PYXIS Battle System - 게임 스타일 관리자 페이지
-       네이비+골드 테마, 게임풍 UI, 반응형 디자인
-       ═══════════════════════════════════════════════════════════════════════ */
-
-    :root {
-      /* 핵심 색상 */
-      --deep-navy: #00080D;
-      --navy-light: #001E35;
-      --navy-hover: #002A4B;
-      --gold-bright: #DCC7A2;
-      --gold-warm: #D4BA8D;
-      --gold-pale: rgba(220, 199, 162, 0.1);
-      --gold-glow: rgba(220, 199, 162, 0.3);
-
-      /* 상태 색상 */
-      --success: #22C55E;
-      --warning: #F59E0B;
-      --danger: #EF4444;
-      --info: #3B82F6;
-
-      /* 텍스트 색상 */
-      --text-bright: #FFFFFF;
-      --text-normal: #E2E8F0;
-      --text-muted: #94A3B8;
-      --text-dim: #64748B;
-
-      /* 배경 및 표면 */
-      --surface-1: rgba(0, 30, 53, 0.8);
-      --surface-2: rgba(0, 30, 53, 0.6);
-      --surface-3: rgba(0, 42, 75, 0.7);
-      --border-subtle: rgba(220, 199, 162, 0.2);
-      --border-bright: rgba(220, 199, 162, 0.4);
-
-      /* 효과 */
-      --blur-light: blur(8px);
-      --blur-strong: blur(16px);
-      --shadow-card: 0 4px 20px rgba(0, 8, 13, 0.5);
-      --shadow-hover: 0 8px 32px rgba(220, 199, 162, 0.2);
-
-      /* 폰트 */
-      --font-display: 'Cinzel', serif;
-      --font-body: 'Inter', sans-serif;
-
-      /* 간격 */
-      --space-xs: 0.25rem;
-      --space-sm: 0.5rem;
-      --space-md: 1rem;
-      --space-lg: 1.5rem;
-      --space-xl: 2rem;
-
-      /* 반응형 */
-      --mobile: 768px;
+    :root{
+      --deep-navy:#00080D; --navy-light:#001E35; --navy-hover:#002A4B;
+      --gold-bright:#DCC7A2; --gold-warm:#D4BA8D; --gold-pale:rgba(220,199,162,.1); --gold-glow:rgba(220,199,162,.3);
+      --success:#22C55E; --warning:#F59E0B; --danger:#EF4444; --info:#3B82F6;
+      --text-bright:#fff; --text-normal:#E2E8F0; --text-muted:#94A3B8;
+      --surface-1:rgba(0,30,53,.8); --surface-2:rgba(0,30,53,.6); --surface-3:rgba(0,42,75,.7);
+      --border-subtle:rgba(220,199,162,.2); --border-bright:rgba(220,199,162,.4);
+      --blur-light:blur(8px); --shadow-card:0 4px 20px rgba(0,8,13,.5); --shadow-hover:0 8px 32px rgba(220,199,162,.2);
+      --font-display:'Cinzel',serif; --font-body:'Inter',sans-serif;
+      --space-xs:.25rem; --space-sm:.5rem; --space-md:1rem; --space-lg:1.5rem; --space-xl:2rem;
     }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: var(--font-body);
-      background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy-light) 100%);
-      color: var(--text-normal);
-      min-height: 100vh;
-      overflow-x: hidden;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      font-family:var(--font-body);
+      background:linear-gradient(135deg,var(--deep-navy) 0%,var(--navy-light) 100%);
+      color:var(--text-normal); min-height:100vh; overflow-x:hidden;
     }
-
-    /* 배경 장식 효과 */
-    body::before {
-      content: '';
-      position: fixed; top: -50%; left: -50%;
-      width: 200%; height: 200%;
-      background:
-        radial-gradient(circle at 30% 20%, var(--gold-pale) 0%, transparent 50%),
-        radial-gradient(circle at 70% 80%, rgba(220, 199, 162, 0.05) 0%, transparent 50%);
-      animation: slowRotate 60s linear infinite;
-      pointer-events: none;
-      z-index: -1;
+    body::before{
+      content:''; position:fixed; top:-50%; left:-50%; width:200%; height:200%;
+      background:radial-gradient(circle at 30% 20%,var(--gold-pale) 0%,transparent 50%),
+                 radial-gradient(circle at 70% 80%,rgba(220,199,162,.05) 0%,transparent 50%);
+      animation:spin 60s linear infinite; pointer-events:none; z-index:-1;
     }
-    @keyframes slowRotate { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+    @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
-    /* 헤더 */
-    .pyxis-header {
-      background: var(--surface-1);
-      backdrop-filter: var(--blur-light);
-      border-bottom: 2px solid var(--border-subtle);
-      padding: var(--space-lg) var(--space-xl);
-      text-align: center;
-      position: sticky; top: 0; z-index: 100;
+    .pyxis-header{
+      background:var(--surface-1); backdrop-filter:var(--blur-light);
+      border-bottom:2px solid var(--border-subtle);
+      padding:var(--space-lg) var(--space-xl); text-align:center; position:sticky; top:0; z-index:10;
     }
-    .pyxis-title {
-      font-family: var(--font-display);
-      font-size: 2.5rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--gold-bright), var(--gold-warm));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-      letter-spacing: 0.1em; text-shadow: 0 0 20px var(--gold-glow);
-      margin-bottom: var(--space-sm);
+    .pyxis-title{
+      font-family:var(--font-display); font-size:2.5rem; font-weight:700;
+      background:linear-gradient(135deg,var(--gold-bright),var(--gold-warm));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      letter-spacing:.1em; text-shadow:0 0 20px var(--gold-glow); margin-bottom:var(--space-sm);
     }
-    .pyxis-subtitle { font-size: 1.1rem; color: var(--text-muted); font-weight: 300; letter-spacing: 0.05em; }
-    .star-decoration { display:inline-block; margin:0 var(--space-sm); animation: twinkle 2s infinite alternate; }
-    @keyframes twinkle { 0%{opacity:.3; transform:scale(.8)} 100%{opacity:1; transform:scale(1.2)} }
+    .pyxis-subtitle{font-size:1.1rem;color:var(--text-muted)}
+    .star-decoration{display:inline-block;margin:0 var(--space-sm);animation:twinkle 2s infinite alternate}
+    @keyframes twinkle{0%{opacity:.3;transform:scale(.8)}100%{opacity:1;transform:scale(1.2)}}
 
-    /* 메인 레이아웃 */
-    .admin-layout {
-      display: grid; grid-template-columns: 1fr 1fr 1fr;
-      gap: var(--space-xl); padding: var(--space-xl);
-      max-width: 1400px; margin: 0 auto;
+    .admin-layout{
+      display:grid; grid-template-columns:repeat(3, minmax(0,1fr));
+      gap:var(--space-xl); padding:var(--space-xl); max-width:1400px; margin:0 auto; width:100%;
     }
     @media (max-width:1200px){ .admin-layout{ grid-template-columns:1fr; gap:var(--space-lg); padding:var(--space-lg);} }
 
-    /* 카드 공통 */
-    .section-card {
-      background: var(--surface-1); backdrop-filter: var(--blur-light);
-      border: 1px solid var(--border-subtle); border-radius:16px; overflow:hidden;
-      box-shadow: var(--shadow-card); transition: all .3s ease; position: relative;
+    .section-card{
+      background:var(--surface-1); backdrop-filter:var(--blur-light);
+      border:1px solid var(--border-subtle); border-radius:16px;
+      box-shadow:var(--shadow-card); transition:all .3s ease; position:relative;
+      /* 핵심: 클리핑 해제 */
+      overflow:visible;
     }
     .section-card::before{
       content:''; position:absolute; top:0; left:0; right:0; height:3px;
-      background: linear-gradient(90deg, var(--gold-bright), var(--gold-warm));
-      opacity:0; transition:opacity .3s ease;
+      background:linear-gradient(90deg,var(--gold-bright),var(--gold-warm)); opacity:0; transition:opacity .3s;
     }
-    .section-card:hover{ transform: translateY(-4px); box-shadow: var(--shadow-hover); border-color: var(--border-bright); }
-    .section-card:hover::before{ opacity:1; }
-    .section-header{ padding: var(--space-lg); background: var(--surface-2); border-bottom:1px solid var(--border-subtle); }
-    .section-title{ font-family:var(--font-display); font-size:1.5rem; font-weight:600; color:var(--text-bright); margin-bottom:var(--space-xs); }
-    .section-subtitle{ font-size:.9rem; color:var(--text-muted); }
-    .section-content{ padding: var(--space-lg); }
+    .section-card:hover{transform:translateY(-4px); box-shadow:var(--shadow-hover); border-color:var(--border-bright)}
+    .section-card:hover::before{opacity:1}
+    .section-header{padding:var(--space-lg); background:var(--surface-2); border-bottom:1px solid var(--border-subtle)}
+    .section-title{font-family:var(--font-display); font-size:1.5rem; color:var(--text-bright); font-weight:600; margin-bottom:var(--space-xs)}
+    .section-subtitle{font-size:.9rem; color:var(--text-muted)}
+    .section-content{padding:var(--space-lg); overflow:visible}
 
-    /* 전투 제어 */
-    .battle-mode-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:var(--space-sm); margin-bottom:var(--space-lg); }
+    .battle-mode-grid{display:grid; gap:var(--space-sm); grid-template-columns:repeat(2, minmax(0,1fr)); margin-bottom:var(--space-lg)}
     .mode-btn{
-      padding: var(--space-md); background: var(--surface-2);
-      border:2px solid var(--border-subtle); border-radius:12px; color:var(--text-normal);
-      font-weight:600; font-size:1rem; cursor:pointer; transition:all .3s ease;
-      text-align:center; position:relative; overflow:hidden;
+      padding:var(--space-md); background:var(--surface-2); border:2px solid var(--border-subtle); border-radius:12px;
+      color:var(--text-normal); font-weight:600; font-size:1rem; cursor:pointer; transition:all .3s; text-align:center; position:relative; overflow:hidden;
     }
-    .mode-btn::before{ content:''; position:absolute; top:0; left:-100%; width:100%; height:100%;
-      background: linear-gradient(90deg, transparent, rgba(220,199,162,.3), transparent); transition:left .6s ease; }
-    .mode-btn:hover, .mode-btn.selected{ border-color:var(--gold-bright); background:var(--surface-3); color:var(--text-bright); box-shadow:0 0 20px var(--gold-glow); }
-    .mode-btn:hover::before{ left:100%; }
-    .mode-btn.selected{ background: linear-gradient(135deg, var(--gold-pale), var(--surface-3)); }
+    .mode-btn::before{content:''; position:absolute; top:0; left:-100%; width:100%; height:100%;
+      background:linear-gradient(90deg,transparent,rgba(220,199,162,.3),transparent); transition:left .6s}
+    .mode-btn:hover, .mode-btn.selected{border-color:var(--gold-bright); background:var(--surface-3); color:var(--text-bright); box-shadow:0 0 20px var(--gold-glow)}
+    .mode-btn:hover::before{left:100%}
+    .mode-btn.selected{background:linear-gradient(135deg,var(--gold-pale),var(--surface-3))}
 
-    .battle-status{ background: var(--surface-2); border-radius:12px; padding:var(--space-lg); margin-bottom:var(--space-lg); }
-    .status-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-md); text-align:center; }
-    .status-item{ display:flex; flex-direction:column; gap:var(--space-xs); }
-    .status-label{ font-size:.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
-    .status-value{ font-size:1.5rem; font-weight:700; color:var(--text-bright); }
-    .status-value.active{ color:var(--success); }
-    .status-value.waiting{ color:var(--warning); }
-    .status-value.finished{ color:var(--danger); }
+    .battle-status{background:var(--surface-2); border-radius:12px; padding:var(--space-lg); margin-bottom:var(--space-lg)}
+    .status-grid{display:grid; gap:var(--space-md); grid-template-columns:repeat(3,minmax(0,1fr)); text-align:center}
+    .status-label{font-size:.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.1em; font-weight:600}
+    .status-value{font-size:1.5rem; font-weight:700; color:var(--text-bright)}
+    .status-value.active{color:var(--success)} .status-value.waiting{color:var(--warning)} .status-value.finished{color:var(--danger)}
+    .control-actions{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-sm)}
+    .game-btn{padding:var(--space-md) var(--space-lg); width:100%;
+      background:linear-gradient(135deg,var(--gold-bright),var(--gold-warm)); color:var(--deep-navy);
+      border:none; border-radius:8px; font-weight:700; font-size:1rem; cursor:pointer; position:relative; overflow:hidden; text-transform:uppercase; letter-spacing:.05em; transition:all .3s}
+    .game-btn::before{content:''; position:absolute; top:0; left:-100%; width:100%; height:100%;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent); transition:left .6s}
+    .game-btn:hover{transform:translateY(-2px); box-shadow:0 8px 20px rgba(220,199,162,.4)}
+    .game-btn:hover::before{left:100%}
+    .game-btn.secondary{background:var(--surface-3); color:var(--text-bright); border:1px solid var(--border-bright)}
+    .game-btn:disabled{opacity:.5; cursor:not-allowed}
+    @media (max-width:768px){ .control-actions{grid-template-columns:1fr} }
 
-    .control-actions{ display:grid; grid-template-columns:1fr 1fr; gap:var(--space-sm); }
-
-    /* 버튼 */
-    .game-btn{
-      padding: var(--space-md) var(--space-lg);
-      background: linear-gradient(135deg, var(--gold-bright), var(--gold-warm));
-      color:var(--deep-navy); border:none; border-radius:8px; font-weight:700; font-size:1rem;
-      cursor:pointer; transition:all .3s ease; position:relative; overflow:hidden;
-      text-transform:uppercase; letter-spacing:.05em;
+    /* 참여자 관리 (반응형 보강) */
+    .player-form{display:grid; gap:var(--space-md); width:100%}
+    .form-row{
+      display:grid; gap:var(--space-sm);
+      /* 열이 너무 좁아질 때 자동 줄바꿈을 허용 */
+      grid-template-columns: minmax(0,2fr) minmax(220px,1fr);
     }
-    .game-btn::before{ content:''; position:absolute; top:0; left:-100%; width:100%; height:100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent); transition:left .6s ease; }
-    .game-btn:hover{ transform: translateY(-2px); box-shadow: 0 8px 20px rgba(220,199,162,.4); }
-    .game-btn:hover::before{ left:100%; }
-    .game-btn:active{ transform: translateY(0); }
-    .game-btn.secondary{ background: var(--surface-3); color: var(--text-bright); border:1px solid var(--border-bright); }
-    .game-btn:disabled{ opacity:.5; cursor:not-allowed; transform:none; }
-    .game-btn:disabled:hover{ transform:none; box-shadow:none; }
+    @media (max-width:1024px){ .form-row{ grid-template-columns:1fr } }
+    .form-group{display:flex; flex-direction:column; gap:var(--space-xs); min-width:0}
+    .form-label{font-weight:600; color:var(--text-bright); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em}
+    .form-input{padding:var(--space-sm); width:100%; background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:6px; color:var(--text-bright); font-size:.9rem; transition:all .3s}
+    .form-input:focus{outline:none; border-color:var(--gold-bright); box-shadow:0 0 0 2px var(--gold-glow)}
+    .form-input::placeholder{color:var(--text-muted)}
 
-    /* 참여자 관리 (중복 정의 정리) */
-    .player-form{ display:grid; gap:var(--space-md); }
-    .form-row{ display:grid; grid-template-columns:2fr 1fr; gap:var(--space-sm); }
-    .form-group{ display:flex; flex-direction:column; gap:var(--space-xs); }
-    .form-label{ font-weight:600; color:var(--text-bright); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
-    .form-input{ padding:var(--space-sm); background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:6px; color:var(--text-bright); font-size:.9rem; transition:all .3s ease; }
-    .form-input:focus{ outline:none; border-color:var(--gold-bright); box-shadow:0 0 0 2px var(--gold-glow); }
-    .form-input::placeholder{ color:var(--text-muted); }
+    .team-selection{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-xs)}
+    .team-option{padding:var(--space-sm); background:var(--surface-2); border:2px solid var(--border-subtle); border-radius:6px; cursor:pointer; text-align:center; font-weight:600; font-size:.9rem; transition:all .3s}
+    .team-option:hover{border-color:var(--gold-bright); background:var(--surface-3)}
+    .team-option.selected{border-color:var(--gold-bright); background:var(--gold-pale); color:var(--text-bright)}
 
-    .team-selection{ display:grid; grid-template-columns:1fr 1fr; gap:var(--space-xs); }
-    .team-option{ padding:var(--space-sm); background:var(--surface-2); border:2px solid var(--border-subtle); border-radius:6px; cursor:pointer; text-align:center; font-weight:600; font-size:.8rem; transition:all .3s ease; position:relative; }
-    .team-option:hover{ border-color:var(--gold-bright); background:var(--surface-3); }
-    .team-option.selected{ border-color:var(--gold-bright); background:var(--gold-pale); color:var(--text-bright); }
+    .stats-section{background:var(--gold-pale); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle)}
+    .stats-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm)}
+    .stats-title{font-weight:600; color:var(--text-bright); font-size:.9rem}
+    .stats-remaining{background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.8rem}
 
-    .stats-section{ background:var(--gold-pale); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle); }
-    .stats-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm); }
-    .stats-title{ font-weight:600; color:var(--text-bright); font-size:.9rem; }
-    .stats-remaining{ background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.8rem; }
+    /* 핵심: 카드 안 요소가 좁을 때 자동으로 줄바꿈되도록 */
+    .stats-grid{display:grid; gap:var(--space-sm); grid-template-columns:repeat(auto-fit, minmax(160px,1fr))}
+    .stat-control{display:flex; flex-direction:column; align-items:center; gap:var(--space-xs)}
+    .stat-label{font-weight:600; color:var(--text-bright); font-size:.85rem}
+    .stat-value{display:flex; align-items:center; gap:var(--space-xs); width:100%; justify-content:center}
+    .stat-btn{width:28px; height:28px; border-radius:50%; background:var(--gold-bright); color:var(--deep-navy); border:none; font-weight:700; font-size:.9rem; cursor:pointer; transition:all .2s}
+    .stat-btn:hover{background:var(--gold-warm); transform:scale(1.1)}
+    .stat-display{font-size:1.2rem; font-weight:700; color:var(--text-bright); min-width:32px; text-align:center}
 
-    .stats-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:var(--space-sm); }
-    .stat-control{ display:flex; flex-direction:column; align-items:center; gap:var(--space-xs); }
-    .stat-label{ font-weight:600; color:var(--text-bright); font-size:.8rem; }
-    .stat-value{ display:flex; align-items:center; gap:var(--space-xs); }
-    .stat-btn{ width:28px; height:28px; border-radius:50%; background:var(--gold-bright); color:var(--deep-navy); border:none; font-weight:700; font-size:.9rem; cursor:pointer; transition:all .3s ease; }
-    .stat-btn:hover{ background:var(--gold-warm); transform:scale(1.1); }
-    .stat-display{ font-size:1.2rem; font-weight:700; color:var(--text-bright); min-width:32px; text-align:center; }
+    .items-section{margin-top:var(--space-md)}
+    .items-grid{display:grid; gap:var(--space-sm); grid-template-columns:repeat(auto-fit, minmax(140px,1fr))}
+    .item-control{display:flex; flex-direction:column; align-items:center; gap:var(--space-xs); background:var(--surface-2); padding:var(--space-sm); border-radius:6px; border:1px solid var(--border-subtle)}
+    .item-name{font-size:.8rem; font-weight:600; color:var(--text-bright); text-align:center}
 
-    .items-section{ margin-top:var(--space-md); }
-    .items-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-sm); }
-    .item-control{ display:flex; flex-direction:column; align-items:center; gap:var(--space-xs); background:var(--surface-2); padding:var(--space-sm); border-radius:6px; border:1px solid var(--border-subtle); }
-    .item-name{ font-size:.7rem; font-weight:600; color:var(--text-bright); text-align:center; line-height:1.2; }
+    .team-roster{display:grid; gap:var(--space-md)}
+    .team-section{background:var(--surface-2); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle)}
+    .team-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm)}
+    .team-name{font-family:var(--font-display); font-size:1rem; font-weight:600; color:var(--gold-bright)}
+    .team-count{background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.75rem}
+    .player-list{display:grid; gap:var(--space-xs)}
+    .player-card{display:flex; align-items:center; gap:var(--space-sm); background:var(--surface-3); padding:var(--space-sm); border-radius:6px; border:1px solid var(--border-subtle)}
+    .player-avatar{width:36px; height:36px; border-radius:50%; background:var(--gold-bright); color:var(--deep-navy); display:flex; align-items:center; justify-content:center; font-weight:700}
+    .player-info{flex:1; min-width:0}
+    .player-name{font-weight:600; color:var(--text-bright); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+    .player-stats{font-size:.75rem; color:var(--text-muted)}
+    .player-hp{display:flex; align-items:center; gap:var(--space-xs)}
+    .hp-bar{height:6px; background:var(--surface-2); border-radius:3px; overflow:hidden; width:60px}
+    .hp-fill{height:100%; background:linear-gradient(90deg,var(--success),var(--warning))}
+    
+    .log-chat-section{display:grid; gap:var(--space-lg)}
+    .log-viewer,.chat-messages{height:200px; overflow-y:auto; background:var(--surface-2); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle)}
+    .log-entry,.chat-entry{padding:var(--space-sm); margin-bottom:var(--space-xs); border-radius:6px; font-size:.9rem; line-height:1.4}
+    .log-entry{background:var(--surface-3); border-left:3px solid var(--gold-bright)}
+    .chat-entry{background:var(--surface-3)}
+    .chat-input-container{display:flex; gap:var(--space-sm)}
+    .chat-input{flex:1}
 
-    .team-roster{ display:grid; gap:var(--space-md); }
-    .team-section{ background:var(--surface-2); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle); }
-    .team-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm); }
-    .team-name{ font-family:var(--font-display); font-size:1rem; font-weight:600; color:var(--gold-bright); }
-    .team-count{ background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.7rem; }
-    .player-list{ display:grid; gap:var(--space-xs); }
+    .links-section{margin-top:var(--space-lg); background:var(--gold-pale); border-radius:12px; padding:var(--space-lg); border:1px solid var(--border-subtle)}
+    .link-item{display:flex; gap:var(--space-sm); align-items:center; padding:var(--space-sm); background:var(--surface-2); border-radius:6px; margin-bottom:var(--space-sm)}
+    .link-url{flex:1; font-family:'Courier New',monospace; font-size:.8rem; color:var(--text-muted); word-break:break-all}
+    .copy-btn{padding:var(--space-xs) var(--space-sm); background:var(--success); color:#fff; border:none; border-radius:4px; font-size:.8rem; cursor:pointer}
+    .copy-btn:hover{background:#16A34A}
 
-    .player-card{ display:flex; align-items:center; gap:var(--space-sm); background:var(--surface-3); padding:var(--space-sm); border-radius:6px; border:1px solid var(--border-subtle); transition:all .3s ease; }
-    .player-card:hover{ background:var(--navy-hover); border-color:var(--border-bright); }
-    .player-avatar{ width:36px; height:36px; border-radius:50%; background:var(--gold-bright); color:var(--deep-navy); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; }
-    .player-info{ flex:1; }
-    .player-name{ font-weight:600; color:var(--text-bright); margin-bottom:2px; font-size:.9rem; }
-    .player-stats{ font-size:.7rem; color:var(--text-muted); line-height:1.2; }
-    .player-hp{ display:flex; align-items:center; gap:var(--space-xs); }
-    .hp-bar{ height:6px; background:var(--surface-2); border-radius:3px; overflow:hidden; width:60px; }
-    .hp-fill{ height:100%; background:linear-gradient(90deg, var(--success), var(--warning)); transition:width .3s ease; }
+    ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:var(--surface-2)}
+    ::-webkit-scrollbar-thumb{background:var(--gold-bright); border-radius:3px} ::-webkit-scrollbar-thumb:hover{background:var(--gold-warm)}
 
-    /* 로그 & 채팅 */
-    .log-chat-section{ display:grid; gap:var(--space-lg); }
-    .log-viewer,.chat-messages{ height:200px; overflow-y:auto; background:var(--surface-2); border-radius:8px; padding:var(--space-md); border:1px solid var(--border-subtle); }
-    .log-entry,.chat-entry{ padding:var(--space-sm); margin-bottom:var(--space-xs); border-radius:6px; font-size:.9rem; line-height:1.4; }
-    .log-entry{ background:var(--surface-3); border-left:3px solid var(--gold-bright); }
-    .chat-entry{ background:var(--surface-3); }
-    .chat-input-container{ display:flex; gap:var(--space-sm); }
-    .chat-input{ flex:1; }
-    .send-btn{ padding:var(--space-md); background:var(--gold-bright); color:var(--deep-navy); border:none; border-radius:8px; font-weight:600; cursor:pointer; transition:all .3s ease; }
-    .send-btn:hover{ background:var(--gold-warm); }
-
-    /* 링크 */
-    .links-section{ margin-top:var(--space-lg); background:var(--gold-pale); border-radius:12px; padding:var(--space-lg); border:1px solid var(--border-subtle); }
-    .link-item{ display:flex; justify-content:space-between; align-items:center; padding:var(--space-sm); background:var(--surface-2); border-radius:6px; margin-bottom:var(--space-sm); }
-    .link-url{ font-family:'Courier New', monospace; font-size:.8rem; color:var(--text-muted); flex:1; margin-right:var(--space-sm); word-break:break-all; }
-    .copy-btn{ padding:var(--space-xs) var(--space-sm); background:var(--success); color:white; border:none; border-radius:4px; font-size:.8rem; cursor:pointer; transition:all .3s ease; }
-    .copy-btn:hover{ background:#16A34A; }
-
-    /* 스크롤바 */
-    ::-webkit-scrollbar{ width:6px; }
-    ::-webkit-scrollbar-track{ background:var(--surface-2); }
-    ::-webkit-scrollbar-thumb{ background:var(--gold-bright); border-radius:3px; }
-    ::-webkit-scrollbar-thumb:hover{ background:var(--gold-warm); }
-
-    /* 토스트 */
-    .toast-container{ position:fixed; top:var(--space-xl); right:var(--space-xl); z-index:1000; }
-    .toast{ padding:var(--space-md) var(--space-lg); background:var(--surface-1); border:1px solid var(--border-bright); border-radius:8px; color:var(--text-bright); margin-bottom:var(--space-sm); transform:translateX(100%); transition:transform .3s ease; backdrop-filter:var(--blur-light); }
-    .toast.show{ transform:translateX(0); }
-    .toast.success{ border-color:var(--success); }
-    .toast.error{ border-color:var(--danger); }
-
-    /* 반응형 */
-    @media (max-width:768px){
-      .pyxis-title{ font-size:2rem; }
-      .admin-layout{ grid-template-columns:1fr; padding:var(--space-md); }
-      .battle-mode-grid{ grid-template-columns:1fr; }
-      .form-row{ grid-template-columns:1fr; }
-      .stats-grid{ grid-template-columns:1fr; }
-      .items-grid{ grid-template-columns:1fr; }
-      .control-actions{ grid-template-columns:1fr; }
-    }
+    .toast-container{position:fixed; top:var(--space-xl); right:var(--space-xl); z-index:1000}
+    .toast{padding:var(--space-md) var(--space-lg); background:var(--surface-1); border:1px solid var(--border-bright); border-radius:8px; color:var(--text-bright); margin-bottom:var(--space-sm); transform:translateX(100%); transition:transform .3s; backdrop-filter:var(--blur-light)}
+    .toast.show{transform:translateX(0)} .toast.success{border-color:var(--success)} .toast.error{border-color:var(--danger)}
   </style>
 </head>
 <body>
-  <!-- 헤더 -->
   <header class="pyxis-header">
     <h1 class="pyxis-title"><span class="star-decoration">✦</span>PYXIS<span class="star-decoration">✧</span></h1>
     <p class="pyxis-subtitle">실시간 턴제 전투 시스템 관리자</p>
   </header>
 
-  <!-- 메인 -->
   <main class="admin-layout">
     <!-- 전투 제어 -->
     <section class="section-card">
@@ -287,7 +189,6 @@
         <p class="section-subtitle">전투 생성 및 관리</p>
       </div>
       <div class="section-content">
-        <!-- 전투 모드 -->
         <div class="form-group">
           <label class="form-label">전투 모드</label>
           <div class="battle-mode-grid">
@@ -298,25 +199,14 @@
           </div>
         </div>
 
-        <!-- 상태 -->
         <div class="battle-status">
           <div class="status-grid">
-            <div class="status-item">
-              <span class="status-label">전투 ID</span>
-              <span class="status-value" id="battleId">-</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">상태</span>
-              <span class="status-value waiting" id="battleStatus">대기중</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">턴</span>
-              <span class="status-value" id="battleTurn">0</span>
-            </div>
+            <div class="status-item"><span class="status-label">전투 ID</span><span class="status-value" id="battleId">-</span></div>
+            <div class="status-item"><span class="status-label">상태</span><span class="status-value waiting" id="battleStatus">대기중</span></div>
+            <div class="status-item"><span class="status-label">턴</span><span class="status-value" id="battleTurn">0</span></div>
           </div>
         </div>
 
-        <!-- 액션 -->
         <div class="control-actions">
           <button class="game-btn" id="createBattleBtn">전투 생성</button>
           <button class="game-btn secondary" id="connectAdminBtn" disabled>관리자 연결</button>
@@ -324,7 +214,6 @@
           <button class="game-btn secondary" id="endBattleBtn" disabled>전투 종료</button>
         </div>
 
-        <!-- 링크 -->
         <div class="links-section" id="linksSection" style="display:none;">
           <div class="form-group">
             <label class="form-label">생성된 링크</label>
@@ -378,6 +267,7 @@
               <span class="stats-title">스탯 배분</span>
               <span class="stats-remaining">남은 포인트: <span id="remainingPoints">∞</span></span>
             </div>
+
             <div class="stats-grid">
               <div class="stat-control">
                 <span class="stat-label">공격력</span>
@@ -501,393 +391,199 @@
           </div>
         </div>
 
-        <div class="battle-status" style="margin-top: var(--space-lg);">
+        <div class="battle-status" style="margin-top:var(--space-lg);">
           <div class="status-grid">
-            <div class="status-item">
-              <span class="status-label">연결된 플레이어</span>
-              <span class="status-value" id="connectedPlayers">0</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">관전자</span>
-              <span class="status-value" id="connectedSpectators">0</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">서버 상태</span>
-              <span class="status-value active" id="serverStatus">정상</span>
-            </div>
+            <div class="status-item"><span class="status-label">연결된 플레이어</span><span class="status-value" id="connectedPlayers">0</span></div>
+            <div class="status-item"><span class="status-label">관전자</span><span class="status-value" id="connectedSpectators">0</span></div>
+            <div class="status-item"><span class="status-label">서버 상태</span><span class="status-value active" id="serverStatus">정상</span></div>
           </div>
         </div>
       </div>
     </section>
   </main>
 
-  <!-- 스크립트 -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // 전역
-    let socket = null;
-    let currentBattleId = null;
-    let currentMode = '1v1';
-    let selectedTeam = 'phoenix';
-    let players = [];
-    let stats = { attack: 3, defense: 3, agility: 3, luck: 3 };
-    let items = { dittany: 0, attackBoost: 0, defenseBoost: 0 };
-    window.__lastBattleUrls = null; // 서버가 돌려준 URL 저장
+    let socket=null, currentBattleId=null, currentMode='1v1', selectedTeam='phoenix';
+    let players=[]; let stats={attack:3, defense:3, agility:3, luck:3}; let items={dittany:0, attackBoost:0, defenseBoost:0};
+    window.__lastBattleUrls=null;
 
-    document.addEventListener('DOMContentLoaded', function() {
-      // 총합 제한 제거: 표시만 무한대로
-      const rp = document.getElementById('remainingPoints');
-      if (rp) rp.textContent = '∞';
-
-      initializeSocket();
-      setupEventListeners();
+    document.addEventListener('DOMContentLoaded',()=>{
+      const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞';
+      initializeSocket(); setupEventListeners();
     });
 
-    /* Socket.IO */
-    function initializeSocket() {
-      socket = io();
-
-      socket.on('connect', function() {
-        console.log('서버에 연결되었습니다');
-        showToast('서버에 연결되었습니다', 'success');
+    function initializeSocket(){
+      socket=io();
+      socket.on('connect',()=>{console.log('서버에 연결되었습니다'); showToast('서버에 연결되었습니다','success')});
+      socket.on('disconnect',()=>{showToast('서버 연결이 끊어졌습니다','error')});
+      socket.on('battleCreated',data=>applyBattleCreated(data));
+      socket.on('playerAdded',data=>{
+        if(data.success){ players.push(data.player); updateTeamRoster(); resetPlayerForm(); showToast('플레이어가 추가되었습니다','success'); addLogEntry(`플레이어 ${data.player.name}이(가) ${getTeamName(data.player.team)} 팀에 추가되었습니다`) }
+        else{ showToast('플레이어 추가 실패: '+data.error,'error') }
       });
-
-      socket.on('disconnect', function() {
-        console.log('서버 연결이 끊어졌습니다');
-        showToast('서버 연결이 끊어졌습니다', 'error');
-      });
-
-      // 서버가 소켓 기반으로도 알려줄 수 있으니 유지
-      socket.on('battleCreated', function(data) {
-        applyBattleCreated(data);
-      });
-
-      socket.on('playerAdded', function(data) {
-        if (data.success) {
-          players.push(data.player);
-          updateTeamRoster();
-          resetPlayerForm();
-          showToast('플레이어가 추가되었습니다', 'success');
-          addLogEntry(`플레이어 ${data.player.name}이(가) ${getTeamName(data.player.team)} 팀에 추가되었습니다`);
-        } else {
-          showToast('플레이어 추가 실패: ' + data.error, 'error');
-        }
-      });
-
-      socket.on('connectionUpdate', function(data) {
-        document.getElementById('connectedPlayers').textContent = data.players;
-        document.getElementById('connectedSpectators').textContent = data.spectators;
-      });
-
-      socket.on('chatMessage', function(data) {
-        addChatMessage(data.sender, data.message);
-      });
-
-      socket.on('battleStatusUpdate', function(data) {
-        updateBattleStatus(data);
-      });
+      socket.on('connectionUpdate',d=>{document.getElementById('connectedPlayers').textContent=d.players; document.getElementById('connectedSpectators').textContent=d.spectators});
+      socket.on('chatMessage',d=>addChatMessage(d.sender,d.message));
+      socket.on('battleStatusUpdate',updateBattleStatus);
     }
 
-    /* 이벤트 바인딩 */
-    function setupEventListeners() {
-      // 모드 선택
-      document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-          document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
-          this.classList.add('selected');
-          currentMode = this.dataset.mode;
+    function setupEventListeners(){
+      document.querySelectorAll('.mode-btn').forEach(btn=>{
+        btn.addEventListener('click',function(){
+          document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('selected'));
+          this.classList.add('selected'); currentMode=this.dataset.mode;
+        });
+      });
+      document.querySelectorAll('.team-option').forEach(opt=>{
+        opt.addEventListener('click',function(){
+          document.querySelectorAll('.team-option').forEach(o=>o.classList.remove('selected'));
+          this.classList.add('selected'); selectedTeam=this.dataset.team;
         });
       });
 
-      // 팀 선택
-      document.querySelectorAll('.team-option').forEach(option => {
-        option.addEventListener('click', function() {
-          document.querySelectorAll('.team-option').forEach(o => o.classList.remove('selected'));
-          this.classList.add('selected');
-          selectedTeam = this.dataset.team;
-        });
+      document.getElementById('createBattleBtn').addEventListener('click', async ()=>{
+        try{
+          const res=await fetch('/api/battles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:currentMode})});
+          if(!res.ok) throw new Error('Failed to create battle');
+          const data=await res.json(); window.__lastBattleUrls=data; applyBattleCreated(data);
+        }catch(e){ console.error(e); showToast('전투 생성 실패','error') }
       });
 
-      // 전투 생성 (HTTP API 사용)
-      document.getElementById('createBattleBtn').addEventListener('click', async function () {
-        try {
-          const res = await fetch('/api/battles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: currentMode })
-          });
-          if (!res.ok) throw new Error('Failed to create battle');
-          const data = await res.json(); // { battleId, adminUrl, playerUrl, spectatorUrl, ... }
-          window.__lastBattleUrls = data;
-          applyBattleCreated(data);
-
-          // 필요시 관리자 소켓 자동 연결
-          // socket.emit('connectAsAdmin', { battleId: currentBattleId });
-        } catch (err) {
-          console.error('[Admin] create battle failed', err);
-          showToast('전투 생성 실패', 'error');
-        }
+      document.getElementById('connectAdminBtn').addEventListener('click',()=>{
+        if(currentBattleId){ socket.emit('connectAsAdmin',{battleId:currentBattleId}); document.getElementById('connectAdminBtn').disabled=true; document.getElementById('startBattleBtn').disabled=false; addLogEntry('관리자로 연결되었습니다'); }
       });
 
-      // 관리자 연결
-      document.getElementById('connectAdminBtn').addEventListener('click', function() {
-        if (currentBattleId) {
-          socket.emit('connectAsAdmin', { battleId: currentBattleId });
-          this.disabled = true;
-          document.getElementById('startBattleBtn').disabled = false;
-          addLogEntry('관리자로 연결되었습니다');
-        }
+      document.getElementById('startBattleBtn').addEventListener('click',()=>{
+        if(currentBattleId && players.length>0){ socket.emit('startBattle',{battleId:currentBattleId}); addLogEntry('전투를 시작합니다...'); }
+        else{ showToast('플레이어를 먼저 추가해주세요','error'); }
       });
 
-      // 전투 시작
-      document.getElementById('startBattleBtn').addEventListener('click', function() {
-        if (currentBattleId && players.length > 0) {
-          socket.emit('startBattle', { battleId: currentBattleId });
-          addLogEntry('전투를 시작합니다...');
-        } else {
-          showToast('플레이어를 먼저 추가해주세요', 'error');
-        }
-      });
+      document.getElementById('endBattleBtn').addEventListener('click',()=>{ if(currentBattleId) socket.emit('endBattle',{battleId:currentBattleId}); });
 
-      // 전투 종료
-      document.getElementById('endBattleBtn').addEventListener('click', function() {
-        if (currentBattleId) {
-          socket.emit('endBattle', { battleId: currentBattleId });
-        }
-      });
-
-      // 플레이어 폼
-      document.getElementById('playerForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        addPlayer();
-      });
-
-      // 링크 생성
-      document.getElementById('generateLinksBtn').addEventListener('click', function() {
-        if (currentBattleId) {
-          generateLinks();
-        }
-      });
-
-      // 채팅
-      document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
-      document.getElementById('chatInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') sendChatMessage();
-      });
+      document.getElementById('playerForm').addEventListener('submit',e=>{ e.preventDefault(); addPlayer(); });
+      document.getElementById('generateLinksBtn').addEventListener('click',()=>{ if(currentBattleId) generateLinks(); });
+      document.getElementById('sendChatBtn').addEventListener('click',sendChatMessage);
+      document.getElementById('chatInput').addEventListener('keypress',e=>{ if(e.key==='Enter') sendChatMessage(); });
     }
 
-    /* 공용: 전투 생성 후 UI 반영 */
     function applyBattleCreated(data){
-      currentBattleId = data.battleId;
-      document.getElementById('battleId').textContent = data.battleId;
-      document.getElementById('battleStatus').textContent = '생성됨';
-      document.getElementById('battleStatus').className = 'status-value waiting';
+      currentBattleId=data.battleId;
+      document.getElementById('battleId').textContent=data.battleId;
+      document.getElementById('battleStatus').textContent='생성됨';
+      document.getElementById('battleStatus').className='status-value waiting';
+      document.getElementById('createBattleBtn').disabled=true;
+      document.getElementById('connectAdminBtn').disabled=false;
+      document.getElementById('linksSection').style.display='block';
 
-      document.getElementById('createBattleBtn').disabled = true;
-      document.getElementById('connectAdminBtn').disabled = false;
-      document.getElementById('linksSection').style.display = 'block';
+      const base=window.location.origin;
+      document.getElementById('generatedLinks').style.display='block';
+      document.getElementById('adminLink').textContent = data.adminUrl ? (base+data.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
+      document.getElementById('spectatorLink').textContent = data.spectatorUrl ? (base+data.spectatorUrl) : `${base}/spectator?battle=${currentBattleId}`;
 
-      // 기본 링크 표시
-      const base = window.location.origin;
-      document.getElementById('generatedLinks').style.display = 'block';
-      const adminUrl = data.adminUrl ? (base + data.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
-      const spectatorUrl = data.spectatorUrl ? (base + data.spectatorUrl) : `${base}/spectator?battle=${currentBattleId}`;
-      document.getElementById('adminLink').textContent = adminUrl;
-      document.getElementById('spectatorLink').textContent = spectatorUrl;
-
-      addLogEntry('전투가 생성되었습니다: ' + data.battleId);
-      showToast('전투가 생성되었습니다', 'success');
+      addLogEntry('전투가 생성되었습니다: '+data.battleId);
+      showToast('전투가 생성되었습니다','success');
     }
 
-    /* 스탯 변경 — 총합 제한 제거 */
-    function changeStat(statName, delta) {
-      const currentValue = stats[statName];
-
-      // 최소 1, 최대 10 정도의 기본 가이드만 유지 (총합 제한 없음)
-      if (delta < 0 && currentValue <= 1) {
-        showToast('최소값은 1입니다', 'error');
-        return;
-      }
-      if (delta > 0 && currentValue >= 10) {
-        showToast('최대값은 10입니다', 'error');
-        return;
-      }
-
-      stats[statName] = currentValue + delta;
-      document.getElementById(statName + 'Value').textContent = stats[statName];
-
-      // 총합 제한 제거: 표시만 무한대
-      const rp = document.getElementById('remainingPoints');
-      if (rp) rp.textContent = '∞';
+    function changeStat(stat,delta){
+      const cur=stats[stat];
+      if(delta<0 && cur<=1){ showToast('최소값은 1입니다','error'); return; }
+      if(delta>0 && cur>=10){ showToast('최대값은 10입니다','error'); return; }
+      stats[stat]=cur+delta;
+      document.getElementById(stat+'Value').textContent=stats[stat];
+      const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞';
     }
 
-    /* 아이템 변경 */
-    function changeItem(itemName, delta) {
-      const currentValue = items[itemName];
-      if (delta < 0 && currentValue <= 0) return;
-      if (delta > 0 && currentValue >= 9) {
-        showToast('최대값은 9개입니다', 'error');
-        return;
-      }
-      items[itemName] = currentValue + delta;
-      document.getElementById(itemName + 'Value').textContent = items[itemName];
+    function changeItem(item,delta){
+      const cur=items[item]; if(delta<0 && cur<=0) return;
+      if(delta>0 && cur>=9){ showToast('최대값은 9개입니다','error'); return; }
+      items[item]=cur+delta; document.getElementById(item+'Value').textContent=items[item];
     }
 
-    /* 플레이어 추가 */
-    function addPlayer() {
-      const name = document.getElementById('playerName').value.trim();
-      const avatar = document.getElementById('playerAvatar').files[0];
-
-      if (!name) { showToast('이름을 입력해주세요', 'error'); return; }
-      if (players.some(p => p.name === name)) { showToast('이미 존재하는 이름입니다', 'error'); return; }
-
-      const playerData = {
-        battleId: currentBattleId,
-        name,
-        team: selectedTeam,
-        stats: { ...stats },
-        items: { ...items },
-        avatar: avatar ? URL.createObjectURL(avatar) : null
-      };
-
+    function addPlayer(){
+      const name=document.getElementById('playerName').value.trim();
+      const avatar=document.getElementById('playerAvatar').files[0];
+      if(!name){ showToast('이름을 입력해주세요','error'); return; }
+      if(players.some(p=>p.name===name)){ showToast('이미 존재하는 이름입니다','error'); return; }
+      const playerData={ battleId:currentBattleId, name, team:selectedTeam, stats:{...stats}, items:{...items}, avatar: avatar? URL.createObjectURL(avatar):null };
       socket.emit('addPlayer', playerData);
     }
 
-    /* 폼 리셋 */
-    function resetPlayerForm() {
-      document.getElementById('playerName').value = '';
-      document.getElementById('playerAvatar').value = '';
-
-      stats = { attack: 3, defense: 3, agility: 3, luck: 3 };
-      Object.keys(stats).forEach(k => document.getElementById(k + 'Value').textContent = stats[k]);
-
-      // 총합 제한 제거: 무한대 표기 유지
-      const rp = document.getElementById('remainingPoints');
-      if (rp) rp.textContent = '∞';
-
-      items = { dittany: 0, attackBoost: 0, defenseBoost: 0 };
-      Object.keys(items).forEach(k => document.getElementById(k + 'Value').textContent = items[k]);
+    function resetPlayerForm(){
+      document.getElementById('playerName').value=''; document.getElementById('playerAvatar').value='';
+      stats={attack:3, defense:3, agility:3, luck:3}; ['attack','defense','agility','luck'].forEach(k=>document.getElementById(k+'Value').textContent=stats[k]);
+      const rp=document.getElementById('remainingPoints'); if(rp) rp.textContent='∞';
+      items={dittany:0, attackBoost:0, defenseBoost:0}; ['dittany','attackBoost','defenseBoost'].forEach(k=>document.getElementById(k+'Value').textContent=items[k]);
     }
 
-    /* 팀 로스터 */
-    function updateTeamRoster() {
-      const phoenixPlayers = players.filter(p => p.team === 'phoenix');
-      const eatersPlayers = players.filter(p => p.team === 'eaters');
-
-      document.getElementById('phoenixCount').textContent = phoenixPlayers.length + '명';
-      document.getElementById('eatersCount').textContent = eatersPlayers.length + '명';
-
-      updatePlayerList('phoenixPlayers', phoenixPlayers);
-      updatePlayerList('eatersPlayers', eatersPlayers);
+    function updateTeamRoster(){
+      const ph=players.filter(p=>p.team==='phoenix'); const ea=players.filter(p=>p.team==='eaters');
+      document.getElementById('phoenixCount').textContent=ph.length+'명';
+      document.getElementById('eatersCount').textContent=ea.length+'명';
+      updatePlayerList('phoenixPlayers',ph); updatePlayerList('eatersPlayers',ea);
     }
 
-    function updatePlayerList(containerId, list) {
-      const container = document.getElementById(containerId);
-      if (list.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color: var(--text-muted); padding: var(--space-lg);">플레이어가 없습니다</div>';
-        return;
-      }
-      container.innerHTML = list.map(player => `
+    function updatePlayerList(id,list){
+      const c=document.getElementById(id);
+      if(list.length===0){ c.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:var(--space-lg);">플레이어가 없습니다</div>'; return; }
+      c.innerHTML=list.map(p=>`
         <div class="player-card">
-          <div class="player-avatar">${player.avatar ? `<img src="${player.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : player.name.charAt(0)}</div>
+          <div class="player-avatar">${p.avatar?`<img src="${p.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`:p.name.charAt(0)}</div>
           <div class="player-info">
-            <div class="player-name">${escapeHtml(player.name)}</div>
-            <div class="player-stats">공격: ${player.stats.attack} | 방어: ${player.stats.defense} | 민첩: ${player.stats.agility} | 행운: ${player.stats.luck}</div>
+            <div class="player-name">${escapeHtml(p.name)}</div>
+            <div class="player-stats">공격: ${p.stats.attack} | 방어: ${p.stats.defense} | 민첩: ${p.stats.agility} | 행운: ${p.stats.luck}</div>
           </div>
-          <div class="player-hp">
-            <div class="hp-bar"><div class="hp-fill" style="width:100%"></div></div>
-            <span style="font-weight:600; color:var(--text-bright);">50/50</span>
-          </div>
+          <div class="player-hp"><div class="hp-bar"><div class="hp-fill" style="width:100%"></div></div><span style="font-weight:600;color:var(--text-bright);">50/50</span></div>
         </div>
       `).join('');
     }
 
-    /* 링크 생성 */
-    function generateLinks() {
-      const baseUrl = window.location.origin;
-      const adminLink     = window.__lastBattleUrls?.adminUrl     ? (baseUrl + window.__lastBattleUrls.adminUrl)     : `${baseUrl}/admin?battle=${currentBattleId}&admin=true`;
-      const spectatorLink = window.__lastBattleUrls?.spectatorUrl ? (baseUrl + window.__lastBattleUrls.spectatorUrl) : `${baseUrl}/spectator?battle=${currentBattleId}`;
+    function generateLinks(){
+      const base=window.location.origin;
+      const admin = window.__lastBattleUrls?.adminUrl ? (base+window.__lastBattleUrls.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
+      const spec  = window.__lastBattleUrls?.spectatorUrl ? (base+window.__lastBattleUrls.spectatorUrl) : `${base}/spectator?battle=${currentBattleId}`;
+      document.getElementById('adminLink').textContent=admin;
+      document.getElementById('spectatorLink').textContent=spec;
 
-      document.getElementById('adminLink').textContent = adminLink;
-      document.getElementById('spectatorLink').textContent = spectatorLink;
-
-      const playerLinksContainer = document.getElementById('playerLinks');
-      playerLinksContainer.innerHTML = players.map((player, index) => {
-        const playerLink = `${baseUrl}/play?battle=${currentBattleId}&player=${index}`;
-        return `
-          <div class="link-item">
-            <span class="link-url">${escapeHtml(player.name)}: ${playerLink}</span>
-            <button class="copy-btn" onclick="copyToClipboard('${playerLink}')">복사</button>
-          </div>
-        `;
+      const box=document.getElementById('playerLinks');
+      box.innerHTML=players.map((p,i)=>{
+        const url=`${base}/play?battle=${currentBattleId}&player=${i}`;
+        return `<div class="link-item"><span class="link-url">${escapeHtml(p.name)}: ${url}</span><button class="copy-btn" onclick="copyToClipboard('${url}')">복사</button></div>`;
       }).join('');
-
-      document.getElementById('generatedLinks').style.display = 'block';
-      showToast('링크가 생성되었습니다', 'success');
+      document.getElementById('generatedLinks').style.display='block';
+      showToast('링크가 생성되었습니다','success');
     }
 
-    function copyToClipboard(elementIdOrText) {
-      let text = elementIdOrText;
-      if (document.getElementById(elementIdOrText)) text = document.getElementById(elementIdOrText).textContent;
-      navigator.clipboard.writeText(text).then(() => showToast('클립보드에 복사되었습니다', 'success'))
-        .catch(() => showToast('복사에 실패했습니다', 'error'));
+    function copyToClipboard(idOrText){
+      let text=idOrText; if(document.getElementById(idOrText)) text=document.getElementById(idOrText).textContent;
+      navigator.clipboard.writeText(text).then(()=>showToast('클립보드에 복사되었습니다','success')).catch(()=>showToast('복사에 실패했습니다','error'));
     }
 
-    /* 채팅 */
-    function sendChatMessage() {
-      const input = document.getElementById('chatInput');
-      const message = input.value.trim();
-      if (!message) return;
-      socket.emit('chatMessage', { battleId: currentBattleId, sender: '관리자', message });
-      input.value = '';
+    function sendChatMessage(){
+      const input=document.getElementById('chatInput'); const msg=input.value.trim(); if(!msg) return;
+      socket.emit('chatMessage',{battleId:currentBattleId, sender:'관리자', message:msg}); input.value='';
     }
 
-    function addChatMessage(sender, message) {
-      const container = document.getElementById('chatMessages');
-      const div = document.createElement('div');
-      div.className = 'chat-entry';
-      div.innerHTML = `<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`;
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
-      while (container.children.length > 50) container.removeChild(container.firstChild);
+    function addChatMessage(sender,message){
+      const c=document.getElementById('chatMessages'); const div=document.createElement('div');
+      div.className='chat-entry'; div.innerHTML=`<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`; c.appendChild(div); c.scrollTop=c.scrollHeight;
+      while(c.children.length>50) c.removeChild(c.firstChild);
     }
 
-    /* 상태 업데이트 */
-    function addLogEntry(message) {
-      const container = document.getElementById('logViewer');
-      const div = document.createElement('div');
-      div.className = 'log-entry';
-      const time = new Date().toLocaleTimeString('ko-KR');
-      div.textContent = `[${time}] ${message}`;
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
-      while (container.children.length > 100) container.removeChild(container.firstChild);
+    function addLogEntry(message){
+      const c=document.getElementById('logViewer'); const div=document.createElement('div');
+      div.className='log-entry'; div.textContent=`[${new Date().toLocaleTimeString('ko-KR')}] ${message}`; c.appendChild(div); c.scrollTop=c.scrollHeight;
+      while(c.children.length>100) c.removeChild(c.firstChild);
     }
 
-    function updateBattleStatus(data) {
-      if (data.status) {
-        const statusEl = document.getElementById('battleStatus');
-        statusEl.textContent = data.status;
-        statusEl.className = `status-value ${getStatusClass(data.status)}`;
-      }
-      if (data.turn !== undefined) document.getElementById('battleTurn').textContent = data.turn;
-      if (data.message) addLogEntry(data.message);
+    function updateBattleStatus(d){
+      if(d.status){ const el=document.getElementById('battleStatus'); el.textContent=d.status; el.className=`status-value ${getStatusClass(d.status)}` }
+      if(d.turn!==undefined) document.getElementById('battleTurn').textContent=d.turn;
+      if(d.message) addLogEntry(d.message);
     }
-
-    function getStatusClass(status) {
-      switch (status) {
-        case '진행중': return 'active';
-        case '대기중': case '일시정지': return 'waiting';
-        case '종료': return 'finished';
-        default: return '';
-      }
-    }
-
-    function getTeamName(team) { return team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자들'; }
-
-    function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-
-    window.addEventListener('beforeunload', function() { if (socket) socket.disconnect(); });
+    function getStatusClass(s){ switch(s){ case '진행중':return'active'; case '대기중': case '일시정지':return'waiting'; case '종료':return'finished'; default:return'' } }
+    function getTeamName(t){ return t==='phoenix'?'불사조 기사단':'죽음을 먹는 자들' }
+    function escapeHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML }
+    window.addEventListener('beforeunload',()=>{ if(socket) socket.disconnect() });
   </script>
 </body>
 </html>
