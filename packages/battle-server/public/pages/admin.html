@@ -58,7 +58,7 @@
       background:var(--surface-1); backdrop-filter:var(--blur-light);
       border:1px solid var(--border-subtle); border-radius:16px;
       box-shadow:var(--shadow-card); transition:all .3s ease; position:relative;
-      overflow:visible; /* 잘림 방지 */
+      overflow:visible;
     }
     .section-card::before{
       content:''; position:absolute; top:0; left:0; right:0; height:3px;
@@ -100,7 +100,6 @@
     .game-btn:disabled{opacity:.5; cursor:not-allowed}
     @media (max-width:768px){ .control-actions{grid-template-columns:1fr} }
 
-    /* 작은 컨트롤들 */
     .mini-grid{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:var(--space-sm)}
     @media (max-width:1024px){ .mini-grid{grid-template-columns:1fr} }
 
@@ -127,7 +126,6 @@
     .stats-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm)}
     .stats-title{font-weight:600; color:var(--text-bright); font-size:.9rem}
     .stats-remaining{background:var(--gold-bright); color:var(--deep-navy); padding:2px var(--space-sm); border-radius:20px; font-weight:700; font-size:.8rem}
-
     .stats-grid{display:grid; gap:var(--space-sm); grid-template-columns:repeat(auto-fit, minmax(160px,1fr))}
     .stat-control{display:flex; flex-direction:column; align-items:center; gap:var(--space-xs)}
     .stat-label{font-weight:600; color:var(--text-bright); font-size:.85rem}
@@ -244,7 +242,7 @@
           </p>
         </div>
 
-        <!-- 전투 설정 -->
+        <!-- 전투 설정(기본 HP - 플레이어 폼의 기본값으로 사용) -->
         <div class="stats-section">
           <div class="stats-header"><span class="stats-title">전투 설정</span></div>
           <div class="mini-grid">
@@ -265,6 +263,9 @@
               </div>
             </div>
           </div>
+          <p style="color:var(--text-muted); font-size:.85rem; margin-top:.5rem;">
+            기본 체력은 새 플레이어 추가 폼의 HP 기본값으로 채워지며, 각 플레이어에서 개별 수정할 수 있습니다.
+          </p>
         </div>
 
         <!-- 링크 섹션 -->
@@ -348,6 +349,18 @@
                   <button type="button" class="stat-btn" onclick="changeStat('luck', -1)">-</button>
                   <span class="stat-display" id="luckValue">3</span>
                   <button type="button" class="stat-btn" onclick="changeStat('luck', 1)">+</button>
+                </div>
+              </div>
+
+              <!-- 체력(HP) — 포인트 소모 없음, 개별 지정 -->
+              <div class="stat-control">
+                <span class="stat-label">체력(HP)</span>
+                <div class="stat-value" style="gap:6px;">
+                  <button type="button" class="stat-btn" onclick="changeHp(-10)">-</button>
+                  <input id="hpValue" type="number" min="1" max="9999" value="100"
+                         class="form-input" style="width:110px;text-align:center;padding:.25rem .5rem"
+                         oninput="setHpFromInput(this.value)" />
+                  <button type="button" class="stat-btn" onclick="changeHp(10)">+</button>
                 </div>
               </div>
             </div>
@@ -453,45 +466,68 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // ========= 전역 상태 =========
+    // ===== 전역 상태 =====
     let socket=null, currentBattleId=null, currentMode='1v1', selectedTeam='phoenix';
-    let players=[]; let stats={attack:3, defense:3, agility:3, luck:3}; let items={dittany:0, attackBoost:0, defenseBoost:0};
+    let players=[];
+    let stats={attack:3, defense:3, agility:3, luck:3};
+    let items={dittany:0, attackBoost:0, defenseBoost:0};
     let baseHp=100;
+    let adminToken=null, adminPassword=null;
     window.__lastBattleUrls=null;
 
     document.addEventListener('DOMContentLoaded',()=>{
       document.getElementById('remainingPoints').textContent='∞';
       document.getElementById('baseHpView').textContent=String(baseHp);
+      document.getElementById('baseHpInput').value=String(baseHp);
+      const hpInput=document.getElementById('hpValue'); if(hpInput) hpInput.value=String(baseHp);
       initializeSocket(); setupEventListeners();
     });
 
-    // ========= Socket.IO =========
+    // ===== Socket.IO =====
     function initializeSocket(){
       socket=io();
-      socket.on('connect',()=>{showToast('서버에 연결되었습니다','success')});
-      socket.on('disconnect',()=>{showToast('서버 연결이 끊어졌습니다','error')});
+      socket.on('connect',()=>showToast('서버에 연결되었습니다','success'));
+      socket.on('disconnect',()=>showToast('서버 연결이 끊어졌습니다','error'));
 
       socket.on('battleCreated',applyBattleCreated);
-      socket.on('playerAdded',data=>{
-        if(data?.success && data.player){
-          players.push(data.player); updateTeamRoster(); resetPlayerForm();
+      socket.on('playerAdded',d=>{
+        if(d?.success && d.player){
+          players.push(d.player); updateTeamRoster(); resetPlayerForm();
           showToast('플레이어가 추가되었습니다','success');
-          addLogEntry(`플레이어 ${data.player.name}이(가) ${getTeamName(data.player.team)} 팀에 추가되었습니다`);
+          addLogEntry(`플레이어 ${d.player.name}이(가) ${getTeamName(d.player.team)} 팀에 추가`);
         }
       });
       socket.on('chatMessage',d=>addChatMessage(d.sender,d.message));
       socket.on('connectionUpdate',d=>{
-        document.getElementById('connectedPlayers').textContent=d.players;
-        document.getElementById('connectedSpectators').textContent=d.spectators;
+        setText('connectedPlayers', d.players);
+        setText('connectedSpectators', d.spectators);
       });
       socket.on('battleStatusUpdate',updateBattleStatus);
       socket.on('settingsUpdated', d=>{
-        if(typeof d?.baseHp === 'number'){ baseHp=d.baseHp; updateAllHpViews(); showToast(`기본 체력 ${baseHp} 적용(서버)`, 'success'); }
+        if(typeof d?.baseHp==='number'){
+          baseHp=d.baseHp;
+          document.getElementById('baseHpView').textContent=String(baseHp);
+          document.getElementById('baseHpInput').value=String(baseHp);
+          const hpInput=document.getElementById('hpValue'); if(hpInput) hpInput.value=String(baseHp);
+          reflectAllHp();
+          showToast(`기본 체력 ${baseHp} 적용(서버)`, 'success');
+        }
       });
       socket.on('adminConnected', ()=> setAdminConnState(true));
     }
 
-    // ========= 이벤트 바인딩 =========
+    // ===== 유틸 =====
+    const $=sel=>document.querySelector(sel);
+    const setText=(id,v)=>document.getElementById(id).textContent=String(v);
+    function escapeHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+    function showToast(message,type='info'){
+      let c=document.querySelector('.toast-container'); if(!c){ c=document.createElement('div'); c.className='toast-container'; document.body.appendChild(c); }
+      const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=message; c.appendChild(t);
+      setTimeout(()=>t.classList.add('show'),50); setTimeout(()=>{t.classList.remove('show'); setTimeout(()=>t.remove(),300)},3000);
+    }
+    function getTeamName(t){ return t==='phoenix'?'불사조 기사단':'죽음을 먹는 자들'; }
+
+    // ===== 이벤트 =====
     function setupEventListeners(){
       document.querySelectorAll('.mode-btn').forEach(btn=>{
         btn.addEventListener('click',function(){
@@ -506,43 +542,35 @@
         });
       });
 
-      // 전투 생성 (HTTP)
       document.getElementById('createBattleBtn').addEventListener('click', createBattle);
 
-      // 관리자 연결 (수동)
-      document.getElementById('connectAdminBtn').addEventListener('click', (e)=>{
+      // 관리자 로그인: HTTP 우선 → 소켓 폴백
+      document.getElementById('connectAdminBtn').addEventListener('click', async (e)=>{
         e.preventDefault();
         if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
-        const token = document.getElementById('adminTokenInput').value.trim();
-        const password = document.getElementById('adminPassInput').value.trim();
-        try{
-          socket.emit('connectAsAdmin', { battleId: currentBattleId, token, password });
-          addLogEntry('관리자 연결 시도');
-        }catch(e){ showToast('관리자 연결 실패','error'); }
-      });
-
-      // 설정 적용 (HTTP 우선 → 소켓 폴백)
-      document.getElementById('applySettingsBtn').addEventListener('click', async ()=>{
-        if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
-        const val = parseInt(document.getElementById('baseHpInput').value,10);
-        if(!Number.isFinite(val) || val<1 || val>9999) return showToast('1~9999 사이의 숫자를 입력하세요','error');
-
-        const payload={ baseHp: val };
-        const candidates=[ `/api/battles/${encodeURIComponent(currentBattleId)}/settings`, `/api/settings` ];
+        adminToken = ($('#adminTokenInput')?.value || '').trim();
+        adminPassword = ($('#adminPassInput')?.value || '').trim();
+        const payload={ battleId: currentBattleId, token: adminToken, password: adminPassword };
+        const candidates=[
+          `/api/battles/${encodeURIComponent(currentBattleId)}/admin/connect`,
+          `/api/admin/connect`
+        ];
         let ok=false;
         for(const url of candidates){
           try{
-            const res=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+            const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
             if(res.ok){ ok=true; break; }
           }catch(_){}
         }
         if(!ok){
-          try{ socket.emit('updateSettings', { battleId: currentBattleId, baseHp: val }); ok=true; }catch(_){}
+          try{ socket.emit('connectAsAdmin', payload); ok=true; }catch(_){}
         }
-        // UI 즉시 반영
-        baseHp=val; document.getElementById('baseHpView').textContent=String(baseHp); updateAllHpViews();
-        showToast(ok?'기본 체력 적용 완료':'서버 반영 실패(로컬만 반영)', ok?'success':'error');
+        if(ok){ setAdminConnState(true); showToast('관리자 연결 완료','success'); addLogEntry('관리자 연결 완료'); }
+        else{ showToast('관리자 연결 실패','error'); }
       });
+
+      // 기본 HP 설정 적용
+      document.getElementById('applySettingsBtn').addEventListener('click', applyBaseHpSettings);
 
       // 전투 시작/종료
       document.getElementById('startBattleBtn').addEventListener('click',()=>{
@@ -563,7 +591,7 @@
       document.getElementById('chatInput').addEventListener('keypress',e=>{ if(e.key==='Enter') sendChatMessage(); });
     }
 
-    // ========= 전투 생성 + 자동 관리자 연결 =========
+    // ===== 전투 생성 =====
     async function createBattle(){
       try{
         const res=await fetch('/api/battles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:currentMode})});
@@ -571,74 +599,91 @@
         const data=await res.json(); window.__lastBattleUrls=data; applyBattleCreated(data);
       }catch(e){ console.error(e); showToast('전투 생성 실패','error'); }
     }
-
     function applyBattleCreated(data){
-      currentBattleId = data.battleId;
-      document.getElementById('battleId').textContent = data.battleId;
-      document.getElementById('battleStatus').textContent = '생성됨';
-      document.getElementById('battleStatus').className = 'status-value waiting';
-
-      // 버튼/링크 상태
-      document.getElementById('startBattleBtn').disabled = false;
-      document.getElementById('endBattleBtn').disabled = false;
-      document.getElementById('generateLinksBtn').disabled = false;
-      document.getElementById('linksSection').style.display = 'block';
-
-      const base = window.location.origin;
-      document.getElementById('adminLink').textContent     = data.adminUrl     ? (base+data.adminUrl)     : `${base}/admin?battle=${currentBattleId}&admin=true`;
+      currentBattleId=data.battleId;
+      setText('battleId', data.battleId);
+      const st=document.getElementById('battleStatus'); st.textContent='생성됨'; st.className='status-value waiting';
+      document.getElementById('startBattleBtn').disabled=false;
+      document.getElementById('endBattleBtn').disabled=false;
+      document.getElementById('generateLinksBtn').disabled=false;
+      document.getElementById('linksSection').style.display='block';
+      const base=window.location.origin;
+      document.getElementById('adminLink').textContent = data.adminUrl ? (base+data.adminUrl) : `${base}/admin?battle=${currentBattleId}&admin=true`;
       document.getElementById('spectatorLink').textContent = data.spectatorUrl ? (base+data.spectatorUrl) : `${base}/spectator?battle=${currentBattleId}`;
+      addLogEntry('전투가 생성되었습니다: '+data.battleId); showToast('전투가 생성되었습니다','success');
 
-      addLogEntry('전투가 생성되었습니다: ' + data.battleId);
-      showToast('전투가 생성되었습니다','success');
-
-      // 관리자 자격 증명 자동 채움 + 자동 연결
-      if(data.adminToken) document.getElementById('adminTokenInput').value = data.adminToken;
-      if(data.adminPassword) document.getElementById('adminPassInput').value = data.adminPassword;
+      // 자동 관리자 연결 시도
+      if(data.adminToken){ document.getElementById('adminTokenInput').value=data.adminToken; adminToken=data.adminToken; }
+      if(data.adminPassword){ document.getElementById('adminPassInput').value=data.adminPassword; adminPassword=data.adminPassword; }
       try{
-        socket.emit('connectAsAdmin', { battleId: currentBattleId, token: data.adminToken, password: data.adminPassword });
+        socket.emit('connectAsAdmin',{battleId:currentBattleId, token:adminToken, password:adminPassword});
         addLogEntry('관리자로 자동 연결 시도...');
-      }catch(e){ console.warn('connectAsAdmin emit failed', e); }
+      }catch(e){ /* 무시 */ }
     }
 
-    // ========= 관리자 연결 상태 뱃지 =========
+    // ===== 기본 HP 설정 적용 =====
+    async function applyBaseHpSettings(){
+      if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
+      const val=parseInt(document.getElementById('baseHpInput').value,10);
+      if(!Number.isFinite(val) || val<1 || val>9999) return showToast('1~9999 사이의 숫자를 입력하세요','error');
+      const payload={ baseHp: val };
+      const candidates=[ `/api/battles/${encodeURIComponent(currentBattleId)}/settings`, `/api/settings` ];
+      let ok=false;
+      for(const url of candidates){
+        try{
+          const res=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+          if(res.ok){ ok=true; break; }
+        }catch(_){}
+      }
+      if(!ok){ try{ socket.emit('updateSettings', { battleId: currentBattleId, baseHp: val }); ok=true; }catch(_){} }
+      baseHp=val;
+      document.getElementById('baseHpView').textContent=String(baseHp);
+      const hpInput=document.getElementById('hpValue'); if(hpInput) hpInput.value=String(baseHp);
+      reflectAllHp();
+      showToast(ok?'기본 체력 적용 완료':'서버 반영 실패(로컬만 반영)','success');
+    }
+
+    // ===== 관리자 연결 상태 뱃지 =====
     function setAdminConnState(connected){
-      const badge = document.getElementById('adminConnState');
+      const badge=document.getElementById('adminConnState');
       badge.textContent = connected ? '연결됨' : '미연결';
       badge.style.background = connected ? 'var(--success)' : 'var(--gold-bright)';
       badge.style.color = connected ? '#fff' : 'var(--deep-navy)';
     }
 
-    // ========= 플레이어 추가 (HTTP 우선 → 소켓 폴백) =========
+    // ===== 플레이어 추가 (HP 포함) =====
     async function addPlayer(){
       const name=document.getElementById('playerName').value.trim();
       const avatarFile=document.getElementById('playerAvatar').files[0];
+      const hpVal=parseInt(document.getElementById('hpValue').value,10) || baseHp;
+
       if(!name) return showToast('이름을 입력해주세요','error');
       if(players.some(p=>p.name===name)) return showToast('이미 존재하는 이름입니다','error');
       if(!currentBattleId) return showToast('전투를 먼저 생성하세요','error');
+      if(hpVal<1 || hpVal>9999) return showToast('HP는 1~9999','error');
 
       const avatar = avatarFile ? URL.createObjectURL(avatarFile) : null;
-      const payload={ battleId:currentBattleId, name, team:selectedTeam, stats:{...stats}, items:{...items} };
+      const payload={ battleId:currentBattleId, name, team:selectedTeam, stats:{...stats}, items:{...items}, hp:hpVal };
 
       const httpCandidates=[ `/api/battles/${encodeURIComponent(currentBattleId)}/players`, `/api/players` ];
       for(const url of httpCandidates){
         try{
           const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
           if(res.ok){
-            players.push({ name, team:selectedTeam, stats:{...stats}, items:{...items}, avatar });
+            players.push({ name, team:selectedTeam, stats:{...stats}, items:{...items}, hp:hpVal, avatar });
             updateTeamRoster(); resetPlayerForm();
             showToast('플레이어가 추가되었습니다','success'); addLogEntry(`플레이어 ${name} 추가 (HTTP: ${url})`);
             return;
           }
         }catch(_){}
       }
-      // 소켓 폴백
       try{
         socket.emit('addPlayer', { ...payload, avatar });
         addLogEntry('플레이어 추가 요청을 소켓으로 전송했습니다');
       }catch(e){ console.error(e); showToast('플레이어 추가 실패','error'); }
     }
 
-    // ========= 채팅 (HTTP 우선 → 소켓 폴백) =========
+    // ===== 채팅 =====
     async function sendChatMessage(){
       const input=document.getElementById('chatInput'); const message=input.value.trim();
       if(!message) return;
@@ -656,21 +701,39 @@
       catch(e){ console.error(e); showToast('채팅 전송 실패','error'); }
     }
 
-    // ========= 체력(HP) 표시 유틸 =========
-    function updateAllHpViews(){
-      document.querySelectorAll('.player-card .player-hp span[data-hp]').forEach(el=>{
-        el.textContent = `${baseHp}/${baseHp}`;
+    // ===== HP 컨트롤 =====
+    function changeHp(delta){
+      const el=document.getElementById('hpValue');
+      let v=parseInt(el.value,10) || baseHp;
+      v=Math.max(1, Math.min(9999, v+delta));
+      el.value=String(v);
+    }
+    function setHpFromInput(v){
+      let n=parseInt(v,10);
+      if(!Number.isFinite(n)) n=baseHp;
+      n=Math.max(1, Math.min(9999, n));
+      document.getElementById('hpValue').value=String(n);
+    }
+    function reflectAllHp(){
+      document.querySelectorAll('[data-hp]').forEach(el=>{
+        const idx=parseInt(el.getAttribute('data-hp-index'),10);
+        if(Number.isInteger(idx) && players[idx]) {
+          const hp=players[idx].hp ?? baseHp;
+          el.textContent=`${hp}/${hp}`;
+        } else {
+          el.textContent=`${baseHp}/${baseHp}`;
+        }
       });
     }
 
-    // ========= 기타 UI 로직 =========
+    // ===== 기타 UI =====
     function changeStat(stat,delta){
       const cur=stats[stat];
       if(delta<0 && cur<=1){ showToast('최소값은 1입니다','error'); return; }
       if(delta>0 && cur>=10){ showToast('최대값은 10입니다','error'); return; }
       stats[stat]=cur+delta;
       document.getElementById(stat+'Value').textContent=stats[stat];
-      document.getElementById('remainingPoints').textContent='∞'; // 총합 제한 제거
+      document.getElementById('remainingPoints').textContent='∞';
     }
     function changeItem(item,delta){
       const cur=items[item]; if(delta<0 && cur<=0) return;
@@ -682,18 +745,18 @@
       stats={attack:3, defense:3, agility:3, luck:3}; ['attack','defense','agility','luck'].forEach(k=>document.getElementById(k+'Value').textContent=stats[k]);
       document.getElementById('remainingPoints').textContent='∞';
       items={dittany:0, attackBoost:0, defenseBoost:0}; ['dittany','attackBoost','defenseBoost'].forEach(k=>document.getElementById(k+'Value').textContent=items[k]);
+      document.getElementById('hpValue').value=String(baseHp);
     }
     function updateTeamRoster(){
       const ph=players.filter(p=>p.team==='phoenix'); const ea=players.filter(p=>p.team==='eaters');
-      document.getElementById('phoenixCount').textContent=ph.length+'명';
-      document.getElementById('eatersCount').textContent=ea.length+'명';
-      updatePlayerList('phoenixPlayers',ph); updatePlayerList('eatersPlayers',ea);
-      updateAllHpViews();
+      setText('phoenixCount', ph.length+'명'); setText('eatersCount', ea.length+'명');
+      updatePlayerList('phoenixPlayers', ph); updatePlayerList('eatersPlayers', ea);
+      reflectAllHp();
     }
     function updatePlayerList(id,list){
       const c=document.getElementById(id);
       if(list.length===0){ c.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:var(--space-lg);">플레이어가 없습니다</div>'; return; }
-      c.innerHTML=list.map(p=>`
+      c.innerHTML=list.map((p,i)=>`
         <div class="player-card">
           <div class="player-avatar">${p.avatar?`<img src="${p.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`:p.name.charAt(0)}</div>
           <div class="player-info">
@@ -702,7 +765,7 @@
           </div>
           <div class="player-hp">
             <div class="hp-bar"><div class="hp-fill" style="width:100%"></div></div>
-            <span data-hp style="font-weight:600;color:var(--text-bright);">${baseHp}/${baseHp}</span>
+            <span data-hp data-hp-index="${i}" style="font-weight:600;color:var(--text-bright);">${p.hp ?? baseHp}/${p.hp ?? baseHp}</span>
           </div>
         </div>
       `).join('');
@@ -722,9 +785,10 @@
       document.getElementById('linksSection').style.display='block';
       showToast('링크가 생성되었습니다','success');
     }
-    function copyToClipboard(idOrText){ let text=idOrText; if(document.getElementById(idOrText)) text=document.getElementById(idOrText).textContent;
-      navigator.clipboard.writeText(text).then(()=>showToast('클립보드에 복사되었습니다','success')).catch(()=>showToast('복사에 실패했습니다','error')); }
-
+    function copyToClipboard(idOrText){
+      let text=idOrText; if(document.getElementById(idOrText)) text=document.getElementById(idOrText).textContent;
+      navigator.clipboard.writeText(text).then(()=>showToast('클립보드에 복사되었습니다','success')).catch(()=>showToast('복사에 실패했습니다','error'));
+    }
     function addChatMessage(sender,message){
       const c=document.getElementById('chatMessages'); const div=document.createElement('div');
       div.className='chat-entry'; div.innerHTML=`<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`; c.appendChild(div); c.scrollTop=c.scrollHeight;
@@ -737,15 +801,10 @@
     }
     function updateBattleStatus(d){
       if(d?.status){ const el=document.getElementById('battleStatus'); el.textContent=d.status; el.className=`status-value ${getStatusClass(d.status)}` }
-      if(d?.turn!==undefined) document.getElementById('battleTurn').textContent=d.turn;
+      if(d?.turn!==undefined) setText('battleTurn', d.turn);
       if(d?.message) addLogEntry(d.message);
     }
     function getStatusClass(s){ switch(s){ case '진행중':return'active'; case '대기중': case '일시정지':return'waiting'; case '종료':return'finished'; default:return'' } }
-    function getTeamName(t){ return t==='phoenix'?'불사조 기사단':'죽음을 먹는 자들' }
-    function escapeHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML }
-    function showToast(message,type='info'){ let c=document.querySelector('.toast-container'); if(!c){ c=document.createElement('div'); c.className='toast-container'; document.body.appendChild(c); }
-      const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=message; c.appendChild(t);
-      setTimeout(()=>t.classList.add('show'),50); setTimeout(()=>{t.classList.remove('show'); setTimeout(()=>t.remove(),300)},3000); }
 
     window.addEventListener('beforeunload',()=>{ if(socket) socket.disconnect(); });
   </script>
