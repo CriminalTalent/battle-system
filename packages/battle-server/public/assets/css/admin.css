@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════════════════════
    PYXIS Battle System - 관리자 페이지 전용 스타일
    컴팩트하고 효율적인 관리 인터페이스
+   스탯 시스템: 1-5 범위, 총합 제한 없음
    ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -24,7 +25,336 @@
 .mode-btn {
   padding: var(--space-sm) var(--space-md);
   background: var(--surface-2);
-  border: 2px solid var(--border-subtle);
+gold-bright);
+  border-radius: var(--radius);
+  box-shadow: 0 0 20px rgba(220, 199, 162, 0.3);
+}
+
+.current-player-name {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: var(--space-xs);
+}
+
+.current-player-team {
+  font-size: var(--text-sm);
+  color: var(--gold-bright);
+}
+
+.turn-indicator {
+  font-size: var(--text-2xl);
+  color: var(--gold-bright);
+  text-shadow: 0 0 10px rgba(220, 199, 162, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.waiting-players {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-sm);
+}
+
+.waiting-player {
+  text-align: center;
+  padding: var(--space-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+}
+
+.waiting-player-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.waiting-player-status {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+}
+
+/* 응급 제어 버튼들 */
+.emergency-controls {
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background: rgba(248, 113, 113, 0.05);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--radius);
+}
+
+.emergency-header {
+  margin-bottom: var(--space-md);
+}
+
+.emergency-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--danger);
+  margin: 0;
+}
+
+.emergency-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+.emergency-btn {
+  padding: var(--space-sm);
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.emergency-btn:hover {
+  background: #DC2626;
+  transform: translateY(-1px);
+}
+
+.emergency-btn.warning {
+  background: var(--warning);
+  color: var(--deep-navy);
+}
+
+.emergency-btn.warning:hover {
+  background: #F59E0B;
+}
+
+/* 스탯 validation 시각적 피드백 */
+.stat-validation-message {
+  font-size: var(--text-xs);
+  margin-top: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.stat-validation-message.error {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.stat-validation-message.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* 플레이어 스탯 분석 표시 */
+.player-stat-analysis {
+  margin-top: var(--space-xs);
+  padding: var(--space-xs);
+  background: rgba(220, 199, 162, 0.05);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.stat-analysis-label {
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.stat-analysis-value {
+  color: var(--gold-bright);
+  font-weight: 600;
+}
+
+/* 스탯 분포 표시 */
+.stat-distribution {
+  display: flex;
+  gap: 2px;
+  margin-top: var(--space-xs);
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-bar {
+  flex: 1;
+  background: var(--border-subtle);
+  transition: var(--transition-fast);
+}
+
+.stat-bar.filled {
+  background: var(--gold-bright);
+}
+
+.stat-bar.high {
+  background: var(--success);
+}
+
+.stat-bar.low {
+  background: var(--danger);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   반응형 디자인 - 관리자 페이지 전용
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1200px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  
+  .team-composition {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+  
+  .vs-separator {
+    order: -1;
+    font-size: var(--text-lg);
+    margin: var(--space-md) 0;
+  }
+  
+  .admin-log-chat {
+    grid-template-columns: 1fr;
+  }
+  
+  .current-turn-display {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  
+  .turn-indicator {
+    order: -1;
+    margin-bottom: var(--space-md);
+  }
+}
+
+@media (max-width: 768px) {
+  .mode-selection {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .basic-info-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .items-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .control-actions {
+    grid-template-columns: 1fr;
+  }
+  
+  .link-type-selector {
+    grid-template-columns: 1fr;
+  }
+  
+  .emergency-actions {
+    grid-template-columns: 1fr;
+  }
+  
+  .admin-log-content,
+  .admin-chat-messages {
+    height: 200px;
+  }
+  
+  .player-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .mode-selection {
+    grid-template-columns: 1fr;
+  }
+  
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-info {
+    font-size: var(--text-xs);
+  }
+  
+  .player-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .avatar-upload {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .otp-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  
+  .spectator-link {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .waiting-players {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-field::after {
+    font-size: 10px;
+  }
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .stat-input {
+    background: var(--surface-3);
+  }
+  
+  .stat-validation-message.error {
+    background: rgba(248, 113, 113, 0.2);
+  }
+  
+  .stat-validation-message.success {
+    background: rgba(34, 197, 94, 0.2);
+  }
+}
+
+/* 접근성 개선 */
+@media (prefers-reduced-motion: reduce) {
+  .turn-indicator {
+    animation: none;
+  }
+  
+  .control-btn::before,
+  .mode-btn,
+  .team-option,
+  .stat-input {
+    transition: none;
+  }
+}
+
+/* 고대비 모드 */
+@media (prefers-contrast: high) {
+  .stat-input {
+    border-width: 3px;
+  }
+  
+  .stat-validation-message {
+    border-width: 2px;
+  }
+  
+  .player-card {
+    border-width: 2px;
+  }
+}border-subtle);
   border-radius: var(--radius);
   color: var(--text);
   font-size: var(--text-sm);
@@ -139,7 +469,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   플레이어 관리 섹션 - 컴팩트 폼
+   플레이어 관리 섹션 - 컴팩트 폼 (스탯 1-5 시스템)
    ═══════════════════════════════════════════════════════════════════════ */
 .player-management {
   background: var(--surface-1);
@@ -190,7 +520,7 @@
   background: linear-gradient(135deg, rgba(220, 199, 162, 0.2), rgba(220, 199, 162, 0.1));
 }
 
-/* 스탯 분배 섹션 */
+/* 스탯 분배 섹션 - 1-5 범위, 총합 제한 없음 */
 .stats-section {
   padding: var(--space-md);
   background: rgba(220, 199, 162, 0.05);
@@ -212,13 +542,17 @@
   margin: 0;
 }
 
-.stats-remaining {
+/* 스탯 총합 표시 제거됨 - 자유로운 분배 */
+.stats-info {
   font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--gold-bright);
+  color: var(--text-muted);
   background: var(--surface-2);
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-pill);
+}
+
+.stats-info::before {
+  content: "각 스탯 1-5 범위";
 }
 
 .stats-grid {
@@ -251,6 +585,8 @@
   font-weight: 700;
   text-align: center;
   transition: var(--transition-fast);
+  min: 1;
+  max: 5;
 }
 
 .stat-input:focus {
@@ -258,8 +594,24 @@
   box-shadow: 0 0 0 3px rgba(220, 199, 162, 0.15);
 }
 
-.stat-input:invalid {
+.stat-input:invalid,
+.stat-input.error {
   border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.stat-input.valid {
+  border-color: var(--success);
+}
+
+/* 스탯 범위 표시기 */
+.stat-field::after {
+  content: "1-5";
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+  font-weight: 500;
 }
 
 /* 아이템 선택 섹션 */
@@ -459,6 +811,7 @@
   background: #DC2626;
 }
 
+/* 스탯 표시 - 1-5 범위 반영 */
 .player-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -472,6 +825,7 @@
   padding: var(--space-xs);
   background: rgba(220, 199, 162, 0.1);
   border-radius: 3px;
+  position: relative;
 }
 
 .stat-name {
@@ -484,6 +838,29 @@
 .stat-value {
   font-weight: 700;
   color: var(--gold-bright);
+  font-size: var(--text-sm);
+}
+
+/* 스탯 값에 따른 색상 구분 (1-5 범위) */
+.stat-value[data-value="1"] { color: #EF4444; }
+.stat-value[data-value="2"] { color: #F97316; }
+.stat-value[data-value="3"] { color: var(--gold-bright); }
+.stat-value[data-value="4"] { color: #22C55E; }
+.stat-value[data-value="5"] { color: #10B981; }
+
+/* 스탯 총합 표시 (참고용, 제한 없음) */
+.player-stats-total {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.player-stats-total::before {
+  content: "총합: ";
 }
 
 .player-items {
@@ -909,212 +1286,4 @@
   text-align: center;
   padding: var(--space-md);
   background: var(--surface-2);
-  border: 2px solid var(--gold-bright);
-  border-radius: var(--radius);
-  box-shadow: 0 0 20px rgba(220, 199, 162, 0.3);
-}
-
-.current-player-name {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--text-bright);
-  margin-bottom: var(--space-xs);
-}
-
-.current-player-team {
-  font-size: var(--text-sm);
-  color: var(--gold-bright);
-}
-
-.turn-indicator {
-  font-size: var(--text-2xl);
-  color: var(--gold-bright);
-  text-shadow: 0 0 10px rgba(220, 199, 162, 0.5);
-  animation: pulse 2s infinite;
-}
-
-.waiting-players {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-sm);
-}
-
-.waiting-player {
-  text-align: center;
-  padding: var(--space-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  opacity: 0.6;
-}
-
-.waiting-player-name {
-  font-weight: 600;
-  color: var(--text);
-  font-size: var(--text-sm);
-}
-
-.waiting-player-status {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin-top: var(--space-xs);
-}
-
-/* 응급 제어 버튼들 */
-.emergency-controls {
-  margin-top: var(--space-lg);
-  padding: var(--space-md);
-  background: rgba(248, 113, 113, 0.05);
-  border: 1px solid rgba(248, 113, 113, 0.2);
-  border-radius: var(--radius);
-}
-
-.emergency-header {
-  margin-bottom: var(--space-md);
-}
-
-.emergency-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--danger);
-  margin: 0;
-}
-
-.emergency-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-sm);
-}
-
-.emergency-btn {
-  padding: var(--space-sm);
-  background: var(--danger);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.emergency-btn:hover {
-  background: #DC2626;
-  transform: translateY(-1px);
-}
-
-.emergency-btn.warning {
-  background: var(--warning);
-  color: var(--deep-navy);
-}
-
-.emergency-btn.warning:hover {
-  background: #F59E0B;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   반응형 디자인 - 관리자 페이지 전용
-   ═══════════════════════════════════════════════════════════════════════ */
-@media (max-width: 1200px) {
-  .admin-layout {
-    grid-template-columns: 1fr;
-    gap: var(--space-lg);
-  }
-  
-  .team-composition {
-    grid-template-columns: 1fr;
-    gap: var(--space-md);
-  }
-  
-  .vs-separator {
-    order: -1;
-    font-size: var(--text-lg);
-    margin: var(--space-md) 0;
-  }
-  
-  .admin-log-chat {
-    grid-template-columns: 1fr;
-  }
-  
-  .current-turn-display {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-  
-  .turn-indicator {
-    order: -1;
-    margin-bottom: var(--space-md);
-  }
-}
-
-@media (max-width: 768px) {
-  .mode-selection {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .basic-info-row {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .items-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .control-actions {
-    grid-template-columns: 1fr;
-  }
-  
-  .link-type-selector {
-    grid-template-columns: 1fr;
-  }
-  
-  .emergency-actions {
-    grid-template-columns: 1fr;
-  }
-  
-  .admin-log-content,
-  .admin-chat-messages {
-    height: 200px;
-  }
-}
-
-@media (max-width: 480px) {
-  .mode-selection {
-    grid-template-columns: 1fr;
-  }
-  
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-remaining {
-    font-size: var(--text-xs);
-  }
-  
-  .player-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .avatar-upload {
-    flex-direction: column;
-    text-align: center;
-  }
-  
-  .otp-item {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-sm);
-  }
-  
-  .spectator-link {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .waiting-players {
-    grid-template-columns: 1fr;
-  }
-}
+  border: 2px solid var(--
