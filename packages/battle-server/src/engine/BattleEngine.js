@@ -1,7 +1,8 @@
 // packages/battle-server/src/engine/BattleEngine.js
 // Enhanced PYXIS Battle Engine - 고성능 실시간 전투 시스템
+// - 스탯 범위 1-5 적용, 총합 제한 제거
+// - 단축키 제거된 UI 친화적 설계
 // - 강화된 보안 및 검증 시스템
-// - 정확한 게임 규칙 구현 (스탯 합계 12포인트, 1-10 범위)
 // - 포괄적인 에러 처리 및 복구
 // - 실시간 모니터링 및 상태 추적
 
@@ -12,10 +13,10 @@ const broadcastManager = require('../socket/broadcast/broadcastManager');
 
 // 게임 규칙 상수
 const GAME_RULES = {
-  // 스탯 규칙
+  // 스탯 규칙 (수정됨)
   STAT_MIN: 1,
-  STAT_MAX: 10,
-  TOTAL_STAT_POINTS: 12,
+  STAT_MAX: 5,
+  // TOTAL_STAT_POINTS 제거됨
   
   // HP 규칙
   DEFAULT_HP: 100,
@@ -64,6 +65,7 @@ function validateStats(stats) {
     validatedStats[stat] = value;
   }
   
+  // 총합 검증 제거됨
   return validatedStats;
 }
 
@@ -210,7 +212,7 @@ class BattleEngine extends EventEmitter {
           throw new Error(`Invalid team: ${team}`);
         }
 
-        // 스탯 검증
+        // 스탯 검증 (1-5 범위, 총합 제한 없음)
         const validatedStats = validateStats(playerData.stats);
         
         // 아이템 검증
