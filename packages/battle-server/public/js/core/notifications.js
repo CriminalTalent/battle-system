@@ -1,4 +1,4 @@
-// PYXIS Notifications - Enhanced Design Version
+// PYXIS Notifications - Enhanced Design Version (이모지 제거)
 // 브라우저 알림 + 토스트 + 게임적 효과 연동
 (function () {
   class PyxisNotifications {
@@ -620,7 +620,7 @@
 
     // 전투 관련 특화 메서드들
     notifyBattleStart(battleInfo) {
-      this.notify('⚔️ 전투 시작!', {
+      this.notify('전투 시작!', {
         body: `${battleInfo.mode} 전투가 시작되었습니다`,
         type: 'battle',
         priority: 'high',
@@ -629,7 +629,7 @@
     }
 
     notifyTurnChange(playerName, isMyTurn = false) {
-      this.notify(isMyTurn ? '🎯 당신의 턴!' : '⏰ 턴 변경', {
+      this.notify(isMyTurn ? '당신의 턴!' : '턴 변경', {
         body: `${playerName}의 턴입니다`,
         type: 'turn',
         priority: isMyTurn ? 'urgent' : 'normal',
@@ -638,7 +638,7 @@
     }
 
     notifyDamage(damage, target, isCritical = false) {
-      this.notify(isCritical ? '💥 치명타!' : '⚔️ 공격!', {
+      this.notify(isCritical ? '치명타!' : '공격!', {
         body: `${target}이(가) ${damage} 데미지를 받았습니다`,
         type: isCritical ? 'critical' : 'damage',
         priority: isCritical ? 'high' : 'normal'
@@ -646,7 +646,7 @@
     }
 
     notifyHeal(amount, target) {
-      this.notify('💚 회복!', {
+      this.notify('회복!', {
         body: `${target}이(가) ${amount} HP 회복했습니다`,
         type: 'heal',
         priority: 'normal'
@@ -654,7 +654,7 @@
     }
 
     notifyBattleEnd(winner, isVictory = false) {
-      this.notify(isVictory ? '🏆 승리!' : '💀 패배', {
+      this.notify(isVictory ? '승리!' : '패배', {
         body: `${winner}이(가) 승리했습니다!`,
         type: isVictory ? 'victory' : 'defeat',
         priority: 'urgent',
@@ -663,7 +663,7 @@
     }
 
     notifyPlayerDeath(playerName) {
-      this.notify('💀 플레이어 사망', {
+      this.notify('플레이어 사망', {
         body: `${playerName}이(가) 쓰러졌습니다`,
         type: 'defeat',
         priority: 'high'
@@ -671,7 +671,7 @@
     }
 
     notifyConnectionLost() {
-      this.notify('⚠️ 연결 끊김', {
+      this.notify('연결 끊김', {
         body: '서버와의 연결이 끊어졌습니다. 재연결 중...',
         type: 'warning',
         priority: 'urgent',
@@ -680,7 +680,7 @@
     }
 
     notifyConnectionRestored() {
-      this.notify('✅ 연결 복구', {
+      this.notify('연결 복구', {
         body: '서버 연결이 복구되었습니다',
         type: 'success',
         priority: 'high'
@@ -700,7 +700,7 @@
 
     setMuted(muted) { 
       this.muted = !!muted;
-      this._showCustomBubble(muted ? '🔇 음소거' : '🔊 음성 활성화', {
+      this._showCustomBubble(muted ? '음소거' : '음성 활성화', {
         body: `알림 사운드가 ${muted ? '비활성화' : '활성화'}되었습니다`,
         type: 'info'
       });
@@ -708,7 +708,7 @@
 
     setGameEffects(enabled) {
       this.gameEffects = !!enabled;
-      this._showCustomBubble(enabled ? '✨ 효과 활성화' : '📱 심플 모드', {
+      this._showCustomBubble(enabled ? '효과 활성화' : '심플 모드', {
         body: `게임 효과가 ${enabled ? '활성화' : '비활성화'}되었습니다`,
         type: 'info'
       });
@@ -716,7 +716,7 @@
 
     // 테스트 메서드
     test() {
-      this.notify('🧪 테스트 알림', {
+      this.notify('테스트 알림', {
         body: 'PYXIS 알림 시스템이 정상 작동 중입니다!',
         type: 'general',
         priority: 'normal'
@@ -742,7 +742,7 @@
     // 첫 방문시 알림 권한 안내 (부드럽게)
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       setTimeout(() => {
-        window.PyxisNotify._showCustomBubble('🔔 알림 설정', {
+        window.PyxisNotify._showCustomBubble('알림 설정', {
           body: '전투 상황을 놓치지 않으려면 브라우저 알림을 허용해주세요!',
           type: 'info'
         });
