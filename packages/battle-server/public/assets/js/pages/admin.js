@@ -39,6 +39,9 @@ class AdminInterface {
     this.statAgility = document.getElementById('statAgility');
     this.statLuck = document.getElementById('statLuck');
     this.playerAvatar = document.getElementById('playerAvatar');
+    
+    // 스탯 총합 표시 (제거됨)
+    this.statTotal = document.getElementById('statTotal');
 
     // 링크/OTP
     this.linksSection = document.getElementById('linksSection');
@@ -87,21 +90,70 @@ class AdminInterface {
     }
   }
 
+  // 스탯 입력 설정 (1-5 범위, 총합 제한 없음)
   setupStatInputs() {
     const inputs = [this.statAttack, this.statDefense, this.statAgility, this.statLuck];
     inputs.forEach(input => {
       if (!input) return;
+      
+      // 입력값 검증 (1-5 범위)
       input.addEventListener('input', (e) => {
         let v = parseInt(e.target.value);
         if (isNaN(v) || v < 1) v = 1;
         if (v > 5) v = 5;
         e.target.value = v;
+        this.updateStatDisplay();
       });
+      
+      // 키보드 조작
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowUp') { e.preventDefault(); let v = parseInt(e.target.value)||1; if (v<5) e.target.value=v+1; }
-        if (e.key === 'ArrowDown') { e.preventDefault(); let v = parseInt(e.target.value)||1; if (v>1) e.target.value=v-1; }
+        if (e.key === 'ArrowUp') { 
+          e.preventDefault(); 
+          let v = parseInt(e.target.value) || 1; 
+          if (v < 5) e.target.value = v + 1;
+          this.updateStatDisplay();
+        }
+        if (e.key === 'ArrowDown') { 
+          e.preventDefault(); 
+          let v = parseInt(e.target.value) || 1; 
+          if (v > 1) e.target.value = v - 1;
+          this.updateStatDisplay();
+        }
       });
     });
+    
+    // 초기 표시 업데이트
+    this.updateStatDisplay();
+  }
+
+  // 스탯 표시 업데이트 (총합 제거됨)
+  updateStatDisplay() {
+    // 총합 표시가 있다면 제거하거나 숨김
+    if (this.statTotal) {
+      this.statTotal.style.display = 'none';
+    }
+    
+    // 각 스탯이 1-5 범위인지만 확인
+    const inputs = [this.statAttack, this.statDefense, this.statAgility, this.statLuck];
+    let allValid = true;
+    
+    inputs.forEach(input => {
+      if (!input) return;
+      const value = parseInt(input.value);
+      const isValid = !isNaN(value) && value >= 1 && value <= 5;
+      
+      if (isValid) {
+        input.classList.remove('error');
+      } else {
+        input.classList.add('error');
+        allValid = false;
+      }
+    });
+    
+    // 플레이어 추가 버튼 활성화/비활성화
+    if (this.btnAddPlayer) {
+      this.btnAddPlayer.disabled = !allValid;
+    }
   }
 
   // ===== API 연동 =====
@@ -117,7 +169,7 @@ class AdminInterface {
       }).then(r=>r.json());
       if (!r.ok) throw new Error(r.error || 'CREATE_FAILED');
 
-      this.currentBattleId = r.id;
+      this.currentBattleId = r.battleId;
 
       const otpRes = await fetch('/api/otp', {
         method: 'POST',
@@ -182,27 +234,77 @@ class AdminInterface {
     });
   }
 
-  // 플레이어 추가(+이미지 업로드)
+  // 전투 제어 메서드들
+  async startBattle() {
+    if (!this.socket || !this.isConnected) return this.showToast('먼저 관리자로 연결하세요', 'error');
+    
+    try {
+      this.socket.emit('battle:start');
+      this.addLog('system', '전투 시작 요청');
+      this.showToast('전투 시작', 'success');
+    } catch (e) {
+      this.addLog('error', `전투 시작 실패: ${e.message}`);
+      this.showToast('전투 시작 실패', 'error');
+    }
+  }
+
+  async pauseBattle() {
+    if (!this.socket || !this.isConnected) return this.showToast('먼저 관리자로 연결하세요', 'error');
+    
+    try {
+      this.socket.emit('battle:pause');
+      this.addLog('system', '전투 일시정지 요청');
+      this.showToast('전투 일시정지', 'info');
+    } catch (e) {
+      this.addLog('error', `전투 일시정지 실패: ${e.message}`);
+      this.showToast('전투 일시정지 실패', 'error');
+    }
+  }
+
+  async endBattle() {
+    if (!this.socket || !this.isConnected) return this.showToast('먼저 관리자로 연결하세요', 'error');
+    
+    const confirmed = confirm('전투를 강제 종료하시겠습니까?');
+    if (!confirmed) return;
+    
+    try {
+      this.socket.emit('battle:end');
+      this.addLog('system', '전투 종료 요청');
+      this.showToast('전투 종료', 'info');
+    } catch (e) {
+      this.addLog('error', `전투 종료 실패: ${e.message}`);
+      this.showToast('전투 종료 실패', 'error');
+    }
+  }
+
+  // 플레이어 추가 (스탯 검증 업데이트)
   async addPlayer() {
     if (!this.currentBattleId) return this.showToast('먼저 전투를 생성하세요', 'error');
+    
     const name = document.getElementById('playerName')?.value?.trim();
     const teamSel = document.getElementById('playerTeam')?.value; // A|B
     if (!name || !teamSel) return this.showToast('이름/팀 필수', 'error');
 
-    const team = (teamSel==='A' ? '불사조 기사단' : '죽음을 먹는 자들');
-    const stats = {
-      atk: Number(this.statAttack?.value || 3),
-      def: Number(this.statDefense?.value || 3),
-      agi: Number(this.statAgility?.value || 3),
-      luk: Number(this.statLuck?.value || 3)
+    // 스탯 검증 (1-5 범위)
+    const attack = Number(this.statAttack?.value || 3);
+    const defense = Number(this.statDefense?.value || 3);
+    const agility = Number(this.statAgility?.value || 3);
+    const luck = Number(this.statLuck?.value || 3);
+    
+    // 각 스탯이 1-5 범위인지 확인
+    if ([attack, defense, agility, luck].some(stat => stat < 1 || stat > 5)) {
+      return this.showToast('각 스탯은 1-5 범위여야 합니다', 'error');
+    }
+
+    const team = (teamSel === 'A' ? '불사조 기사단' : '죽음을 먹는 자들');
+    const stats = { attack, defense, agility, luck };
+    
+    // 아이템 설정
+    const items = {
+      dittany: Number(document.getElementById('itemDittany')?.value || 1),
+      attackBoost: Number(document.getElementById('itemAttackBoost')?.value || 1),
+      defenseBoost: Number(document.getElementById('itemDefenseBoost')?.value || 1)
     };
-    const items = [];
-    const d = Number(document.getElementById('itemDittany')?.value || 0);
-    const ab = Number(document.getElementById('itemAttackBoost')?.value || 0);
-    const db = Number(document.getElementById('itemDefenseBoost')?.value || 0);
-    if (d>0) items.push(`디터니:${d}`);
-    if (ab>0) items.push(`공격보정:${ab}`);
-    if (db>0) items.push(`방어보정:${db}`);
 
     try {
       const r = await fetch(`/api/battles/${this.currentBattleId}/players`, {
@@ -210,10 +312,13 @@ class AdminInterface {
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({ name, team, stats, items })
       }).then(r=>r.json());
+      
       if (!r.ok) throw new Error(r.error || 'ADD_FAILED');
+      
       const player = r.player;
-      this.addLog('system', `플레이어 "${player.name}" 등록`);
+      this.addLog('system', `플레이어 "${player.name}" 등록 (공격:${stats.attack}, 방어:${stats.defense}, 민첩:${stats.agility}, 행운:${stats.luck})`);
 
+      // 아바타 업로드
       const file = this.playerAvatar?.files?.[0];
       if (file) {
         const fd = new FormData();
@@ -224,69 +329,83 @@ class AdminInterface {
         else this.addLog('system', `플레이어 "${player.name}" 아바타 업로드 완료`);
       }
 
+      // 폼 초기화
       this.playerForm?.reset();
-      ['statAttack','statDefense','statAgility','statLuck'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=3; });
-      if (this.playerAvatar) this.playerAvatar.value='';
+      ['statAttack','statDefense','statAgility','statLuck'].forEach(id => {
+        const el = document.getElementById(id); 
+        if (el) el.value = 3;
+      });
+      if (this.playerAvatar) this.playerAvatar.value = '';
+      this.updateStatDisplay();
 
-      // 즉시 반영 (소켓도 곧 동기화됨)
-      this.playerList = this.uniqueById([ ...this.playerList, player ]);
+      // 즉시 반영
+      this.playerList = this.uniqueById([...this.playerList, player]);
       this.updateTeamRoster();
       this.showToast(`${player.name} 등록 완료`, 'success');
+      
     } catch(e) {
       this.addLog('error', `플레이어 등록 실패: ${e.message}`);
       this.showToast('플레이어 등록 실패', 'error');
     }
   }
 
-  // 플레이어 OTP 생성 (표준 URL로 수정)
+  // 플레이어 OTP 생성
   async generatePlayerOTPs() {
-    if (!this.currentBattleId || this.playerList.length===0) return this.showToast('플레이어를 먼저 추가하세요', 'error');
+    if (!this.currentBattleId || this.playerList.length === 0) return this.showToast('플레이어를 먼저 추가하세요', 'error');
+    
     try {
       const roster = this.uniqueById(this.playerList);
       const items = [];
+      
       for (const p of roster) {
         const r = await fetch('/api/otp', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ role:'player', battleId:this.currentBattleId, playerId:p.id, name:p.name })
         }).then(r=>r.json());
-        if (!r.ok) throw new Error(r.error||'OTP_FAILED');
-        // ▼▼▼ 표준 파라미터: battle / player / otp
+        
+        if (!r.ok) throw new Error(r.error || 'OTP_FAILED');
+        
         const url = `${location.origin}/play?battle=${encodeURIComponent(this.currentBattleId)}&player=${encodeURIComponent(p.id)}&otp=${encodeURIComponent(r.otp)}`;
         items.push({ name:p.name, team:p.team, otp:r.otp, url });
       }
+      
       this.renderPlayerOtpList(items);
       this.otpDisplay.style.display = 'block';
       this.showToast('플레이어 OTP 생성 완료','success');
       this.addLog('system', `플레이어 OTP ${items.length}개 생성`);
+      
     } catch(e) {
       this.addLog('error', `플레이어 OTP 생성 실패: ${e.message}`);
       this.showToast('플레이어 OTP 생성 실패','error');
     }
   }
 
-  // 관전자 OTP 생성 (표준 URL로 수정)
+  // 관전자 OTP 생성
   async generateSpectatorOTP() {
     if (!this.currentBattleId) return this.showToast('전투를 먼저 생성하세요','error');
+    
     try {
       const r = await fetch('/api/otp', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ role:'spectator', battleId:this.currentBattleId, name:'관객' })
       }).then(r=>r.json());
-      if (!r.ok) throw new Error(r.error||'OTP_FAILED');
+      
+      if (!r.ok) throw new Error(r.error || 'OTP_FAILED');
 
-      // ▼▼▼ 라우트/파라미터 정규화: /spectator?battle=...&token=...
       const url = `${location.origin}/spectator?battle=${encodeURIComponent(this.currentBattleId)}&token=${encodeURIComponent(r.otp)}`;
       this.spectatorOtpDisplay.innerHTML = `
         <div class="otp-item">
           <span class="team-badge">관전자</span>
           <span class="code">${r.otp}</span>
-          <button class="otp-copy" onclick="navigator.clipboard.writeText('${url}')">링크 복사</button>
+          <button class="otp-copy" onclick="navigator.clipboard.writeText('${url}').then(()=>this.textContent='복사됨!').finally(()=>setTimeout(()=>this.textContent='링크 복사',1000))">링크 복사</button>
         </div>`;
+      
       this.otpDisplay.style.display = 'block';
       this.showToast('관전자 OTP 생성 완료','success');
       this.addLog('system', '관전자 OTP 생성됨');
+      
     } catch(e) {
       this.addLog('error', `관전자 OTP 생성 실패: ${e.message}`);
       this.showToast('관전자 OTP 생성 실패','error');
@@ -309,20 +428,30 @@ class AdminInterface {
   updateTeamRoster() {
     const a = this.playerList.filter(p => p.team === '불사조 기사단');
     const b = this.playerList.filter(p => p.team === '죽음을 먹는 자들');
+    
     if (this.teamACount) this.teamACount.textContent = `${a.length}/4`;
     if (this.teamBCount) this.teamBCount.textContent = `${b.length}/4`;
-    if (this.team1Roster) this.team1Roster.innerHTML = a.map(p=>this.createPlayerCard(p)).join('') || '<div class="empty-slot">빈 자리</div>';
-    if (this.team2Roster) this.team2Roster.innerHTML = b.map(p=>this.createPlayerCard(p)).join('') || '<div class="empty-slot">빈 자리</div>';
+    
+    if (this.team1Roster) {
+      this.team1Roster.innerHTML = a.map(p => this.createPlayerCard(p)).join('') || '<div class="empty-slot">빈 자리</div>';
+    }
+    if (this.team2Roster) {
+      this.team2Roster.innerHTML = b.map(p => this.createPlayerCard(p)).join('') || '<div class="empty-slot">빈 자리</div>';
+    }
   }
 
   createPlayerCard(p) {
-    const initial = (p.name||'?').charAt(0);
+    const initial = (p.name || '?').charAt(0);
+    const statsDisplay = p.stats ? `공격:${p.stats.attack} 방어:${p.stats.defense} 민첩:${p.stats.agility} 행운:${p.stats.luck}` : '스탯 없음';
+    
     return `
       <div class="player-card">
         <div class="player-avatar">${initial}</div>
         <div class="player-info">
           <div class="player-name">${this.escapeHtml(p.name)}</div>
-          <div class="player-stats">${this.escapeHtml(p.team)} | HP ${p.hp}</div>
+          <div class="player-team">${this.escapeHtml(p.team)}</div>
+          <div class="player-stats">${statsDisplay}</div>
+          <div class="player-hp">HP: ${p.hp || 100}</div>
         </div>
       </div>`;
   }
@@ -330,22 +459,31 @@ class AdminInterface {
   renderPlayerOtpList(list) {
     const html = list.map((it, idx) => {
       const teamShort = it.team.includes('불사조') ? '불사조' : (it.team.includes('죽음') ? '죽먹자' : it.team);
-      const label = `플레이어${idx+1}`;
+      const label = `${it.name}`;
+      
       return `
         <div class="otp-item">
           <span class="otp-player">${this.escapeHtml(label)}</span>
           <span class="team-badge">${this.escapeHtml(teamShort)}</span>
           <span class="code">${this.escapeHtml(it.otp)}</span>
-          <button class="otp-copy" onclick="navigator.clipboard.writeText('${it.url}')">복사</button>
+          <button class="otp-copy" onclick="navigator.clipboard.writeText('${it.url}').then(()=>this.textContent='복사됨!').finally(()=>setTimeout(()=>this.textContent='복사',1000))">복사</button>
         </div>
       `;
     }).join('');
+    
     this.playerOtpList.classList.add('otp-list');
     this.playerOtpList.innerHTML = html;
   }
 
   // ===== 유틸 =====
-  uniqueById(arr){ const m=new Map(); (arr||[]).forEach(p=>{ if(p&&p.id) m.set(p.id,p); }); return [...m.values()]; }
+  uniqueById(arr) { 
+    const m = new Map(); 
+    (arr || []).forEach(p => { 
+      if (p && p.id) m.set(p.id, p); 
+    }); 
+    return [...m.values()]; 
+  }
+
   addLog(type, message) {
     if (!this.logViewer) return;
     const time = new Date().toLocaleTimeString('ko-KR');
@@ -354,20 +492,45 @@ class AdminInterface {
     div.innerHTML = `<div class="log-time">${time}</div><div class="log-content">${this.escapeHtml(message)}</div>`;
     this.logViewer.appendChild(div);
     this.logViewer.scrollTop = this.logViewer.scrollHeight;
+    
     const entries = this.logViewer.querySelectorAll('.log-entry');
     if (entries.length > 200) entries[0]?.remove();
   }
-  showToast(message, type='info') {
+
+  showToast(message, type = 'info') {
     let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id='toastContainer'; c.className='toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div'); t.className = `toast toast-${type}`; t.textContent = message;
-    c.appendChild(t); setTimeout(()=>t.classList.add('show'), 50);
-    setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(), 300); }, 3000);
+    if (!c) { 
+      c = document.createElement('div'); 
+      c.id = 'toastContainer'; 
+      c.className = 'toast-container'; 
+      document.body.appendChild(c); 
+    }
+    
+    const t = document.createElement('div'); 
+    t.className = `toast toast-${type}`; 
+    t.textContent = message;
+    c.appendChild(t); 
+    
+    setTimeout(() => t.classList.add('show'), 50);
+    setTimeout(() => { 
+      t.classList.remove('show'); 
+      setTimeout(() => t.remove(), 300); 
+    }, 3000);
   }
-  escapeHtml(s){ const d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
+
+  escapeHtml(s) { 
+    const d = document.createElement('div'); 
+    d.textContent = String(s); 
+    return d.innerHTML; 
+  }
 }
 
 let adminInterface;
-document.addEventListener('DOMContentLoaded', () => { adminInterface = new AdminInterface(); });
+document.addEventListener('DOMContentLoaded', () => { 
+  adminInterface = new AdminInterface(); 
+});
+
 window.adminInterface = null;
-window.addEventListener('load', () => { window.adminInterface = adminInterface; });
+window.addEventListener('load', () => { 
+  window.adminInterface = adminInterface; 
+});
