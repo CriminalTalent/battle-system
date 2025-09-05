@@ -242,25 +242,21 @@ router.post('/battles/:battleId/players', generalLimit, (req, res) => {
   }
 });
 
-// 플레이어 스탯 검증
+// 플레이어 스탯 검증 (업데이트됨: 1-5 범위, 총합 제한 없음)
 function validatePlayerStats(stats) {
   if (!stats || typeof stats !== 'object') {
     return { attack: 3, defense: 3, agility: 3, luck: 3 };
   }
   
   const { attack = 3, defense = 3, agility = 3, luck = 3 } = stats;
-  const total = attack + defense + agility + luck;
   
-  // 총합 12포인트 검증
-  if (total !== 12) {
-    throw new Error('스탯 총합은 12포인트여야 합니다');
-  }
+  // 각 스탯 1~5 범위 검증 (총합 제한 제거됨)
+  const statNames = ['공격력', '방어력', '민첩성', '행운'];
+  const statValues = [attack, defense, agility, luck];
   
-  // 각 스탯 1~10 범위 검증
-  [attack, defense, agility, luck].forEach((stat, index) => {
-    const statNames = ['공격력', '방어력', '민첩성', '행운'];
-    if (stat < 1 || stat > 10 || !Number.isInteger(stat)) {
-      throw new Error(`${statNames[index]}은 1~10 범위의 정수여야 합니다`);
+  statValues.forEach((stat, index) => {
+    if (stat < 1 || stat > 5 || !Number.isInteger(stat)) {
+      throw new Error(`${statNames[index]}은 1~5 범위의 정수여야 합니다`);
     }
   });
   
@@ -270,14 +266,14 @@ function validatePlayerStats(stats) {
 // 플레이어 아이템 검증
 function validatePlayerItems(items) {
   if (!items || typeof items !== 'object') {
-    return { dittany: 1, atkBoost: 1, defBoost: 1 };
+    return { dittany: 1, attackBoost: 1, defenseBoost: 1 };
   }
   
   const validatedItems = {};
   const allowedItems = {
     dittany: { min: 0, max: 5, default: 1 },
-    atkBoost: { min: 0, max: 3, default: 1 },
-    defBoost: { min: 0, max: 3, default: 1 }
+    attackBoost: { min: 0, max: 3, default: 1 },
+    defenseBoost: { min: 0, max: 3, default: 1 }
   };
   
   Object.entries(allowedItems).forEach(([itemName, config]) => {
@@ -321,9 +317,6 @@ router.post('/otp', generalLimit, (req, res) => {
         expiresIn = null; // 만료 없음
         break;
         
-      case 'spectator':
-        otp = battle.spectatorOtp;
-        url = `/watch?battle=${battleId}&otp=${otp}`;
       case 'spectator':
         otp = battle.spectatorOtp;
         url = `/watch?battle=${battleId}&otp=${otp}`;
