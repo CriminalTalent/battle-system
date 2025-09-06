@@ -370,7 +370,7 @@
         <div class="card" id="rosterCard">
           <div class="card-title">
             <span>참여자 관리</span>
-            <span class="muted">이름/팀/스탯/아이템 입력 후 등록</span>
+            <span class="muted">이름/팀/스탯/아이템/체력 입력 후 등록</span>
           </div>
 
           <div class="grid-2">
@@ -403,6 +403,11 @@
                   <label class="label" for="statLuk">행운</label>
                   <input id="statLuk" class="input" type="number" min="1" max="5" value="3">
                 </div>
+              </div>
+              <!-- HP 입력 추가 -->
+              <div class="field">
+                <label class="label" for="playerHp">체력(HP)</label>
+                <input id="playerHp" class="input" type="number" min="1" max="1000" value="100" placeholder="기본 100">
               </div>
               <div class="field">
                 <label class="label" for="itemSelect">아이템</label>
@@ -512,6 +517,8 @@
       battleStatePill.classList.add(state in map ? state : "wait");
       battleStatePill.textContent = label || map[state] || map.wait;
     }
+    // 외부에서 접근 가능하도록
+    window.updateBattleStatePill = (state) => updateBattleState(state);
 
     // ===== Log & Chat appenders
     function appendLog(type, message){
@@ -545,10 +552,11 @@
       players.forEach(p=>{
         const row = document.createElement("div");
         row.className = "player-row";
+        const hpText = typeof p.hp === 'number' ? ` / HP ${p.hp}` : '';
         row.innerHTML = `
           <div>
             <span class="badge">${p.name}</span>
-            <span class="stat">공격 ${p.stats?.atk ?? p.atk ?? "-"} / 방어 ${p.stats?.def ?? p.def ?? "-"} / 민첩 ${p.stats?.agi ?? p.agi ?? "-"} / 행운 ${p.stats?.luk ?? p.luk ?? "-"}</span>
+            <span class="stat">공격 ${p.stats?.atk ?? p.atk ?? "-"} / 방어 ${p.stats?.def ?? p.def ?? "-"} / 민첩 ${p.stats?.agi ?? p.agi ?? "-"} / 행운 ${p.stats?.luk ?? p.luk ?? "-"}${hpText}</span>
           </div>
           <div class="btn-row">
             <button class="btn ghost" data-action="kick" data-id="${p.id||''}" data-name="${p.name||''}">제거</button>
@@ -558,6 +566,24 @@
         else deathHost.appendChild(row);
       });
     }
+
+    // 플레이어 행 내 버튼(제거 등) 위임 (필요시 확장)
+    document.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button[data-action="kick"]');
+      if(!btn) return;
+      const id = btn.getAttribute('data-id');
+      const name = btn.getAttribute('data-name') || '';
+      if(!id || !currentBattleId) return;
+      if(!confirm(`플레이어 "${name}"을(를) 제거하시겠습니까?`)) return;
+      try{
+        await fetchJSON(`/api/battles/${encodeURIComponent(currentBattleId)}/players/${encodeURIComponent(id)}`, { method:'DELETE' });
+        appendLog('system', `플레이어 제거: ${name}`);
+        showToast('플레이어 제거됨');
+      }catch(err){
+        appendLog('error', '플레이어 제거 실패: ' + err.message);
+        showToast('플레이어 제거 실패');
+      }
+    });
 
     // ===== Copy buttons
     $$("#linkCard [data-copy-target]").forEach(btn=>{
@@ -583,6 +609,7 @@
       socket.on('connect', ()=>{
         setConn(true, '연결 완료');
         if(currentBattleId && adminToken){
+          // 관리자 인증 (서버 가이드: adminAuth, authSuccess/authError)
           socket.emit('adminAuth', { battleId: currentBattleId, token: adminToken });
         }
       });
@@ -596,7 +623,6 @@
         authed = true;
         showToast('관리자 인증 성공');
         appendLog('system', '관리자 인증 성공');
-        // 서버에서 최신 상태를 바로 브로드캐스트하는 경우를 대비
         if(payload?.battle){
           currentBattleId = payload.battle?.id || currentBattleId;
           $('#battleId').value = currentBattleId;
@@ -605,18 +631,17 @@
         }
       });
 
-      socket.on('authError', (err)=>{
+      socket.on('authError', ()=>{
         authed = false;
         showToast('관리자 인증 실패');
         appendLog('error', '관리자 인증 실패');
       });
 
-      // 핵심 브로드캐스트
+      // 실시간 상태 브로드캐스트
       socket.on('battleUpdate', (state)=>{
         try{
           if(state?.id) currentBattleId = state.id;
           $('#battleId').value = currentBattleId || '';
-          // 상태 문자열 표준화 추정: waiting/live/ended
           const st = state?.status || state?.state || 'wait';
           let pill = 'wait';
           if(/live|running|in_progress/i.test(st)) pill='live';
@@ -624,7 +649,6 @@
           updateBattleState(pill);
           renderRoster(state);
           if(state?.log && Array.isArray(state.log)){
-            // 최신 몇개만 보강
             const last = state.log.slice(-5);
             last.forEach(l=> appendLog(l.type||'event', l.message||''));
           }
@@ -634,7 +658,6 @@
       });
 
       socket.on('chatMessage', (msg)=>{
-        // msg: { sender, message, role }
         const sender = msg?.sender || msg?.role || '채널';
         const text = msg?.message || '';
         appendChat(sender, text);
@@ -654,7 +677,6 @@
         if(r?.id || r?.battleId){
           currentBattleId = r.id || r.battleId;
           elBattleId.value = currentBattleId;
-          // URL 업데이트 (token 유지)
           const q = new URLSearchParams(location.search);
           q.set('battle', currentBattleId);
           history.replaceState(null, '', location.pathname+'?'+q.toString());
@@ -697,7 +719,6 @@
 
     $('#restartBattleBtn').addEventListener('click', async ()=>{
       if(!currentBattleId){ showToast('전투 ID가 없습니다'); return; }
-      // 서버에 재시작 전용 엔드포인트가 없을 수 있으니, 시작 엔드포인트를 재호출하는 보수적 처리
       try{
         await fetchJSON(`/api/admin/battles/${encodeURIComponent(currentBattleId)}/start`, { method:'POST', body: JSON.stringify({ restart:true }) });
         updateBattleState('live');
@@ -713,9 +734,8 @@
       if(!currentBattleId){ showToast('전투 ID가 없습니다'); return; }
       try{
         const r = await fetchJSON(`/api/admin/battles/${encodeURIComponent(currentBattleId)}/links`, { method:'POST', body: JSON.stringify({}) });
-        // 서버 가이드: play?battle=ID&token=XXX / watch?battle=ID&token=XXX / admin?battle=ID&token=XXX
-        $('#adminLink').value = r?.admin || r?.links?.admin || '';
-        $('#playerLink').value = r?.player || r?.links?.player || '';
+        $('#adminLink').value     = r?.admin     || r?.links?.admin     || '';
+        $('#playerLink').value    = r?.player    || r?.links?.player    || '';
         $('#spectatorLink').value = r?.spectator || r?.links?.spectator || '';
         appendLog('system','링크 생성 완료');
         showToast('링크 생성 완료');
@@ -734,17 +754,20 @@
       const def = clamp($('#statDef').value,1,5);
       const agi = clamp($('#statAgi').value,1,5);
       const luk = clamp($('#statLuk').value,1,5);
+      const hp  = clamp($('#playerHp').value,1,1000);
       const item = $('#itemSelect').value || '';
       try{
         const r = await fetchJSON(`/api/battles/${encodeURIComponent(currentBattleId)}/players`, {
           method:'POST',
           body: JSON.stringify({
             name, team,
+            // 서버가 stats 내부 필드명에 atk/def/agi/luk를 사용하는 경우를 고려
             stats: { atk, def, agi, luk },
+            hp,
             items: item ? [item] : []
           })
         });
-        appendLog('system', `플레이어 추가: ${name} (${team})`);
+        appendLog('system', `플레이어 추가: ${name} (${team}) / HP ${hp}`);
         showToast('플레이어 추가 완료');
         // 서버가 battleUpdate로 최신 상태를 다시 푸시할 것으로 기대
       }catch(e){
@@ -774,7 +797,6 @@
     // URL 파라미터에 battle/token이 있는 경우 자동 인증 시도
     (function boot(){
       if(currentBattleId){ $('#battleId').value = currentBattleId; }
-      // 소켓 연결 직후 adminAuth를 emit함 (connect 이벤트에서)
     })();
   </script>
 </body>
