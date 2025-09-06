@@ -11,9 +11,10 @@
     /* ─────────────────────────────────────────────────────────
        PYXIS Admin – Elegant Navy & Gold UI (Design + wiring)
        - No emojis
-       - Rules & app logic unchanged (client wiring only)
-       - Responsive, glass, shimmer, twinkle, hover lift
-       - Keep common IDs to avoid breaking server handlers
+       - App logic: client-side wiring only (server API/evt 호환)
+       - Full code (no skips)
+       - XSS 방지(escape), 팀 키 통일(eaters), 아이템 키 통일
+       - 채팅 Enter 전송, 복사, 반응형/글래스/쉐도우
        ───────────────────────────────────────────────────────── */
 
     :root{
@@ -381,9 +382,10 @@
               </div>
               <div class="field">
                 <label class="label" for="playerTeam">팀 선택</label>
+                <!-- 값 통일: phoenix / eaters -->
                 <select id="playerTeam" class="input">
                   <option value="phoenix">불사조 기사단</option>
-                  <option value="death">죽음을 먹는 자들</option>
+                  <option value="eaters">죽음을 먹는 자들</option>
                 </select>
               </div>
               <div class="grid-2">
@@ -404,18 +406,19 @@
                   <input id="statLuk" class="input" type="number" min="1" max="5" value="3">
                 </div>
               </div>
-              <!-- HP 입력 추가 -->
+              <!-- HP 입력 -->
               <div class="field">
                 <label class="label" for="playerHp">체력(HP)</label>
                 <input id="playerHp" class="input" type="number" min="1" max="1000" value="100" placeholder="기본 100">
               </div>
               <div class="field">
                 <label class="label" for="itemSelect">아이템</label>
+                <!-- 키 통일: dittany / attackBoost / defenseBoost -->
                 <select id="itemSelect" class="input">
                   <option value="">선택 없음</option>
-                  <option value="attack_boost">공격 보정기</option>
-                  <option value="defense_boost">방어 보정기</option>
-                  <option value="diterni">디터니</option>
+                  <option value="attackBoost">공격 보정기</option>
+                  <option value="defenseBoost">방어 보정기</option>
+                  <option value="dittany">디터니</option>
                 </select>
               </div>
               <div class="btn-row">
@@ -478,6 +481,12 @@
 
     function clamp(v,min,max){ v = Number(v); if(Number.isNaN(v)) return min; return Math.max(min, Math.min(max, v)); }
 
+    function escapeHtml(s){
+      const d = document.createElement('div');
+      d.textContent = String(s ?? '');
+      return d.innerHTML;
+    }
+
     async function fetchJSON(url, opts={}){
       const res = await fetch(url, {
         headers: { 'Content-Type':'application/json' },
@@ -520,14 +529,14 @@
     // 외부에서 접근 가능하도록
     window.updateBattleStatePill = (state) => updateBattleState(state);
 
-    // ===== Log & Chat appenders
+    // ===== Log & Chat appenders (escape)
     function appendLog(type, message){
       const box = $("#battleLog");
       const item = document.createElement("div");
       item.className = "log-item";
       const t = new Date();
       const time = String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0")+":"+String(t.getSeconds()).padStart(2,"0");
-      item.innerHTML = `<span class="time">${time}</span><span class="type">${type}</span><span class="msg">${message}</span>`;
+      item.innerHTML = `<span class="time">${time}</span><span class="type">${escapeHtml(type)}</span><span class="msg">${escapeHtml(message)}</span>`;
       box.appendChild(item);
       box.scrollTop = box.scrollHeight;
     }
@@ -537,37 +546,54 @@
       item.className = "chat-item";
       const t = new Date();
       const time = String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0")+":"+String(t.getSeconds()).padStart(2,"0");
-      item.innerHTML = `<span class="time">${time}</span><span class="type">${sender}</span><span class="msg">${message}</span>`;
+      item.innerHTML = `<span class="time">${time}</span><span class="type">${escapeHtml(sender)}</span><span class="msg">${escapeHtml(message)}</span>`;
       box.appendChild(item);
       box.scrollTop = box.scrollHeight;
+    }
+
+    // ===== Team key helper (server 호환: phoenix/A/team1, eaters/B/death/team2)
+    function teamKey(t){
+      if(!t) return '';
+      const s = String(t).toLowerCase();
+      if (['phoenix','a','team1'].includes(s)) return 'phoenix';
+      if (['eaters','b','death','team2'].includes(s)) return 'eaters';
+      return s;
     }
 
     // ===== Roster rendering
     function renderRoster(state){
       const phoenixHost = $("#teamPhoenix");
-      const deathHost   = $("#teamDeathEaters");
+      const eatersHost  = $("#teamDeathEaters");
       phoenixHost.innerHTML = '';
-      deathHost.innerHTML = '';
+      eatersHost.innerHTML  = '';
+
       const players = state?.players || [];
       players.forEach(p=>{
         const row = document.createElement("div");
         row.className = "player-row";
-        const hpText = typeof p.hp === 'number' ? ` / HP ${p.hp}` : '';
+        const hpText = (typeof p.hp === 'number' && typeof p.maxHp === 'number')
+          ? ` / HP ${p.hp}/${p.maxHp}`
+          : (typeof p.hp === 'number' ? ` / HP ${p.hp}` : '');
+        const name = escapeHtml(p.name ?? '플레이어');
+        const atk = p.stats?.atk ?? p.atk ?? "-";
+        const def = p.stats?.def ?? p.def ?? "-";
+        const agi = p.stats?.agi ?? p.agi ?? "-";
+        const luk = p.stats?.luk ?? p.luk ?? "-";
         row.innerHTML = `
           <div>
-            <span class="badge">${p.name}</span>
-            <span class="stat">공격 ${p.stats?.atk ?? p.atk ?? "-"} / 방어 ${p.stats?.def ?? p.def ?? "-"} / 민첩 ${p.stats?.agi ?? p.agi ?? "-"} / 행운 ${p.stats?.luk ?? p.luk ?? "-"}${hpText}</span>
+            <span class="badge">${name}</span>
+            <span class="stat">공격 ${escapeHtml(atk)} / 방어 ${escapeHtml(def)} / 민첩 ${escapeHtml(agi)} / 행운 ${escapeHtml(luk)}${hpText}</span>
           </div>
           <div class="btn-row">
-            <button class="btn ghost" data-action="kick" data-id="${p.id||''}" data-name="${p.name||''}">제거</button>
+            <button class="btn ghost" data-action="kick" data-id="${escapeHtml(p.id||'')}" data-name="${name}">제거</button>
           </div>
         `;
-        if(p.team === 'phoenix') phoenixHost.appendChild(row);
-        else deathHost.appendChild(row);
+        if(teamKey(p.team) === 'phoenix') phoenixHost.appendChild(row);
+        else eatersHost.appendChild(row);
       });
     }
 
-    // 플레이어 행 내 버튼(제거 등) 위임 (필요시 확장)
+    // 플레이어 행 내 버튼(제거 등) 위임
     document.addEventListener('click', async (e)=>{
       const btn = e.target.closest('button[data-action="kick"]');
       if(!btn) return;
@@ -625,8 +651,9 @@
         appendLog('system', '관리자 인증 성공');
         if(payload?.battle){
           currentBattleId = payload.battle?.id || currentBattleId;
-          $('#battleId').value = currentBattleId;
-          updateBattleState(payload.battle?.state || 'wait');
+          $('#battleId').value = currentBattleId || '';
+          const st = (payload.battle?.status || payload.battle?.state || 'wait').toLowerCase();
+          updateBattleState(/live|running|in_progress/.test(st) ? 'live' : /end|ended|finished/.test(st) ? 'end' : 'wait');
           renderRoster(payload.battle);
         }
       });
@@ -642,11 +669,8 @@
         try{
           if(state?.id) currentBattleId = state.id;
           $('#battleId').value = currentBattleId || '';
-          const st = state?.status || state?.state || 'wait';
-          let pill = 'wait';
-          if(/live|running|in_progress/i.test(st)) pill='live';
-          if(/end|ended|finished/i.test(st)) pill='end';
-          updateBattleState(pill);
+          const st = (state?.status || state?.state || 'wait').toLowerCase();
+          updateBattleState(/live|running|in_progress/.test(st) ? 'live' : /end|ended|finished/.test(st) ? 'end' : 'wait');
           renderRoster(state);
           if(state?.log && Array.isArray(state.log)){
             const last = state.log.slice(-5);
@@ -748,27 +772,39 @@
     $('#addPlayerBtn').addEventListener('click', async ()=>{
       if(!currentBattleId){ showToast('전투 ID가 없습니다'); return; }
       const name = ($('#playerName').value||'').trim();
-      const team = $('#playerTeam').value;
+      const team = $('#playerTeam').value; // phoenix / eaters
       if(!name){ showToast('이름을 입력하세요'); return; }
       const atk = clamp($('#statAtk').value,1,5);
       const def = clamp($('#statDef').value,1,5);
       const agi = clamp($('#statAgi').value,1,5);
       const luk = clamp($('#statLuk').value,1,5);
       const hp  = clamp($('#playerHp').value,1,1000);
-      const item = $('#itemSelect').value || '';
+      const itemKey = $('#itemSelect').value || '';
+      const itemsArray = itemKey ? [itemKey] : [];
+
       try{
         const r = await fetchJSON(`/api/battles/${encodeURIComponent(currentBattleId)}/players`, {
           method:'POST',
           body: JSON.stringify({
-            name, team,
+            name,
+            team,
             // 서버가 stats 내부 필드명에 atk/def/agi/luk를 사용하는 경우를 고려
             stats: { atk, def, agi, luk },
             hp,
-            items: item ? [item] : []
+            items: itemsArray
           })
         });
-        appendLog('system', `플레이어 추가: ${name} (${team}) / HP ${hp}`);
+        appendLog('system', `플레이어 추가: ${name} (${team}) / HP ${hp}${itemKey ? ' / 아이템 '+itemKey : ''}`);
         showToast('플레이어 추가 완료');
+        // 필드 리셋
+        $('#playerName').value = '';
+        $('#playerTeam').value = 'phoenix';
+        $('#statAtk').value = 3;
+        $('#statDef').value = 3;
+        $('#statAgi').value = 3;
+        $('#statLuk').value = 3;
+        $('#playerHp').value = 100;
+        $('#itemSelect').value = '';
         // 서버가 battleUpdate로 최신 상태를 다시 푸시할 것으로 기대
       }catch(e){
         appendLog('error','플레이어 추가 실패: '+e.message);
@@ -777,7 +813,7 @@
     });
 
     // 채팅
-    $('#chatSendBtn').addEventListener('click', ()=>{
+    function sendAdminChat(){
       const v = $('#chatInput').value.trim();
       if(!v) return;
       if(socket && authed){
@@ -785,12 +821,23 @@
       }
       appendChat('관리자', v);
       $('#chatInput').value = '';
+    }
+    $('#chatSendBtn').addEventListener('click', sendAdminChat);
+    $('#chatInput').addEventListener('keydown',(e)=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        sendAdminChat();
+      }
     });
 
-    // Enter 방지(폼 제출 대신)
+    // 전역 Enter로 폼 submit 되는 것 방지(채팅 제외)
     document.addEventListener("keydown",(e)=>{
-      if(e.key==="Enter" && ["INPUT","SELECT"].includes(document.activeElement?.tagName)){
-        e.preventDefault();
+      if(e.key==="Enter"){
+        const t = e.target;
+        if(t && t.id === 'chatInput') return; // 채팅은 허용
+        if(["INPUT","SELECT","TEXTAREA"].includes((t?.tagName)||'')){
+          e.preventDefault();
+        }
       }
     });
 
