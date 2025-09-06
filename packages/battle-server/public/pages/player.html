@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PYXIS 전투 아레나 - 플레이어</title>
+  <title>PYXIS 전투 아레나 (플레이어)</title>
 
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Tailwind 확장 (다크+골드 톤) -->
+  <!-- Tailwind 확장 -->
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -21,9 +21,7 @@
               800:'#4a3c1c',900:'#332a14'
             }
           },
-          boxShadow: {
-            soft: '0 2px 18px rgba(0,0,0,.25)'
-          }
+          boxShadow: { soft: '0 2px 18px rgba(0,0,0,.25)' }
         }
       }
     }
@@ -31,8 +29,8 @@
 
   <style>
     html, body { height: 100%; }
-    body { background: radial-gradient(90rem 60rem at 50% -20%, #1c1d21, #0f1115) fixed; }
-    .glass { background: rgba(18, 20, 25, .6); backdrop-filter: blur(6px); }
+    body { background: radial-gradient(90rem 60rem at 50% -20%, #1b1d22, #0f1115) fixed; }
+    .glass { background: rgba(18,20,25,.6); backdrop-filter: blur(6px); }
     .card { @apply glass rounded-2xl border border-zinc-800 shadow-soft; }
     .card-header { @apply px-5 py-3 border-b border-zinc-800 flex items-center justify-between; }
     .card-title { @apply text-zinc-100 font-semibold tracking-wide; }
@@ -41,18 +39,13 @@
     .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition; }
     .btn-gold { @apply border-pyxis-600 bg-pyxis-700 text-white hover:bg-pyxis-600; }
     .btn-danger { @apply border-red-700 bg-red-700 text-white hover:bg-red-600; }
-    .input, select, textarea {
-      @apply w-full rounded-xl border border-zinc-700 bg-zinc-950/70 text-zinc-100 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pyxis-500;
-    }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
-    .bar {
-      height: 6px; border-radius: 9999px; background: #3a3b41; overflow: hidden;
-    }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
+    .bar { height: 6px; border-radius: 9999px; background: #3a3b41; overflow: hidden; }
     .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#e6c487,#caa65e 60%,#7f652d); }
     .stat { @apply text-xs text-zinc-300; }
-    .tag { @apply inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300; }
-    .logline.ok { color: #22c55e; }
-    .logline.err { color: #ef4444; }
+    .disabled { opacity:.5; pointer-events:none; }
+    .logline.ok { color:#22c55e; }
+    .logline.err { color:#ef4444; }
   </style>
 </head>
 <body class="dark text-zinc-200">
@@ -64,161 +57,181 @@
         <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-pyxis-600 to-pyxis-800 border border-zinc-800"></div>
         <div>
           <div class="text-2xl font-bold tracking-widest text-pyxis-200 drop-shadow">PYXIS 전투 아레나</div>
-          <div class="text-xs text-zinc-400">플레이어 클라이언트</div>
+          <div class="text-xs text-zinc-400">Player Client</div>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <button id="btnConnect" class="btn btn-gold">연결 준비</button>
-        <span class="pill">전투: <span id="badgePhase" class="font-semibold ml-1">-</span></span>
+        <button id="btnConnect" class="btn btn-gold">동기화</button>
+        <span class="pill">단계: <span id="badgePhase" class="font-semibold ml-1">-</span></span>
         <span class="pill">현재 팀: <span id="badgeTurnTeam" class="font-semibold ml-1">-</span></span>
         <span class="pill">승자: <span id="badgeWinner" class="font-semibold ml-1">미정</span></span>
       </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+  <!-- 상단 인포 바 -->
+  <section class="max-w-7xl mx-auto px-4 mt-4 grid grid-cols-1 lg:grid-cols-4 gap-3">
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">단계</div>
+      <div class="text-lg font-semibold" id="topPhase">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">현재 팀</div>
+      <div class="text-lg font-semibold" id="topTurnTeam">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">팀 타이머</div>
+      <div class="text-lg font-semibold" id="topTimer">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">승자</div>
+      <div class="text-lg font-semibold" id="topWinner">미정</div>
+    </div></div>
+  </section>
 
-    <!-- 왼쪽 컬럼: 내 팀 + 행동 -->
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- 좌: 내 팀 패널 -->
     <section class="flex flex-col gap-5">
-      <!-- 내 팀 카드 -->
       <div class="card">
         <div class="card-header">
-          <h2 class="card-title">불사조 기사단</h2>
-          <span class="pill">우리 팀</span>
+          <h2 class="card-title" id="leftTeamTitle">불사조 기사단</h2>
+          <span class="pill">내 캐릭터</span>
         </div>
         <div class="card-body">
           <div class="flex items-start gap-4">
             <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
             <div class="flex-1">
-              <div class="font-semibold" id="meName">플레이어1</div>
-              <div class="text-xs text-zinc-400" id="meState">100/100 HP · 생존 · 대기</div>
-              <div class="mt-2 bar"><i id="meHP" style="width:100%"></i></div>
-              <div class="grid grid-cols-4 gap-3 mt-3">
-                <div class="stat">공격 <b id="meAtk">4</b></div>
-                <div class="stat">민첩 <b id="meAgi">4</b></div>
-                <div class="stat">방어 <b id="meDef">2</b></div>
-                <div class="stat">행운 <b id="meLuk">2</b></div>
+              <div class="font-semibold" id="selfName">-</div>
+              <div class="text-xs text-zinc-400" id="selfState">-</div>
+              <div class="mt-2 bar"><i id="selfHP" style="width:0%"></i></div>
+              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="selfItems" class="mono">-</span></div>
+              <div class="grid grid-cols-4 gap-2 mt-3">
+                <div class="stat">공격 <b id="selfAtk">-</b></div>
+                <div class="stat">방어 <b id="selfDef">-</b></div>
+                <div class="stat">민첩 <b id="selfAgi">-</b></div>
+                <div class="stat">행운 <b id="selfLuk">-</b></div>
               </div>
-              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="meItems" class="mono">공격 보정기:2</span></div>
             </div>
-            <div class="text-right text-pyxis-200 font-semibold">100%</div>
+            <div class="text-right text-pyxis-200 font-semibold" id="selfPct">0%</div>
           </div>
         </div>
       </div>
 
-      <!-- 전투 행동 -->
+      <!-- 행동 패널 -->
       <div class="card">
         <div class="card-header">
-          <h2 class="card-title">전투 행동 (대기 중)</h2>
-          <span class="pill" id="turnTimePill">턴 타이머: -</span>
+          <h2 class="card-title">전투 행동</h2>
+          <span class="pill mono">코드: <span id="battleCode">-</span></span>
         </div>
         <div class="card-body">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button class="btn" data-act="attack">공격</button>
-            <button class="btn" data-act="defend">방어</button>
-            <button class="btn" data-act="heal">회복</button>
-            <button class="btn" data-act="pass">패스</button>
-            <button class="btn col-span-2 sm:col-span-4" data-act="item">아이템</button>
+          <div class="grid sm:grid-cols-4 gap-2">
+            <button id="actAttack" class="btn">공격</button>
+            <button id="actDefend" class="btn">방어</button>
+            <button id="actHeal" class="btn">회복</button>
+            <button id="actPass" class="btn">패스</button>
           </div>
 
-          <div class="mt-5">
-            <div class="text-sm font-medium mb-1">대상 선택</div>
-            <select id="targetSelect" class="input h-28" multiple></select>
-          </div>
-        </div>
-      </div>
+          <div class="mt-4 grid sm:grid-cols-2 gap-3">
+            <div>
+              <div class="text-xs text-zinc-400 mb-1">대상 선택</div>
+              <select id="targetSelect" class="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"></select>
+              <div class="text-xs text-zinc-500 mt-1">대상은 같은 팀/상대 팀 모두 표시됩니다.</div>
+            </div>
 
-      <!-- 내 아이템 간단 사용 -->
-      <div class="card">
-        <div class="card-header"><h2 class="card-title">보유 아이템</h2></div>
-        <div class="card-body">
-          <div id="itemList" class="flex flex-wrap gap-2">
-            <!-- 동적으로 채움 -->
+            <div>
+              <div class="text-xs text-zinc-400 mb-1">아이템 사용</div>
+              <div class="flex gap-2">
+                <select id="itemSelect" class="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"></select>
+                <button id="actItem" class="btn">사용</button>
+              </div>
+            </div>
           </div>
+
+          <p id="turnHint" class="mt-4 text-xs"></p>
         </div>
       </div>
     </section>
 
-    <!-- 가운데 컬럼: 전투 상태 + 채팅 + 로그 -->
+    <!-- 중: 전투 모니터 + 채팅 -->
     <section class="flex flex-col gap-5">
-      <!-- 전투 상태 -->
+      <!-- 전투 모니터 -->
       <div class="card">
         <div class="card-header">
           <h2 class="card-title">전투 상태</h2>
-          <span class="pill mono">코드: <span id="battleCode">-</span></span>
+          <span class="pill" id="turnPill">대기</span>
         </div>
         <div class="card-body">
           <div class="grid sm:grid-cols-3 gap-3">
             <div>
               <div class="text-xs text-zinc-400">단계</div>
-              <div class="font-semibold" id="phaseText">대기실</div>
+              <div class="font-semibold" id="phaseText">-</div>
             </div>
             <div>
               <div class="text-xs text-zinc-400">턴 시간</div>
-              <div id="turnTime" class="font-semibold">-</div>
+              <div class="font-semibold" id="turnTime">-</div>
             </div>
             <div>
               <div class="text-xs text-zinc-400">경과 시간</div>
-              <div id="elapsedTime" class="font-semibold">-</div>
+              <div class="font-semibold" id="elapsedTime">-</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 채팅 -->
+      <!-- 채팅(간단) -->
       <div class="card">
         <div class="card-header">
           <h2 class="card-title">실시간 채팅</h2>
           <span class="pill">플레이어 채널</span>
         </div>
         <div class="card-body">
-          <div id="chatBox" class="bg-zinc-950/60 border border-zinc-800 rounded-xl h-64 overflow-auto p-3 mono text-sm text-zinc-300">
-            <div class="text-center text-zinc-500 mt-6">채팅이 없습니다</div>
+          <div id="chatArea" class="bg-black/70 border border-zinc-800 rounded-xl h-64 overflow-auto p-3 mono text-xs">
+            <div class="text-center text-[11px] text-zinc-500 mt-6">메시지가 없습니다</div>
           </div>
-          <div class="mt-3 flex gap-2">
-            <input id="chatInput" class="input flex-1" placeholder="메시지 입력..." />
+          <div class="flex gap-2 mt-3">
+            <input id="chatInput" class="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none" placeholder="메시지 입력..." />
             <button id="btnSendChat" class="btn btn-gold">전송</button>
-            <button id="btnReloadChat" class="btn">새로고침</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 전투 로그 -->
-      <div class="card">
-        <div class="card-header"><h2 class="card-title">전투 로그</h2></div>
-        <div class="card-body">
-          <div id="battleLog" class="bg-black/70 border border-zinc-800 rounded-xl h-56 overflow-auto p-3 mono text-xs"></div>
-          <div class="flex items-center gap-2 mt-3">
-            <button id="btnClearLog" class="btn">지우기</button>
-            <span class="text-xs text-zinc-500">표시만 지웁니다.</span>
+            <button id="btnChatRefresh" class="btn">새로고침</button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 오른쪽 컬럼: 상대 팀 -->
+    <!-- 우: 상대 팀 대표 패널 -->
     <section class="flex flex-col gap-5">
       <div class="card">
         <div class="card-header">
-          <h2 class="card-title">죽음을 먹는 자들</h2>
-          <span class="pill">상대 팀</span>
+          <h2 class="card-title" id="rightTeamTitle">죽음을 먹는 자들</h2>
+          <span class="pill">대표 플레이어</span>
         </div>
         <div class="card-body">
           <div class="flex items-start gap-4">
             <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
             <div class="flex-1">
-              <div class="font-semibold" id="foeName">플레이어2</div>
-              <div class="text-xs text-zinc-400" id="foeState">100/100 HP · 생존 · 대기</div>
-              <div class="mt-2 bar"><i id="foeHP" style="width:100%"></i></div>
-              <div class="grid grid-cols-4 gap-3 mt-3">
-                <div class="stat">공격 <b id="foeAtk">5</b></div>
-                <div class="stat">민첩 <b id="foeAgi">5</b></div>
-                <div class="stat">방어 <b id="foeDef">1</b></div>
-                <div class="stat">행운 <b id="foeLuk">2</b></div>
+              <div class="font-semibold" id="oppName">-</div>
+              <div class="text-xs text-zinc-400" id="oppState">-</div>
+              <div class="mt-2 bar"><i id="oppHP" style="width:0%"></i></div>
+              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="oppItems" class="mono">-</span></div>
+              <div class="grid grid-cols-4 gap-2 mt-3">
+                <div class="stat">공격 <b id="oppAtk">-</b></div>
+                <div class="stat">방어 <b id="oppDef">-</b></div>
+                <div class="stat">민첩 <b id="oppAgi">-</b></div>
+                <div class="stat">행운 <b id="oppLuk">-</b></div>
               </div>
-              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="foeItems" class="mono">방어 보정기:2</span></div>
             </div>
-            <div class="text-right text-pyxis-200 font-semibold">100%</div>
+            <div class="text-right text-pyxis-200 font-semibold" id="oppPct">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 로그 -->
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">전투 로그</h2></div>
+        <div class="card-body">
+          <div id="playLog" class="bg-black/70 border border-zinc-800 rounded-xl h-48 overflow-auto p-3 mono text-xs"></div>
+          <div class="flex items-center gap-2 mt-3">
+            <button id="btnClearLog" class="btn">지우기</button>
+            <span class="text-xs text-zinc-500">표시만 지웁니다.</span>
           </div>
         </div>
       </div>
@@ -230,28 +243,30 @@
     <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-zinc-400 flex items-center justify-between">
       <div>© PYXIS Battle System</div>
       <div class="space-x-3">
-        <span class="border border-zinc-700 rounded px-1.5 py-0.5">?battle=CODE</span><span>URL 파라미터로 배틀 선택</span>
+        <span class="border border-zinc-700 rounded px-1.5 py-0.5">?battle=CODE&player=NAME</span><span>URL 파라미터로 연결</span>
       </div>
     </div>
   </footer>
 
   <!-- 스크립트 -->
   <script>
-    // =========================
-    // 공통 상수 / 유틸
-    // =========================
-    const API = {
-      health: '/api/health',
-      battle: (id) => `/api/battles/${id}`,
-      players: (id) => `/api/battles/${id}/players`,
-      // TODO: 서버 스펙에 맞게 수정
-      action: (id) => `/api/battles/${id}/action`,
-      chatList: (id) => `/api/battles/${id}/chat`,
+    // ===== API =====
+    const ENDPOINTS = {
+      battle:   (id) => `/api/battles/${id}`,
+      action:   (id) => `/api/battles/${id}/action`,
       chatSend: (id) => `/api/battles/${id}/chat`,
+      chatList: (id) => `/api/battles/${id}/chat?limit=50`
     };
 
+    // ===== 상태 =====
     const $ = (s) => document.querySelector(s);
-    const logBox = $('#battleLog');
+    const logBox = $('#playLog');
+    const chatArea = $('#chatArea');
+    let BATTLE_ID = null;
+    let PLAYER_NAME = null;
+    let SELF = null;         // 내 플레이어 객체
+    let PLAYERS = [];        // 전체 플레이어
+    let REFRESH_TIMER = null;
 
     function addLog(msg, cls='') {
       const el = document.createElement('div');
@@ -263,183 +278,229 @@
 
     async function jfetch(url, opt={}) {
       const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json', ...(opt.headers||{}) },
+        headers: { 'Content-Type':'application/json', ...(opt.headers||{}) },
         ...opt
       });
       let body = null;
       try { body = await res.json(); } catch {}
-      if (!res.ok) {
-        throw new Error(`${res.status} ${body?.message || res.statusText}`);
-      }
+      if (!res.ok) throw new Error(`${res.status} ${body?.message || res.statusText}`);
       return body ?? {};
     }
 
-    function setBar(el, pct) { el.style.width = `${Math.max(0, Math.min(100, pct))}%`; }
-
-    // =========================
-    // 상태 채우기 (더미 + API 연동)
-    // =========================
-    let BATTLE_ID = null;
-
-    async function loadBattle() {
-      if (!BATTLE_ID) return;
-      $('#battleCode').textContent = BATTLE_ID;
-
-      try {
-        const data = await jfetch(API.battle(BATTLE_ID));
-        // 예상 필드: { phase, turnTeam, winner, turnTimeSec, startedAt, players:[...] }
-        $('#badgePhase').textContent = data.phase ?? '대기실';
-        $('#phaseText').textContent  = data.phase ?? '대기실';
-        $('#badgeTurnTeam').textContent = data.turnTeam ?? '-';
-        $('#badgeWinner').textContent = data.winner ?? '미정';
-        $('#turnTime').textContent = (data.turnTimeSec!=null) ? `${data.turnTimeSec}s` : '-';
-        $('#turnTimePill').textContent = `턴 타이머: ${$('#turnTime').textContent}`;
-        $('#elapsedTime').textContent = data.elapsed ?? '-';
-
-        // 플레이어 목록
-        const plist = data.players ?? [];
-        // 우리/상대 임시 매핑
-        const me = plist.find(p => p.isMe) || plist[0] || {};
-        const foe = plist.find(p => !p.isMe) || plist[1] || {};
-
-        // 내 정보
-        $('#meName').textContent  = me.name ?? '플레이어1';
-        $('#meState').textContent = `${me.hp ?? 100}/${me.maxHp ?? 100} HP · ${(me.alive===false?'사망':'생존')} · ${me.state ?? '대기'}`;
-        setBar($('#meHP'), ((me.hp ?? 100) / (me.maxHp ?? 100))*100);
-        $('#meAtk').textContent = me.atk ?? 4;
-        $('#meAgi').textContent = me.agi ?? 4;
-        $('#meDef').textContent = me.def ?? 2;
-        $('#meLuk').textContent = me.luk ?? 2;
-        $('#meItems').textContent = (me.items && me.items.length) ? me.items.map(it => `${it.name}:${it.count ?? 1}`).join(', ') : '-';
-
-        // 상대
-        $('#foeName').textContent  = foe.name ?? '플레이어2';
-        $('#foeState').textContent = `${foe.hp ?? 100}/${foe.maxHp ?? 100} HP · ${(foe.alive===false?'사망':'생존')} · ${foe.state ?? '대기'}`;
-        setBar($('#foeHP'), ((foe.hp ?? 100) / (foe.maxHp ?? 100))*100);
-        $('#foeAtk').textContent = foe.atk ?? 5;
-        $('#foeAgi').textContent = foe.agi ?? 5;
-        $('#foeDef').textContent = foe.def ?? 1;
-        $('#foeLuk').textContent = foe.luk ?? 2;
-        $('#foeItems').textContent = (foe.items && foe.items.length) ? foe.items.map(it => `${it.name}:${it.count ?? 1}`).join(', ') : '-';
-
-        // 대상 셀렉트 & 아이템
-        await refreshPlayersForTarget();
-        renderItems(me.items || []);
-
-        addLog('전투 상태 갱신','ok');
-      } catch (e) {
-        addLog('전투 상태 실패: ' + e.message, 'err');
+    // ===== 도우미 =====
+    const pct = (n,d)=> d? Math.max(0,Math.min(100,Math.round((n/d)*100))):0;
+    const setBar = (el,v)=> el.style.width = `${v}%`;
+    function itemToText(it){
+      if (!it) return '-';
+      if (Array.isArray(it) && it.length) {
+        return it.map(x=>{
+          const n=x?.name ?? x?.id ?? '아이템';
+          const c=x?.count ?? 1;
+          return `${n}${c>1?`:${c}`:''}`;
+        }).join(', ');
       }
+      if (typeof it==='string') return it;
+      if (typeof it==='object') return Object.entries(it).map(([k,v])=>`${k}:${v}`).join(', ') || '-';
+      return '-';
     }
 
-    async function refreshPlayersForTarget() {
-      try {
-        const res = await jfetch(API.players(BATTLE_ID));
-        const list = Array.isArray(res?.players) ? res.players : (res ?? []);
-        const sel = $('#targetSelect');
-        sel.innerHTML = '';
-        list.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.id ?? p._id ?? p.name;
-          opt.textContent = `${p.name} (HP ${p.hp ?? '??'}/${p.maxHp ?? '??'})`;
-          sel.appendChild(opt);
-        });
-      } catch (e) {
-        addLog('대상 목록 실패: ' + e.message, 'err');
-      }
+    function fillPanel(prefix, p) {
+      const name = p?.name ?? '-';
+      const hp = p?.hp ?? p?.HP ?? 0;
+      const max = p?.maxHp ?? p?.maxHP ?? 100;
+      const alive = (p?.alive !== false);
+      const state = p?.state ?? (alive ? '대기' : '사망');
+      const percent = pct(hp, max);
+
+      $('#'+prefix+'Name').textContent  = name;
+      $('#'+prefix+'State').textContent = `${hp}/${max} HP · ${alive ? '생존' : '사망'} · ${state}`;
+      setBar($('#'+prefix+'HP'), percent);
+      $('#'+prefix+'Pct').textContent = `${percent}%`;
+      $('#'+prefix+'Atk').textContent = p?.atk ?? p?.attack ?? '-';
+      $('#'+prefix+'Def').textContent = p?.def ?? p?.defense ?? '-';
+      $('#'+prefix+'Agi').textContent = p?.agi ?? p?.agility ?? '-';
+      $('#'+prefix+'Luk').textContent = p?.luk ?? p?.luck ?? '-';
+      $('#'+prefix+'Items').textContent = itemToText(p?.items);
     }
 
-    function renderItems(items) {
-      const wrap = $('#itemList');
-      wrap.innerHTML = '';
-      if (!items.length) {
-        wrap.innerHTML = '<div class="text-xs text-zinc-400">아이템이 없습니다</div>';
-        return;
-      }
-      items.forEach(it => {
-        const b = document.createElement('button');
-        b.className = 'btn';
-        b.textContent = `${it.name} ×${it.count ?? 1}`;
-        b.addEventListener('click', () => doAction('item', { item: it.key || it.name }));
-        wrap.appendChild(b);
+    function rebuildTargets() {
+      const sel = $('#targetSelect');
+      sel.innerHTML = '';
+      PLAYERS.forEach(pl=>{
+        const opt = document.createElement('option');
+        opt.value = pl.id ?? pl._id ?? pl.name;
+        const hp = (pl.hp ?? pl.HP ?? 0);
+        const max = (pl.maxHp ?? pl.maxHP ?? 100);
+        opt.textContent = `${pl.name ?? '플레이어'} (${hp}/${max})`;
+        sel.appendChild(opt);
       });
     }
 
-    // =========================
-    // 액션 / 채팅
-    // =========================
-    async function doAction(type, extra={}) {
-      if (!BATTLE_ID) return addLog('배틀 코드가 없습니다','err');
-      try {
-        const targets = Array.from($('#targetSelect').selectedOptions).map(o => o.value);
-        const payload = { type, targets, ...extra };
-        // TODO: 서버 스펙 맞추기
-        await jfetch(API.action(BATTLE_ID), { method:'POST', body: JSON.stringify(payload) });
-        addLog(`행동 전송: ${type} (${targets.join(',')||'대상없음'})`,'ok');
-        loadBattle();
-      } catch (e) {
-        addLog(`행동 실패: ${e.message}`,'err');
+    function rebuildItems() {
+      const sel = $('#itemSelect');
+      sel.innerHTML = '';
+      const items = SELF?.items;
+      if (!items) return;
+      if (Array.isArray(items)) {
+        items.forEach(it=>{
+          const opt=document.createElement('option');
+          opt.value = it?.id ?? it?.name;
+          const cnt = it?.count ?? 1;
+          opt.textContent = `${it?.name ?? it?.id ?? '아이템'}${cnt>1?` x${cnt}`:''}`;
+          sel.appendChild(opt);
+        });
+      } else if (typeof items==='object') {
+        Object.entries(items).forEach(([k,v])=>{
+          const opt=document.createElement('option');
+          opt.value=k; opt.textContent = `${k}${v>1?` x${v}`:''}`;
+          sel.appendChild(opt);
+        });
       }
     }
 
-    async function loadChat() {
+    // ===== 렌더 =====
+    function renderBattle(data){
+      const phase = data?.phase ?? '-';
+      const turnTeam = data?.turnTeam ?? '-';
+      const winner = data?.winner ?? '미정';
+
+      $('#badgePhase').textContent = phase;
+      $('#badgeTurnTeam').textContent = turnTeam;
+      $('#badgeWinner').textContent = winner;
+      $('#topPhase').textContent = phase;
+      $('#topTurnTeam').textContent = (turnTeam && turnTeam !== '-') ? `${turnTeam} 턴` : '-';
+      $('#topTimer').textContent = (data?.teamTimerSec!=null) ? `${data.teamTimerSec}s` : '-';
+      $('#topWinner').textContent = winner;
+      $('#phaseText').textContent = phase;
+      $('#turnTime').textContent = (data?.turnTimeSec!=null) ? `${data.turnTimeSec}s` : '-';
+      $('#elapsedTime').textContent = data?.elapsed ?? '-';
+
+      // 팀명 라벨
+      $('#leftTeamTitle').textContent  = '불사조 기사단';
+      $('#rightTeamTitle').textContent = '죽음을 먹는 자들';
+
+      // 플레이어 목록
+      PLAYERS = Array.isArray(data?.players) ? data.players : [];
+      // 내 캐릭터 찾기
+      SELF = PLAYERS.find(p => (p.name||'').toLowerCase() === (PLAYER_NAME||'').toLowerCase())
+          || PLAYERS.find(p => p.team === 'phoenix')
+          || PLAYERS[0];
+
+      // 상대 대표
+      const OPP = PLAYERS.find(p => SELF && p.team !== SELF.team) || PLAYERS.find((p,i)=> i===1);
+
+      if (SELF) fillPanel('self', SELF);
+      if (OPP)  fillPanel('opp',  OPP);
+
+      rebuildTargets();
+      rebuildItems();
+
+      // 내 턴 여부 (팀 단위)
+      const myTurn = SELF && data?.turnTeam && SELF.team === data.turnTeam;
+      $('#turnPill').textContent = myTurn ? '내 팀 턴' : '대기';
+      const controls = ['#actAttack','#actDefend','#actHeal','#actPass','#actItem'].map(s=>$(s));
+      controls.forEach(b=> b.classList.toggle('disabled', !myTurn));
+      $('#turnHint').textContent = myTurn ? '당신의 팀 차례입니다. 행동을 선택하세요.' : '상대 팀 차례입니다. 잠시 기다려 주세요.';
+    }
+
+    // ===== 네트워크 =====
+    async function loadOnce(){
       if (!BATTLE_ID) return;
       try {
-        const res = await jfetch(API.chatList(BATTLE_ID));
-        const items = res?.items ?? res ?? [];
-        const box = $('#chatBox');
-        box.innerHTML = '';
-        items.forEach(m => {
-          const line = document.createElement('div');
-          line.className = 'mb-1';
-          line.innerHTML = `<span class="text-zinc-400 mono">${m.time ?? ''}</span> <b>${m.user ?? '익명'}</b> : <span>${m.text ?? ''}</span>`;
-          box.appendChild(line);
-        });
-        box.scrollTop = box.scrollHeight;
+        const data = await jfetch(ENDPOINTS.battle(BATTLE_ID));
+        renderBattle(data);
       } catch (e) {
-        addLog('채팅 로드 실패: ' + e.message, 'err');
+        addLog('상태 갱신 실패: ' + e.message, 'err');
       }
     }
+    function startAuto(ms=2500){
+      if (REFRESH_TIMER) clearInterval(REFRESH_TIMER);
+      REFRESH_TIMER = setInterval(loadOnce, ms);
+    }
 
-    async function sendChat() {
-      const txt = $('#chatInput').value.trim();
-      if (!txt) return;
+    async function postAction(payload){
+      if (!BATTLE_ID || !SELF) return;
       try {
-        await jfetch(API.chatSend(BATTLE_ID), { method:'POST', body: JSON.stringify({ text: txt }) });
-        $('#chatInput').value = '';
-        loadChat();
-      } catch (e) {
-        addLog('채팅 전송 실패: ' + e.message, 'err');
+        await jfetch(ENDPOINTS.action(BATTLE_ID), {
+          method:'POST',
+          body: JSON.stringify({ actor: SELF.id ?? SELF._id ?? SELF.name, ...payload })
+        });
+        addLog(`행동 전송: ${payload.type}`, 'ok');
+        loadOnce();
+      } catch(e){
+        addLog(`행동 실패: ${e.message}`, 'err');
       }
     }
 
-    // =========================
-    // 이벤트 바인딩
-    // =========================
-    document.querySelectorAll('[data-act]').forEach(btn => {
-      btn.addEventListener('click', () => doAction(btn.dataset.act));
+    // ===== 이벤트 바인딩 =====
+    $('#actAttack').addEventListener('click', ()=> {
+      const target = $('#targetSelect').value || null;
+      postAction({ type:'attack', target });
     });
-    $('#btnSendChat').addEventListener('click', sendChat);
-    $('#btnReloadChat').addEventListener('click', loadChat);
-    $('#btnClearLog').addEventListener('click', () => { logBox.innerHTML = ''; });
-    $('#btnConnect').addEventListener('click', async () => {
-      await loadBattle();
-      await loadChat();
-      addLog('연결/동기화 완료','ok');
+    $('#actDefend').addEventListener('click', ()=> postAction({ type:'defend' }));
+    $('#actHeal').addEventListener('click',   ()=> postAction({ type:'heal' }));
+    $('#actPass').addEventListener('click',   ()=> postAction({ type:'pass' }));
+    $('#actItem').addEventListener('click',   ()=> {
+      const target = $('#targetSelect').value || null;
+      const item   = $('#itemSelect').value || null;
+      if (!item) return addLog('사용할 아이템이 없습니다','err');
+      postAction({ type:'item', item, target });
     });
 
-    // =========================
-    // 초기화
-    // =========================
-    (function init() {
-      const params = new URLSearchParams(location.search);
-      BATTLE_ID = params.get('battle') || '';
+    // 채팅
+    async function refreshChat(){
+      if (!BATTLE_ID) return;
+      try {
+        const rows = await jfetch(ENDPOINTS.chatList(BATTLE_ID));
+        const list = Array.isArray(rows) ? rows : (rows?.items || []);
+        chatArea.innerHTML = '';
+        list.forEach(r=>{
+          const div = document.createElement('div');
+          const t = new Date(r.time || r.ts || Date.now()).toLocaleTimeString();
+          div.textContent = `[${t}] ${(r.user||r.name||'익명')}: ${r.text||r.msg||''}`;
+          chatArea.appendChild(div);
+        });
+        chatArea.scrollTop = chatArea.scrollHeight;
+      } catch {}
+    }
+    $('#btnSendChat').addEventListener('click', async ()=>{
+      const v = $('#chatInput').value.trim();
+      if (!v) return;
+      $('#chatInput').value = '';
+      try {
+        await jfetch(ENDPOINTS.chatSend(BATTLE_ID), {
+          method:'POST',
+          body: JSON.stringify({ user: PLAYER_NAME || (SELF?.name) || '플레이어', text: v })
+        });
+        refreshChat();
+      } catch {
+        // 서버 미지원 시 로컬 로그만
+        const div = document.createElement('div');
+        div.textContent = `[${new Date().toLocaleTimeString()}] 나: ${v}`;
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+    });
+    $('#btnChatRefresh').addEventListener('click', refreshChat);
+
+    // 공용
+    $('#btnClearLog').addEventListener('click', ()=> { logBox.innerHTML=''; });
+    $('#btnConnect').addEventListener('click', ()=> { loadOnce(); startAuto(2500); refreshChat(); });
+
+    (function init(){
+      const q = new URLSearchParams(location.search);
+      BATTLE_ID   = q.get('battle') || '';
+      PLAYER_NAME = q.get('player') || '';
+      $('#battleCode').textContent = BATTLE_ID || '-';
+
       if (BATTLE_ID) {
         addLog(`배틀 코드 인식: ${BATTLE_ID}`,'ok');
-        loadBattle();
-        loadChat();
+        if (PLAYER_NAME) addLog(`플레이어: ${PLAYER_NAME}`,'ok');
+        loadOnce();
+        startAuto(2500);
+        refreshChat();
       } else {
-        addLog('URL에 ?battle=코드를 지정하면 상태를 불러옵니다.');
+        addLog('URL에 ?battle=코드&player=이름 을 지정하세요.');
       }
     })();
   </script>
