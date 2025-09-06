@@ -12,6 +12,7 @@
     /* ═══════════════════════════════════════════════════════════════════════
        PYXIS Battle System - 게임 스타일 플레이어 페이지 (네이비+골드)
        이모지 없음 / 기존 디자인 유지 / 잘린 부분 보완 완료
+       + 네트워크 내구성 패치(소켓 로더/하트비트/ACK) 반영 버전
        ═══════════════════════════════════════════════════════════════════════ */
 
     :root {
@@ -208,7 +209,8 @@
 
     /* 액션 */
     .action-panel { background: var(--surface-1); backdrop-filter: var(--blur-light); border: 1px solid var(--border-subtle); border-radius: 12px; padding: var(--space-md); box-shadow: var(--shadow-card); }
-    .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
+    .section-title { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); margin-top: var(--space-sm); }
     .action-btn { padding: var(--space-md); background: linear-gradient(135deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-bright); font-weight: 600; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; text-align: center; }
     .action-btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(220,199,162,0.2), transparent); transition: left 0.6s ease; }
     .action-btn:hover { background: linear-gradient(135deg, var(--gold-bright), var(--gold-warm)); color: var(--deep-navy); border-color: var(--gold-bright); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(220, 199, 162, 0.3); }
@@ -409,7 +411,7 @@
     </aside>
   </main>
 
-  <!-- 대상 선택 모달 -->
+  <!-- 대상 선택 모달(내장 폴백) -->
   <div class="target-modal" id="targetModal">
     <div class="target-content">
       <h3 class="target-title" id="targetTitle">대상 선택</h3>
@@ -420,8 +422,29 @@
     </div>
   </div>
 
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Socket.IO 로더 (origin → CDN 폴백) -->
+  <script>
+    (function ensureSocketIO(){
+      if (window.io) {
+        document.dispatchEvent(new Event('socket-io-ready'));
+        return;
+      }
+      function add(src, onload, onerror){
+        var s=document.createElement('script');
+        s.src=src; s.async=true; s.onload=onload; s.onerror=onerror;
+        document.head.appendChild(s);
+      }
+      add('/socket.io/socket.io.js',
+        function(){ document.dispatchEvent(new Event('socket-io-ready')); },
+        function(){ add('https://cdn.socket.io/4.7.5/socket.io.min.js',
+          function(){ document.dispatchEvent(new Event('socket-io-ready')); },
+          function(){ console.warn('[PYXIS] Socket.IO client load failed'); }
+        );}
+      );
+    })();
+  </script>
+
+  <!-- 플레이어 스크립트 -->
   <script>
     // ===== 전역 상태/도움 함수
     let socket = null;
@@ -450,13 +473,25 @@
 
     let turnTimer = null;
     let turnAutoPassed = false;
-    let connectionTimer = null;
 
-    // ===== 초기화
+    // Heartbeat / stale-connection detection
+    let hb = null, hbTimeout = null, lastPong = 0;
+    const HEARTBEAT_EVERY = 15000;      // ms
+    const CONN_TIMEOUT_MS = 12000;      // ms
+
+    // ===== 초기화: io 준비 신호를 기다린 뒤 부트스트랩
     document.addEventListener('DOMContentLoaded', function() {
       initializeFromUrl();
-      initializeSocket();
-      setupEventListeners();
+
+      if (window.io) {
+        initializeSocket();
+        setupEventListeners();
+      } else {
+        document.addEventListener('socket-io-ready', () => {
+          initializeSocket();
+          setupEventListeners();
+        }, { once: true });
+      }
     });
 
     // URL 파라미터 → 폼 채움 & 자동 로그인 시도
@@ -483,6 +518,8 @@
 
       socket.on('connect', function() {
         updateConnectionStatus(true);
+        startHeartbeat(); // 하트비트 시작
+
         // 재접속 후 상태 동기화
         if (playerState.isAuthenticated && playerState.battleId && playerState.playerId) {
           requestGameState();
@@ -491,8 +528,13 @@
 
       socket.on('disconnect', function() {
         updateConnectionStatus(false);
+        stopHeartbeat(); // 하트비트 정지
         showToast('서버 연결이 끊어졌습니다', 'error');
       });
+
+      // Heartbeat pong (서버 이벤트명 호환)
+      socket.on('player:pong', () => { lastPong = Date.now(); });
+      socket.on('pong',        () => { lastPong = Date.now(); });
 
       // 인증
       socket.on('auth:success', function(data) { handleAuthSuccess(data); });
@@ -521,6 +563,26 @@
       socket.on('battleLog',  function(data) { addLogEntry(data?.message || '', data?.type || 'info'); });
       socket.on('chatMessage',function(data) { addChatMessage(data?.sender || '알 수 없음', data?.message || '', data?.isMyMessage === true); });
       socket.on('chat:new',   function(msg)  { addChatMessage(msg?.nickname || msg?.from?.nickname || '익명', msg?.text || '', false); });
+    }
+
+    function startHeartbeat(){
+      stopHeartbeat();
+      lastPong = Date.now();
+      hb = setInterval(() => {
+        if (!socket?.connected) return;
+        socket.emit('player:ping', { t: Date.now() });
+        clearTimeout(hbTimeout);
+        hbTimeout = setTimeout(() => {
+          if (Date.now() - lastPong > CONN_TIMEOUT_MS) {
+            try { socket.disconnect(); } catch {}
+          }
+        }, CONN_TIMEOUT_MS + 100);
+      }, HEARTBEAT_EVERY);
+    }
+    function stopHeartbeat(){
+      if (hb) clearInterval(hb);
+      if (hbTimeout) clearTimeout(hbTimeout);
+      hb = null; hbTimeout = null;
     }
 
     function requestGameState() {
@@ -586,7 +648,7 @@
 
     function cleanup() {
       if (turnTimer) clearInterval(turnTimer);
-      if (connectionTimer) clearInterval(connectionTimer);
+      stopHeartbeat();
       if (socket) socket.disconnect();
     }
 
@@ -784,12 +846,12 @@
       }
     }
 
+    // ACK 우선 처리(빠른 실패 감지). 성공/결과 메시지는 actionResult 이벤트로 수신.
     function executeAction(action, target = null, item = null) {
       if (!playerState.isAuthenticated) return;
       playerState.actionInProgress = true;
       updateActionButtons();
 
-      // 페이로드 호환성: targetId + target 둘 다
       const payload = {
         battleId: playerState.battleId,
         playerId: playerState.playerId,
@@ -797,16 +859,24 @@
       };
       if (target && target.id) {
         payload.targetId = target.id;
-        payload.target   = target.id; // 혹시 문자열 id만 받는 서버
+        payload.target   = target.id; // 일부 서버 호환
       }
       if (item) {
-        // item 키 호환: 'dittany' / 'attackBoost' / 'defenseBoost'
         payload.item = item;
         payload.itemType = item;
       }
 
-      // 전송
-      socket.emit('playerAction', payload);
+      // 서버가 ACK를 지원하면 즉시 실패를 감지
+      socket.emit('playerAction', payload, function(res){
+        if (!res || res.success) {
+          // 성공 ACK: 실제 결과는 actionResult에서 처리
+        } else {
+          showToast('액션 실패: ' + (res.error || '오류'), 'error');
+          playerState.actionInProgress = false;
+          updateActionButtons();
+        }
+      });
+
       hideTargetModal();
     }
 
@@ -855,11 +925,23 @@
       $('turnTimer').classList.remove('critical');
     }
 
-    // ===== 대상 선택 모달
+    // ===== 대상 선택 (PyxisTargetSelector가 있으면 우선 사용)
     function isTargetModalOpen() {
       return $('targetModal').classList.contains('show');
     }
     function showTargetSelection(title, targets, callback) {
+      // 외부 고급 셀렉터가 있다면 사용
+      if (window.PyxisTarget && typeof window.PyxisTarget.show === 'function') {
+        try {
+          const norm = (window.PyxisTargetUtils && window.PyxisTargetUtils.normalizeTarget)
+            ? targets.map(t => window.PyxisTargetUtils.normalizeTarget(t))
+            : targets;
+          window.PyxisTarget.show(title, norm, (picked) => callback(picked));
+          return; // 내장 모달 사용 안 함
+        } catch(e) { /* 실패 시 폴백 */ }
+      }
+
+      // ===== 내장 폴백 모달 =====
       $('targetTitle').textContent = title;
       const list = $('targetList');
       list.innerHTML = '';
@@ -983,12 +1065,14 @@
 
     // ===== 유틸
     function getTeamName(team) {
-      switch (team) {
+      switch ((team||'').toString()) {
         case 'phoenix':
         case 'A':
+        case 'a':
         case 'team1': return '불사조 기사단';
         case 'eaters':
         case 'B':
+        case 'b':
         case 'team2': return '죽음을 먹는 자들';
         default: return team || '-';
       }
