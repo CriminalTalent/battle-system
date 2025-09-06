@@ -7,6 +7,7 @@
 class BroadcastManager {
   constructor() {
     this.io = null;
+    this.initialized = false; // ← 추가: init 여부 노출
     this.opts = {
       roomPrefix: "battle",
       teamKeys: ["phoenix", "eaters"],
@@ -20,10 +21,12 @@ class BroadcastManager {
       // 모니터링 옵션
       enableMetrics: true,
       metricsInterval: 30000, // 30초
+      // 하트비트
+      enableHeartbeat: false,
     };
 
     // 배치 처리 큐
-    this.batchQueue = new Map(); // battleId -> events[]
+    this.batchQueue = new Map(); // roomName -> events[]
     this.batchTimer = null;
 
     // 메트릭스 추적
@@ -41,16 +44,24 @@ class BroadcastManager {
     this.heartbeatInterval = null;
   }
 
-  // 초기화 강화
+  // 초기화 (idemponent)
   init(io, options = {}) {
+    if (this.initialized && this.io === io) {
+      // 이미 같은 io로 초기화된 경우: 옵션만 병합
+      this.opts = { ...this.opts, ...options };
+      this.log(`[BroadcastManager] options merged (already initialized)`);
+      return;
+    }
+
     this.io = io;
     this.opts = { ...this.opts, ...options };
-    
+    this.initialized = true;
+
     this.startMetricsCollection();
     this.startHeartbeat();
-    
+
     // Socket.IO 어댑터 이벤트 모니터링
-    if (io.engine) {
+    if (io?.engine) {
       io.engine.on('connection_error', (err) => {
         this.metrics.errors++;
         this.log(`[BroadcastManager] Connection error:`, err.message);
@@ -62,7 +73,7 @@ class BroadcastManager {
     this.log(`Metrics: ${this.opts.enableMetrics ? 'enabled' : 'disabled'}`);
   }
 
-  // 헬퍼 메서드들 (기존 유지)
+  // 헬퍼 메서드들
   ns() { return this.opts.roomPrefix; }
   getBattleRoom(battleId) { return `${this.ns()}:${battleId}`; }
   getTeamRoom(battleId, teamKey) {
@@ -71,21 +82,21 @@ class BroadcastManager {
   }
   getRoleRoom(battleId, role) { return `${this.ns()}:${battleId}:${role}`; }
 
-  // 로깅 강화
+  // 로깅
   log(...args) {
     if (this.opts.verbose) {
       console.log(`[${new Date().toISOString()}]`, ...args);
     }
   }
 
-  // 안전한 이벤트 전송 (강화됨)
+  // 안전한 이벤트 전송
   safeEmit(room, event, data, options = {}) {
     if (!this.io) return false;
-    
+
     try {
       const startTime = Date.now();
-      
-      // 배치 처리 활성화시
+
+      // 배치 처리
       if (this.opts.batchEnabled && !options.immediate) {
         this.addToBatch(room, event, data);
         return true;
@@ -99,11 +110,9 @@ class BroadcastManager {
       }
 
       this.io.to(room).emit(event, data);
-      
-      // 메트릭스 업데이트
+
       const latency = Date.now() - startTime;
       this.updateMetrics(event, roomSize, latency);
-      
       return true;
     } catch (e) {
       this.metrics.errors++;
@@ -112,14 +121,13 @@ class BroadcastManager {
     }
   }
 
-  // 배치 처리 시스템
+  // 배치 처리
   addToBatch(room, event, data) {
     if (!this.batchQueue.has(room)) {
       this.batchQueue.set(room, []);
     }
-    
     this.batchQueue.get(room).push({ event, data, timestamp: Date.now() });
-    
+
     if (!this.batchTimer) {
       this.batchTimer = setTimeout(() => this.processBatch(), this.opts.batchDelay);
     }
@@ -127,30 +135,26 @@ class BroadcastManager {
 
   processBatch() {
     this.batchTimer = null;
-    
+
     for (const [room, events] of this.batchQueue.entries()) {
       if (events.length === 0) continue;
-      
+
       const roomSize = this.getRoomSize(room);
       if (roomSize === 0) continue;
 
-      // 이벤트 타입별 그룹화
       const grouped = this.groupEventsByType(events);
-      
+
       for (const [eventType, eventList] of grouped.entries()) {
         try {
           if (eventList.length === 1) {
-            // 단일 이벤트는 그대로 전송
             this.io.to(room).emit(eventType, eventList[0].data);
           } else {
-            // 다중 이벤트는 배치로 전송
             this.io.to(room).emit(`${eventType}:batch`, {
               events: eventList.map(e => e.data),
               count: eventList.length,
               timestamp: Date.now()
             });
           }
-          
           this.metrics.batchedEmits += eventList.length;
         } catch (e) {
           this.metrics.errors++;
@@ -158,24 +162,20 @@ class BroadcastManager {
         }
       }
     }
-    
+
     this.batchQueue.clear();
   }
 
   groupEventsByType(events) {
     const grouped = new Map();
-    
     for (const event of events) {
-      if (!grouped.has(event.event)) {
-        grouped.set(event.event, []);
-      }
+      if (!grouped.has(event.event)) grouped.set(event.event, []);
       grouped.get(event.event).push(event);
     }
-    
     return grouped;
   }
 
-  // 기본 브로드캐스트 메서드들 (기존과 동일하지만 safeEmit 사용)
+  // 기본 브로드캐스트
   toAll(battleId, event, data, options = {}) {
     const success = this.safeEmit(this.getBattleRoom(battleId), event, data, options);
     if (success) this.log(`[Broadcast] ${event} → all (${battleId})`);
@@ -200,34 +200,30 @@ class BroadcastManager {
     return success;
   }
 
-  // 우선순위 기반 즉시 전송
   broadcastUrgent(battleId, event, data) {
     return this.toAll(battleId, event, data, { immediate: true });
   }
 
-  // 상태/턴/페이즈 브로드캐스트 (기존 유지하되 압축 고려)
+  // 상태 브로드캐스트
   broadcastBattleState(battleId, state) {
     if (!battleId || !state) return false;
 
-    // 큰 상태 객체는 압축을 고려
     const stateSize = JSON.stringify(state).length;
     const shouldCompress = stateSize > this.opts.compressionThreshold;
-    
     if (shouldCompress) {
       this.log(`[Broadcast] Large state detected (${stateSize} bytes), consider compression`);
     }
 
     const events = ["state:snapshot", "state:update", "state", "battleUpdate"];
     let success = true;
-    
     for (const ev of events) {
       success = this.toAll(battleId, ev, state) && success;
     }
-    
     this.log(`[Broadcast] State updated (${battleId}), size: ${stateSize}b`);
     return success;
   }
 
+  // 전투 이벤트
   broadcastBattleEvent(battleId, eventType, data = {}) {
     const map = {
       created: "battle:created",
@@ -236,35 +232,83 @@ class BroadcastManager {
       resumed: "battle:resumed",
       ended: "battle:ended"
     };
-    
+
     const ev = map[eventType] || `battle:${eventType}`;
     const payload = { battleId, timestamp: Date.now(), ...data };
-    
-    // 중요한 전투 이벤트는 즉시 전송
+
     const isUrgent = ['started', 'ended', 'paused'].includes(eventType);
     const success = this.toAll(battleId, ev, payload, { immediate: isUrgent });
 
-    // 레거시 호환
     if (this.opts.legacyEvents && eventType === "ended") {
       this.toAll(battleId, "battle:end", payload, { immediate: true });
     }
-    
     return success;
   }
 
-  // 채팅/로그 시스템 (기존 유지)
+  // ✅ 추가: 턴 이벤트 브로드캐스트 (battle-handlers, broadcast.js에서 사용)
+  broadcastTurnEvent(battleId, type, data = {}) {
+    const map = {
+      start: "turn:start",
+      update: "turn:update",
+      next: "turn:next",
+      end: "turn:end",
+      timeout: "turn:timeout",
+      swap: "turn:swap"
+    };
+    const ev = map[type] ? map[type] : `turn:${type}`;
+    const urgent = ['start', 'end', 'timeout'].includes(type);
+
+    const payload = { battleId, timestamp: Date.now(), ...data };
+    const ok = this.toAll(battleId, ev, payload, { immediate: urgent });
+
+    // 레거시 호환
+    if (this.opts.legacyEvents && type === 'update') {
+      this.toAll(battleId, 'turn', payload);
+    }
+
+    return ok;
+  }
+
+  // ✅ 추가: 플레이어 이벤트 브로드캐스트 (socketHandlers 등에서 사용)
+  broadcastPlayerEvent(battleId, type, data = {}) {
+    const map = {
+      join: "player:joined",
+      leave: "player:left",
+      update: "player:updated",
+      action: "player:action",
+      ready: "player:ready",
+      reconnect: "player:reconnect",
+      disconnect: "player:disconnect"
+    };
+    const ev = map[type] ? map[type] : `player:${type}`;
+    const urgent = ['join', 'leave', 'disconnect', 'reconnect'].includes(type);
+
+    const payload = { battleId, timestamp: Date.now(), ...data };
+    const ok = this.toAll(battleId, ev, payload, { immediate: urgent });
+
+    // 팀 지정 시 팀 룸에도 보냄(선택)
+    if (data.team && this.opts.teamKeys.includes(data.team)) {
+      this.toTeam(battleId, data.team, ev, payload, { immediate: urgent });
+    }
+
+    // 레거시 호환 채널
+    if (this.opts.legacyEvents && type === 'action') {
+      this.toAll(battleId, 'action', payload);
+    }
+
+    return ok;
+  }
+
+  // 채팅/로그
   broadcastChat(battleId, messageData) {
     const events = ["chat:new", "chat"];
     let success = true;
-    
     for (const ev of events) {
       success = this.toAll(battleId, ev, messageData) && success;
     }
-    
     if (this.opts.legacyEvents) {
       this.toAll(battleId, "chat-message", { message: messageData });
     }
-    
     return success;
   }
 
@@ -274,22 +318,18 @@ class BroadcastManager {
       timestamp: logData.timestamp || Date.now(),
       id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    
     return this.toAll(battleId, "log:new", enhancedLog);
   }
 
-  // 성능 모니터링 및 통계
+  // 성능 모니터링
   updateMetrics(event, roomSize, latency) {
     this.metrics.totalEmits++;
     this.metrics.lastActivity = Date.now();
-    
-    // 지연시간 평균 계산 (지수 이동 평균)
     this.metrics.averageLatency = this.metrics.averageLatency * 0.9 + latency * 0.1;
   }
 
   startMetricsCollection() {
     if (!this.opts.enableMetrics) return;
-    
     setInterval(() => {
       this.collectRoomMetrics();
       this.logMetrics();
@@ -298,10 +338,8 @@ class BroadcastManager {
 
   collectRoomMetrics() {
     if (!this.io) return;
-    
     this.metrics.roomSizes = {};
     const rooms = this.getAllRooms();
-    
     for (const room of rooms) {
       this.metrics.roomSizes[room] = this.getRoomSize(room);
     }
@@ -309,34 +347,33 @@ class BroadcastManager {
 
   logMetrics() {
     if (!this.opts.verbose) return;
-    
     const totalConnections = Object.values(this.metrics.roomSizes).reduce((a, b) => a + b, 0);
-    
     this.log(`[Metrics] Total emits: ${this.metrics.totalEmits}, Batched: ${this.metrics.batchedEmits}`);
     this.log(`[Metrics] Connections: ${totalConnections}, Errors: ${this.metrics.errors}`);
     this.log(`[Metrics] Avg latency: ${this.metrics.averageLatency.toFixed(2)}ms`);
   }
 
-  // 하트비트 시스템 (연결 상태 모니터링)
+  // 하트비트
   startHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
     this.heartbeatInterval = setInterval(() => {
       if (!this.io) return;
-      
+
       const now = Date.now();
       const staleThreshold = 300000; // 5분
-      
-      // 비활성 연결 정리
+
       for (const [socketId, state] of this.connectionStates.entries()) {
         if (now - state.lastSeen > staleThreshold) {
           this.connectionStates.delete(socketId);
         }
       }
-      
-      // 전역 하트비트 전송 (필요시)
+
       if (this.opts.enableHeartbeat) {
         this.io.emit('heartbeat', { timestamp: now });
       }
-    }, 60000); // 1분마다
+    }, 60000);
   }
 
   // 연결 상태 추적
@@ -352,10 +389,9 @@ class BroadcastManager {
     this.connectionStates.delete(socketId);
   }
 
-  // 방 크기 측정 (캐시 추가)
+  // 방/룸
   getRoomSize(roomName) {
     if (!this.io) return 0;
-    
     try {
       const room = this.io.sockets.adapter.rooms.get(roomName);
       return room ? room.size : 0;
@@ -365,9 +401,8 @@ class BroadcastManager {
     }
   }
 
-  // 전투 통계 (강화됨)
   getBattleStats(battleId) {
-    const stats = {
+    return {
       total: this.getRoomSize(this.getBattleRoom(battleId)),
       phoenix: this.getRoomSize(this.getTeamRoom(battleId, "phoenix")),
       eaters: this.getRoomSize(this.getTeamRoom(battleId, "eaters")),
@@ -376,11 +411,8 @@ class BroadcastManager {
       lastActivity: this.metrics.lastActivity,
       messagesSent: this.metrics.totalEmits
     };
-    
-    return stats;
   }
 
-  // 전체 시스템 통계
   getSystemStats() {
     return {
       ...this.metrics,
@@ -391,10 +423,8 @@ class BroadcastManager {
     };
   }
 
-  // 모든 방 목록 (개선됨)
   getAllRooms() {
     if (!this.io) return [];
-    
     try {
       const prefix = `${this.ns()}:`;
       return Array.from(this.io.sockets.adapter.rooms.keys())
@@ -405,22 +435,19 @@ class BroadcastManager {
     }
   }
 
-  // 룸 조인/이탈 (기존 유지하되 추적 추가)
+  // 룸 조인/이탈
   joinSocketToRooms(socket, battleId, role, teamKey = null, options = {}) {
     if (!socket || !battleId || !role) return false;
-    
+
     const { withRoleRooms = false } = options;
-    
+
     try {
-      // 전체 룸
       socket.join(this.getBattleRoom(battleId));
-      
-      // 팀 룸
+
       if (role === "player" && teamKey && this.opts.teamKeys.includes(teamKey)) {
         socket.join(this.getTeamRoom(battleId, teamKey));
       }
-      
-      // 역할 룸 (옵션)
+
       if (withRoleRooms) {
         socket.join(this.getRoleRoom(battleId, role));
         if (role === "admin") {
@@ -429,10 +456,9 @@ class BroadcastManager {
           }
         }
       }
-      
-      // 연결 추적
+
       this.trackConnection(socket.id, { battleId, role, teamKey });
-      
+
       this.log(`[Broadcast] Socket joined: ${socket.id}, role=${role}, team=${teamKey || "-"}, battle=${battleId}`);
       return true;
     } catch (e) {
@@ -443,16 +469,16 @@ class BroadcastManager {
 
   leaveSocketFromRooms(socket, battleId, role, teamKey = null, options = {}) {
     if (!socket || !battleId) return false;
-    
+
     const { withRoleRooms = false } = options;
-    
+
     try {
       socket.leave(this.getBattleRoom(battleId));
-      
+
       if (teamKey && this.opts.teamKeys.includes(teamKey)) {
         socket.leave(this.getTeamRoom(battleId, teamKey));
       }
-      
+
       if (withRoleRooms) {
         socket.leave(this.getRoleRoom(battleId, role));
         if (role === "admin") {
@@ -461,10 +487,9 @@ class BroadcastManager {
           }
         }
       }
-      
-      // 연결 추적 해제
+
       this.untrackConnection(socket.id);
-      
+
       this.log(`[Broadcast] Socket left: ${socket.id}, role=${role}, team=${teamKey || "-"}, battle=${battleId}`);
       return true;
     } catch (e) {
@@ -473,10 +498,10 @@ class BroadcastManager {
     }
   }
 
-  // 전투 정리 (강화됨)
+  // 전투 정리
   cleanupBattle(battleId, options = {}) {
     const { forceDisconnect = false, notifyClients = true } = options;
-    
+
     const rooms = [
       this.getBattleRoom(battleId),
       this.getTeamRoom(battleId, "phoenix"),
@@ -484,19 +509,18 @@ class BroadcastManager {
       this.getRoleRoom(battleId, "admin"),
       this.getRoleRoom(battleId, "spectator")
     ];
-    
+
     for (const room of rooms) {
       if (!this.io.sockets.adapter.rooms.has(room)) continue;
-      
+
       try {
         if (notifyClients) {
-          this.toRoom(room, "battle:cleanup", { 
-            battleId, 
+          this.toRoom(room, "battle:cleanup", {
+            battleId,
             timestamp: Date.now(),
             reason: "Battle ended"
           });
         }
-        
         if (forceDisconnect) {
           this.io.in(room).disconnectSockets();
         }
@@ -504,7 +528,7 @@ class BroadcastManager {
         this.log(`[BroadcastManager] Error cleaning room ${room}:`, e.message);
       }
     }
-    
+
     // 배치 큐에서 해당 전투 관련 이벤트 제거
     const battleRoomPrefix = this.getBattleRoom(battleId);
     for (const room of this.batchQueue.keys()) {
@@ -512,26 +536,27 @@ class BroadcastManager {
         this.batchQueue.delete(room);
       }
     }
-    
+
     this.log(`[Broadcast] Battle cleanup completed: ${battleId}, force=${forceDisconnect}`);
   }
 
-  // 정리 메서드
+  // 정리
   destroy() {
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
     }
-    
+
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
-    
+
     this.batchQueue.clear();
     this.connectionStates.clear();
     this.io = null;
-    
+    this.initialized = false;
+
     this.log(`[BroadcastManager] Destroyed`);
   }
 }
