@@ -370,7 +370,7 @@ class BattleEngine extends EventEmitter {
     // 턴 타이머 시작
     this.startTurnTimer();
 
-    // 브로드캐스트
+    // 브로드캐스트 (begin → 그대로 두되, 소비자는 turn:begin 또는 turn:start 중 하나를 들을 수 있음)
     if (broadcastManager) {
       broadcastManager.broadcastTurnEvent(this.battleId, 'begin', {
         turn: this.currentTurn,
@@ -474,13 +474,13 @@ class BattleEngine extends EventEmitter {
         timestamp: Date.now()
       });
 
-      // 브로드캐스트
+      // 브로드캐스트 (broadcastPlayerEvent로 통합)
       if (broadcastManager) {
-        broadcastManager.broadcastActionResult(this.battleId, {
+        broadcastManager.broadcastPlayerEvent(this.battleId, 'action', {
           playerId: player.id,
           action: actionData.type,
-          result: result
-        }, true);
+          result
+        });
         
         broadcastManager.broadcastBattleState(this.battleId, this.getSnapshot());
       }
@@ -508,10 +508,11 @@ class BattleEngine extends EventEmitter {
       console.error(`[BattleEngine] Action failed for player ${playerId}:`, error);
       
       if (broadcastManager) {
-        broadcastManager.broadcastActionResult(this.battleId, {
+        broadcastManager.broadcastPlayerEvent(this.battleId, 'action', {
           playerId: playerId,
-          error: error.message
-        }, false);
+          error: error.message,
+          success: false
+        });
       }
 
       this.emit('actionError', {
@@ -568,22 +569,21 @@ class BattleEngine extends EventEmitter {
     const attackRoll = rollDice();
     let attackPower = actor.stats.attack + attackRoll;
 
-    // 공격 보정기 효과 적용
+    // 공격 보정기 효과 적용 (일회성)
     const attackBoostEffect = this.findEffect(actor, 'attackBoost');
     if (attackBoostEffect) {
       attackPower = Math.floor(attackPower * GAME_RULES.BOOST_MULTIPLIER);
       this.removeEffect(actor, attackBoostEffect);
     }
 
-    // 명중률 계산
+    // 명중/회피 계산
     const hitRoll = rollDice();
     const hitChance = actor.stats.luck + hitRoll;
 
-    // 회피 계산
     const dodgeRoll = rollDice();
     let dodgeChance = target.stats.agility + dodgeRoll;
 
-    // 회피 보너스 적용
+    // 회피 보너스 적용 (일회성)
     const dodgeEffect = this.findEffect(target, 'dodgeBonus');
     if (dodgeEffect) {
       dodgeChance += dodgeEffect.value;
@@ -605,7 +605,14 @@ class BattleEngine extends EventEmitter {
     }
 
     // 기본 대미지 계산
-    let damage = Math.max(1, attackPower - target.stats.defense);
+    let damage = Math.max(1, actor.stats.attack + attackRoll - target.stats.defense);
+
+    // 방어 효과 적용 (일회성)
+    const defendingEffect = this.findEffect(target, 'defending');
+    if (defendingEffect) {
+      damage = Math.max(1, damage - defendingEffect.value);
+      this.removeEffect(target, defendingEffect);
+    }
 
     // 치명타 계산
     const critRoll = rollDice();
@@ -620,7 +627,7 @@ class BattleEngine extends EventEmitter {
     // 대미지 적용
     const oldHp = target.hp;
     target.hp = Math.max(0, target.hp - damage);
-    this.stats.totalDamage += damage;
+    this.stats.totalDamage += Math.max(0, oldHp - target.hp);
 
     // 사망 처리
     if (target.hp === 0) {
@@ -650,14 +657,14 @@ class BattleEngine extends EventEmitter {
     const defenseRoll = rollDice();
     let defenseValue = actor.stats.defense + defenseRoll;
 
-    // 방어 보정기 효과 적용
+    // 방어 보정기 효과 적용 (일회성)
     const defenseBoostEffect = this.findEffect(actor, 'defenseBoost');
     if (defenseBoostEffect) {
       defenseValue = Math.floor(defenseValue * GAME_RULES.BOOST_MULTIPLIER);
       this.removeEffect(actor, defenseBoostEffect);
     }
 
-    // 방어 효과 추가 (다음 공격까지 지속)
+    // 방어 효과 추가 (다음 공격 1회에 적용)
     this.addEffect(actor, {
       type: 'defending',
       value: defenseValue,
