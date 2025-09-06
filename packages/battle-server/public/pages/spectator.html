@@ -1,342 +1,370 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PYXIS 관전 아레나</title>
+  <title>PYXIS 전투 관전석</title>
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet" />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tailwind 확장 -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            pyxis: {
+              50:'#f4f3ef',100:'#ebe7d7',200:'#d9ccaa',300:'#c7b27e',
+              400:'#b79956',500:'#9e7f3a',600:'#7f652d',700:'#645026',
+              800:'#4a3c1c',900:'#332a14'
+            }
+          },
+          boxShadow: { soft: '0 2px 18px rgba(0,0,0,.25)' }
+        }
+      }
+    }
+  </script>
 
   <style>
-    :root{
-      --gold-1:#DCC7A2;
-      --gold-2:#D4BA8D;
-      --navy-1:#00080D;
-      --navy-2:#001E35;
-
-      --border-subtle: rgba(220,199,162,0.25);
-      --glass-light: rgba(255,255,255,0.06);
-      --glass-heavy: rgba(0, 8, 13, 0.55);
-
-      --ok:#36d399;
-      --warn:#fbbd23;
-      --danger:#f87272;
-
-      --ring: 0 0 0 2px rgba(220,199,162,0.35), 0 0 24px rgba(220,199,162,0.22);
-      --drop: 0 10px 30px rgba(0,0,0,0.35);
-      --soft: 0 6px 16px rgba(0,0,0,0.25);
-    }
-
-    html,body{height:100%}
-    body{
-      margin:0;
-      color:#e8e8e8;
-      background: radial-gradient(1000px 1000px at 10% -20%, rgba(212,186,141,0.10), transparent 60%),
-                  radial-gradient(900px 900px at 110% 20%, rgba(0,30,53,0.55), transparent 50%),
-                  linear-gradient(180deg, #00080D 0%, #00121C 80%, #00080D 100%);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple SD Gothic Neo", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-      overflow-x:hidden;
-    }
-
-    .wrap{
-      min-height:100%;
-      display:flex;
-      flex-direction:column;
-    }
-
-    /* Header */
-    header{
-      position:relative;
-      padding:28px 16px 24px;
-      text-align:center;
-      overflow:hidden;
-      background:
-        radial-gradient(160% 140% at 50% -40%, rgba(255,255,255,0.06) 0%, transparent 60%),
-        radial-gradient(60% 120% at 80% 0%, rgba(212,186,141,0.08) 0%, transparent 70%);
-      backdrop-filter: blur(6px);
-      border-bottom:1px solid var(--border-subtle);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-    }
-
-    .brand{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:14px;
-    }
-    .brand-mark{
-      width:44px; height:44px;
-      border-radius:12px;
-      background: linear-gradient(145deg, var(--navy-2), #001424);
-      border:1px solid var(--border-subtle);
-      box-shadow: var(--soft);
-      position:relative;
-      overflow:hidden;
-    }
-    .brand-mark::after{
-      content:"";
-      position:absolute; inset:-1px;
-      background: conic-gradient(from 0deg, rgba(212,186,141,0.0), rgba(212,186,141,0.35), rgba(212,186,141,0.0) 35%);
-      filter:blur(8px);
-      animation: spin 14s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .title{
-      font-family:"Cinzel", serif;
-      letter-spacing:0.08em;
-      font-weight:700;
-      font-size: clamp(20px, 2.4vw, 28px);
-      background: linear-gradient(180deg, var(--gold-1), var(--gold-2) 65%, #b69f78);
-      -webkit-background-clip:text;
-      background-clip:text;
-      color: transparent;
-      position: relative;
-    }
-    .title .twinkle{
-      position:absolute; left:0; right:0; top:-12px; height:12px; pointer-events:none;
-      background:
-        radial-gradient(4px 4px at 10% 50%, rgba(255,255,255,0.65), transparent 40%),
-        radial-gradient(3px 3px at 45% 50%, rgba(255,255,255,0.45), transparent 50%),
-        radial-gradient(4px 4px at 80% 50%, rgba(255,255,255,0.65), transparent 40%);
-      animation: twinkle 2.2s ease-in-out infinite;
-      opacity:.7;
-    }
-    @keyframes twinkle { 0%, 100% { transform: translateY(0); opacity:.6 } 50%{ transform: translateY(2px); opacity:1 } }
-
-    .sub{
-      margin-top:8px;
-      font-family:"Playfair Display", serif;
-      font-size:14px;
-      color:#cfcfcf;
-      opacity:.8;
-    }
-
-    /* Main three columns */
-    main{
-      padding:22px 14px 26px;
-      max-width:1200px;
-      margin:0 auto;
-      width:100%;
-      display:grid;
-      grid-template-columns: 1fr minmax(220px, 320px) 1fr;
-      gap:16px;
-    }
-    @media (max-width: 980px){
-      main{ grid-template-columns: 1fr; }
-    }
-
-    .panel{
-      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-      border:1px solid var(--border-subtle);
-      border-top:1px solid rgba(255,255,255,0.10);
-      border-radius:18px;
-      padding:14px;
-      backdrop-filter: blur(8px);
-      box-shadow: var(--drop);
-    }
-    .panel h3{
-      margin:0 0 10px 0;
-      font-family:"Playfair Display", serif;
-      font-weight:600;
-      letter-spacing:.02em;
-      color:var(--gold-1);
-      font-size:16px;
-      display:flex; align-items:center; justify-content:space-between;
-    }
-    .team-grid{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:12px;
-    }
-
-    .card{
-      display:flex; gap:12px; align-items:center;
-      background: linear-gradient(180deg, rgba(0,8,13,0.3), rgba(0,8,13,0.15));
-      border:1px solid rgba(255,255,255,0.06);
-      border-radius:14px;
-      padding:10px;
-      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-    }
-    .card:hover{ transform: translateY(-2px); border-color: rgba(220,199,162,0.35); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }
-
-    .avatar{
-      width:48px; height:48px; border-radius:12px; flex:0 0 auto;
-      background: radial-gradient(60% 80% at 50% 30%, rgba(212,186,141,0.35), rgba(0,8,13,0.6));
-      border:1px solid rgba(220,199,162,0.25);
-      overflow:hidden; display:grid; place-items:center; font-weight:700; color:#f2e8d2;
-    }
-    .info{ flex:1 1 auto; min-width:0; }
-    .name{ font-weight:700; letter-spacing:.02em; font-size:14px; }
-    .meta{ font-size:12px; opacity:.8; margin-top:2px; }
-
-    .hpbar{
-      margin-top:6px; width:100%; height:8px; border-radius:999px; background:rgba(255,255,255,0.06); overflow:hidden; border:1px solid rgba(255,255,255,0.08);
-    }
-    .hpbar > i{
-      display:block; height:100%;
-      background: linear-gradient(90deg, #3dd68c, #2fb579 50%, #1f8d60);
-      width:50%;
-      transition: width .35s ease;
-    }
-
-    .center-arena{
-      position:relative;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-      align-items:stretch;
-      justify-content:flex-start;
-    }
-    .arena-card{
-      display:grid; place-items:center;
-      min-height:260px;
-      border-radius:18px;
-      background: radial-gradient(70% 90% at 50% 20%, rgba(212,186,141,0.08), rgba(0,8,13,0.55) 70%),
-                  linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-      border:1px solid var(--border-subtle);
-      box-shadow: var(--drop);
-      overflow:hidden;
-      position:relative;
-    }
-    .arena-inner{
-      display:flex; gap:18px; align-items:center; justify-content:center; flex-wrap:wrap;
-      padding:18px;
-    }
-    .arena-hero{
-      width:120px; height:120px; border-radius:18px; border:1px solid rgba(220,199,162,0.35);
-      background: radial-gradient(60% 80% at 50% 35%, rgba(212,186,141,0.35), rgba(0,8,13,0.6));
-      box-shadow: 0 12px 32px rgba(0,0,0,0.35), inset 0 0 24px rgba(212,186,141,0.12);
-    }
-    .turn-pill{
-      position:absolute; top:12px; left:12px;
-      font-size:12px; padding:6px 10px; border-radius:999px;
-      background: rgba(0,30,53,0.65);
-      border:1px solid rgba(220,199,162,0.35);
-      color: var(--gold-1);
-      letter-spacing:.02em;
-      backdrop-filter: blur(6px);
-    }
-
-    .cheer{
-      display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;
-    }
-    @media (max-width: 420px){
-      .cheer{ grid-template-columns: repeat(2, 1fr); }
-    }
-    .btn{
-      appearance:none; border:none; cursor:pointer;
-      border-radius:12px; padding:10px 12px; font-weight:700; letter-spacing:.02em;
-      background: linear-gradient(180deg, rgba(212,186,141,0.18), rgba(212,186,141,0.08));
-      color:#f3e9d3;
-      border:1px solid rgba(220,199,162,0.35);
-      position:relative; overflow:hidden;
-      transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-    }
-    .btn:hover{ transform: translateY(-1px); box-shadow: 0 10px 26px rgba(0,0,0,0.35); border-color: rgba(220,199,162,0.55); }
-    .btn:active{ transform: translateY(0); }
-    .btn.shimmer::after{
-      content:""; position:absolute; top:0; bottom:0; width:40%;
-      left:-50%; transform:skewX(-18deg);
-      background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.28), rgba(255,255,255,0));
-      animation: shine 1.8s linear infinite;
-    }
-    @keyframes shine { 0%{ left:-50% } 100%{ left:120% } }
-
-    .log{
-      max-height:300px; overflow:auto;
-      border-radius:14px; padding:10px;
-      background: linear-gradient(180deg, rgba(0,8,13,0.45), rgba(0,8,13,0.25));
-      border:1px solid rgba(255,255,255,0.06);
-    }
-    .log-item{
-      font-size:13px; padding:8px 10px; border-bottom:1px dashed rgba(255,255,255,0.06);
-      display:flex; align-items:center; gap:8px;
-    }
-    .log-item:last-child{ border-bottom:0 }
-    .log-time{ opacity:.7; font-variant-numeric: tabular-nums; width:64px; flex:0 0 auto; }
-    .log-text{ flex:1 1 auto; min-width:0; }
-    .muted{ opacity:.7 }
-
-    /* Team color hints */
-    .phoenix .name{ color:#f2e6c8; }
-    .eaters .name{ color:#d0e6ff; }
-    .phoenix .avatar{ background: radial-gradient(60% 80% at 50% 30%, rgba(212,186,141,0.45), rgba(0,8,13,0.6)); }
-    .eaters .avatar{ background: radial-gradient(60% 80% at 50% 30%, rgba(0, 112, 212, 0.35), rgba(0,8,13,0.6)); }
-
-    /* Footer */
-    footer{
-      padding:16px 14px 28px; text-align:center; color:#bfbfbf; font-size:12px; opacity:.8;
-    }
-
-    /* Dropdown fix for white UA defaults */
-    select, option{
-      color:#f5f5f5; background:#0b1620;
-    }
+    html, body { height: 100%; }
+    body { background: radial-gradient(90rem 60rem at 50% -20%, #1b1d22, #0f1115) fixed; }
+    .glass { background: rgba(18,20,25,.6); backdrop-filter: blur(6px); }
+    .card { @apply glass rounded-2xl border border-zinc-800 shadow-soft; }
+    .card-header { @apply px-5 py-3 border-b border-zinc-800 flex items-center justify-between; }
+    .card-title { @apply text-zinc-100 font-semibold tracking-wide; }
+    .card-body { @apply p-5; }
+    .pill { @apply inline-flex items-center gap-2 rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-300; }
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition; }
+    .btn-gold { @apply border-pyxis-600 bg-pyxis-700 text-white hover:bg-pyxis-600; }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
+    .bar { height: 6px; border-radius: 9999px; background: #3a3b41; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#e6c487,#caa65e 60%,#7f652d); }
+    .stat { @apply text-xs text-zinc-300; }
+    .logline.ok { color:#22c55e; }
+    .logline.err { color:#ef4444; }
   </style>
 </head>
-<body>
-  <div class="wrap">
-    <header>
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true"></div>
-        <div class="title">PYXIS <span class="twinkle"></span></div>
+<body class="dark text-zinc-200">
+
+  <!-- 헤더 -->
+  <header class="sticky top-0 z-30 border-b border-zinc-800 glass">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-pyxis-600 to-pyxis-800 border border-zinc-800"></div>
+        <div>
+          <div class="text-2xl font-bold tracking-widest text-pyxis-200 drop-shadow">PYXIS 전투 관전석</div>
+          <div class="text-xs text-zinc-400">Spectator Client</div>
+        </div>
       </div>
-      <div class="sub">관전자 모드</div>
-    </header>
+      <div class="flex items-center gap-2">
+        <button id="btnConnect" class="btn btn-gold">동기화</button>
+        <span class="pill">단계: <span id="badgePhase" class="font-semibold ml-1">-</span></span>
+        <span class="pill">현재 팀: <span id="badgeTurnTeam" class="font-semibold ml-1">-</span></span>
+        <span class="pill">승자: <span id="badgeWinner" class="font-semibold ml-1">미정</span></span>
+      </div>
+    </div>
+  </header>
 
-    <main id="spectatorArea" aria-live="polite">
-      <!-- Left: Team Phoenix -->
-      <section class="panel" id="teamLeft">
-        <h3>불사조 팀<span class="muted" id="leftCount">0명</span></h3>
-        <div class="team-grid" id="leftGrid"></div>
-      </section>
+  <!-- 상단 인포 바 -->
+  <section class="max-w-7xl mx-auto px-4 mt-4 grid grid-cols-1 lg:grid-cols-4 gap-3">
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">단계</div>
+      <div class="text-lg font-semibold" id="topPhase">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">현재 팀</div>
+      <div class="text-lg font-semibold" id="topTurnTeam">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">팀 타이머</div>
+      <div class="text-lg font-semibold" id="topTimer">-</div>
+    </div></div>
+    <div class="card"><div class="card-body">
+      <div class="text-xs text-zinc-400">승자</div>
+      <div class="text-lg font-semibold" id="topWinner">미정</div>
+    </div></div>
+  </section>
 
-      <!-- Center: Arena + Cheer + Log -->
-      <section class="center-arena">
-        <div class="arena-card">
-          <div class="turn-pill" id="turnPill">대기중</div>
-          <div class="arena-inner">
-            <div class="arena-hero" id="arenaHero" role="img" aria-label="경기 아바타"></div>
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- 좌: 불사조 기사단 -->
+    <section class="flex flex-col gap-5">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">불사조 기사단</h2>
+          <span class="pill">좌측 진영</span>
+        </div>
+        <div class="card-body">
+          <div class="flex items-start gap-4">
+            <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
+            <div class="flex-1">
+              <div class="font-semibold" id="leftName">-</div>
+              <div class="text-xs text-zinc-400" id="leftState">-</div>
+              <div class="mt-2 bar"><i id="leftHP" style="width:0%"></i></div>
+              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="leftItems" class="mono">-</span></div>
+              <div class="grid grid-cols-4 gap-2 mt-3">
+                <div class="stat">공격 <b id="leftAtk">-</b></div>
+                <div class="stat">방어 <b id="leftDef">-</b></div>
+                <div class="stat">민첩 <b id="leftAgi">-</b></div>
+                <div class="stat">행운 <b id="leftLuk">-</b></div>
+              </div>
+            </div>
+            <div class="text-right text-pyxis-200 font-semibold" id="leftPct">0%</div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div class="panel" aria-label="응원 메시지">
-          <h3>응원 메시지</h3>
-          <div class="cheer" id="cheerButtons">
-            <button class="btn shimmer" data-msg="멋지다!">멋지다!</button>
-            <button class="btn shimmer" data-msg="이겨라!">이겨라!</button>
-            <button class="btn shimmer" data-msg="살아서 돌아와!">살아서 돌아와!</button>
-            <button class="btn shimmer" data-msg="화이팅!">화이팅!</button>
-            <button class="btn shimmer" data-msg="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
-            <button class="btn shimmer" data-msg="힘내요!">힘내요!</button>
+    <!-- 중: 전투 모니터 + 응원 -->
+    <section class="flex flex-col gap-5">
+      <!-- 전투 모니터 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">전투 모니터</h2>
+          <span class="pill mono">코드: <span id="battleCode">-</span></span>
+        </div>
+        <div class="card-body">
+          <div class="grid sm:grid-cols-3 gap-3">
+            <div>
+              <div class="text-xs text-zinc-400">단계</div>
+              <div class="font-semibold" id="phaseText">-</div>
+            </div>
+            <div>
+              <div class="text-xs text-zinc-400">턴 시간</div>
+              <div class="font-semibold" id="turnTime">-</div>
+            </div>
+            <div>
+              <div class="text-xs text-zinc-400">경과 시간</div>
+              <div class="font-semibold" id="elapsedTime">-</div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="panel">
-          <h3>전투 로그</h3>
-          <div class="log" id="battleLog" role="log" aria-live="polite"></div>
+      <!-- 응원 메시지(고정 6개) -->
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">응원 메시지</h2></div>
+        <div class="card-body">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="cheerWrap">
+            <button class="btn" data-cheer="멋지다!">멋지다!</button>
+            <button class="btn" data-cheer="이겨라!">이겨라!</button>
+            <button class="btn" data-cheer="살아서 돌아와!">살아서 돌아와!</button>
+            <button class="btn" data-cheer="화이팅!">화이팅!</button>
+            <button class="btn" data-cheer="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
+            <button class="btn" data-cheer="힘내요!">힘내요!</button>
+          </div>
+          <p class="text-xs text-zinc-500 mt-2">관전자 응원은 서버에서 허용된 경우에만 전달됩니다.</p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- Right: Team Eaters -->
-      <section class="panel" id="teamRight">
-        <h3>죽음을 먹는 자 팀<span class="muted" id="rightCount">0명</span></h3>
-        <div class="team-grid" id="rightGrid"></div>
-      </section>
-    </main>
+    <!-- 우: 죽음을 먹는 자들 -->
+    <section class="flex flex-col gap-5">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">죽음을 먹는 자들</h2>
+          <span class="pill">우측 진영</span>
+        </div>
+        <div class="card-body">
+          <div class="flex items-start gap-4">
+            <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
+            <div class="flex-1">
+              <div class="font-semibold" id="rightName">-</div>
+              <div class="text-xs text-zinc-400" id="rightState">-</div>
+              <div class="mt-2 bar"><i id="rightHP" style="width:0%"></i></div>
+              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="rightItems" class="mono">-</span></div>
+              <div class="grid grid-cols-4 gap-2 mt-3">
+                <div class="stat">공격 <b id="rightAtk">-</b></div>
+                <div class="stat">방어 <b id="rightDef">-</b></div>
+                <div class="stat">민첩 <b id="rightAgi">-</b></div>
+                <div class="stat">행운 <b id="rightLuk">-</b></div>
+              </div>
+            </div>
+            <div class="text-right text-pyxis-200 font-semibold" id="rightPct">0%</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
-    <footer>
-      PYXIS Spectator • 실시간 관전 전용 화면
-    </footer>
-  </div>
+  <!-- 하단 로그 -->
+  <section class="max-w-7xl mx-auto px-4 pb-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">관전 로그</h2></div>
+      <div class="card-body">
+        <div id="specLog" class="bg-black/70 border border-zinc-800 rounded-xl h-48 overflow-auto p-3 mono text-xs"></div>
+        <div class="flex items-center gap-2 mt-3">
+          <button id="btnClearLog" class="btn">지우기</button>
+          <span class="text-xs text-zinc-500">표시만 지웁니다.</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <!-- Socket.IO (served by server) -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/pages/spectator.js"></script>
+  <!-- 푸터 -->
+  <footer class="border-t border-zinc-800 glass">
+    <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-zinc-400 flex items-center justify-between">
+      <div>© PYXIS Battle System</div>
+      <div class="space-x-3">
+        <span class="border border-zinc-700 rounded px-1.5 py-0.5">?battle=CODE</span><span>URL 파라미터로 배틀 선택</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 스크립트 -->
+  <script>
+    // ========= API 엔드포인트 =========
+    const API = {
+      battle: (id) => `/api/battles/${id}`,
+      cheer:  (id) => `/api/battles/${id}/cheer`
+    };
+
+    // ========= 유틸 =========
+    const $ = (s) => document.querySelector(s);
+    const logBox = $('#specLog');
+    let BATTLE_ID = null;
+    let REFRESH_TIMER = null;
+
+    function addLog(msg, cls='') {
+      const el = document.createElement('div');
+      el.className = 'logline ' + cls;
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logBox.appendChild(el);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function jfetch(url, opt={}) {
+      const res = await fetch(url, {
+        headers: { 'Content-Type':'application/json', ...(opt.headers||{}) },
+        ...opt
+      });
+      let body = null;
+      try { body = await res.json(); } catch {}
+      if (!res.ok) throw new Error(`${res.status} ${body?.message || res.statusText}`);
+      return body ?? {};
+    }
+
+    function pct(n, d){ if(!d) return 0; return Math.max(0, Math.min(100, Math.round((n/d)*100))); }
+    function setBar(el, v){ el.style.width = `${v}%`; }
+
+    // ========= 렌더 =========
+    function fillSide(prefix, p) {
+      const name = p?.name ?? '-';
+      const hp = p?.hp ?? p?.HP ?? 0;
+      const max = p?.maxHp ?? p?.maxHP ?? 100;
+      const alive = (p?.alive !== false);
+      const state = p?.state ?? (alive ? '대기' : '사망');
+      const percent = pct(hp, max);
+
+      $('#'+prefix+'Name').textContent  = name;
+      $('#'+prefix+'State').textContent = `${hp}/${max} HP · ${alive ? '생존' : '사망'} · ${state}`;
+      setBar($('#'+prefix+'HP'), percent);
+      $('#'+prefix+'Pct').textContent = `${percent}%`;
+
+      // 스탯
+      $('#'+prefix+'Atk').textContent = p?.atk ?? p?.attack ?? '-';
+      $('#'+prefix+'Def').textContent = p?.def ?? p?.defense ?? '-';
+      $('#'+prefix+'Agi').textContent = p?.agi ?? p?.agility ?? '-';
+      $('#'+prefix+'Luk').textContent = p?.luk ?? p?.luck ?? '-';
+
+      // 아이템: 배열[{name,count}] 또는 문자열/객체 지원
+      let itemsText = '-';
+      if (Array.isArray(p?.items) && p.items.length) {
+        itemsText = p.items.map(it => {
+          const n = it?.name ?? it?.id ?? '아이템';
+          const c = it?.count ?? 1;
+        return `${n}${c>1?`:${c}`:''}`;
+        }).join(', ');
+      } else if (typeof p?.items === 'string') {
+        itemsText = p.items;
+      } else if (p?.items && typeof p.items === 'object') {
+        itemsText = Object.entries(p.items).map(([k,v]) => `${k}:${v}`).join(', ');
+      }
+      $('#'+prefix+'Items').textContent = itemsText || '-';
+    }
+
+    function renderBattle(data){
+      const phase = data?.phase ?? '-';
+      const turnTeam = data?.turnTeam ?? '-';
+      const winner = data?.winner ?? '미정';
+
+      $('#badgePhase').textContent = phase;
+      $('#badgeTurnTeam').textContent = turnTeam;
+      $('#badgeWinner').textContent = winner;
+
+      $('#topPhase').textContent = phase;
+      $('#topTurnTeam').textContent = (turnTeam && turnTeam !== '-') ? `${turnTeam} 턴` : '-';
+      $('#topTimer').textContent = (data?.teamTimerSec!=null) ? `${data.teamTimerSec}s` : '-';
+      $('#topWinner').textContent = winner;
+
+      $('#phaseText').textContent = phase;
+      $('#turnTime').textContent = (data?.turnTimeSec!=null) ? `${data.turnTimeSec}s` : '-';
+      $('#elapsedTime').textContent = data?.elapsed ?? '-';
+
+      const plist = Array.isArray(data?.players) ? data.players : [];
+      const left  = plist.find(p => p.team === 'phoenix') || plist[0];
+      const right = plist.find(p => p.team === 'eaters')  || plist.find((p,i)=>i===1);
+
+      fillSide('left',  left || {});
+      fillSide('right', right || {});
+    }
+
+    // ========= 데이터 로드 =========
+    async function loadBattleOnce(){
+      if (!BATTLE_ID) return;
+      try {
+        const data = await jfetch(API.battle(BATTLE_ID));
+        renderBattle(data);
+        addLog('전투 상태 갱신','ok');
+      } catch (e) {
+        addLog('전투 상태 실패: ' + e.message,'err');
+      }
+    }
+
+    function startAutoRefresh(ms=3000){
+      if (REFRESH_TIMER) clearInterval(REFRESH_TIMER);
+      REFRESH_TIMER = setInterval(loadBattleOnce, ms);
+    }
+
+    // ========= 응원 =========
+    async function sendCheer(text) {
+      if (!BATTLE_ID) return addLog('배틀 코드가 없습니다','err');
+      try {
+        const res = await fetch(API.cheer(BATTLE_ID), {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ text })
+        });
+        if (res.ok) addLog(`응원 전송: ${text}`,'ok');
+        else addLog(`응원 전송(서버 미응답): ${text}`);
+      } catch {
+        addLog(`응원 전송(로컬 기록): ${text}`);
+      }
+    }
+
+    // ========= 바인딩 & 초기화 =========
+    $('#btnConnect').addEventListener('click', () => {
+      loadBattleOnce();
+      startAutoRefresh(3000);
+    });
+    document.querySelectorAll('[data-cheer]').forEach(b => {
+      b.addEventListener('click', () => sendCheer(b.dataset.cheer));
+    });
+    $('#btnClearLog').addEventListener('click', () => { logBox.innerHTML = ''; });
+
+    (function init(){
+      const q = new URLSearchParams(location.search);
+      BATTLE_ID = q.get('battle') || '';
+      $('#battleCode').textContent = BATTLE_ID || '-';
+      if (BATTLE_ID) {
+        addLog(`배틀 코드 인식: ${BATTLE_ID}`,'ok');
+        loadBattleOnce();
+        startAutoRefresh(3000);
+      } else {
+        addLog('URL에 ?battle=코드를 지정하면 상태를 불러옵니다.');
+      }
+    })();
+  </script>
 </body>
 </html>
