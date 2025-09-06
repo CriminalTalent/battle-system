@@ -28,29 +28,39 @@ const activeBattles = new Map(); // battleId -> BattleEngine
 const playerSessions = new Map(); // socketId -> sessionData
 const rateLimits = new Map(); // socketId -> { actions: [], lastActivity: timestamp }
 const ipBattleCount = new Map(); // ip -> battleCount
-const otpManager = new OTPManager();
+
+// ⚠️ OTPManager는 기존 구현과 맞게 옵션 전달
+const otpManager = new OTPManager({
+  maxSpectators: SECURITY_CONFIG.MAX_SPECTATORS,
+  otpLength: 6,
+  defaultTTL: {
+    spectator: SECURITY_CONFIG.OTP_EXPIRY,
+    player: 2 * 60 * 60 * 1000,
+    admin: 24 * 60 * 60 * 1000
+  }
+});
 
 // 유틸리티 함수들
 function sanitizeInput(input, maxLength = SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
   if (typeof input !== 'string') return '';
   return input.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-            .replace(/[<>\"'&]/g, '')
-            .trim()
-            .slice(0, maxLength);
+    .replace(/[<>\"'&]/g, '')
+    .trim()
+    .slice(0, maxLength);
 }
 
 function validateBattleId(battleId) {
-  return typeof battleId === 'string' && 
-         battleId.length >= 5 && 
-         battleId.length <= 50 && 
-         /^[a-zA-Z0-9_-]+$/.test(battleId);
+  return typeof battleId === 'string' &&
+    battleId.length >= 5 &&
+    battleId.length <= 50 &&
+    /^[a-zA-Z0-9_-]+$/.test(battleId);
 }
 
 function validatePlayerId(playerId) {
-  return typeof playerId === 'string' && 
-         playerId.length >= 1 && 
-         playerId.length <= 50 && 
-         /^[a-zA-Z0-9_-]+$/.test(playerId);
+  return typeof playerId === 'string' &&
+    playerId.length >= 1 &&
+    playerId.length <= 50 &&
+    /^[a-zA-Z0-9_-]+$/.test(playerId);
 }
 
 function isRateLimited(socketId) {
@@ -58,31 +68,23 @@ function isRateLimited(socketId) {
   if (!rateLimits.has(socketId)) {
     rateLimits.set(socketId, { actions: [], lastActivity: now });
   }
-  
   const limits = rateLimits.get(socketId);
-  
-  // 1분 이전 액션들 제거
-  limits.actions = limits.actions.filter(timestamp => now - timestamp < 60000);
-  
-  if (limits.actions.length >= SECURITY_CONFIG.MAX_ACTIONS_PER_MINUTE) {
-    return true;
-  }
-  
+  // 1분 이전 액션 제거
+  limits.actions = limits.actions.filter(ts => now - ts < 60000);
+  if (limits.actions.length >= SECURITY_CONFIG.MAX_ACTIONS_PER_MINUTE) return true;
   limits.actions.push(now);
   limits.lastActivity = now;
   return false;
 }
 
+function getIPBattleCount(ip) {
+  return ipBattleCount.get(ip) || 0;
+}
 function trackIPBattle(ip, increment = true) {
   const current = ipBattleCount.get(ip) || 0;
   const newCount = Math.max(0, current + (increment ? 1 : -1));
-  
-  if (newCount === 0) {
-    ipBattleCount.delete(ip);
-  } else {
-    ipBattleCount.set(ip, newCount);
-  }
-  
+  if (newCount === 0) ipBattleCount.delete(ip);
+  else ipBattleCount.set(ip, newCount);
   return newCount;
 }
 
@@ -99,7 +101,6 @@ function createSession(socket, data) {
     authenticated: false,
     permissions: []
   };
-  
   playerSessions.set(socket.id, session);
   return session;
 }
@@ -137,14 +138,9 @@ function logActivity(socket, action, data = {}, level = 'info') {
     } : null,
     data
   };
-  
-  if (level === 'error') {
-    console.error(`[SocketHandler] ${action}:`, logData);
-  } else if (level === 'warn') {
-    console.warn(`[SocketHandler] ${action}:`, logData);
-  } else {
-    console.log(`[SocketHandler] ${action}:`, logData);
-  }
+  if (level === 'error') console.error(`[SocketHandler] ${action}:`, logData);
+  else if (level === 'warn') console.warn(`[SocketHandler] ${action}:`, logData);
+  else console.log(`[SocketHandler] ${action}:`, logData);
 }
 
 function sendError(socket, error, code = 'UNKNOWN_ERROR', data = {}) {
@@ -154,7 +150,6 @@ function sendError(socket, error, code = 'UNKNOWN_ERROR', data = {}) {
     timestamp: Date.now(),
     data
   });
-  
   logActivity(socket, 'ERROR_SENT', { code, message: error.message || error }, 'error');
 }
 
@@ -168,7 +163,6 @@ function requireAuthentication(socket, session) {
 
 function requireRole(socket, session, requiredRole) {
   if (!requireAuthentication(socket, session)) return false;
-  
   if (session.role !== requiredRole) {
     sendError(socket, '권한이 없습니다', 'INSUFFICIENT_PERMISSIONS', { required: requiredRole });
     return false;
@@ -190,7 +184,7 @@ function socketHandlers(io) {
     logActivity(socket, 'CONNECTED', { ip: clientIp });
 
     // 기본 세션 생성
-    const session = createSession(socket, { role: 'guest' });
+    createSession(socket, { role: 'guest' });
 
     // 전투 생성
     socket.on('createBattle', async ({ players, battleId, mode = '2v2' }, callback) => {
@@ -199,15 +193,14 @@ function socketHandlers(io) {
           return sendError(socket, '요청이 너무 빈번합니다', 'RATE_LIMITED');
         }
 
-        // IP별 전투 생성 제한
-        if (trackIPBattle(clientIp, false) >= SECURITY_CONFIG.MAX_BATTLES_PER_IP) {
+        // IP별 전투 생성 제한 (읽기 전용 체크로 수정)
+        if (getIPBattleCount(clientIp) >= SECURITY_CONFIG.MAX_BATTLES_PER_IP) {
           return sendError(socket, 'IP당 최대 전투 생성 수를 초과했습니다', 'IP_BATTLE_LIMIT');
         }
 
         if (!validateBattleId(battleId)) {
           return sendError(socket, '잘못된 전투 ID 형식입니다', 'INVALID_BATTLE_ID');
         }
-
         if (activeBattles.has(battleId)) {
           return sendError(socket, '이미 존재하는 전투 ID입니다', 'BATTLE_EXISTS');
         }
@@ -218,10 +211,7 @@ function socketHandlers(io) {
         }
 
         const validatedPlayers = players.map(player => {
-          if (!player.name || !player.id) {
-            throw new Error('플레이어 이름과 ID가 필요합니다');
-          }
-          
+          if (!player.name || !player.id) throw new Error('플레이어 이름과 ID가 필요합니다');
           return {
             id: sanitizeInput(player.id, 50),
             name: sanitizeInput(player.name, 50),
@@ -246,7 +236,7 @@ function socketHandlers(io) {
         });
 
         activeBattles.set(battleId, engine);
-        trackIPBattle(clientIp, true);
+        trackIPBattle(clientIp, true); // 성공 시에만 증가
 
         // 관리자로 세션 업데이트 및 룸 참여
         updateSession(socket.id, {
@@ -275,7 +265,6 @@ function socketHandlers(io) {
         });
 
       } catch (error) {
-        trackIPBattle(clientIp, false); // 실패시 카운트 복원
         logActivity(socket, 'BATTLE_CREATE_ERROR', { error: error.message }, 'error');
         sendError(socket, error.message, 'BATTLE_CREATE_FAILED');
         if (callback) callback({ success: false, error: error.message });
@@ -288,7 +277,6 @@ function socketHandlers(io) {
         if (isRateLimited(socket.id)) {
           return sendError(socket, '요청이 너무 빈번합니다', 'RATE_LIMITED');
         }
-
         if (!validateBattleId(battleId)) {
           return sendError(socket, '잘못된 전투 ID입니다', 'INVALID_BATTLE_ID');
         }
@@ -298,8 +286,9 @@ function socketHandlers(io) {
           return sendError(socket, '존재하지 않는 전투입니다', 'BATTLE_NOT_FOUND');
         }
 
-        let teamKey = null;
+        let teamAB = null;
         let authenticated = false;
+        let spectatorName = null;
 
         // 역할별 인증 처리
         if (role === 'admin') {
@@ -307,25 +296,28 @@ function socketHandlers(io) {
             return sendError(socket, '잘못된 관리자 OTP입니다', 'INVALID_ADMIN_OTP');
           }
           authenticated = true;
+
         } else if (role === 'player') {
           if (!validatePlayerId(playerId)) {
             return sendError(socket, '잘못된 플레이어 ID입니다', 'INVALID_PLAYER_ID');
           }
-
           const player = engine.getPlayer(playerId);
-          if (!player) {
-            return sendError(socket, '존재하지 않는 플레이어입니다', 'PLAYER_NOT_FOUND');
-          }
-
+          if (!player) return sendError(socket, '존재하지 않는 플레이어입니다', 'PLAYER_NOT_FOUND');
           if (player.token !== otp) {
             return sendError(socket, '잘못된 플레이어 토큰입니다', 'INVALID_PLAYER_TOKEN');
           }
-
-          teamKey = player.team === 'A' ? 'phoenix' : 'eaters';
+          teamAB = player.team; // 'A' | 'B' 그대로 전달
           authenticated = true;
+
         } else if (role === 'spectator') {
-          if (!otpManager.validateOTP(otp)) {
+          const v = otpManager.validateOTP(otp, { ip: clientIp });
+          if (!v.valid || v.type !== 'spectator') {
             return sendError(socket, '잘못된 관전자 OTP입니다', 'INVALID_SPECTATOR_OTP');
+          }
+          // 관전자 닉네임/연관 배틀 확인(있다면 일치 필수)
+          spectatorName = (v.data && (v.data.nickname || v.data.name)) || '관전자';
+          if (v.data && v.data.battleId && v.data.battleId !== battleId) {
+            return sendError(socket, '이 OTP는 다른 전투용입니다', 'OTP_BATTLE_MISMATCH');
           }
           authenticated = true;
         }
@@ -339,13 +331,15 @@ function socketHandlers(io) {
           role,
           battleId,
           playerId,
+          spectatorName,
           authenticated: true,
-          permissions: role === 'admin' ? ['manage_battle', 'view_all'] : 
-                      role === 'player' ? ['play_game', 'team_chat'] : 
-                      ['view_only']
+          permissions:
+            role === 'admin' ? ['manage_battle', 'view_all'] :
+            role === 'player' ? ['play_game', 'team_chat'] :
+            ['view_only']
         });
 
-        broadcastManager.joinSocketToRooms(socket, battleId, role, teamKey, {
+        broadcastManager.joinSocketToRooms(socket, battleId, role, teamAB, {
           withRoleRooms: role === 'admin'
         });
 
@@ -354,11 +348,11 @@ function socketHandlers(io) {
           socketId: socket.id,
           role,
           playerId,
-          spectatorName: role === 'spectator' ? otpManager.getNickname(otp) : null,
+          spectatorName,
           timestamp: Date.now()
         };
-
-        broadcastManager.broadcastPlayerEvent(battleId, 'join', joinData);
+        // 기존에 없던 API → battle 이벤트로 대체
+        broadcastManager.broadcastBattleEvent(battleId, 'player_join', joinData);
 
         socket.emit('joinSuccess', {
           battleId,
@@ -371,10 +365,7 @@ function socketHandlers(io) {
         if (callback) callback({ success: true });
 
         logActivity(socket, 'JOINED_BATTLE', {
-          battleId,
-          role,
-          playerId,
-          teamKey
+          battleId, role, playerId, teamAB
         });
 
       } catch (error) {
@@ -388,38 +379,30 @@ function socketHandlers(io) {
     socket.on('playerAction', ({ battleId, playerId, action }, callback) => {
       try {
         const session = playerSessions.get(socket.id);
-        
         if (!requireRole(socket, session, 'player')) return;
+
         if (isRateLimited(socket.id)) {
           return sendError(socket, '액션이 너무 빈번합니다', 'ACTION_RATE_LIMITED');
         }
-
         if (!validateBattleId(battleId) || !validatePlayerId(playerId)) {
           return sendError(socket, '잘못된 요청 데이터입니다', 'INVALID_REQUEST');
         }
-
         if (session.battleId !== battleId || session.playerId !== playerId) {
           return sendError(socket, '권한이 없는 액션입니다', 'UNAUTHORIZED_ACTION');
         }
 
         const engine = activeBattles.get(battleId);
-        if (!engine) {
-          return sendError(socket, '전투를 찾을 수 없습니다', 'BATTLE_NOT_FOUND');
-        }
+        if (!engine) return sendError(socket, '전투를 찾을 수 없습니다', 'BATTLE_NOT_FOUND');
 
-        // 액션 검증
         if (!action || typeof action !== 'object') {
           return sendError(socket, '잘못된 액션 데이터입니다', 'INVALID_ACTION');
         }
-
         const validActionTypes = ['attack', 'defend', 'dodge', 'item', 'pass'];
         if (!validActionTypes.includes(action.type)) {
           return sendError(socket, '알 수 없는 액션 타입입니다', 'UNKNOWN_ACTION_TYPE');
         }
 
-        // 액션 실행
         const result = engine.performAction(playerId, action);
-        
         updateSession(socket.id, {});
 
         socket.emit('actionResult', {
@@ -427,24 +410,16 @@ function socketHandlers(io) {
           result,
           timestamp: Date.now()
         });
-
         if (callback) callback({ success: true, result });
 
         logActivity(socket, 'PLAYER_ACTION', {
-          battleId,
-          playerId,
-          actionType: action.type,
-          target: action.target
+          battleId, playerId, actionType: action.type, target: action.target
         });
 
       } catch (error) {
-        logActivity(socket, 'PLAYER_ACTION_ERROR', { 
-          error: error.message,
-          battleId,
-          playerId,
-          action 
+        logActivity(socket, 'PLAYER_ACTION_ERROR', {
+          error: error.message, battleId, playerId, action
         }, 'error');
-        
         sendError(socket, error.message, 'ACTION_FAILED');
         if (callback) callback({ success: false, error: error.message });
       }
@@ -454,27 +429,24 @@ function socketHandlers(io) {
     socket.on('validateSpectator', ({ otp }, callback) => {
       try {
         if (isRateLimited(socket.id)) {
-          return callback({ valid: false, error: 'rate_limited' });
+          return callback?.({ valid: false, error: 'rate_limited' });
         }
-
-        const valid = otpManager.validateOTP(otp);
-        if (valid) {
-          const nickname = otpManager.getNickname(otp);
-          callback({ 
-            valid: true, 
+        const v = otpManager.validateOTP(otp, { ip: socket.handshake.address });
+        if (v.valid && v.type === 'spectator') {
+          const nickname = (v.data && (v.data.nickname || v.data.name)) || '관전자';
+          callback?.({
+            valid: true,
             nickname: sanitizeInput(nickname, SECURITY_CONFIG.MAX_NICKNAME_LENGTH),
             timestamp: Date.now()
           });
-          
           logActivity(socket, 'SPECTATOR_VALIDATED', { nickname });
         } else {
-          callback({ valid: false, error: 'invalid_otp' });
+          callback?.({ valid: false, error: v.reason || 'invalid_otp' });
           logActivity(socket, 'SPECTATOR_VALIDATION_FAILED', { otp: otp?.substring(0, 4) + '***' });
         }
-
       } catch (error) {
         logActivity(socket, 'SPECTATOR_VALIDATION_ERROR', { error: error.message }, 'error');
-        callback({ valid: false, error: 'validation_error' });
+        callback?.({ valid: false, error: 'validation_error' });
       }
     });
 
@@ -482,51 +454,51 @@ function socketHandlers(io) {
     socket.on('generateSpectatorOtp', ({ nickname, battleId }, callback) => {
       try {
         const session = playerSessions.get(socket.id);
-        
         if (!requireRole(socket, session, 'admin')) {
-          return callback({ success: false, reason: 'unauthorized' });
+          return callback?.({ success: false, reason: 'unauthorized' });
         }
-
         if (isRateLimited(socket.id)) {
-          return callback({ success: false, reason: 'rate_limited' });
+          return callback?.({ success: false, reason: 'rate_limited' });
         }
 
         const cleanNickname = sanitizeInput(nickname, SECURITY_CONFIG.MAX_NICKNAME_LENGTH);
         if (!cleanNickname) {
-          return callback({ success: false, reason: 'invalid_nickname' });
+          return callback?.({ success: false, reason: 'invalid_nickname' });
         }
 
-        const currentCount = otpManager.getActiveOTPCount();
-        if (currentCount >= SECURITY_CONFIG.MAX_SPECTATORS) {
-          return callback({ 
-            success: false, 
+        // 현재 관전자 OTP 수
+        const currentSpectators = (otpManager.getStats().current?.spectators) || 0;
+        if (currentSpectators >= SECURITY_CONFIG.MAX_SPECTATORS) {
+          return callback?.({
+            success: false,
             reason: 'max_spectators_exceeded',
             maxSpectators: SECURITY_CONFIG.MAX_SPECTATORS
           });
         }
 
-        const otp = otpManager.generateOTP(cleanNickname, SECURITY_CONFIG.OTP_EXPIRY);
+        const otp = otpManager.generateOTP('spectator',
+          { battleId, nickname: cleanNickname },
+          { ttl: SECURITY_CONFIG.OTP_EXPIRY, ip: session.ip }
+        );
         if (!otp) {
-          return callback({ success: false, reason: 'generation_failed' });
+          return callback?.({ success: false, reason: 'generation_failed' });
         }
 
-        callback({ 
-          success: true, 
+        callback?.({
+          success: true,
           otp,
           nickname: cleanNickname,
           expiresAt: Date.now() + SECURITY_CONFIG.OTP_EXPIRY,
           timestamp: Date.now()
         });
 
-        logActivity(socket, 'SPECTATOR_OTP_GENERATED', { 
-          nickname: cleanNickname,
-          battleId,
-          currentOTPCount: currentCount + 1
+        logActivity(socket, 'SPECTATOR_OTP_GENERATED', {
+          nickname: cleanNickname, battleId, currentOTPCount: currentSpectators + 1
         });
 
       } catch (error) {
         logActivity(socket, 'SPECTATOR_OTP_ERROR', { error: error.message }, 'error');
-        callback({ success: false, reason: 'internal_error' });
+        callback?.({ success: false, reason: 'internal_error' });
       }
     });
 
@@ -534,28 +506,21 @@ function socketHandlers(io) {
     socket.on('getBattleState', ({ battleId }, callback) => {
       try {
         const session = playerSessions.get(socket.id);
-        
         if (!requireAuthentication(socket, session)) return;
 
         if (!validateBattleId(battleId)) {
           return sendError(socket, '잘못된 전투 ID입니다', 'INVALID_BATTLE_ID');
         }
-
         const engine = activeBattles.get(battleId);
         if (!engine) {
           return sendError(socket, '전투를 찾을 수 없습니다', 'BATTLE_NOT_FOUND');
         }
 
         const state = engine.getSnapshot();
-        
-        if (callback) {
-          callback({ success: true, state, timestamp: Date.now() });
-        } else {
-          socket.emit('battleState', state);
-        }
+        if (callback) callback({ success: true, state, timestamp: Date.now() });
+        else socket.emit('battleState', state);
 
         updateSession(socket.id, {});
-
       } catch (error) {
         logActivity(socket, 'GET_BATTLE_STATE_ERROR', { error: error.message }, 'error');
         sendError(socket, error.message, 'STATE_FETCH_FAILED');
@@ -567,7 +532,6 @@ function socketHandlers(io) {
     socket.on('chatMessage', ({ battleId, message, channel = 'all' }, callback) => {
       try {
         const session = playerSessions.get(socket.id);
-        
         if (!requireAuthentication(socket, session)) return;
         if (isRateLimited(socket.id)) {
           return sendError(socket, '메시지를 너무 빈번하게 보내고 있습니다', 'CHAT_RATE_LIMITED');
@@ -577,14 +541,14 @@ function socketHandlers(io) {
         if (!cleanMessage.trim()) {
           return sendError(socket, '빈 메시지는 보낼 수 없습니다', 'EMPTY_MESSAGE');
         }
-
         if (session.battleId !== battleId) {
           return sendError(socket, '전투에 참여하지 않았습니다', 'NOT_IN_BATTLE');
         }
 
         const chatData = {
-          sender: session.role === 'player' ? session.playerId : 
-                 session.role === 'spectator' ? session.spectatorName : '관리자',
+          sender: session.role === 'player' ? session.playerId :
+            session.role === 'spectator' ? (session.spectatorName || '관전자') :
+              '관리자',
           role: session.role,
           message: cleanMessage,
           channel,
@@ -592,14 +556,11 @@ function socketHandlers(io) {
         };
 
         broadcastManager.broadcastChat(battleId, chatData);
-        
-        if (callback) callback({ success: true });
+        callback?.({ success: true });
         updateSession(socket.id, {});
 
         logActivity(socket, 'CHAT_MESSAGE', {
-          battleId,
-          channel,
-          messageLength: cleanMessage.length
+          battleId, channel, messageLength: cleanMessage.length
         });
 
       } catch (error) {
@@ -612,9 +573,7 @@ function socketHandlers(io) {
     // Ping/Pong for connection monitoring
     socket.on('ping', () => {
       const session = playerSessions.get(socket.id);
-      if (session) {
-        updateSession(socket.id, {});
-      }
+      if (session) updateSession(socket.id, {});
       socket.emit('pong', { timestamp: Date.now() });
     });
 
@@ -622,16 +581,15 @@ function socketHandlers(io) {
     socket.on('disconnect', (reason) => {
       try {
         const session = removeSession(socket.id);
-        
         if (session?.battleId) {
           const engine = activeBattles.get(session.battleId);
-          
+
           if (session.role === 'admin' && session.battleId) {
-            trackIPBattle(session.ip, false); // 관리자 연결 해제시 전투 카운트 감소
+            trackIPBattle(session.ip, false); // 관리자 세션 종료 시 전투 카운트 감소
           }
 
           if (engine) {
-            broadcastManager.broadcastPlayerEvent(session.battleId, 'leave', {
+            broadcastManager.broadcastBattleEvent(session.battleId, 'player_leave', {
               socketId: socket.id,
               role: session.role,
               playerId: session.playerId,
@@ -640,8 +598,17 @@ function socketHandlers(io) {
             });
           }
 
-          broadcastManager.leaveSocketFromRooms(socket, session.battleId, session.role, 
-            session.playerId ? (engine?.getPlayer(session.playerId)?.team === 'A' ? 'phoenix' : 'eaters') : null,
+          // 팀 식별: 엔진에서 플레이어 팀(A/B) 추출 → join 시와 동일하게 A/B 전달
+          const teamAB =
+            session.playerId && engine?.getPlayer(session.playerId)
+              ? engine.getPlayer(session.playerId).team
+              : null;
+
+          broadcastManager.leaveSocketFromRooms(
+            socket,
+            session.battleId,
+            session.role,
+            teamAB,
             { withRoleRooms: session.role === 'admin' }
           );
         }
@@ -673,7 +640,7 @@ function socketHandlers(io) {
       version: '2.0.0',
       features: [
         'enhanced-security',
-        'rate-limiting', 
+        'rate-limiting',
         'comprehensive-validation',
         'real-time-monitoring',
         'team-chat',
@@ -686,7 +653,7 @@ function socketHandlers(io) {
   const cleanupInterval = setInterval(() => {
     try {
       const now = Date.now();
-      
+
       // 비활성 세션 정리
       for (const [socketId, session] of playerSessions.entries()) {
         if (now - session.lastActivity > SECURITY_CONFIG.SESSION_TIMEOUT) {
@@ -695,19 +662,19 @@ function socketHandlers(io) {
           rateLimits.delete(socketId);
         }
       }
-      
+
       // 오래된 전투 정리
       for (const [battleId, engine] of activeBattles.entries()) {
         if (now - engine.created > SECURITY_CONFIG.BATTLE_TIMEOUT) {
           console.log(`[Cleanup] 오래된 전투 제거: ${battleId}`);
-          engine.cleanup?.();
+          try { engine.cleanup?.(); } catch (e) { console.error('전투 정리 오류:', e); }
           activeBattles.delete(battleId);
         }
       }
-      
-      // OTP 정리
-      otpManager.cleanup?.();
-      
+
+      // OTP 정리 (기존 cleanup() 없음 → clearExpired() 사용)
+      otpManager.clearExpired();
+
     } catch (error) {
       console.error(`[Cleanup] 정리 작업 오류:`, error);
     }
@@ -719,41 +686,32 @@ function socketHandlers(io) {
       timestamp: Date.now(),
       activeBattles: activeBattles.size,
       activeSessions: playerSessions.size,
-      sessionsByRole: Array.from(playerSessions.values()).reduce((acc, session) => {
-        acc[session.role] = (acc[session.role] || 0) + 1;
+      sessionsByRole: Array.from(playerSessions.values()).reduce((acc, s) => {
+        acc[s.role] = (acc[s.role] || 0) + 1;
         return acc;
       }, {}),
       ipBattleCounts: Object.fromEntries(ipBattleCount),
       rateLimitTracking: rateLimits.size,
-      activeOTPs: otpManager.getActiveOTPCount?.() || 0,
+      activeOTPs: (otpManager.getStats().current?.spectators) || 0,
       broadcastStats: broadcastManager.getSystemStats()
     };
   }
 
   // 정리 함수
   function cleanup() {
-    if (cleanupInterval) {
-      clearInterval(cleanupInterval);
-    }
-    
-    // 모든 활성 전투 정리
+    if (cleanupInterval) clearInterval(cleanupInterval);
+
     for (const engine of activeBattles.values()) {
-      try {
-        engine.cleanup?.();
-      } catch (error) {
-        console.error('전투 정리 오류:', error);
-      }
+      try { engine.cleanup?.(); } catch (error) { console.error('전투 정리 오류:', error); }
     }
-    
     activeBattles.clear();
     playerSessions.clear();
     rateLimits.clear();
     ipBattleCount.clear();
-    
-    if (otpManager.cleanup) {
-      otpManager.cleanup();
-    }
-    
+
+    // OTP 매니저 내부 정리
+    try { otpManager.clearAll(); } catch (_) {}
+
     console.log('[SocketHandler] 정리 완료');
   }
 
@@ -762,7 +720,7 @@ function socketHandlers(io) {
   process.on('SIGINT', cleanup);
 
   console.log('[SocketHandler] Enhanced PYXIS Socket Handlers 초기화 완료');
-  
+
   return {
     getStats,
     cleanup,
