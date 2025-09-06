@@ -8,12 +8,17 @@
    - Battle controls (create/start/pause/end/restart)
    - Link generation with robust fallbacks
    - Player registration & roster rendering
-   - Avatar upload pipeline (/api/battles/:id/avatar -> url -> add player)
    - Chat & Log rendering
    - Starfield twinkles & UI helpers (toast, connection)
+   Requirements:
+   - admin.html provides all elements with ids referenced here
+   - No emojis in any output
    ========================================================= */
 
-/* Socket.IO loader fallback */
+/* ---------------------------------------------------------
+   Socket.IO loader fallback (if /socket.io not available)
+   The HTML already includes /socket.io/socket.io.js, but keep a guard.
+--------------------------------------------------------- */
 (function ensureSocketIO(){
   if (window.io) return;
   function add(src, onload, onerror){
@@ -26,7 +31,9 @@
   });
 })();
 
-/* UI helpers */
+/* ---------------------------------------------------------
+   Minimal UI helpers
+--------------------------------------------------------- */
 const UI = (() => {
   const $  = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -46,7 +53,9 @@ const UI = (() => {
   return { $, $$, text, toast, setConn };
 })();
 
-/* Starfield */
+/* ---------------------------------------------------------
+   Starfield twinkles (pure DOM dots)
+--------------------------------------------------------- */
 (function buildTwinkles(){
   const host = document.getElementById('twinkleLayer'); if(!host) return;
   const count = 80;
@@ -63,10 +72,12 @@ const UI = (() => {
   }
 })();
 
-/* Admin UI */
+/* ---------------------------------------------------------
+   Admin UI class
+--------------------------------------------------------- */
 class AdminUI {
   constructor(){
-    // Socket/auth
+    // Socket and auth
     this.socket = null;
     this.connected = false;
     this.authed = false;
@@ -117,11 +128,6 @@ class AdminUI {
       item: $('#itemSelect'),
       add: $('#addPlayerBtn'),
 
-      // Avatar form
-      avatar: $('#playerAvatar'),
-      avatarPreview: $('#avatarPreview'),
-      avatarClear: $('#clearAvatarBtn'),
-
       // Roster
       teamA: $('#teamPhoenix'),
       teamB: $('#teamDeathEaters'),
@@ -162,10 +168,6 @@ class AdminUI {
     // Player
     e.add?.addEventListener('click', () => this.addPlayer());
 
-    // Avatar preview/clear
-    e.avatar?.addEventListener('change', () => this.updateAvatarPreview());
-    e.avatarClear?.addEventListener('click', () => this.clearAvatar());
-
     // Chat
     e.chatSend?.addEventListener('click', () => this.sendChat());
     e.chatInput?.addEventListener('keydown', (ev) => {
@@ -195,7 +197,7 @@ class AdminUI {
     window.addEventListener('beforeunload', () => this.cleanup());
   }
 
-  /* =============== Networking =============== */
+  /* ================= Networking ================= */
   connect(){
     if(this.socket?.connected) return;
     // eslint-disable-next-line no-undef
@@ -272,7 +274,7 @@ class AdminUI {
   }
   stopSync(){ if(this.syncer) clearInterval(this.syncer); this.syncer = null; }
 
-  /* =============== REST helper =============== */
+  /* ================= REST helper ================= */
   async j(url, opts={}){
     const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
     const t = await res.text(); let d = {};
@@ -281,7 +283,7 @@ class AdminUI {
     return d;
   }
 
-  /* =============== Controls =============== */
+  /* ================= Controls ================= */
   async createBattle(){
     try{
       const mode = this.el.mode?.value || '2v2';
@@ -359,11 +361,11 @@ class AdminUI {
     }
   }
 
-  /* =============== Links =============== */
+  /* ================= Links ================= */
   async generateLinks(){
     if(!this.battleId) return UI.toast('전투 ID가 없습니다');
 
-    // 1) REST
+    // 1) REST attempt
     try{
       const r = await this.j(`/api/admin/battles/${encodeURIComponent(this.battleId)}/links`, {method:'POST', body:JSON.stringify({})});
       const admin = r?.admin || r?.links?.admin || '';
@@ -375,9 +377,11 @@ class AdminUI {
       this.log('system','링크 생성 완료');
       UI.toast('링크 생성 완료');
       return;
-    }catch(e){}
+    }catch(e){
+      // Continue to socket fallback
+    }
 
-    // 2) Socket fallback
+    // 2) Socket fallback (if server implements it)
     const viaSocket = await new Promise((resolve) => {
       if(!this.socket?.connected){ return resolve(null); }
       try{
@@ -398,17 +402,21 @@ class AdminUI {
       return;
     }
 
-    // 3) Emergency
+    // 3) Emergency builder (token placeholders) — spectator route fixed to /spectator
     const base = location.origin.replace(/\/+$/,'');
     const id   = encodeURIComponent(this.battleId);
-    const url  = new URL(location.href);
+
+    const url = new URL(location.href);
     const token = url.searchParams.get('token') || this.adminToken || '';
+
     const admin = `${base}/admin?battle=${id}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
     const player = `${base}/play?battle=${id}&token={playerOtp}`;
     const spectator = `${base}/spectator?battle=${id}&token={spectatorOtp}`;
+
     if(this.el.adminLink) this.el.adminLink.value = admin;
     if(this.el.playerLink) this.el.playerLink.value = player;
     if(this.el.spectatorLink) this.el.spectatorLink.value = spectator;
+
     this.log('system','임시 링크 생성(토큰 자리표시자 포함)');
     UI.toast('임시 링크를 생성했습니다. 토큰이 필요합니다.');
   }
@@ -425,18 +433,22 @@ class AdminUI {
     }
   }
 
-  /* =============== Players & Avatar =============== */
+  /* ================= Players ================= */
   collectPlayer(){
     const name = (this.el.name?.value || '').trim();
     const team = this.teamKey(this.el.team?.value || 'phoenix');
     if(!name){ UI.toast('이름을 입력하세요'); return null; }
 
     const clamp = (v) => { v = Number(v); if(!Number.isFinite(v)) return 3; return Math.max(1, Math.min(5, v)); };
-    const stats = { atk: clamp(this.el.atk.value), def: clamp(this.el.def.value), agi: clamp(this.el.agi.value), luk: clamp(this.el.luk.value) };
+    const stats = {
+      atk: clamp(this.el.atk.value),
+      def: clamp(this.el.def.value),
+      agi: clamp(this.el.agi.value),
+      luk: clamp(this.el.luk.value)
+    };
     const items = this.el.item?.value ? [this.el.item.value] : [];
     const hpTgt = Number(this.el.hp?.value || 100);
     this.desiredHp.set(name, hpTgt);
-
     return { name, team, stats, hp: 100, items };
   }
 
@@ -444,23 +456,8 @@ class AdminUI {
     if(!this.battleId) return UI.toast('먼저 전투를 생성하세요');
     const payload = this.collectPlayer(); if(!payload) return;
 
-    // 1) 아바타 업로드(선택 사항)
-    const file = this.el.avatar?.files?.[0];
-    if(file){
-      try{
-        const url = await this.uploadAvatar(file);
-        if(url) payload.avatar = url; // 서버가 저장한 접근 가능한 URL
-      }catch(e){
-        this.log('error','아바타 업로드 실패: ' + e.message);
-        UI.toast('아바타 업로드 실패');
-      }
-    }
-
-    // 2) 플레이어 등록
     try{
-      const r = await this.j(`/api/battles/${encodeURIComponent(this.battleId)}/players`, {
-        method:'POST', body:JSON.stringify(payload)
-      });
+      const r = await this.j(`/api/battles/${encodeURIComponent(this.battleId)}/players`, {method:'POST', body:JSON.stringify(payload)});
       const p = r?.player || r; if(!p || !(p.id || p.name)) throw new Error('응답 오류');
       this.players = this.uniqueById([...this.players, p]);
       this.renderRoster(this.players);
@@ -473,46 +470,16 @@ class AdminUI {
     }
   }
 
-  async uploadAvatar(file){
-    if(!this.battleId) throw new Error('battleId 없음');
-    const fd = new FormData();
-    fd.append('avatar', file);
-    const res = await fetch(`/api/battles/${encodeURIComponent(this.battleId)}/avatar`, { method:'POST', body: fd });
-    const t = await res.text(); let d = {};
-    try{ d = t ? JSON.parse(t) : {}; }catch{ throw new Error('Invalid JSON'); }
-    if(!res.ok) throw new Error(d?.error || ('HTTP '+res.status));
-    if(typeof d.url !== 'string' || !d.url) throw new Error('url 없음');
-    return d.url;
-  }
-
-  updateAvatarPreview(){
-    const file = this.el.avatar?.files?.[0];
-    const prev = this.el.avatarPreview;
-    if(!prev) return;
-    if(file){
-      const reader = new FileReader();
-      reader.onload = () => { prev.style.backgroundImage = `url("${reader.result}")`; };
-      reader.readAsDataURL(file);
-    } else {
-      prev.style.backgroundImage = '';
-    }
-  }
-
-  clearAvatar(){
-    if(this.el.avatar) this.el.avatar.value = '';
-    if(this.el.avatarPreview) this.el.avatarPreview.style.backgroundImage = '';
-  }
-
   resetForm(){
     if(this.el.name) this.el.name.value = '';
     if(this.el.team) this.el.team.value = 'phoenix';
     ['atk','def','agi','luk'].forEach(k => { if(this.el[k]) this.el[k].value = 3; });
     if(this.el.hp) this.el.hp.value = 100;
     if(this.el.item) this.el.item.value = '';
-    this.clearAvatar();
   }
 
   async applyDesiredHp(){
+    // Apply desired HP after the battle starts
     for(const p of this.players){
       const tgt = this.desiredHp.get(p.name);
       if(!Number.isFinite(tgt)) continue;
@@ -525,13 +492,14 @@ class AdminUI {
       // Try REST
       try{
         await this.j(`/api/admin/battles/${encodeURIComponent(this.battleId)}/command`, {
-          method: 'POST', body: JSON.stringify({action, playerIds:[p.id], value})
+          method: 'POST',
+          body: JSON.stringify({action, playerIds:[p.id], value})
         });
         this.log('system', `HP 보정: ${p.name} → ${tgt}`);
         continue;
       }catch(e){}
 
-      // Fallback WS
+      // Fallback to socket command
       await new Promise((res, rej) => {
         try{
           this.socket.emit('admin:command',
@@ -548,7 +516,9 @@ class AdminUI {
     this.players = this.uniqueById(list);
 
     const by = { phoenix: [], eaters: [] };
-    for(const p of this.players){ (this.teamKey(p.team) === 'phoenix' ? by.phoenix : by.eaters).push(p); }
+    for(const p of this.players){
+      (this.teamKey(p.team) === 'phoenix' ? by.phoenix : by.eaters).push(p);
+    }
 
     const make = (p) => {
       const name = this.escape(p.name || '플레이어');
@@ -557,14 +527,14 @@ class AdminUI {
       const agi = p.stats?.agi ?? p.agi ?? '-';
       const luk = p.stats?.luk ?? p.luk ?? '-';
       const hpTxt = (typeof p.hp === 'number' && typeof p.maxHp === 'number')
-        ? ` / HP ${p.hp}/${p.maxHp}` : (typeof p.hp === 'number' ? ` / HP ${p.hp}` : '');
-      const avatar = p.avatar ? `<span style="width:20px;height:20px;border-radius:50%;display:inline-block;background:url('${this.escape(p.avatar)}') center/cover;border:1px solid rgba(220,199,162,.25);margin-right:8px"></span>` : '';
+        ? ` / HP ${p.hp}/${p.maxHp}`
+        : (typeof p.hp === 'number' ? ` / HP ${p.hp}` : '');
 
       const row = document.createElement('div');
       row.className = 'player-row';
       row.innerHTML = `
         <div>
-          ${avatar}<span class="badge">${name}</span>
+          <span class="badge">${name}</span>
           <span class="stat">공격 ${atk} / 방어 ${def} / 민첩 ${agi} / 행운 ${luk}${hpTxt}</span>
         </div>
         <div class="btn-row">
@@ -574,8 +544,7 @@ class AdminUI {
         if(!p.id || !this.battleId) return;
         if(!confirm(`플레이어 "${p.name}"을(를) 제거하시겠습니까?`)) return;
         try{
-          const res = await fetch(`/api/battles/${encodeURIComponent(this.battleId)}/players/${encodeURIComponent(p.id)}`, {method:'DELETE'});
-          if(!res.ok) throw new Error('HTTP '+res.status);
+          await this.j(`/api/battles/${encodeURIComponent(this.battleId)}/players/${encodeURIComponent(p.id)}`, {method:'DELETE'});
           this.players = this.players.filter(x => x.id !== p.id);
           this.renderRoster(this.players);
           UI.toast('플레이어 제거됨');
@@ -598,7 +567,7 @@ class AdminUI {
     if(this.el.teamBCount) this.el.teamBCount.textContent = String(by.eaters.length);
   }
 
-  /* Chat / Log */
+  /* ================= Chat / Log ================= */
   sendChat(){
     const v = (this.el.chatInput?.value || '').trim();
     if(!v) return;
@@ -640,7 +609,7 @@ class AdminUI {
     }
   }
 
-  /* Utils */
+  /* ================= Utils ================= */
   updatePill(state){
     const pill = this.el.pill; if(!pill) return;
     pill.classList.remove('wait','live','end');
@@ -685,7 +654,9 @@ class AdminUI {
   }
 }
 
-/* Bootstrap */
+/* ---------------------------------------------------------
+   Bootstrap
+--------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
   const admin = new AdminUI();
   window.adminInterface = admin;
