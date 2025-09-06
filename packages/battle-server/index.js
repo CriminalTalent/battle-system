@@ -5,6 +5,8 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+// ★ 추가: 브로드캐스트 허브 attach
+const { attach: attachBroadcast } = require('./src/socket/broadcast');
 
 // ═══════════════════════════════════════════════════════════════════════
 // PYXIS Battle System - 서버 구현 (개선판)
@@ -165,6 +167,11 @@ const io = new Server(server, {
   // path 기본값: /socket.io  (Nginx 설정과 일치)
 });
 
+// ★ 추가: 브로드캐스트 허브 부착(같은 io 재사용, 스토어는 분리 운영)
+const broadcastHub = attachBroadcast(app, server, { io });
+//   └ 기존 REST/레거시 소켓은 그대로 동작하고,
+//     새 이벤트(admin:join/player:join/spectator:join, chat:send 등)는 허브가 처리합니다.
+
 // ── API ────────────────────────────────────────────────────────────────
 
 // 헬스체크
@@ -216,6 +223,9 @@ app.post('/api/battles', (req, res) => {
     };
 
     battles.set(battleId, battle);
+    // ★ 추가: 브로드캐스트 허브에도 배틀 존재 보장(허브는 별도 스토어 사용)
+    try { broadcastHub.ensureBattle?.(battleId); } catch (_) {}
+
     logWithTimestamp(`Battle created: ${battleId} (${battle.mode})`);
 
     res.json({
