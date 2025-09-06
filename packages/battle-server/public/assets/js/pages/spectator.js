@@ -1,19 +1,27 @@
-// PYXIS Spectator Page - Enhanced Design Version
-// 우아한 디자인과 몰입감 있는 관전 경험을 제공하는 관전자 페이지
+// public/assets/js/pages/spectator.js
+// PYXIS Spectator Page - Enhanced Design (No emojis, Korean labels)
+// - 이모지 전부 한글로 교체
+// - 팀/턴/로그/채팅/응원 이펙트 강화
+// - 스타일 중복 주입 방지, DOM/변수 충돌 수정
+// - 다양한 서버 이벤트명(state/state:update/battleUpdate/action:success 등) 호환
+
 class PyxisSpectator {
   constructor() {
     this.battleId = null;
     this.battleState = null;
     this.isAuthenticated = false;
-    this.spectatorName = '';
+    this.spectatorName = '';         // 관전자 이름(문자열)
     this.phoenixPlayers = [];
     this.eatersPlayers = [];
     this.lastUpdateTime = Date.now();
     this.battleTimer = null;
     this.uiAnimations = new Map();
     this.cheerCooldown = false;
+
     this.init();
   }
+
+  /* ========================= Boot ========================= */
 
   init() {
     this.setupElements();
@@ -28,23 +36,23 @@ class PyxisSpectator {
 
   setupElements() {
     // 연결 상태
-    this.connectionDot = UI.$('#connectionDot');
+    this.connectionDot  = UI.$('#connectionDot');
     this.connectionText = UI.$('#connectionText');
 
     // 인증 요소
-    this.loginForm = UI.$('#loginForm');
-    this.spectatorLoginForm = UI.$('#spectatorLoginForm');
-    this.spectatorName = UI.$('#spectatorName');
+    this.loginForm            = UI.$('#loginForm');            // 컨테이너(쉐이크)
+    this.spectatorLoginForm   = UI.$('#spectatorLoginForm');   // <form>
+    this.spectatorNameInput   = UI.$('#spectatorName');        // <input>
 
     // 관전 화면
     this.spectatorArea = UI.$('#spectatorArea');
-    this.battlePhase = UI.$('#battlePhase');
-    this.battleInfo = UI.$('#battleInfo');
-    this.currentTurn = UI.$('#currentTurn');
+    this.battlePhase   = UI.$('#battlePhase');
+    this.battleInfo    = UI.$('#battleInfo');
+    this.currentTurn   = UI.$('#currentTurn');
 
     // 팀 표시
     this.phoenixMembers = UI.$('#phoenixMembers');
-    this.deathMembers = UI.$('#deathMembers');
+    this.deathMembers   = UI.$('#deathMembers');
 
     // 응원 버튼
     this.cheerButtons = document.querySelectorAll('.cheer-btn');
@@ -52,851 +60,107 @@ class PyxisSpectator {
     // 로그
     this.battleLog = UI.$('#battleLog');
 
-    // 채팅 요소들 (기본 구조에 추가)
+    // 채팅 UI (탭 포함) 동적 구성
     this.createChatInterface();
   }
 
-  createChatInterface() {
-    // 로그 섹션에 채팅 인터페이스 추가
-    const logSection = document.querySelector('.log-section');
-    if (logSection) {
-      // 탭 버튼 추가
-      const tabContainer = document.createElement('div');
-      tabContainer.className = 'log-tabs';
-      tabContainer.innerHTML = `
-        <button class="log-tab active" data-tab="log">전투 로그</button>
-        <button class="log-tab" data-tab="chat">채팅</button>
-      `;
-      logSection.insertBefore(tabContainer, this.battleLog);
-
-      // 채팅 컨테이너 추가
-      const chatContainer = document.createElement('div');
-      chatContainer.id = 'chatContainer';
-      chatContainer.className = 'chat-container';
-      chatContainer.style.display = 'none';
-      chatContainer.innerHTML = `
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="chat-input-area">
-          <input type="text" id="chatInput" placeholder="메시지 입력... (Enter로 전송)" maxlength="200">
-          <button id="chatSend" class="chat-send-btn">전송</button>
-        </div>
-      `;
-      logSection.appendChild(chatContainer);
-
-      // 탭 이벤트 리스너 추가
-      document.querySelectorAll('.log-tab').forEach(tab => {
-        tab.addEventListener('click', (e) => {
-          this.switchTab(e.target.dataset.tab);
-        });
-      });
-
-      // 채팅 요소 참조 저장
-      this.chatMessages = UI.$('#chatMessages');
-      this.chatInput = UI.$('#chatInput');
-      this.chatSend = UI.$('#chatSend');
-
-      // 채팅 이벤트 리스너
-      this.chatSend.addEventListener('click', () => this.sendChat());
-      this.chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') this.sendChat();
-      });
-    }
-  }
-
-  switchTab(tabName) {
-    // 탭 버튼 상태 변경
-    document.querySelectorAll('.log-tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.tab === tabName);
-    });
-
-    // 컨텐츠 표시/숨김
-    if (tabName === 'log') {
-      this.battleLog.style.display = 'block';
-      UI.$('#chatContainer').style.display = 'none';
-    } else {
-      this.battleLog.style.display = 'none';
-      UI.$('#chatContainer').style.display = 'block';
-    }
-  }
+  /* ========================= UI Enhancements ========================= */
 
   initializeDesignEnhancements() {
-    // 페이지 로드 페이드인
     this.addPageFadeIn();
-    
-    // 배경 별 효과
     this.addSpectatorStarField();
-    
-    // 버튼 효과 강화
     this.enhanceButtonEffects();
-    
-    // 카드 호버 효과
     this.addCardEffects();
-    
-    // 타이핑 효과 준비
     this.setupTypingEffects();
-    
-    // 커스텀 스크롤바
     this.customizeScrollbars();
   }
 
   addPageFadeIn() {
     document.body.style.opacity = '0';
     document.body.style.transition = 'opacity 1s ease-out';
-    
-    setTimeout(() => {
-      document.body.style.opacity = '1';
-    }, 100);
+    setTimeout(() => { document.body.style.opacity = '1'; }, 100);
   }
 
   addSpectatorStarField() {
     const starField = document.createElement('div');
     starField.className = 'spectator-star-field';
     starField.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: -1;
-      overflow: hidden;
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: -1; overflow: hidden;
     `;
-
-    // 별들 생성 (관전자용으로 더 많이)
     for (let i = 0; i < 75; i++) {
       const star = document.createElement('div');
+      const size = (Math.random() * 3 + 1).toFixed(1);
+      const blur = Math.random() * 8 + 4;
+      const dur  = (2 + Math.random() * 4).toFixed(2);
+      const opac = (Math.random() * 0.8 + 0.2).toFixed(2);
       star.className = 'spectator-star';
       star.style.cssText = `
-        position: absolute;
-        width: ${Math.random() * 3 + 1}px;
-        height: ${Math.random() * 3 + 1}px;
-        background: var(--gold-bright);
-        border-radius: 50%;
-        left: ${Math.random() * 100}%;
-        top: ${Math.random() * 100}%;
-        animation: spectatorTwinkle ${2 + Math.random() * 4}s infinite;
-        box-shadow: 0 0 ${Math.random() * 8 + 4}px var(--gold-bright);
-        opacity: ${Math.random() * 0.8 + 0.2};
+        position:absolute; width:${size}px; height:${size}px;
+        background: var(--gold-bright); border-radius:50%;
+        left:${Math.random()*100}%; top:${Math.random()*100}%;
+        animation: spectatorTwinkle ${dur}s infinite;
+        box-shadow: 0 0 ${blur}px var(--gold-bright);
+        opacity:${opac};
       `;
       starField.appendChild(star);
     }
-
     document.body.appendChild(starField);
 
-    // 애니메이션 CSS 추가
-    if (!document.querySelector('#phase-announcement-style')) {
-      const style = document.createElement('style');
-      style.id = 'phase-announcement-style';
-      style.textContent = `
-        @keyframes phaseAnnouncement {
-          0% {
-            transform: translate(-50%, -50%) scale(0) rotate(-10deg);
-            opacity: 0;
-          }
-          20% {
-            transform: translate(-50%, -50%) scale(1.1) rotate(5deg);
-            opacity: 1;
-          }
-          80% {
-            transform: translate(-50%, -50%) scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(0.9) rotate(0deg);
-            opacity: 0;
-          }
-        }
-        
-        @keyframes phaseBackground {
-          0% {
-            opacity: 0;
-            transform: scale(0);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          100% {
-            opacity: 0;
-            transform: scale(1.5);
-          }
-        }
-        
-        @keyframes turnAnnouncement {
-          0% {
-            transform: translate(-50%, -50%) scale(0);
-            opacity: 0;
-          }
-          30% {
-            transform: translate(-50%, -50%) scale(1.1);
-            opacity: 1;
-          }
-          70% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => {
-      announcement.remove();
-      bgEffect.remove();
-    }, 3000);
-  }
-
-  handleActionResult(result) {
-    if (!result) return;
-
-    // 액션 결과를 화려하게 표시
-    this.showActionEffect(result);
-    
-    // 로그에 기록
-    const logText = this.formatActionResult(result);
-    if (logText) {
-      this.addLogEntry(logText, 'action');
-    }
-  }
-
-  showActionEffect(result) {
-    const effectContainer = document.createElement('div');
-    effectContainer.className = 'action-effect-container';
-    effectContainer.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 9999;
-      pointer-events: none;
-    `;
-
-    let effectText = '';
-    let effectColor = 'var(--text-bright)';
-    let effectIcon = '';
-
-    switch (result.type) {
-      case 'attack':
-        if (result.dodge) {
-          effectText = 'MISS!';
-          effectColor = 'var(--text-muted)';
-          effectIcon = '💨';
-        } else {
-          effectText = result.crit ? `${result.damage} CRITICAL!` : `${result.damage} 데미지`;
-          effectColor = result.crit ? 'var(--warning)' : 'var(--danger)';
-          effectIcon = result.crit ? '💥' : '⚔️';
-        }
-        break;
-      case 'useItem':
-        if (result.item === '디터니') {
-          effectText = `+${result.healed || 10} HP 회복`;
-          effectColor = 'var(--success)';
-          effectIcon = '💚';
-        } else {
-          effectText = `${result.item} 사용!`;
-          effectColor = 'var(--warning)';
-          effectIcon = '✨';
-        }
-        break;
-      case 'defend':
-        effectText = '방어 태세!';
-        effectColor = 'var(--info)';
-        effectIcon = '🛡️';
-        break;
-      case 'evade':
-        effectText = '회피 태세!';
-        effectColor = 'var(--success)';
-        effectIcon = '💨';
-        break;
-    }
-
-    effectContainer.innerHTML = `
-      <div class="action-effect-main" style="
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: ${effectColor};
-        text-shadow: 0 0 20px ${effectColor};
-        animation: actionEffectMain 2s ease-out;
-        text-align: center;
-      ">
-        <div style="font-size: 3rem; margin-bottom: 0.5rem;">${effectIcon}</div>
-        ${effectText}
-      </div>
-    `;
-
-    document.body.appendChild(effectContainer);
-
-    // 효과 애니메이션
-    if (!document.querySelector('#action-effect-style')) {
-      const style = document.createElement('style');
-      style.id = 'action-effect-style';
-      style.textContent = `
-        @keyframes actionEffectMain {
-          0% {
-            transform: scale(0) rotate(-10deg);
-            opacity: 0;
-          }
-          20% {
-            transform: scale(1.3) rotate(5deg);
-            opacity: 1;
-          }
-          80% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: scale(0.8) rotate(0deg);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => effectContainer.remove(), 2000);
-
-    // 큰 데미지나 크리티컬 시 화면 효과
-    if (result.type === 'attack' && (result.damage > 15 || result.crit)) {
-      this.addScreenFlash(result.crit ? 'var(--warning)' : 'var(--danger)');
-    }
-  }
-
-  addScreenFlash(color) {
-    const flash = document.createElement('div');
-    flash.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: ${color};
-      opacity: 0.3;
-      pointer-events: none;
-      z-index: 9998;
-      animation: screenFlash 0.5s ease-out;
-    `;
-
-    document.body.appendChild(flash);
-
-    if (!document.querySelector('#screen-flash-style')) {
-      const style = document.createElement('style');
-      style.id = 'screen-flash-style';
-      style.textContent = `
-        @keyframes screenFlash {
-          0% { opacity: 0.5; }
-          50% { opacity: 0.2; }
-          100% { opacity: 0; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => flash.remove(), 500);
-  }
-
-  formatActionResult(result) {
-    const actor = this.battleState?.players?.[result.actorPid];
-    const target = this.battleState?.players?.[result.targetPid];
-    
-    if (!actor) return null;
-
-    const actorName = actor.name;
-    const targetName = target?.name || '대상';
-
-    switch (result.type) {
-      case 'attack':
-        if (result.dodge) {
-          return `${actorName}의 공격을 ${targetName}이(가) 회피했습니다!`;
-        } else {
-          const critText = result.crit ? ' (치명타!)' : '';
-          const blockText = result.block ? ' (일부 방어됨)' : '';
-          return `${actorName}이(가) ${targetName}에게 ${result.damage} 데미지를 입혔습니다${critText}${blockText}`;
-        }
-      case 'useItem':
-        if (result.item === '디터니') {
-          return `${actorName}이(가) ${targetName}을(를) ${result.healed || 10} HP 회복시켰습니다`;
-        } else {
-          return `${actorName}이(가) ${result.item}을(를) 사용했습니다`;
-        }
-      case 'defend':
-        return `${actorName}이(가) 방어 태세를 취했습니다`;
-      case 'evade':
-        return `${actorName}이(가) 회피 태세를 취했습니다`;
-      case 'pass':
-        return `${actorName}이(가) 턴을 넘겼습니다`;
-      default:
-        return `${actorName}이(가) ${result.type} 액션을 수행했습니다`;
-    }
-  }
-
-  handleBattleEnd(result) {
-    this.addBattleEndEffect(result);
-    this.addLogEntry(`[전투 종료] ${result.winner} 승리!`, 'system');
-    
-    // 응원 버튼 비활성화
-    this.cheerButtons.forEach(btn => {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-    });
-  }
-
-  addBattleEndEffect(result) {
-    const endEffect = document.createElement('div');
-    endEffect.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(135deg, rgba(0, 8, 13, 0.9), rgba(0, 30, 53, 0.9));
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 10000;
-      animation: battleEndFadeIn 1s ease-out;
-    `;
-
-    endEffect.innerHTML = `
-      <div style="
-        font-family: var(--font-display);
-        font-size: 4rem;
-        font-weight: 700;
-        color: var(--gold-bright);
-        text-shadow: 0 0 30px rgba(220, 199, 162, 0.8);
-        margin-bottom: 2rem;
-        animation: battleEndTitle 2s ease-out;
-      ">
-        전투 종료
-      </div>
-      <div style="
-        font-size: 2.5rem;
-        font-weight: 600;
-        color: var(--text-bright);
-        margin-bottom: 3rem;
-        animation: battleEndWinner 2s ease-out 0.5s both;
-      ">
-        🏆 ${result.winner} 승리! 🏆
-      </div>
-      <div style="
-        display: flex;
-        gap: 2rem;
-        animation: battleEndButtons 2s ease-out 1s both;
-      ">
-        <button onclick="location.reload()" style="
-          padding: 1rem 2rem;
-          background: linear-gradient(135deg, var(--gold-bright), var(--gold-warm));
-          color: var(--deep-navy);
-          border: none;
-          border-radius: 8px;
-          font-size: 1.2rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform 0.3s ease;
-        " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-          새로고침
-        </button>
-        <button onclick="window.close()" style="
-          padding: 1rem 2rem;
-          background: var(--surface-1);
-          color: var(--text-bright);
-          border: 1px solid var(--border-subtle);
-          border-radius: 8px;
-          font-size: 1.2rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: transform 0.3s ease;
-        " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
-          닫기
-        </button>
-      </div>
-    `;
-
-    document.body.appendChild(endEffect);
-
-    // 승리 애니메이션 CSS
-    if (!document.querySelector('#battle-end-style')) {
-      const style = document.createElement('style');
-      style.id = 'battle-end-style';
-      style.textContent = `
-        @keyframes battleEndFadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        
-        @keyframes battleEndTitle {
-          0% {
-            transform: scale(0) rotate(-10deg);
-            opacity: 0;
-          }
-          50% {
-            transform: scale(1.2) rotate(5deg);
-            opacity: 1;
-          }
-          100% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes battleEndWinner {
-          0% {
-            transform: translateY(50px);
-            opacity: 0;
-          }
-          100% {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes battleEndButtons {
-          0% {
-            transform: translateY(30px);
-            opacity: 0;
-          }
-          100% {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }
-
-  addLogEntry(text, type = 'info') {
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry log-${type}`;
-    
-    const timestamp = new Date().toLocaleTimeString('ko-KR', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-
-    logEntry.innerHTML = `
-      <span class="log-time">${timestamp}</span>
-      <span class="log-content">${text}</span>
-    `;
-
-    // 타입별 색상 및 아이콘
-    const typeConfig = {
-      system: { icon: '⚙️', color: 'var(--info)' },
-      action: { icon: '⚔️', color: 'var(--text-normal)' },
-      damage: { icon: '💥', color: 'var(--danger)' },
-      heal: { icon: '💚', color: 'var(--success)' },
-      info: { icon: 'ℹ️', color: 'var(--text-dim)' }
-    };
-
-    const config = typeConfig[type] || typeConfig.info;
-    logEntry.style.borderLeft = `3px solid ${config.color}`;
-    
-    // 아이콘 추가
-    const icon = document.createElement('span');
-    icon.textContent = config.icon;
-    icon.style.marginRight = '0.5rem';
-    logEntry.querySelector('.log-content').prepend(icon);
-
-    // 애니메이션으로 추가
-    logEntry.style.opacity = '0';
-    logEntry.style.transform = 'translateX(-20px)';
-    this.battleLog.appendChild(logEntry);
-
-    setTimeout(() => {
-      logEntry.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-      logEntry.style.opacity = '1';
-      logEntry.style.transform = 'translateX(0)';
-    }, 10);
-
-    // 자동 스크롤
-    this.battleLog.scrollTop = this.battleLog.scrollHeight;
-
-    // 로그 수 제한
-    while (this.battleLog.children.length > 150) {
-      this.battleLog.removeChild(this.battleLog.firstChild);
-    }
-  }
-
-  renderChatMessage(message) {
-    if (!this.chatMessages) return;
-
-    const chatMsg = document.createElement('div');
-    chatMsg.className = `chat-message ${message.type || (message.scope === 'team' ? 'team' : '')}`;
-    
-    const timestamp = new Date(message.ts || Date.now()).toLocaleTimeString('ko-KR', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const senderName = message.from?.nickname || message.nickname || '익명';
-    const scope = message.scope === 'team' ? '[팀]' : '[전체]';
-    
-    chatMsg.innerHTML = `
-      <div class="chat-header">
-        <span class="chat-sender">${scope} ${senderName}</span>
-        <span class="chat-time">${timestamp}</span>
-      </div>
-      <div class="chat-text">${message.text}</div>
-    `;
-
-    // 새 메시지 애니메이션
-    chatMsg.style.opacity = '0';
-    chatMsg.style.transform = 'translateY(20px)';
-    this.chatMessages.appendChild(chatMsg);
-
-    setTimeout(() => {
-      chatMsg.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      chatMsg.style.opacity = '1';
-      chatMsg.style.transform = 'translateY(0)';
-    }, 10);
-
-    // 자동 스크롤
-    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-
-    // 메시지 수 제한
-    while (this.chatMessages.children.length > 100) {
-      this.chatMessages.removeChild(this.chatMessages.firstChild);
-    }
-
-    // 새 메시지 알림 효과
-    this.addNewMessageNotification();
-  }
-
-  addNewMessageNotification() {
-    const chatTab = document.querySelector('[data-tab="chat"]');
-    if (chatTab && !chatTab.classList.contains('active')) {
-      chatTab.style.animation = 'newMessagePulse 1s ease-out';
-      
-      setTimeout(() => {
-        chatTab.style.animation = '';
-      }, 1000);
-
-      if (!document.querySelector('#new-message-pulse-style')) {
-        const style = document.createElement('style');
-        style.id = 'new-message-pulse-style';
-        style.textContent = `
-          @keyframes newMessagePulse {
-            0%, 100% { transform: scale(1); box-shadow: none; }
-            50% { transform: scale(1.1); box-shadow: 0 0 15px rgba(220, 199, 162, 0.5); }
-          }
-        `;
-        document.head.appendChild(style);
-      }
-    }
-  }
-
-  sendChat() {
-    if (!this.chatInput || !this.isAuthenticated) return;
-
-    const message = this.chatInput.value.trim();
-    if (!message) return;
-
-    PyxisSocket.sendChat({
-      battleId: this.battleId,
-      text: message,
-      nickname: this.spectatorName,
-      role: 'spectator',
-      scope: 'all'
-    });
-
-    this.chatInput.value = '';
-
-    // 전송 효과
-    this.chatInput.style.borderColor = 'var(--success)';
-    setTimeout(() => {
-      this.chatInput.style.borderColor = '';
-    }, 300);
-  }
-
-  sendCheer(cheerMessage) {
-    if (!this.isAuthenticated || this.cheerCooldown) return;
-
-    // 쿨다운 설정 (3초)
-    this.cheerCooldown = true;
-    setTimeout(() => {
-      this.cheerCooldown = false;
-    }, 3000);
-
-    // 응원 메시지 전송
-    PyxisSocket.sendChat({
-      battleId: this.battleId,
-      text: `📣 ${cheerMessage}`,
-      nickname: this.spectatorName,
-      role: 'spectator',
-      scope: 'all',
-      type: 'cheer'
-    });
-
-    // 응원 버튼 쿨다운 표시
-    this.cheerButtons.forEach(btn => {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-    });
-
-    setTimeout(() => {
-      this.cheerButtons.forEach(btn => {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-      });
-    }, 3000);
-  }
-
-  showCheerMessage(message) {
-    const cheerEffect = document.createElement('div');
-    cheerEffect.textContent = message.text;
-    cheerEffect.style.cssText = `
-      position: fixed;
-      top: 70%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--warning);
-      text-shadow: 0 0 15px rgba(245, 158, 11, 0.8);
-      z-index: 9999;
-      pointer-events: none;
-      animation: cheerEffect 3s ease-out;
-    `;
-
-    document.body.appendChild(cheerEffect);
-
-    if (!document.querySelector('#cheer-effect-style')) {
-      const style = document.createElement('style');
-      style.id = 'cheer-effect-style';
-      style.textContent = `
-        @keyframes cheerEffect {
-          0% {
-            transform: translate(-50%, -50%) scale(0);
-            opacity: 0;
-          }
-          20% {
-            transform: translate(-50%, -50%) scale(1.2);
-            opacity: 1;
-          }
-          80% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => cheerEffect.remove(), 3000);
-  }
-
-  startBattleTimer() {
-    // 1시간 전투 타이머
-    const battleDuration = 60 * 60 * 1000; // 1시간
-    const startTime = Date.now();
-
-    this.battleTimer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, battleDuration - elapsed);
-      
-      if (remaining === 0) {
-        clearInterval(this.battleTimer);
-        this.addLogEntry('[시간 종료] 전투 시간이 만료되었습니다', 'system');
-        return;
-      }
-
-      // 타이머 표시 업데이트 (있다면)
-      const timerElement = document.querySelector('.battle-timer');
-      if (timerElement) {
-        const hours = Math.floor(remaining / (60 * 60 * 1000));
-        const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
-        const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
-        timerElement.textContent = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      }
-    }, 1000);
-  }
-
-  cleanup() {
-    // 타이머 정리
-    if (this.battleTimer) {
-      clearInterval(this.battleTimer);
-    }
-
-    // 애니메이션 정리
-    this.uiAnimations.clear();
-
-    // 동적 스타일 정리
-    const dynamicStyles = document.querySelectorAll('[id$="-style"]');
-    dynamicStyles.forEach(style => style.remove());
-
-    // 소켓 정리
-    PyxisSocket.cleanup();
-  }
-}
-
-// 페이지 로드시 초기화
-document.addEventListener('DOMContentLoaded', () => {
-  window.spectator = new PyxisSpectator();
-});
-
-// 페이지 언로드시 정리
-window.addEventListener('beforeunload', () => {
-  if (window.spectator) {
-    window.spectator.cleanup();
-  }
-});
-    const style = document.createElement('style');
-    style.textContent = `
+    // 필요한 키프레임 일괄 주입(중복 방지)
+    this.injectStyleOnce('spectator-anim-style', `
       @keyframes spectatorTwinkle {
-        0%, 100% { 
-          opacity: 0.2; 
-          transform: scale(1); 
-        }
-        25% { 
-          opacity: 0.8; 
-          transform: scale(1.3); 
-        }
-        75% { 
-          opacity: 0.4; 
-          transform: scale(0.8); 
-        }
+        0%, 100% { opacity:.2; transform: scale(1) }
+        25%      { opacity:.8; transform: scale(1.3) }
+        75%      { opacity:.4; transform: scale(.8) }
       }
-    `;
-    document.head.appendChild(style);
+      @keyframes phaseAnnouncement {
+        0%   { transform: translate(-50%,-50%) scale(0) rotate(-10deg); opacity:0 }
+        20%  { transform: translate(-50%,-50%) scale(1.1) rotate(5deg);  opacity:1 }
+        80%  { transform: translate(-50%,-50%) scale(1)   rotate(0);     opacity:1 }
+        100% { transform: translate(-50%,-50%) scale(.9)  rotate(0);     opacity:0 }
+      }
+      @keyframes phaseBackground {
+        0%   { opacity:0; transform: scale(0) }
+        50%  { opacity:1; transform: scale(1) }
+        100% { opacity:0; transform: scale(1.5) }
+      }
+      @keyframes turnAnnouncement {
+        0%   { transform: translate(-50%,-50%) scale(0); opacity:0 }
+        30%  { transform: translate(-50%,-50%) scale(1.1); opacity:1 }
+        70%  { transform: translate(-50%,-50%) scale(1);   opacity:1 }
+        100% { transform: translate(-50%,-50%) scale(.8);  opacity:0 }
+      }
+    `);
   }
 
   enhanceButtonEffects() {
-    // 응원 버튼 효과
+    // 응원 버튼 특화
     this.cheerButtons.forEach(btn => {
       btn.addEventListener('click', (e) => {
         this.createRippleEffect(e, btn);
         this.addCheerParticleEffect(btn);
       });
-
       btn.addEventListener('mouseenter', () => {
         btn.style.transform = 'translateY(-3px) scale(1.05)';
-        btn.style.boxShadow = '0 8px 25px rgba(220, 199, 162, 0.4)';
+        btn.style.boxShadow = '0 8px 25px rgba(220,199,162,.4)';
       });
-
       btn.addEventListener('mouseleave', () => {
         btn.style.transform = '';
         btn.style.boxShadow = '';
       });
     });
 
-    // 일반 버튼들
-    const allButtons = document.querySelectorAll('button:not(.cheer-btn)');
-    allButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        this.createRippleEffect(e, btn);
-      });
+    // 일반 버튼 리플
+    document.querySelectorAll('button:not(.cheer-btn)').forEach(btn => {
+      btn.addEventListener('click', (e) => this.createRippleEffect(e, btn));
     });
+
+    // 리플/파티클 애니메이션
+    this.injectStyleOnce('spectator-ripple-style', `
+      @keyframes spectatorRipple { from { transform: scale(0); opacity:1 } to { transform: scale(4); opacity:0 } }
+      @keyframes cheerParticle  { 0% { transform: translate(0,0) scale(1); opacity:1 } 100% { transform: translate(var(--end-x),var(--end-y)) scale(0); opacity:0 } }
+    `);
   }
 
   createRippleEffect(e, element) {
@@ -904,106 +168,46 @@ window.addEventListener('beforeunload', () => {
     const rect = element.getBoundingClientRect();
     const size = Math.max(rect.width, rect.height);
     const x = e.clientX - rect.left - size / 2;
-    const y = e.clientY - rect.top - size / 2;
-
+    const y = e.clientY - rect.top  - size / 2;
     ripple.style.cssText = `
-      position: absolute;
-      width: ${size}px;
-      height: ${size}px;
-      left: ${x}px;
-      top: ${y}px;
-      background: radial-gradient(circle, rgba(220, 199, 162, 0.4) 0%, transparent 70%);
-      border-radius: 50%;
-      pointer-events: none;
-      animation: spectatorRipple 0.8s ease-out;
+      position:absolute; width:${size}px; height:${size}px; left:${x}px; top:${y}px;
+      background: radial-gradient(circle, rgba(220,199,162,.4) 0%, transparent 70%);
+      border-radius:50%; pointer-events:none; animation: spectatorRipple .8s ease-out;
     `;
-
     element.style.position = 'relative';
     element.style.overflow = 'hidden';
     element.appendChild(ripple);
-
     setTimeout(() => ripple.remove(), 800);
-
-    // 리플 애니메이션 추가
-    if (!document.querySelector('#spectator-ripple-style')) {
-      const style = document.createElement('style');
-      style.id = 'spectator-ripple-style';
-      style.textContent = `
-        @keyframes spectatorRipple {
-          from {
-            transform: scale(0);
-            opacity: 1;
-          }
-          to {
-            transform: scale(4);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
   }
 
   addCheerParticleEffect(button) {
-    // 응원 시 파티클 효과
-    for (let i = 0; i < 8; i++) {
+    const rect = button.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top  + rect.height/2;
+    for (let i=0;i<8;i++){
       const particle = document.createElement('div');
+      const angle = (Math.PI * 2 * i) / 8;
+      const distance = 50 + Math.random()*30;
       particle.style.cssText = `
-        position: absolute;
-        width: 6px;
-        height: 6px;
-        background: var(--gold-bright);
-        border-radius: 50%;
-        pointer-events: none;
-        z-index: 1000;
+        position:fixed; left:${cx}px; top:${cy}px; width:6px; height:6px;
+        background: var(--gold-bright); border-radius:50%; pointer-events:none; z-index:1000;
         animation: cheerParticle 1.5s ease-out forwards;
       `;
-
-      const rect = button.getBoundingClientRect();
-      particle.style.left = `${rect.left + rect.width / 2}px`;
-      particle.style.top = `${rect.top + rect.height / 2}px`;
-
-      // 랜덤 방향으로 파티클 이동
-      const angle = (Math.PI * 2 * i) / 8;
-      const distance = 50 + Math.random() * 30;
-      particle.style.setProperty('--end-x', `${Math.cos(angle) * distance}px`);
-      particle.style.setProperty('--end-y', `${Math.sin(angle) * distance}px`);
-
+      particle.style.setProperty('--end-x', `${Math.cos(angle)*distance}px`);
+      particle.style.setProperty('--end-y', `${Math.sin(angle)*distance}px`);
       document.body.appendChild(particle);
-
-      setTimeout(() => particle.remove(), 1500);
-    }
-
-    // 파티클 애니메이션 CSS
-    if (!document.querySelector('#cheer-particle-style')) {
-      const style = document.createElement('style');
-      style.id = 'cheer-particle-style';
-      style.textContent = `
-        @keyframes cheerParticle {
-          0% {
-            transform: translate(0, 0) scale(1);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(var(--end-x), var(--end-y)) scale(0);
-            opacity: 0;
-          }
-        }
-      `;
-      document.head.appendChild(style);
+      setTimeout(()=>particle.remove(),1500);
     }
   }
 
   addCardEffects() {
     const cards = document.querySelectorAll('.team-wrap, .cheer-section, .log-section, .battle-meta');
     cards.forEach(card => {
-      card.style.transition = 'transform 0.3s ease, box-shadow 0.3s ease';
-      
+      card.style.transition = 'transform .3s ease, box-shadow .3s ease';
       card.addEventListener('mouseenter', () => {
         card.style.transform = 'translateY(-2px)';
-        card.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.3), 0 0 15px rgba(220, 199, 162, 0.2)';
+        card.style.boxShadow = '0 8px 25px rgba(0,0,0,.3), 0 0 15px rgba(220,199,162,.2)';
       });
-
       card.addEventListener('mouseleave', () => {
         card.style.transform = '';
         card.style.boxShadow = '';
@@ -1017,97 +221,143 @@ window.addEventListener('beforeunload', () => {
   }
 
   customizeScrollbars() {
-    const style = document.createElement('style');
-    style.textContent = `
-      .spectator-container ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      
-      .spectator-container ::-webkit-scrollbar-track {
-        background: var(--surface-1);
-        border-radius: 4px;
-      }
-      
-      .spectator-container ::-webkit-scrollbar-thumb {
+    this.injectStyleOnce('spectator-scrollbar-style', `
+      .spectator-container ::-webkit-scrollbar{ width:8px; height:8px }
+      .spectator-container ::-webkit-scrollbar-track{ background:var(--surface-1); border-radius:4px }
+      .spectator-container ::-webkit-scrollbar-thumb{
         background: linear-gradient(45deg, var(--gold-bright), var(--gold-warm));
-        border-radius: 4px;
-        box-shadow: 0 0 5px rgba(220, 199, 162, 0.3);
+        border-radius:4px; box-shadow: 0 0 5px rgba(220,199,162,.3)
       }
-      
-      .spectator-container ::-webkit-scrollbar-thumb:hover {
+      .spectator-container ::-webkit-scrollbar-thumb:hover{
         background: linear-gradient(45deg, var(--gold-warm), var(--gold-bright));
-        box-shadow: 0 0 10px rgba(220, 199, 162, 0.5);
+        box-shadow: 0 0 10px rgba(220,199,162,.5)
       }
-    `;
-    document.head.appendChild(style);
+    `);
   }
+
+  /* ========================= Chat UI (Tabs) ========================= */
+
+  createChatInterface() {
+    const logSection = document.querySelector('.log-section');
+    if (!logSection || !this.battleLog) return;
+
+    // 탭 버튼
+    const tabContainer = document.createElement('div');
+    tabContainer.className = 'log-tabs';
+    tabContainer.innerHTML = `
+      <button class="log-tab active" data-tab="log">전투 로그</button>
+      <button class="log-tab" data-tab="chat">채팅</button>
+    `;
+    logSection.insertBefore(tabContainer, this.battleLog);
+
+    // 채팅 컨테이너
+    const chatContainer = document.createElement('div');
+    chatContainer.id = 'chatContainer';
+    chatContainer.className = 'chat-container';
+    chatContainer.style.display = 'none';
+    chatContainer.innerHTML = `
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="메시지 입력... (Enter로 전송)" maxlength="200">
+        <button id="chatSend" class="chat-send-btn">전송</button>
+      </div>
+    `;
+    logSection.appendChild(chatContainer);
+
+    // 참조
+    this.chatMessages = UI.$('#chatMessages');
+    this.chatInput    = UI.$('#chatInput');
+    this.chatSend     = UI.$('#chatSend');
+
+    // 탭 이벤트
+    document.querySelectorAll('.log-tab').forEach(tab=>{
+      tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+    });
+
+    // 채팅 이벤트
+    this.chatSend?.addEventListener('click', () => this.sendChat());
+    this.chatInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.sendChat(); });
+
+    // 새 메시지 탭 효과
+    this.injectStyleOnce('new-message-pulse-style', `
+      @keyframes newMessagePulse {
+        0%,100%{ transform: scale(1); box-shadow:none }
+        50%    { transform: scale(1.1); box-shadow: 0 0 15px rgba(220,199,162,.5) }
+      }
+    `);
+  }
+
+  switchTab(tabName) {
+    document.querySelectorAll('.log-tab').forEach(tab=>{
+      tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+    if (tabName === 'log') {
+      this.battleLog.style.display = 'block';
+      UI.$('#chatContainer').style.display = 'none';
+    } else {
+      this.battleLog.style.display = 'none';
+      UI.$('#chatContainer').style.display = 'block';
+    }
+  }
+
+  /* ========================= Events ========================= */
 
   setupEventListeners() {
     // 인증 폼
-    this.spectatorLoginForm.addEventListener('submit', (e) => {
+    this.spectatorLoginForm?.addEventListener('submit', (e) => {
       e.preventDefault();
       this.authenticate();
     });
 
-    // 응원 버튼
+    // 응원 버튼 -> 메시지 전송
     this.cheerButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        const cheerMsg = btn.dataset.cheer;
+        const cheerMsg = btn.dataset.cheer || '응원합니다';
         this.sendCheer(cheerMsg);
       });
     });
 
-    // 키보드 단축키
+    // 단축키
     document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
+      const tag = (e.target?.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
       switch (e.key) {
-        case '1':
-          e.preventDefault();
-          this.switchTab('log');
-          break;
-        case '2':
-          e.preventDefault();
-          this.switchTab('chat');
-          break;
+        case '1': e.preventDefault(); this.switchTab('log');  break;
+        case '2': e.preventDefault(); this.switchTab('chat'); break;
         case 'Enter':
-          if (e.target.id !== 'chatInput' && e.target.id !== 'spectatorName') {
-            this.chatInput?.focus();
-          }
+          if (!['chatInput','spectatorName'].includes(e.target?.id)) this.chatInput?.focus();
           break;
-        case 'Escape':
-          this.chatInput?.blur();
-          break;
+        case 'Escape': this.chatInput?.blur(); break;
         case 'c':
           if (e.ctrlKey) return; // 복사 허용
           e.preventDefault();
-          if (this.cheerButtons.length > 0) {
-            this.cheerButtons[0].click();
-          }
+          this.cheerButtons[0]?.click();
           break;
       }
     });
 
-    // 페이지 가시성 변경
+    // 페이지 재진입 시 동기화
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.isAuthenticated && this.battleId) {
-        PyxisSocket.socket.emit('requestState', { battleId: this.battleId });
+        PyxisSocket.socket?.emit('requestState', { battleId: this.battleId });
       }
     });
+
+    // 언로드 정리
+    window.addEventListener('beforeunload', () => this.cleanup());
   }
 
   setupSocketEvents() {
-    // 연결 상태
+    // 연결
     PyxisSocket.on('connection:success', () => {
-      this.connectionDot.classList.add('active');
-      this.connectionText.textContent = '연결됨';
+      this.connectionDot?.classList.add('active');
+      if (this.connectionText) this.connectionText.textContent = '연결됨';
       this.addConnectionPulse(true);
     });
-
     PyxisSocket.on('connection:disconnect', () => {
-      this.connectionDot.classList.remove('active');
-      this.connectionText.textContent = '연결 끊김';
+      this.connectionDot?.classList.remove('active');
+      if (this.connectionText) this.connectionText.textContent = '연결 끊김';
       this.addConnectionPulse(false);
     });
 
@@ -1119,126 +369,103 @@ window.addEventListener('beforeunload', () => {
     });
 
     // 상태 업데이트
-    PyxisSocket.on('state:update', (state) => this.handleStateUpdate(state));
-    PyxisSocket.on('state', (state) => this.handleStateUpdate(state));
+    PyxisSocket.on('state',        (s) => this.handleStateUpdate(s));
+    PyxisSocket.on('state:update', (s) => this.handleStateUpdate(s));
+    PyxisSocket.on('battleUpdate', (s) => this.handleStateUpdate(s)); // 호환
 
-    // 페이즈 변경
+    // 페이즈
     PyxisSocket.on('phase:change', (phase) => {
-      const teamName = phase.phase === 'A' || phase.phase === 'team1' ? '불사조 기사단' : '죽음을 먹는 자들';
-      this.addPhaseChangeAnnouncement(teamName, phase.round);
-      this.addLogEntry(`[턴 전환] ${teamName} 턴 시작 (라운드 ${phase.round})`, 'system');
+      const teamName = this.normalizeTeamName(phase?.phase) === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
+      this.addPhaseChangeAnnouncement(teamName, phase?.round);
+      this.addLogEntry(`[턴 전환] ${teamName} 턴 시작 (라운드 ${phase?.round ?? '-'})`, 'system');
     });
 
     // 액션 결과
-    PyxisSocket.on('action:success', (result) => this.handleActionResult(result));
-    PyxisSocket.on('actionSuccess', (result) => this.handleActionResult(result));
+    PyxisSocket.on('action:success', (r) => this.handleActionResult(r));
+    PyxisSocket.on('actionSuccess',  (r) => this.handleActionResult(r));
 
     // 전투 종료
     PyxisSocket.on('battle:end', (result) => this.handleBattleEnd(result));
 
     // 로그 & 채팅
-    PyxisSocket.on('log:new', (ev) => {
-      if (ev?.text) {
-        this.addLogEntry(ev.text, ev.type || 'action');
-      }
-    });
+    PyxisSocket.on('log:new',  (ev) => ev?.text && this.addLogEntry(ev.text, ev.type || 'action'));
+    PyxisSocket.on('chat:new', (msg) => this.renderChatMessage(msg));
 
-    PyxisSocket.on('chat:new', (msg) => {
-      this.renderChatMessage(msg);
-    });
-
-    // 응원 메시지
-    PyxisSocket.on('cheer:new', (msg) => {
-      this.showCheerMessage(msg);
-    });
+    // 응원 수신
+    PyxisSocket.on('cheer:new', (msg) => this.showCheerMessage(msg));
   }
 
   addConnectionPulse(connected) {
     const pulse = document.createElement('div');
     pulse.style.cssText = `
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: ${connected ? 'var(--success)' : 'var(--danger)'};
-      animation: connectionPulse 1.5s ease-out;
-      pointer-events: none;
+      position:absolute; width:20px; height:20px; border-radius:50%;
+      top:50%; left:50%; transform: translate(-50%,-50%);
+      background:${connected ? 'var(--success)' : 'var(--danger)'};
+      animation: connectionPulse 1.5s ease-out; pointer-events:none;
     `;
-
+    if (!this.connectionDot) return;
     this.connectionDot.style.position = 'relative';
     this.connectionDot.appendChild(pulse);
-
+    this.injectStyleOnce('connection-pulse-style', `
+      @keyframes connectionPulse {
+        0% { transform: translate(-50%,-50%) scale(1); opacity:.8 }
+        100%{ transform: translate(-50%,-50%) scale(3); opacity:0 }
+      }
+    `);
     setTimeout(() => pulse.remove(), 1500);
   }
 
   addErrorShake() {
-    this.loginForm.style.animation = 'errorShake 0.5s ease-out';
-    
-    if (!document.querySelector('#error-shake-style')) {
-      const style = document.createElement('style');
-      style.id = 'error-shake-style';
-      style.textContent = `
-        @keyframes errorShake {
-          0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-10px); }
-          40% { transform: translateX(10px); }
-          60% { transform: translateX(-5px); }
-          80% { transform: translateX(5px); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => {
-      this.loginForm.style.animation = '';
-    }, 500);
+    if (!this.loginForm) return;
+    this.loginForm.style.animation = 'errorShake .5s ease-out';
+    this.injectStyleOnce('error-shake-style', `
+      @keyframes errorShake {
+        0%,100%{ transform: translateX(0) }
+        20%    { transform: translateX(-10px) }
+        40%    { transform: translateX(10px) }
+        60%    { transform: translateX(-5px) }
+        80%    { transform: translateX(5px) }
+      }
+    `);
+    setTimeout(() => { this.loginForm.style.animation = ''; }, 500);
   }
 
-  checkUrlParams() {
-    const params = new URLSearchParams(window.location.search);
-    const battleId = params.get('battle');
-    const spectatorOtp = params.get('otp');
+  /* ========================= URL / Auth ========================= */
 
+  checkUrlParams() {
+    const params = new URLSearchParams(location.search);
+    const battleId  = params.get('battle');
+    const spectatorOtp = params.get('otp');
     if (battleId && spectatorOtp) {
       this.battleId = battleId;
-      // 자동 인증 시도 (관전자는 이름만 입력하면 됨)
       PyxisSocket.on('connection:success', () => {
         setTimeout(() => {
-          if (this.spectatorName.value) {
-            this.authenticate();
-          }
+          if (this.spectatorNameInput?.value) this.authenticate();
         }, 300);
       });
     }
   }
 
   async authenticate() {
-    const name = this.spectatorName.value.trim();
+    const name = (this.spectatorNameInput?.value || '').trim();
     if (!name) {
       UI.error('관전자 이름을 입력해주세요');
       this.addErrorShake();
       return;
     }
-
     if (name.length > 20) {
       UI.error('이름은 20글자 이하로 입력해주세요');
       this.addErrorShake();
       return;
     }
-
     try {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(location.search);
       const battleId = params.get('battle') || 'demo';
-      const otp = params.get('otp') || 'spectator';
+      const otp      = params.get('otp')    || 'spectator';
 
       await PyxisSocket.authenticate({
         role: 'spectator',
-        battleId: battleId,
-        name: name,
-        otp: otp
+        battleId, name, otp
       });
 
       this.battleId = battleId;
@@ -1251,14 +478,14 @@ window.addEventListener('beforeunload', () => {
 
   handleAuthSuccess(data) {
     this.isAuthenticated = true;
-    this.battleState = data.state || data.battle;
-    
+    this.battleState = data?.state || data?.battle || null;
+
     UI.hide(this.loginForm);
     UI.show(this.spectatorArea);
-    
+
     this.addSuccessEffect();
     UI.success(`${this.spectatorName}님, 관전을 시작합니다!`);
-    
+
     this.renderBattleState();
     this.startBattleTimer();
   }
@@ -1266,21 +493,33 @@ window.addEventListener('beforeunload', () => {
   addSuccessEffect() {
     const effect = document.createElement('div');
     effect.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: radial-gradient(circle, rgba(34, 197, 94, 0.3) 0%, transparent 70%);
-      pointer-events: none;
-      z-index: 9999;
-      animation: successWave 1.5s ease-out;
+      position:fixed; inset:0;
+      background: radial-gradient(circle, rgba(34,197,94,.3) 0%, transparent 70%);
+      pointer-events:none; z-index:9999; animation: successWave 1.5s ease-out;
     `;
-
+    this.injectStyleOnce('success-wave-style', `
+      @keyframes successWave {
+        0%{ opacity:0; transform: scale(0) }
+        50%{opacity:1; transform: scale(1) }
+        100%{opacity:0; transform: scale(1.5) }
+      }
+    `);
     document.body.appendChild(effect);
-
-    setTimeout(() => effect.remove(), 1500);
+    setTimeout(()=>effect.remove(),1500);
   }
+
+  /* ========================= Normalizers ========================= */
+
+  normalizeTeamName(teamVal) {
+    const t = (teamVal || '').toString().toLowerCase().trim();
+    if (['a','team1','phoenix','불사조','불사조 기사단','phoenixes'].includes(t)) return 'A';
+    if (['b','team2','death','죽음','죽음을 먹는 자들','death eaters','deatheaters'].includes(t)) return 'B';
+    if (t.includes('phoenix') || t.includes('불사조')) return 'A';
+    if (t.includes('death')   || t.includes('죽음'))   return 'B';
+    return 'A';
+  }
+
+  /* ========================= State & Rendering ========================= */
 
   handleStateUpdate(state) {
     this.battleState = state;
@@ -1290,170 +529,525 @@ window.addEventListener('beforeunload', () => {
 
   renderBattleState() {
     if (!this.battleState) return;
-
-    // 전투 정보 업데이트
     this.updateBattleInfo();
-    
-    // 팀 멤버 업데이트
     this.updateTeamMembers();
-    
-    // 현재 턴 정보
     this.updateCurrentTurn();
   }
 
   updateBattleInfo() {
-    const phase = this.battleState.phase || 'waiting';
+    const phase = this.battleState.phase || this.battleState.status || 'waiting';
     const round = this.battleState.round || 1;
     const turnCount = this.battleState.turnCount || 0;
 
     const phaseText = {
-      'waiting': '전투 대기중',
-      'active': '전투 진행중',
-      'ended': '전투 종료'
+      waiting: '전투 대기중',
+      active:  '전투 진행중',
+      live:    '전투 진행중',
+      ended:   '전투 종료',
+      end:     '전투 종료'
     };
 
-    this.battlePhase.textContent = phaseText[phase] || '알 수 없음';
-    this.battleInfo.textContent = `라운드 ${round} | 턴 ${turnCount}`;
-
-    // 페이즈별 색상 변경
-    this.battlePhase.className = `battle-phase phase-${phase}`;
+    if (this.battlePhase) {
+      this.battlePhase.textContent = phaseText[phase] || '알 수 없음';
+      this.battlePhase.className = `battle-phase phase-${phase}`;
+    }
+    if (this.battleInfo) {
+      this.battleInfo.textContent = `라운드 ${round} | 턴 ${turnCount}`;
+    }
   }
 
   updateTeamMembers() {
-    if (!this.battleState.players) return;
+    if (!this.battleState?.players) return;
 
     this.phoenixPlayers = [];
-    this.eatersPlayers = [];
+    this.eatersPlayers  = [];
 
-    Object.values(this.battleState.players).forEach(player => {
-      if (player.team === 'A' || player.team === 'team1' || player.team === 'phoenix') {
-        this.phoenixPlayers.push(player);
-      } else {
-        this.eatersPlayers.push(player);
-      }
+    Object.values(this.battleState.players).forEach(p => {
+      const code = this.normalizeTeamName(p.team);
+      if (code === 'A') this.phoenixPlayers.push(p);
+      else this.eatersPlayers.push(p);
     });
 
     this.renderTeam(this.phoenixMembers, this.phoenixPlayers, 'phoenix');
-    this.renderTeam(this.deathMembers, this.eatersPlayers, 'eaters');
+    this.renderTeam(this.deathMembers,   this.eatersPlayers,  'eaters');
   }
 
-  renderTeam(container, players, teamType) {
+  renderTeam(container, players) {
+    if (!container) return;
     container.innerHTML = '';
+    players.forEach((player, idx) => {
+      const card = document.createElement('div');
+      card.className = `spectator-player-card ${player.alive === false ? 'dead' : 'alive'}`;
 
-    players.forEach(player => {
-      const playerCard = document.createElement('div');
-      playerCard.className = `spectator-player-card ${player.alive === false ? 'dead' : 'alive'}`;
-      
-      const hpPercent = Math.max(0, Math.min(100, (player.hp / (player.maxHp || 100)) * 100));
+      const maxHp = player.maxHp || 100;
+      const hp = Math.max(0, Math.min(maxHp, player.hp ?? maxHp));
+      const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
       const statusClass = hpPercent > 60 ? 'healthy' : hpPercent > 30 ? 'wounded' : 'critical';
 
-      playerCard.innerHTML = `
-        <div class="player-avatar">
-          ${player.avatar ? `<img src="${player.avatar}" alt="${player.name}">` : '👤'}
-        </div>
+      const atk = player.stats?.attack  ?? player.atk ?? 0;
+      const def = player.stats?.defense ?? player.def ?? 0;
+      const agi = player.stats?.agility ?? player.agi ?? 0;
+      const luk = player.stats?.luck    ?? player.luk ?? 0;
+
+      card.innerHTML = `
+        <div class="player-avatar">${player.avatar ? `<img src="${player.avatar}" alt="${UI.escape(player.name||'플레이어')}">` : '<span class="avatar-fallback">플</span>'}</div>
         <div class="player-info">
-          <div class="player-name">${player.name}</div>
+          <div class="player-name">${UI.escape(player.name || '플레이어')}</div>
           <div class="player-hp ${statusClass}">
-            <div class="hp-bar">
-              <div class="hp-fill" style="width: ${hpPercent}%"></div>
-            </div>
-            <div class="hp-text">${player.hp}/${player.maxHp || 100}</div>
+            <div class="hp-bar"><div class="hp-fill" style="width:${hpPercent}%"></div></div>
+            <div class="hp-text">${hp}/${maxHp}</div>
           </div>
           <div class="player-stats">
-            <span>공격 ${player.stats?.attack || player.atk || 0}</span>
-            <span>방어 ${player.stats?.defense || player.def || 0}</span>
-            <span>민첩 ${player.stats?.agility || player.agi || 0}</span>
-            <span>행운 ${player.stats?.luck || player.luk || 0}</span>
+            <span>공격 ${atk}</span>
+            <span>방어 ${def}</span>
+            <span>민첩 ${agi}</span>
+            <span>행운 ${luk}</span>
           </div>
         </div>
       `;
 
-      // 플레이어 카드 애니메이션
-      playerCard.style.opacity = '0';
-      playerCard.style.transform = 'translateY(20px)';
-      container.appendChild(playerCard);
-
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(20px)';
+      container.appendChild(card);
       setTimeout(() => {
-        playerCard.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-        playerCard.style.opacity = '1';
-        playerCard.style.transform = 'translateY(0)';
-      }, players.indexOf(player) * 100);
+        card.style.transition = 'opacity .5s ease, transform .5s ease';
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }, idx * 100);
     });
   }
 
   updateCurrentTurn() {
-    const currentPlayer = this.battleState.turn?.pending?.[0] || this.battleState.turn?.actor;
-    
-    if (currentPlayer && this.battleState.players[currentPlayer]) {
-      const player = this.battleState.players[currentPlayer];
-      this.currentTurn.textContent = `현재 턴: ${player.name}`;
-      this.currentTurn.className = 'current-turn active';
-      
-      // 턴 변경 효과
+    const curPid = this.battleState?.turn?.pending?.[0] || this.battleState?.turn?.actor;
+    if (curPid && this.battleState?.players?.[curPid]) {
+      const player = this.battleState.players[curPid];
+      if (this.currentTurn) {
+        this.currentTurn.textContent = `현재 턴: ${player.name}`;
+        this.currentTurn.className = 'current-turn active';
+      }
       this.addTurnChangeEffect(player.name);
     } else {
-      this.currentTurn.textContent = '현재 턴: 대기중';
-      this.currentTurn.className = 'current-turn';
+      if (this.currentTurn) {
+        this.currentTurn.textContent = '현재 턴: 대기중';
+        this.currentTurn.className = 'current-turn';
+      }
     }
   }
 
   addTurnChangeEffect(playerName) {
-    const announcement = document.createElement('div');
-    announcement.textContent = `${playerName}의 턴!`;
-    announcement.style.cssText = `
-      position: fixed;
-      top: 20%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-family: var(--font-display);
-      font-size: 2.5rem;
-      font-weight: 700;
-      color: var(--gold-bright);
-      text-shadow: 0 0 20px rgba(220, 199, 162, 0.8);
-      z-index: 10000;
-      pointer-events: none;
-      animation: turnAnnouncement 2s ease-out;
+    const el = document.createElement('div');
+    el.textContent = `${playerName}의 턴!`;
+    el.style.cssText = `
+      position:fixed; top:20%; left:50%; transform: translate(-50%,-50%);
+      font-family: var(--font-display); font-size:2.5rem; font-weight:700;
+      color: var(--gold-bright); text-shadow: 0 0 20px rgba(220,199,162,.8);
+      z-index:10000; pointer-events:none; animation: turnAnnouncement 2s ease-out;
     `;
-
-    document.body.appendChild(announcement);
-
-    setTimeout(() => announcement.remove(), 2000);
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),2000);
   }
 
   addPhaseChangeAnnouncement(teamName, round) {
     const announcement = document.createElement('div');
     announcement.textContent = `${teamName} 턴 시작!`;
     announcement.style.cssText = `
-      position: fixed;
-      top: 25%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-family: var(--font-display);
-      font-size: 3rem;
-      font-weight: 700;
-      color: var(--gold-bright);
-      text-shadow: 0 0 30px rgba(220, 199, 162, 0.9);
-      z-index: 10000;
-      pointer-events: none;
-      animation: phaseAnnouncement 3s ease-out;
+      position:fixed; top:25%; left:50%; transform: translate(-50%,-50%);
+      font-family: var(--font-display); font-size:3rem; font-weight:700;
+      color: var(--gold-bright); text-shadow: 0 0 30px rgba(220,199,162,.9);
+      z-index:10000; pointer-events:none; animation: phaseAnnouncement 3s ease-out;
     `;
-
     document.body.appendChild(announcement);
 
-    // 배경 효과
     const bgEffect = document.createElement('div');
     bgEffect.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: radial-gradient(circle, rgba(220, 199, 162, 0.1) 0%, transparent 70%);
-      pointer-events: none;
-      z-index: 9999;
-      animation: phaseBackground 3s ease-out;
+      position:fixed; inset:0;
+      background: radial-gradient(circle, rgba(220,199,162,.1) 0%, transparent 70%);
+      pointer-events:none; z-index:9999; animation: phaseBackground 3s ease-out;
     `;
-
     document.body.appendChild(bgEffect);
 
-    // 애니메이션 CSS 추가
+    setTimeout(()=>announcement.remove(),3000);
+    setTimeout(()=>bgEffect.remove(),3000);
+  }
+
+  /* ========================= Actions & Effects ========================= */
+
+  handleActionResult(result) {
+    if (!result) return;
+    this.showActionEffect(result);
+
+    const logText = this.formatActionResult(result);
+    if (logText) this.addLogEntry(logText, 'action');
+  }
+
+  showActionEffect(result) {
+    const box = document.createElement('div');
+    box.className = 'action-effect-container';
+    box.style.cssText = `
+      position:fixed; top:50%; left:50%; transform: translate(-50%,-50%);
+      z-index:9999; pointer-events:none; text-align:center;
+    `;
+
+    let text = '';
+    let color = 'var(--text-bright)';
+
+    switch (result.type) {
+      case 'attack':
+        if (result.dodge) {
+          text = '회피 성공';
+          color = 'var(--text-dim)';
+        } else {
+          text = result.crit ? `${result.damage} 치명타` : `${result.damage} 피해`;
+          color = result.crit ? 'var(--warning)' : 'var(--danger)';
+        }
+        break;
+      case 'useItem':
+        if (result.item === '디터니') {
+          text = `체력 +${result.healed || 10}`;
+          color = 'var(--success)';
+        } else {
+          text = `${result.item} 사용`;
+          color = 'var(--warning)';
+        }
+        break;
+      case 'defend':
+        text = '방어 태세';
+        color = 'var(--info)';
+        break;
+      case 'evade':
+        text = '회피 태세';
+        color = 'var(--success)';
+        break;
+      default:
+        text = '행동 수행';
+        color = 'var(--text-bright)';
+    }
+
+    box.innerHTML = `
+      <div style="
+        font-size:2.2rem; font-weight:700; color:${color};
+        text-shadow:0 0 20px ${color}; animation: actionEffectMain 2s ease-out;
+      ">${text}</div>
+    `;
+    document.body.appendChild(box);
+
+    this.injectStyleOnce('action-effect-style', `
+      @keyframes actionEffectMain {
+        0%  { transform: scale(0) rotate(-10deg); opacity:0 }
+        20% { transform: scale(1.3) rotate(5deg);  opacity:1 }
+        80% { transform: scale(1) rotate(0);       opacity:1 }
+        100%{ transform: scale(.8) rotate(0);      opacity:0 }
+      }
+      @keyframes screenFlash {
+        0%{ opacity:.5 } 50%{ opacity:.2 } 100%{ opacity:0 }
+      }
+    `);
+
+    setTimeout(()=>box.remove(),2000);
+
+    if (result.type === 'attack' && (result.damage > 15 || result.crit)) {
+      this.addScreenFlash(result.crit ? 'var(--warning)' : 'var(--danger)');
+    }
+  }
+
+  addScreenFlash(color) {
+    const flash = document.createElement('div');
+    flash.style.cssText = `
+      position:fixed; inset:0; background:${color};
+      opacity:.3; pointer-events:none; z-index:9998; animation: screenFlash .5s ease-out;
+    `;
+    document.body.appendChild(flash);
+    setTimeout(()=>flash.remove(),500);
+  }
+
+  formatActionResult(result) {
+    const actor  = this.battleState?.players?.[result.actorPid];
+    const target = this.battleState?.players?.[result.targetPid];
+    if (!actor) return null;
+
+    const a = actor.name;
+    const t = target?.name || '대상';
+
+    switch (result.type) {
+      case 'attack':
+        if (result.dodge) return `${a}의 공격을 ${t}이(가) 회피했습니다`;
+        return `${a}이(가) ${t}에게 ${result.damage} 피해를 입혔습니다`
+               + (result.crit ? ' (치명타)' : '')
+               + (result.block ? ' (일부 방어됨)' : '');
+      case 'useItem':
+        if (result.item === '디터니') return `${a}이(가) ${t}의 체력을 ${result.healed || 10} 회복시켰습니다`;
+        return `${a}이(가) ${result.item}을(를) 사용했습니다`;
+      case 'defend': return `${a}이(가) 방어 태세를 취했습니다`;
+      case 'evade':  return `${a}이(가) 회피 태세를 취했습니다`;
+      case 'pass':   return `${a}이(가) 턴을 넘겼습니다`;
+      default:       return `${a}이(가) ${result.type} 행동을 수행했습니다`;
+    }
+  }
+
+  handleBattleEnd(result) {
+    this.addBattleEndEffect(result);
+    this.addLogEntry(`[전투 종료] ${result.winner} 승리`, 'system');
+
+    this.cheerButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+    });
+  }
+
+  addBattleEndEffect(result) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `
+      position:fixed; inset:0;
+      background: linear-gradient(135deg, rgba(0,8,13,.9), rgba(0,30,53,.9));
+      display:flex; flex-direction:column; justify-content:center; align-items:center;
+      z-index:10000; animation: battleEndFadeIn 1s ease-out;
+    `;
+    wrap.innerHTML = `
+      <div style="
+        font-family: var(--font-display); font-size:4rem; font-weight:700;
+        color: var(--gold-bright); text-shadow: 0 0 30px rgba(220,199,162,.8);
+        margin-bottom:2rem; animation: battleEndTitle 2s ease-out;
+      ">전투 종료</div>
+      <div style="
+        font-size:2.2rem; font-weight:600; color: var(--text-bright);
+        margin-bottom:3rem; animation: battleEndWinner 2s ease-out .5s both;
+      ">${UI.escape(result.winner || '승리 팀')} 승리</div>
+      <div style="display:flex; gap:2rem; animation: battleEndButtons 2s ease-out 1s both;">
+        <button id="btnEndReload" style="
+          padding:1rem 2rem; background: linear-gradient(135deg, var(--gold-bright), var(--gold-warm));
+          color: var(--deep-navy); border:none; border-radius:8px; font-size:1.1rem; font-weight:700; cursor:pointer; transition: transform .3s ease;
+        ">새로고침</button>
+        <button id="btnEndClose" style="
+          padding:1rem 2rem; background: var(--surface-1); color: var(--text-bright);
+          border:1px solid var(--border-subtle); border-radius:8px; font-size:1.1rem; font-weight:600; cursor:pointer; transition: transform .3s ease;
+        ">닫기</button>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+
+    this.injectStyleOnce('battle-end-style', `
+      @keyframes battleEndFadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes battleEndTitle {
+        0%{ transform: scale(0) rotate(-10deg); opacity:0 }
+        50%{transform: scale(1.2) rotate(5deg);  opacity:1 }
+        100%{transform: scale(1)   rotate(0);    opacity:1 }
+      }
+      @keyframes battleEndWinner {
+        0%{ transform: translateY(50px); opacity:0 }
+        100%{transform: translateY(0);   opacity:1 }
+      }
+      @keyframes battleEndButtons {
+        0%{ transform: translateY(30px); opacity:0 }
+        100%{transform: translateY(0);   opacity:1 }
+      }
+    `);
+
+    wrap.querySelector('#btnEndReload')?.addEventListener('mouseover', e => e.currentTarget.style.transform = 'scale(1.07)');
+    wrap.querySelector('#btnEndReload')?.addEventListener('mouseout',  e => e.currentTarget.style.transform = '');
+    wrap.querySelector('#btnEndClose') ?.addEventListener('mouseover', e => e.currentTarget.style.transform = 'scale(1.07)');
+    wrap.querySelector('#btnEndClose') ?.addEventListener('mouseout',  e => e.currentTarget.style.transform = '');
+    wrap.querySelector('#btnEndReload')?.addEventListener('click', () => location.reload());
+    wrap.querySelector('#btnEndClose') ?.addEventListener('click', () => window.close());
+  }
+
+  /* ========================= Log & Chat ========================= */
+
+  addLogEntry(text, type='info') {
+    if (!this.battleLog) return;
+
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${type}`;
+
+    const ts = new Date().toLocaleTimeString('ko-KR', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+    entry.innerHTML = `
+      <span class="log-time">${ts}</span>
+      <span class="log-content">${UI.escape(text)}</span>
+    `;
+
+    // 타입별 라벨/색
+    const cfg = {
+      system: { label: '[시스템]', color:'var(--info)' },
+      action: { label: '[행동]',   color:'var(--text-normal)' },
+      damage: { label: '[피해]',   color:'var(--danger)' },
+      heal:   { label: '[치유]',   color:'var(--success)' },
+      info:   { label: '[정보]',   color:'var(--text-dim)' }
+    }[type] || { label: '[정보]', color:'var(--text-dim)' };
+
+    entry.style.borderLeft = `3px solid ${cfg.color}`;
+    const label = document.createElement('span');
+    label.textContent = cfg.label + ' ';
+    label.style.marginRight = '0.5rem';
+    label.style.color = cfg.color;
+    entry.querySelector('.log-content').prepend(label);
+
+    entry.style.opacity = '0';
+    entry.style.transform = 'translateX(-20px)';
+    this.battleLog.appendChild(entry);
+    setTimeout(() => {
+      entry.style.transition = 'opacity .5s ease, transform .5s ease';
+      entry.style.opacity = '1';
+      entry.style.transform = 'translateX(0)';
+    }, 10);
+
+    this.battleLog.scrollTop = this.battleLog.scrollHeight;
+    while (this.battleLog.children.length > 150) this.battleLog.removeChild(this.battleLog.firstChild);
+  }
+
+  renderChatMessage(message) {
+    if (!this.chatMessages) return;
+
+    const row = document.createElement('div');
+    row.className = `chat-message ${message.type || (message.scope === 'team' ? 'team' : '')}`;
+
+    const ts = new Date(message.ts || Date.now()).toLocaleTimeString('ko-KR', { hour12:false, hour:'2-digit', minute:'2-digit' });
+    const sender = message.from?.nickname || message.nickname || '익명';
+    const scope  = message.scope === 'team' ? '[팀]' : '[전체]';
+
+    row.innerHTML = `
+      <div class="chat-header">
+        <span class="chat-sender">${scope} ${UI.escape(sender)}</span>
+        <span class="chat-time">${ts}</span>
+      </div>
+      <div class="chat-text">${UI.escape(message.text || '')}</div>
+    `;
+
+    row.style.opacity = '0';
+    row.style.transform = 'translateY(20px)';
+    this.chatMessages.appendChild(row);
+
+    setTimeout(() => {
+      row.style.transition = 'opacity .3s ease, transform .3s ease';
+      row.style.opacity = '1';
+      row.style.transform = 'translateY(0)';
+    }, 10);
+
+    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    while (this.chatMessages.children.length > 100) this.chatMessages.removeChild(this.chatMessages.firstChild);
+
+    // 탭 알림
+    const chatTab = document.querySelector('[data-tab="chat"]');
+    if (chatTab && !chatTab.classList.contains('active')) {
+      chatTab.style.animation = 'newMessagePulse 1s ease-out';
+      setTimeout(()=> chatTab.style.animation = '', 1000);
+    }
+  }
+
+  sendChat() {
+    if (!this.chatInput || !this.isAuthenticated) return;
+    const text = this.chatInput.value.trim();
+    if (!text) return;
+
+    PyxisSocket.sendChat({
+      battleId: this.battleId,
+      text,
+      nickname: this.spectatorName,
+      role: 'spectator',
+      scope: 'all'
+    });
+
+    this.chatInput.value = '';
+    this.chatInput.style.borderColor = 'var(--success)';
+    setTimeout(()=> this.chatInput.style.borderColor = '', 300);
+  }
+
+  sendCheer(cheerMessage) {
+    if (!this.isAuthenticated || this.cheerCooldown) return;
+
+    // 3초 쿨다운
+    this.cheerCooldown = true;
+    setTimeout(()=> this.cheerCooldown = false, 3000);
+
+    // 응원 메시지 전송 (이모지 대신 한글 라벨)
+    PyxisSocket.sendChat({
+      battleId: this.battleId,
+      text: `[응원] ${cheerMessage}`,
+      nickname: this.spectatorName,
+      role: 'spectator',
+      scope: 'all',
+      type: 'cheer'
+    });
+
+    // 버튼 쿨다운 표시
+    this.cheerButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+    });
+    setTimeout(() => {
+      this.cheerButtons.forEach(btn => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      });
+    }, 3000);
+  }
+
+  showCheerMessage(message) {
+    const cheer = document.createElement('div');
+    cheer.textContent = message.text || '[응원]';
+    cheer.style.cssText = `
+      position:fixed; top:70%; left:50%; transform: translate(-50%,-50%);
+      font-size:2rem; font-weight:700; color: var(--warning);
+      text-shadow: 0 0 15px rgba(245,158,11,.8); z-index:9999; pointer-events:none;
+      animation: cheerEffect 3s ease-out;
+    `;
+    this.injectStyleOnce('cheer-effect-style', `
+      @keyframes cheerEffect {
+        0%  { transform: translate(-50%,-50%) scale(0);   opacity:0 }
+        20% { transform: translate(-50%,-50%) scale(1.2); opacity:1 }
+        80% { transform: translate(-50%,-50%) scale(1);   opacity:1 }
+        100%{ transform: translate(-50%,-50%) scale(.8);  opacity:0 }
+      }
+    `);
+    document.body.appendChild(cheer);
+    setTimeout(()=>cheer.remove(),3000);
+  }
+
+  /* ========================= Timer & Cleanup ========================= */
+
+  startBattleTimer() {
+    const duration = 60 * 60 * 1000; // 1시간
+    const start = Date.now();
+    this.battleTimer = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const remain = Math.max(0, duration - elapsed);
+      if (remain === 0) {
+        clearInterval(this.battleTimer);
+        this.addLogEntry('[시간 종료] 전투 시간이 만료되었습니다', 'system');
+        return;
+      }
+      const el = document.querySelector('.battle-timer');
+      if (el) {
+        const h = Math.floor(remain / 3600000);
+        const m = Math.floor((remain % 3600000) / 60000).toString().padStart(2,'0');
+        const s = Math.floor((remain % 60000) / 1000).toString().padStart(2,'0');
+        el.textContent = `${h}:${m}:${s}`;
+      }
+    }, 1000);
+  }
+
+  cleanup() {
+    if (this.battleTimer) clearInterval(this.battleTimer);
+    this.uiAnimations.clear();
+    // 동적 스타일 정리(이 파일에서 주입한 것만 정리하려면 id로 선택)
+    // 필요 시 아래 주석 해제:
+    // document.querySelectorAll('#spectator-anim-style,#spectator-ripple-style,#spectator-scrollbar-style,#new-message-pulse-style,#connection-pulse-style,#error-shake-style,#success-wave-style,#action-effect-style,#battle-end-style,#cheer-effect-style')
+    //   .forEach(s => s.remove());
+    PyxisSocket.cleanup();
+  }
+
+  /* ========================= Helpers ========================= */
+
+  injectStyleOnce(id, css) {
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+}
+
+/* ========================= Mount ========================= */
+
+document.addEventListener('DOMContentLoaded', () => {
+  window.spectator = new PyxisSpectator();
+});
