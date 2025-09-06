@@ -11,7 +11,7 @@
   <style>
     /* ═══════════════════════════════════════════════════════════════════════
        PYXIS Battle System - 게임 스타일 관전자 페이지 (네이비+골드)
-       통합 이벤트 호환 / 안정성 보강 / 전체 코드
+       통합 이벤트 호환 / 연결 내구성(하트비트/재연결 동기화) / 전체 코드
        ═══════════════════════════════════════════════════════════════════════ */
 
     :root{
@@ -79,17 +79,12 @@
 
     /* 배경 장식 */
     body::before{
-      content:'';
-      position:fixed;
-      top:-50%;left:-50%;
-      width:200%;height:200%;
+      content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;
       background:
         radial-gradient(circle at 25% 25%,var(--gold-pale) 0%,transparent 50%),
         radial-gradient(circle at 75% 75%,rgba(225,29,72,.1) 0%,transparent 50%),
         radial-gradient(circle at 25% 75%,rgba(124,58,237,.1) 0%,transparent 50%);
-      animation:slowRotate 100s linear infinite;
-      pointer-events:none;
-      z-index:-1;
+      animation:slowRotate 100s linear infinite;pointer-events:none;z-index:-1;
     }
     @keyframes slowRotate{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
@@ -103,8 +98,7 @@
       position:sticky;top:0;z-index:100;overflow:hidden
     }
     .pyxis-header::before{
-      content:'';
-      position:absolute;top:0;left:-100%;width:100%;height:100%;
+      content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
       background:linear-gradient(90deg,transparent,rgba(220,199,162,.1),rgba(220,199,162,.2),rgba(220,199,162,.1),transparent);
       animation:headerShimmer 6s infinite;
     }
@@ -450,8 +444,29 @@
     </section>
   </main>
 
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Socket.IO 로더 (origin → CDN 폴백) -->
+  <script>
+    (function ensureSocketIO(){
+      if (window.io) {
+        document.dispatchEvent(new Event('socket-io-ready'));
+        return;
+      }
+      function add(src, onload, onerror){
+        var s=document.createElement('script');
+        s.src=src; s.async=true; s.onload=onload; s.onerror=onerror;
+        document.head.appendChild(s);
+      }
+      add('/socket.io/socket.io.js',
+        function(){ document.dispatchEvent(new Event('socket-io-ready')); },
+        function(){ add('https://cdn.socket.io/4.7.5/socket.io.min.js',
+          function(){ document.dispatchEvent(new Event('socket-io-ready')); },
+          function(){ console.warn('[PYXIS] Socket.IO client load failed'); }
+        );}
+      );
+    })();
+  </script>
+
+  <!-- 관전자 스크립트 -->
   <script>
     // ===== 전역 =====
     let socket = null;
@@ -481,11 +496,23 @@
     let battleSeconds = 0;
     let turnTimer = null;
 
+    // Heartbeat
+    let hb = null, hbTimeout = null, lastPong = 0;
+    const HEARTBEAT_EVERY = 15000; // ms
+    const CONN_TIMEOUT_MS = 12000; // ms
+
     // ===== 초기화 =====
     document.addEventListener('DOMContentLoaded', () => {
       initializeFromUrl();
-      initializeSocket();
-      setupEventListeners();
+      if (window.io) {
+        initializeSocket();
+        setupEventListeners();
+      } else {
+        document.addEventListener('socket-io-ready', () => {
+          initializeSocket();
+          setupEventListeners();
+        }, { once: true });
+      }
     });
 
     // URL 파라미터
@@ -513,6 +540,7 @@
 
       socket.on('connect', () => {
         updateConnectionStatus(true);
+        startHeartbeat();
         // 재접속 시 상태 동기화
         if (spectatorState.isAuthenticated && spectatorState.battleId) {
           requestGameState();
@@ -521,8 +549,13 @@
 
       socket.on('disconnect', () => {
         updateConnectionStatus(false);
+        stopHeartbeat();
         showToast('서버 연결이 끊어졌습니다', 'error');
       });
+
+      // Heartbeat pong (서버 이벤트명 호환)
+      socket.on('spectator:pong', () => { lastPong = Date.now(); });
+      socket.on('pong',           () => { lastPong = Date.now(); });
 
       // 인증
       socket.on('auth:success', (data) => handleAuthSuccess(data));
@@ -561,6 +594,26 @@
       // 응원
       socket.on('cheerMessage', (data) => handleCheerMessage(data));
       socket.on('cheer',        (data) => handleCheerMessage(data));
+    }
+
+    function startHeartbeat(){
+      stopHeartbeat();
+      lastPong = Date.now();
+      hb = setInterval(() => {
+        if (!socket?.connected) return;
+        socket.emit('spectator:ping', { t: Date.now() });
+        clearTimeout(hbTimeout);
+        hbTimeout = setTimeout(() => {
+          if (Date.now() - lastPong > CONN_TIMEOUT_MS) {
+            try { socket.disconnect(); } catch {}
+          }
+        }, CONN_TIMEOUT_MS + 100);
+      }, HEARTBEAT_EVERY);
+    }
+    function stopHeartbeat(){
+      if (hb) clearInterval(hb);
+      if (hbTimeout) clearTimeout(hbTimeout);
+      hb = null; hbTimeout = null;
     }
 
     function requestGameState(){
@@ -629,6 +682,7 @@
       window.addEventListener('beforeunload', ()=>{
         if (battleTimer) clearInterval(battleTimer);
         if (turnTimer) clearInterval(turnTimer);
+        stopHeartbeat();
         if (socket) socket.disconnect();
       });
 
@@ -908,7 +962,6 @@
       div.innerHTML = `<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`;
       c.appendChild(div);
       c.scrollTop = c.scrollHeight;
-      // 제한
       while (c.children.length > 100) c.removeChild(c.firstChild);
 
       // 탭 알림
@@ -931,7 +984,6 @@
       c.appendChild(div);
       c.scrollTop = c.scrollHeight;
 
-      // 제한
       while (c.children.length > 200) c.removeChild(c.firstChild);
 
       // 탭 알림
