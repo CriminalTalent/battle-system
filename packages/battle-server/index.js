@@ -1,16 +1,13 @@
 /**
  * PYXIS Battle Server - unified index.js
  * - Express + Socket.IO
- * - Battles in-memory store
+ * - In-memory battles store
  * - Health / static / pages
  * - REST: create battle, players, avatar upload
  * - Admin REST: links(OTP), start/pause/end, command(HP 보정)
  * - WS: admin/player/spectator auth, battleUpdate, chatMessage, admin fallbacks
  *
- * NOTE
- * - 이 서버는 룰을 변경하지 않습니다. (스탯 1~5, 기본 HP 100 등)
- * - 업로드 디렉토리: ./uploads
- * - 정적 파일 루트: ./public
+ * 디자인/룰은 변경하지 않습니다. (스탯 1~5, 기본 HP 100 등)
  */
 
 const path = require('path');
@@ -36,7 +33,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // ----------------------------------------------------------------------------
-// Paths
+/* Paths */
 // ----------------------------------------------------------------------------
 const ROOT = __dirname;
 const PUB_DIR = path.resolve(ROOT, 'public');
@@ -58,7 +55,7 @@ app.get(['/admin', '/play', '/watch'], (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
-// In-memory store
+/* In-memory store */
 // ----------------------------------------------------------------------------
 /**
  * battles: {
@@ -73,7 +70,7 @@ app.get(['/admin', '/play', '/watch'], (req, res) => {
 const battles = Object.create(null);
 
 // ----------------------------------------------------------------------------
-// Utils
+/* Utils */
 // ----------------------------------------------------------------------------
 const clamp = (v, min, max) => {
   const n = Number(v);
@@ -81,7 +78,14 @@ const clamp = (v, min, max) => {
   return Math.max(min, Math.min(max, n));
 };
 const randId = (n = 8) => Math.random().toString(36).slice(2, 2 + n).toUpperCase();
-const token = (n = 24) => crypto.randomBytes(n).toString('base64url').slice(0, n);
+
+// Node 버전 무관 URL-safe 토큰
+const token = (n = 24) => {
+  const b64 = crypto.randomBytes(n).toString('base64');
+  const safe = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
+  return safe.slice(0, n);
+};
+
 const now = () => Date.now();
 
 const OTP_TTL = {
@@ -111,14 +115,14 @@ function addLog(b, type, message) {
 }
 
 // ----------------------------------------------------------------------------
-// Health
+/* Health */
 // ----------------------------------------------------------------------------
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, env: process.env.NODE_ENV || 'development', time: new Date().toISOString() });
 });
 
 // ----------------------------------------------------------------------------
-// Battles - REST
+/* Battles - REST */
 // ----------------------------------------------------------------------------
 app.post('/api/battles', (req, res) => {
   try {
@@ -207,7 +211,7 @@ app.delete('/api/battles/:id/players/:pid', (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
-// Avatar upload
+/* Avatar upload */
 // ----------------------------------------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -228,7 +232,7 @@ app.post('/api/battles/:id/avatar', upload.single('avatar'), (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
-// Admin - REST
+/* Admin - REST */
 // ----------------------------------------------------------------------------
 app.post('/api/admin/battles/:id/links', (req, res) => {
   const b = battles[req.params.id];
@@ -299,15 +303,11 @@ app.post('/api/admin/battles/:id/command', (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
-// Socket.IO
+/* Socket.IO */
 // ----------------------------------------------------------------------------
 io.on('connection', (socket) => {
   const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
   console.log('[INFO] Socket connected:', socket.id, 'ip=', ip);
-
-  socket.on('disconnect', () => {
-    // no-op
-  });
 
   // 관리자 인증
   socket.on('adminAuth', (payload = {}) => {
@@ -323,7 +323,7 @@ io.on('connection', (socket) => {
     socket.emit('authSuccess', { role: 'admin', battle: b });
   });
 
-  // 플레이어 인증(선택적)
+  // 플레이어 인증(선택)
   socket.on('playerAuth', (payload = {}) => {
     const id = payload.battleId;
     const t = payload.token || '';
@@ -335,7 +335,7 @@ io.on('connection', (socket) => {
     socket.emit('authSuccess', { role: 'player', battle: b });
   });
 
-  // 관전자 인증(선택적)
+  // 관전자 인증(선택)
   socket.on('spectatorAuth', (payload = {}) => {
     const id = payload.battleId;
     const t = payload.token || '';
@@ -410,7 +410,7 @@ io.on('connection', (socket) => {
 });
 
 // ----------------------------------------------------------------------------
-// Start
+/* Start */
 // ----------------------------------------------------------------------------
 server.listen(PORT, HOST, () => {
   console.log('=================================================================');
