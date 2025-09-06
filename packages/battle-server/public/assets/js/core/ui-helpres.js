@@ -8,21 +8,51 @@
     $: (selector, context = document) => context.querySelector(selector),
     $$: (selector, context = document) => Array.from(context.querySelectorAll(selector)),
 
-    // 향상된 엘리먼트 생성
+    // 향상된 엘리먼트 생성 (aria/dataset/unsafeHTML 지원, 이벤트명 소문자 정규화)
     createElement: (tag, attrs = {}, children = []) => {
       const el = document.createElement(tag);
-      
-      Object.entries(attrs).forEach(([key, value]) => {
+
+      const { aria, dataset, unsafeHTML, ...rest } = attrs || {};
+
+      // dataset shorthand: { dataset: { key: 'val' } }
+      if (dataset && typeof dataset === 'object') {
+        Object.entries(dataset).forEach(([k, v]) => (el.dataset[k] = v));
+      }
+
+      // aria shorthand: { aria: { role:'...', label:'...', live:'polite', modal:'true', ... } }
+      if (aria && typeof aria === 'object') {
+        const map = {
+          role: 'role',
+          label: 'aria-label',
+          labelledby: 'aria-labelledby',
+          describedby: 'aria-describedby',
+          live: 'aria-live',
+          modal: 'aria-modal',
+          hidden: 'aria-hidden',
+          expanded: 'aria-expanded',
+          controls: 'aria-controls',
+          selected: 'aria-selected',
+          pressed: 'aria-pressed'
+        };
+        Object.entries(aria).forEach(([k, v]) => {
+          el.setAttribute(map[k] || k, v);
+        });
+      }
+
+      Object.entries(rest).forEach(([key, value]) => {
         if (key === 'className' || key === 'class') {
           el.className = value;
         } else if (key === 'textContent' || key === 'innerText') {
           el.textContent = value;
-        } else if (key === 'innerHTML') {
-          el.innerHTML = value;
+        } else if (key === 'innerHTML' || key === 'html') {
+          // 명시적으로 unsafeHTML 옵션을 켠 경우에만 innerHTML 허용
+          if (unsafeHTML) el.innerHTML = value;
+          else el.textContent = String(value ?? '');
         } else if (key === 'style' && typeof value === 'object') {
           Object.assign(el.style, value);
-        } else if (key.startsWith('on')) {
-          el.addEventListener(key.slice(2), value);
+        } else if (key.startsWith('on') && typeof value === 'function') {
+          // onClick, onclick → 'click'
+          el.addEventListener(key.slice(2).toLowerCase(), value);
         } else if (key.startsWith('data-')) {
           el.setAttribute(key, value);
         } else if (key === 'ariaLabel') {
@@ -34,25 +64,20 @@
         }
       });
 
-      const childrenArray = Array.isArray(children) ? children : [children];
-      childrenArray.forEach(child => {
-        if (child != null) {
-          if (typeof child === 'string') {
-            el.appendChild(document.createTextNode(child));
-          } else if (child instanceof Node) {
-            el.appendChild(child);
-          }
-        }
+      (Array.isArray(children) ? children : [children]).forEach(child => {
+        if (child == null) return;
+        if (typeof child === 'string') el.appendChild(document.createTextNode(child));
+        else if (child instanceof Node) el.appendChild(child);
       });
 
       return el;
     },
 
-    // 가시성 제어
+    // 가시성 제어 (CSS 클래스 .pyxis-hidden 사용으로 일관화)
     show: (el) => {
       if (el) {
         el.style.display = '';
-        el.classList.remove('hidden');
+        el.classList.remove('pyxis-hidden');
         el.setAttribute('aria-hidden', 'false');
       }
     },
@@ -60,14 +85,14 @@
     hide: (el) => {
       if (el) {
         el.style.display = 'none';
-        el.classList.add('hidden');
+        el.classList.add('pyxis-hidden');
         el.setAttribute('aria-hidden', 'true');
       }
     },
 
     toggle: (el, force) => {
       if (!el) return;
-      const isHidden = el.style.display === 'none' || el.classList.contains('hidden');
+      const isHidden = el.style.display === 'none' || el.classList.contains('pyxis-hidden');
       if (typeof force === 'boolean') {
         force ? PyxisUI.show(el) : PyxisUI.hide(el);
       } else {
@@ -93,6 +118,10 @@
       
       .pyxis-hidden {
         display: none !important;
+      }
+
+      .pyxis-body-locked {
+        overflow: hidden !important;
       }
 
       .pyxis-fade-in {
@@ -395,7 +424,7 @@
     document.head.appendChild(styleSheet);
   };
 
-  // Toast 알림 시스템 개선
+  // Toast 알림 시스템
   const TOAST_CONTAINER_ID = '__pyxis_toast_container__';
 
   function ensureToastContainer() {
@@ -416,8 +445,7 @@
         maxWidth: '420px',
         width: '100%'
       },
-      ariaRole: 'region',
-      ariaLabel: '알림 영역'
+      aria: { role: 'region', label: '알림 영역' }
     });
 
     document.body.appendChild(container);
@@ -451,8 +479,7 @@
     const toast = PyxisUI.createElement('div', {
       id: toastId,
       className: 'pyxis-slide-up',
-      ariaRole: 'alert',
-      ariaLive: type === 'error' ? 'assertive' : 'polite',
+      aria: { role: 'alert', live: (type === 'error' ? 'assertive' : 'polite') },
       style: {
         background: `linear-gradient(145deg, ${color.bg}, ${color.bg}dd)`,
         border: `2px solid ${color.border}`,
@@ -652,13 +679,13 @@
 
   // 단축 메서드들
   PyxisUI.success = (msg, options = {}) => PyxisUI.toast(msg, 'success', options);
-  PyxisUI.error = (msg, options = {}) => PyxisUI.toast(msg, 'error', options);
+  PyxisUI.error   = (msg, options = {}) => PyxisUI.toast(msg, 'error', options);
   PyxisUI.warning = (msg, options = {}) => PyxisUI.toast(msg, 'warning', options);
-  PyxisUI.info = (msg, options = {}) => PyxisUI.toast(msg, 'info', options);
-  PyxisUI.system = (msg, options = {}) => PyxisUI.toast(msg, 'system', options);
-  PyxisUI.battle = (msg, options = {}) => PyxisUI.toast(msg, 'battle', options);
+  PyxisUI.info    = (msg, options = {}) => PyxisUI.toast(msg, 'info', options);
+  PyxisUI.system  = (msg, options = {}) => PyxisUI.toast(msg, 'system', options);
+  PyxisUI.battle  = (msg, options = {}) => PyxisUI.toast(msg, 'battle', options);
 
-  // 모달 시스템
+  // 모달 시스템 (focus trap, body scroll lock, a11y)
   PyxisUI.modal = function(options = {}) {
     const {
       title = '알림',
@@ -669,50 +696,50 @@
       className = ''
     } = options;
 
+    const previousActive = document.activeElement;
+
     // 오버레이 생성
     const overlay = PyxisUI.createElement('div', {
       className: 'pyxis-modal-overlay',
       onClick: (e) => {
-        if (e.target === overlay && closable) {
-          closeModal();
-        }
+        if (e.target === overlay && closable) closeModal();
       }
     });
 
     // 모달 생성
     const modal = PyxisUI.createElement('div', {
       className: `pyxis-modal ${className}`,
+      aria: { role: 'dialog', modal: 'true' },
       style: {
         width: size === 'small' ? '400px' : size === 'large' ? '800px' : '600px'
       }
     });
 
     // 헤더
-    const header = PyxisUI.createElement('div', {
-      className: 'pyxis-modal-header'
-    });
+    const header = PyxisUI.createElement('div', { className: 'pyxis-modal-header' });
+    const titleId = `pyxis-modal-title-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const titleEl = PyxisUI.createElement('h2', {
+      id: titleId,
       className: 'pyxis-modal-title',
       textContent: title
     });
 
+    modal.setAttribute('aria-labelledby', titleId);
     header.appendChild(titleEl);
 
     if (closable) {
       const closeBtn = PyxisUI.createElement('button', {
         className: 'pyxis-modal-close',
         textContent: '×',
-        onClick: closeModal
+        onClick: closeModal,
+        aria: { label: '닫기' }
       });
       header.appendChild(closeBtn);
     }
 
     // 컨텐츠
-    const contentEl = PyxisUI.createElement('div', {
-      className: 'pyxis-modal-content'
-    });
-
+    const contentEl = PyxisUI.createElement('div', { className: 'pyxis-modal-content' });
     if (typeof content === 'string') {
       contentEl.innerHTML = content;
     } else if (content instanceof Node) {
@@ -723,37 +750,79 @@
     modal.appendChild(contentEl);
     overlay.appendChild(modal);
 
-    // 모달 닫기
-    function closeModal() {
-      overlay.style.opacity = '0';
-      modal.style.transform = 'scale(0.9)';
-      
-      setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.remove();
-        }
-        if (onClose) onClose();
-      }, 300);
+    // Body scroll lock
+    document.body.classList.add('pyxis-body-locked');
+    document.body.appendChild(overlay);
+
+    // Focusable elements & focus trap
+    const focusSelectors =
+      'a[href], area[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), ' +
+      'textarea:not([disabled]), button:not([disabled]), iframe, object, embed, ' +
+      '[contenteditable], [tabindex]:not([tabindex="-1"])';
+
+    let focusables = Array.from(modal.querySelectorAll(focusSelectors));
+    if (focusables.length === 0) {
+      // 포커스 가능한 요소가 없으면 닫기 버튼을 포커스 타겟으로 보장
+      if (closable) {
+        const fallbackBtn = header.querySelector('.pyxis-modal-close');
+        if (fallbackBtn) focusables = [fallbackBtn];
+      } else {
+        // 모달 자체에 tabindex로 포커스 가능
+        modal.setAttribute('tabindex', '-1');
+        focusables = [modal];
+      }
     }
 
-    // ESC 키로 닫기
-    const handleKeydown = (e) => {
+    // 최초 포커스
+    setTimeout(() => {
+      (focusables[0] || modal).focus();
+    }, 0);
+
+    const onKeydown = (e) => {
       if (e.key === 'Escape' && closable) {
+        e.preventDefault();
         closeModal();
-        document.removeEventListener('keydown', handleKeydown);
+        return;
+      }
+      if (e.key === 'Tab') {
+        // focus trap
+        focusables = Array.from(modal.querySelectorAll(focusSelectors));
+        if (focusables.length === 0) return;
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+
+        if (e.shiftKey) {
+          if (active === first || !modal.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !modal.contains(active)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
 
-    document.addEventListener('keydown', handleKeydown);
-    document.body.appendChild(overlay);
+    document.addEventListener('keydown', onKeydown);
 
-    // 포커스 관리
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    
-    if (focusableElements.length > 0) {
-      focusableElements[0].focus();
+    // 모달 닫기
+    function closeModal() {
+      document.removeEventListener('keydown', onKeydown);
+      overlay.style.opacity = '0';
+      modal.style.transform = 'scale(0.9)';
+
+      setTimeout(() => {
+        if (overlay.parentNode) overlay.remove();
+        document.body.classList.remove('pyxis-body-locked');
+        if (onClose) onClose();
+        if (previousActive && typeof previousActive.focus === 'function') {
+          previousActive.focus();
+        }
+      }, 300);
     }
 
     return {
@@ -833,7 +902,7 @@
     });
   };
 
-  // 로딩 시스템 개선
+  // 로딩 시스템
   PyxisUI.startLoading = function(target, options = {}) {
     if (!target) return () => {};
 
@@ -927,12 +996,14 @@
     };
   };
 
-  // 버튼 로딩 상태
+  // 버튼 로딩 상태 (a11y: aria-busy/aria-disabled)
   PyxisUI.setLoading = function(button, isLoading, loadingText = '처리중...') {
     if (!button) return;
 
     if (isLoading) {
       button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.setAttribute('aria-disabled', 'true');
       button.dataset.originalText = button.textContent;
       button.dataset.originalHTML = button.innerHTML;
       
@@ -954,6 +1025,8 @@
       button.appendChild(document.createTextNode(loadingText));
     } else {
       button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.removeAttribute('aria-disabled');
       
       if (button.dataset.originalHTML) {
         button.innerHTML = button.dataset.originalHTML;
@@ -966,7 +1039,7 @@
     }
   };
 
-  // 폼 검증 시스템 개선
+  // 폼 검증 시스템 (라디오/체크박스 개선, a11y 속성)
   PyxisUI.validateForm = function(form, rules = {}) {
     if (!form) return { valid: false, errors: ['폼을 찾을 수 없습니다'], data: {} };
 
@@ -974,90 +1047,108 @@
     const errors = [];
     const formData = new FormData(form);
 
-    // FormData에서 데이터 추출
+    // 기본 값 채우기
     for (const [name, value] of formData.entries()) {
-      data[name] = value;
+      if (data.hasOwnProperty(name)) {
+        // 같은 이름의 필드가 여러 개인 경우(checkbox 등) 배열로 수집
+        if (Array.isArray(data[name])) data[name].push(value);
+        else data[name] = [data[name], value];
+      } else {
+        data[name] = value;
+      }
     }
 
-    // 체크박스와 라디오 버튼 처리
-    const checkboxes = form.querySelectorAll('input[type="checkbox"]');
-    const radios = form.querySelectorAll('input[type="radio"]');
-    
-    checkboxes.forEach(checkbox => {
-      if (!data.hasOwnProperty(checkbox.name)) {
-        data[checkbox.name] = checkbox.checked;
+    // 체크박스 그룹 처리 (단일 체크박스는 boolean, 복수는 값 배열)
+    const checkboxNames = new Set(Array.from(form.querySelectorAll('input[type="checkbox"]')).map(i => i.name).filter(Boolean));
+    checkboxNames.forEach(name => {
+      const boxes = Array.from(form.querySelectorAll(`input[type="checkbox"][name="${CSS.escape(name)}"]`));
+      if (boxes.length === 1) {
+        data[name] = boxes[0].checked ? (boxes[0].value || true) : false;
+      } else if (boxes.length > 1) {
+        const checkedVals = boxes.filter(b => b.checked).map(b => b.value || 'on');
+        data[name] = checkedVals; // 빈 배열 허용
       }
+    });
+
+    // 라디오 그룹 처리 (선택된 값 또는 빈 문자열)
+    const radioNames = new Set(Array.from(form.querySelectorAll('input[type="radio"]')).map(i => i.name).filter(Boolean));
+    radioNames.forEach(name => {
+      const selected = form.querySelector(`input[type="radio"][name="${CSS.escape(name)}"]:checked`);
+      data[name] = selected ? selected.value : '';
     });
 
     // 규칙 검증
     for (const [field, rule] of Object.entries(rules)) {
       const value = data[field];
       const label = rule.label || field;
-      const element = form.querySelector(`[name="${field}"]`);
+      const element = form.querySelector(`[name="${CSS.escape(field)}"]`);
 
-      // 필수 필드 검증
-      if (rule.required && (!value || (typeof value === 'string' && value.trim() === ''))) {
-        errors.push(`${label}은(는) 필수입니다.`);
+      const markError = (el, msg) => {
+        if (!el) return;
+        el.classList.add('error');
+        PyxisUI.showFieldError(el, msg);
+      };
+
+      // 필수
+      const isEmpty =
+        value === undefined ||
+        value === null ||
+        (typeof value === 'string' && value.trim() === '') ||
+        (Array.isArray(value) && value.length === 0) ||
+        (typeof value === 'boolean' && value === false && rule.requiredStrictBoolean);
+
+      if (rule.required && isEmpty) {
+        const msg = `${label}은(는) 필수입니다.`;
+        errors.push(msg);
+        if (element) markError(element, msg);
+        continue;
+      }
+
+      // 값이 없으면 이후 검증 생략
+      if (isEmpty) {
         if (element) {
-          element.classList.add('error');
-          PyxisUI.showFieldError(element, `${label}은(는) 필수입니다.`);
+          element.classList.remove('error');
+          PyxisUI.clearFieldError(element);
         }
         continue;
       }
 
-      // 값이 없으면 나머지 검증 건너뛰기
-      if (!value || (typeof value === 'string' && value.trim() === '')) {
-        if (element) element.classList.remove('error');
-        continue;
-      }
-
-      // 길이 검증
-      if (rule.minLength && value.length < rule.minLength) {
-        const error = `${label}은 최소 ${rule.minLength}자 이상이어야 합니다.`;
-        errors.push(error);
-        if (element) {
-          element.classList.add('error');
-          PyxisUI.showFieldError(element, error);
+      // 길이
+      if (typeof value === 'string') {
+        if (rule.minLength && value.length < rule.minLength) {
+          const msg = `${label}은 최소 ${rule.minLength}자 이상이어야 합니다.`;
+          errors.push(msg);
+          if (element) markError(element, msg);
+          continue;
         }
-        continue;
-      }
-
-      if (rule.maxLength && value.length > rule.maxLength) {
-        const error = `${label}은 최대 ${rule.maxLength}자 이하여야 합니다.`;
-        errors.push(error);
-        if (element) {
-          element.classList.add('error');
-          PyxisUI.showFieldError(element, error);
-        }
-        continue;
-      }
-
-      // 패턴 검증
-      if (rule.pattern && !rule.pattern.test(value)) {
-        const error = rule.message || `${label} 형식이 올바르지 않습니다.`;
-        errors.push(error);
-        if (element) {
-          element.classList.add('error');
-          PyxisUI.showFieldError(element, error);
-        }
-        continue;
-      }
-
-      // 커스텀 검증 함수
-      if (rule.validator && typeof rule.validator === 'function') {
-        const result = rule.validator(value, data);
-        if (result !== true) {
-          const error = typeof result === 'string' ? result : `${label}이(가) 유효하지 않습니다.`;
-          errors.push(error);
-          if (element) {
-            element.classList.add('error');
-            PyxisUI.showFieldError(element, error);
-          }
+        if (rule.maxLength && value.length > rule.maxLength) {
+          const msg = `${label}은 최대 ${rule.maxLength}자 이하여야 합니다.`;
+          errors.push(msg);
+          if (element) markError(element, msg);
           continue;
         }
       }
 
-      // 검증 통과시 에러 스타일 제거
+      // 패턴
+      if (rule.pattern && typeof value === 'string' && !rule.pattern.test(value)) {
+        const msg = rule.message || `${label} 형식이 올바르지 않습니다.`;
+        errors.push(msg);
+        if (element) markError(element, msg);
+        continue;
+      }
+
+      // 커스텀
+      if (rule.validator && typeof rule.validator === 'function') {
+        const result = rule.validator(value, data);
+        if (result !== true) {
+          const msg = typeof result === 'string' ? result : `${label}이(가) 유효하지 않습니다.`;
+          errors.push(msg);
+          if (element) markError(element, msg);
+          continue;
+        }
+      }
+
+      // 통과
       if (element) {
         element.classList.remove('error');
         PyxisUI.clearFieldError(element);
@@ -1071,17 +1162,28 @@
     };
   };
 
-  // 필드 에러 표시
+  // 필드 에러 표시 (a11y: aria-invalid, aria-describedby 관리)
   PyxisUI.showFieldError = function(element, message) {
     if (!element) return;
 
-    // 기존 에러 메시지 제거
+    // 기존 에러 제거
     PyxisUI.clearFieldError(element);
 
+    const baseId = element.id || element.name || `pyxis-field-${Math.random().toString(36).slice(2, 8)}`;
+    const errId = `pyxis-err-${baseId}-${Date.now()}`;
+
     const errorEl = PyxisUI.createElement('span', {
+      id: errId,
       className: 'pyxis-form-error',
       textContent: message
     });
+
+    // aria 속성
+    element.setAttribute('aria-invalid', 'true');
+    const currentDesc = (element.getAttribute('aria-describedby') || '').split(' ').filter(Boolean);
+    currentDesc.push(errId);
+    element.setAttribute('aria-describedby', Array.from(new Set(currentDesc)).join(' '));
+    element.dataset.pyxisErrId = errId;
 
     // 에러 메시지를 필드 다음에 삽입
     if (element.parentNode) {
@@ -1093,13 +1195,25 @@
   PyxisUI.clearFieldError = function(element) {
     if (!element) return;
 
+    // 형제 에러 엘리먼트 제거
     const nextSibling = element.nextElementSibling;
     if (nextSibling && nextSibling.classList.contains('pyxis-form-error')) {
       nextSibling.remove();
     }
+
+    // aria 속성 정리
+    element.removeAttribute('aria-invalid');
+    const errId = element.dataset.pyxisErrId;
+    if (errId) {
+      const currentDesc = (element.getAttribute('aria-describedby') || '').split(' ').filter(Boolean);
+      const filtered = currentDesc.filter(id => id !== errId);
+      if (filtered.length > 0) element.setAttribute('aria-describedby', filtered.join(' '));
+      else element.removeAttribute('aria-describedby');
+      delete element.dataset.pyxisErrId;
+    }
   };
 
-  // 클립보드 복사 개선
+  // 클립보드 복사
   PyxisUI.copyToClipboard = async function(text, button = null) {
     try {
       await navigator.clipboard.writeText(text);
@@ -1273,15 +1387,18 @@
         group.appendChild(label);
       }
 
-      const input = PyxisUI.createElement(field.type === 'textarea' ? 'textarea' : 'input', {
+      const isTextarea = field.type === 'textarea';
+      const input = PyxisUI.createElement(isTextarea ? 'textarea' : 'input', {
         className: 'pyxis-form-input',
         name: field.name,
         id: field.name,
-        type: field.type || 'text',
+        type: isTextarea ? undefined : (field.type || 'text'),
         placeholder: field.placeholder || '',
         required: field.required || false,
-        value: field.value || ''
+        value: isTextarea ? undefined : (field.value || '')
       });
+
+      if (isTextarea && field.value) input.textContent = field.value;
 
       if (field.attributes) {
         Object.entries(field.attributes).forEach(([key, value]) => {
