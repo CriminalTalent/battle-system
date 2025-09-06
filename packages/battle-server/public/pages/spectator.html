@@ -1,370 +1,255 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PYXIS 전투 관전석</title>
-
-  <!-- Tailwind (CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Tailwind 확장 -->
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            pyxis: {
-              50:'#f4f3ef',100:'#ebe7d7',200:'#d9ccaa',300:'#c7b27e',
-              400:'#b79956',500:'#9e7f3a',600:'#7f652d',700:'#645026',
-              800:'#4a3c1c',900:'#332a14'
-            }
-          },
-          boxShadow: { soft: '0 2px 18px rgba(0,0,0,.25)' }
-        }
-      }
-    }
-  </script>
-
+  <title>PYXIS - 전투 관전</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    html, body { height: 100%; }
-    body { background: radial-gradient(90rem 60rem at 50% -20%, #1b1d22, #0f1115) fixed; }
-    .glass { background: rgba(18,20,25,.6); backdrop-filter: blur(6px); }
-    .card { @apply glass rounded-2xl border border-zinc-800 shadow-soft; }
-    .card-header { @apply px-5 py-3 border-b border-zinc-800 flex items-center justify-between; }
-    .card-title { @apply text-zinc-100 font-semibold tracking-wide; }
-    .card-body { @apply p-5; }
-    .pill { @apply inline-flex items-center gap-2 rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-300; }
-    .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition; }
-    .btn-gold { @apply border-pyxis-600 bg-pyxis-700 text-white hover:bg-pyxis-600; }
-    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
-    .bar { height: 6px; border-radius: 9999px; background: #3a3b41; overflow: hidden; }
-    .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#e6c487,#caa65e 60%,#7f652d); }
-    .stat { @apply text-xs text-zinc-300; }
-    .logline.ok { color:#22c55e; }
-    .logline.err { color:#ef4444; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(135deg, #000 0%, #111 50%, #000 100%);
+      color: #f8f6f0;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+    :root {
+      --gold: #d4b77e;
+      --gold-dark: #c9a96e;
+      --text-dim: #b8a898;
+      --success: #27ae60;
+      --danger: #e74c3c;
+      --warning: #f39c12;
+      --info: #3498db;
+      --radius: 12px;
+    }
+    .hidden { display: none !important; }
+
+    /* ===== 모달 로그인 ===== */
+    .modal {
+      position: fixed; inset: 0;
+      display: flex; justify-content: center; align-items: center;
+      background: rgba(0,0,0,.7);
+      z-index: 2000;
+    }
+    .modal-card {
+      background: #111;
+      padding: 32px;
+      border-radius: var(--radius);
+      border: 2px solid var(--gold);
+      width: 90%; max-width: 420px;
+    }
+    .modal-card h2 {
+      font-family: 'Cinzel', serif;
+      font-size: 22px;
+      margin-bottom: 16px;
+      text-align: center;
+      color: var(--gold);
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 13px; margin-bottom: 6px; display: block; color: var(--text-dim); }
+    .form-input {
+      width: 100%; padding: 10px;
+      background: #222;
+      border: 1px solid #555;
+      border-radius: var(--radius);
+      color: #fff;
+    }
+    .form-input:focus { outline: none; border-color: var(--gold); }
+    .login-btn {
+      width: 100%; padding: 12px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      border: none; border-radius: var(--radius);
+      font-weight: 700; cursor: pointer;
+      color: #000;
+    }
+
+    /* ===== 메인 3단 레이아웃 ===== */
+    .spectator-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 16px;
+      flex: 1; padding: 16px;
+    }
+    .card {
+      background: #111;
+      border: 2px solid #333;
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card h3 { margin-bottom: 12px; color: var(--gold); font-family: 'Cinzel', serif; font-size: 16px; }
+
+    /* ===== 팀 리스트 ===== */
+    .player-list { display: flex; flex-direction: column; gap: 8px; }
+    .player-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px; background: #222; border-radius: var(--radius);
+      border: 1px solid #444;
+    }
+    .player-name { font-weight: 600; }
+    .player-team { font-size: 11px; color: var(--gold); }
+    .player-hp { font-size: 12px; font-weight: 600; color: var(--success); }
+    .status-dead { color: var(--danger); }
+
+    /* ===== 응원 버튼 ===== */
+    .cheer-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cheer-btn {
+      padding: 8px; background: #222; border: 1px solid var(--gold);
+      border-radius: var(--radius); cursor: pointer;
+      color: var(--gold); font-size: 12px; font-weight: 600;
+    }
+
+    /* ===== 중앙 ===== */
+    .battlefield {
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+      padding: 16px; border: 2px solid #333; border-radius: var(--radius);
+      background: #111;
+    }
+    .active-avatar {
+      width: 120px; height: 120px; background: #222;
+      border: 3px solid var(--gold); border-radius: 8px;
+    }
+    .chat-box {
+      flex: 1; width: 100%; display: flex; flex-direction: column;
+      border: 1px solid #444; border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .chat-messages {
+      flex: 1; padding: 8px; overflow-y: auto; font-size: 13px;
+    }
+
+    /* ===== 전투 로그 ===== */
+    .battle-log {
+      height: 300px; overflow-y: auto; font-size: 12px;
+    }
+    .log-entry { margin-bottom: 6px; }
+    .log-system { color: var(--info); }
+    .log-damage { color: var(--danger); }
+    .log-heal { color: var(--success); }
+    .log-cheer { color: var(--gold); }
   </style>
 </head>
-<body class="dark text-zinc-200">
-
-  <!-- 헤더 -->
-  <header class="sticky top-0 z-30 border-b border-zinc-800 glass">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-pyxis-600 to-pyxis-800 border border-zinc-800"></div>
-        <div>
-          <div class="text-2xl font-bold tracking-widest text-pyxis-200 drop-shadow">PYXIS 전투 관전석</div>
-          <div class="text-xs text-zinc-400">Spectator Client</div>
+<body>
+  <!-- 로그인 모달 -->
+  <div id="loginModal" class="modal">
+    <div class="modal-card">
+      <h2>관전자 입장</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label" for="battleId">전투 ID</label>
+          <input type="text" id="battleId" class="form-input" required>
         </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <button id="btnConnect" class="btn btn-gold">동기화</button>
-        <span class="pill">단계: <span id="badgePhase" class="font-semibold ml-1">-</span></span>
-        <span class="pill">현재 팀: <span id="badgeTurnTeam" class="font-semibold ml-1">-</span></span>
-        <span class="pill">승자: <span id="badgeWinner" class="font-semibold ml-1">미정</span></span>
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="otp">OTP</label>
+          <input type="text" id="otp" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="spectatorName">이름</label>
+          <input type="text" id="spectatorName" class="form-input" required>
+        </div>
+        <button type="submit" class="login-btn">입장</button>
+      </form>
     </div>
-  </header>
+  </div>
 
-  <!-- 상단 인포 바 -->
-  <section class="max-w-7xl mx-auto px-4 mt-4 grid grid-cols-1 lg:grid-cols-4 gap-3">
-    <div class="card"><div class="card-body">
-      <div class="text-xs text-zinc-400">단계</div>
-      <div class="text-lg font-semibold" id="topPhase">-</div>
-    </div></div>
-    <div class="card"><div class="card-body">
-      <div class="text-xs text-zinc-400">현재 팀</div>
-      <div class="text-lg font-semibold" id="topTurnTeam">-</div>
-    </div></div>
-    <div class="card"><div class="card-body">
-      <div class="text-xs text-zinc-400">팀 타이머</div>
-      <div class="text-lg font-semibold" id="topTimer">-</div>
-    </div></div>
-    <div class="card"><div class="card-body">
-      <div class="text-xs text-zinc-400">승자</div>
-      <div class="text-lg font-semibold" id="topWinner">미정</div>
-    </div></div>
-  </section>
-
-  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
-    <!-- 좌: 불사조 기사단 -->
-    <section class="flex flex-col gap-5">
+  <!-- 메인 레이아웃 -->
+  <div id="spectatorLayout" class="spectator-layout hidden">
+    <!-- 좌측: 적군 -->
+    <div>
       <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">불사조 기사단</h2>
-          <span class="pill">좌측 진영</span>
-        </div>
-        <div class="card-body">
-          <div class="flex items-start gap-4">
-            <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
-            <div class="flex-1">
-              <div class="font-semibold" id="leftName">-</div>
-              <div class="text-xs text-zinc-400" id="leftState">-</div>
-              <div class="mt-2 bar"><i id="leftHP" style="width:0%"></i></div>
-              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="leftItems" class="mono">-</span></div>
-              <div class="grid grid-cols-4 gap-2 mt-3">
-                <div class="stat">공격 <b id="leftAtk">-</b></div>
-                <div class="stat">방어 <b id="leftDef">-</b></div>
-                <div class="stat">민첩 <b id="leftAgi">-</b></div>
-                <div class="stat">행운 <b id="leftLuk">-</b></div>
-              </div>
-            </div>
-            <div class="text-right text-pyxis-200 font-semibold" id="leftPct">0%</div>
-          </div>
-        </div>
+        <h3>죽음을 먹는 자들</h3>
+        <div class="player-list" id="enemyList"></div>
       </div>
-    </section>
-
-    <!-- 중: 전투 모니터 + 응원 -->
-    <section class="flex flex-col gap-5">
-      <!-- 전투 모니터 -->
       <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">전투 모니터</h2>
-          <span class="pill mono">코드: <span id="battleCode">-</span></span>
-        </div>
-        <div class="card-body">
-          <div class="grid sm:grid-cols-3 gap-3">
-            <div>
-              <div class="text-xs text-zinc-400">단계</div>
-              <div class="font-semibold" id="phaseText">-</div>
-            </div>
-            <div>
-              <div class="text-xs text-zinc-400">턴 시간</div>
-              <div class="font-semibold" id="turnTime">-</div>
-            </div>
-            <div>
-              <div class="text-xs text-zinc-400">경과 시간</div>
-              <div class="font-semibold" id="elapsedTime">-</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 응원 메시지(고정 6개) -->
-      <div class="card">
-        <div class="card-header"><h2 class="card-title">응원 메시지</h2></div>
-        <div class="card-body">
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="cheerWrap">
-            <button class="btn" data-cheer="멋지다!">멋지다!</button>
-            <button class="btn" data-cheer="이겨라!">이겨라!</button>
-            <button class="btn" data-cheer="살아서 돌아와!">살아서 돌아와!</button>
-            <button class="btn" data-cheer="화이팅!">화이팅!</button>
-            <button class="btn" data-cheer="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
-            <button class="btn" data-cheer="힘내요!">힘내요!</button>
-          </div>
-          <p class="text-xs text-zinc-500 mt-2">관전자 응원은 서버에서 허용된 경우에만 전달됩니다.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 우: 죽음을 먹는 자들 -->
-    <section class="flex flex-col gap-5">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">죽음을 먹는 자들</h2>
-          <span class="pill">우측 진영</span>
-        </div>
-        <div class="card-body">
-          <div class="flex items-start gap-4">
-            <div class="w-14 h-14 rounded-full border border-zinc-700 bg-zinc-900"></div>
-            <div class="flex-1">
-              <div class="font-semibold" id="rightName">-</div>
-              <div class="text-xs text-zinc-400" id="rightState">-</div>
-              <div class="mt-2 bar"><i id="rightHP" style="width:0%"></i></div>
-              <div class="mt-2 text-xs text-zinc-400">아이템: <span id="rightItems" class="mono">-</span></div>
-              <div class="grid grid-cols-4 gap-2 mt-3">
-                <div class="stat">공격 <b id="rightAtk">-</b></div>
-                <div class="stat">방어 <b id="rightDef">-</b></div>
-                <div class="stat">민첩 <b id="rightAgi">-</b></div>
-                <div class="stat">행운 <b id="rightLuk">-</b></div>
-              </div>
-            </div>
-            <div class="text-right text-pyxis-200 font-semibold" id="rightPct">0%</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- 하단 로그 -->
-  <section class="max-w-7xl mx-auto px-4 pb-6">
-    <div class="card">
-      <div class="card-header"><h2 class="card-title">관전 로그</h2></div>
-      <div class="card-body">
-        <div id="specLog" class="bg-black/70 border border-zinc-800 rounded-xl h-48 overflow-auto p-3 mono text-xs"></div>
-        <div class="flex items-center gap-2 mt-3">
-          <button id="btnClearLog" class="btn">지우기</button>
-          <span class="text-xs text-zinc-500">표시만 지웁니다.</span>
+        <h3>응원</h3>
+        <div class="cheer-buttons">
+          <button class="cheer-btn" data-msg="멋지다!">멋지다!</button>
+          <button class="cheer-btn" data-msg="이겨라!">이겨라!</button>
+          <button class="cheer-btn" data-msg="살아서 돌아와!">살아서 돌아와!</button>
+          <button class="cheer-btn" data-msg="화이팅!">화이팅!</button>
+          <button class="cheer-btn" data-msg="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
+          <button class="cheer-btn" data-msg="힘내요!">힘내요!</button>
         </div>
       </div>
     </div>
-  </section>
 
-  <!-- 푸터 -->
-  <footer class="border-t border-zinc-800 glass">
-    <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-zinc-400 flex items-center justify-between">
-      <div>© PYXIS Battle System</div>
-      <div class="space-x-3">
-        <span class="border border-zinc-700 rounded px-1.5 py-0.5">?battle=CODE</span><span>URL 파라미터로 배틀 선택</span>
+    <!-- 중앙 -->
+    <div>
+      <div class="battlefield">
+        <img id="activeAvatar" class="active-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=default" alt="현재 전투자">
+        <div class="chat-box">
+          <div id="chatMessages" class="chat-messages"></div>
+        </div>
       </div>
     </div>
-  </footer>
 
-  <!-- 스크립트 -->
+    <!-- 우측: 아군 -->
+    <div>
+      <div class="card">
+        <h3>불사조 기사단</h3>
+        <div class="player-list" id="allyList"></div>
+      </div>
+      <div class="card">
+        <h3>전투 로그</h3>
+        <div id="battleLog" class="battle-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    // ========= API 엔드포인트 =========
-    const API = {
-      battle: (id) => `/api/battles/${id}`,
-      cheer:  (id) => `/api/battles/${id}/cheer`
-    };
+    const socket = io();
+    let spectatorName = "";
 
-    // ========= 유틸 =========
-    const $ = (s) => document.querySelector(s);
-    const logBox = $('#specLog');
-    let BATTLE_ID = null;
-    let REFRESH_TIMER = null;
+    const loginModal = document.getElementById("loginModal");
+    const spectatorLayout = document.getElementById("spectatorLayout");
+    const loginForm = document.getElementById("loginForm");
 
-    function addLog(msg, cls='') {
-      const el = document.createElement('div');
-      el.className = 'logline ' + cls;
-      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      logBox.appendChild(el);
-      logBox.scrollTop = logBox.scrollHeight;
+    const chatMessages = document.getElementById("chatMessages");
+    const battleLog = document.getElementById("battleLog");
+
+    loginForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const battleId = document.getElementById("battleId").value;
+      const otp = document.getElementById("otp").value;
+      spectatorName = document.getElementById("spectatorName").value;
+      socket.emit("spectator:join", { battleId, otp, name: spectatorName });
+    });
+
+    socket.on("spectator:join_ok", () => {
+      loginModal.classList.add("hidden");
+      spectatorLayout.classList.remove("hidden");
+      addLog("관전 시작!", "system");
+    });
+
+    function addChat(author, text) {
+      const div = document.createElement("div");
+      div.innerHTML = `<b style="color:var(--gold)">${author}:</b> ${text}`;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    async function jfetch(url, opt={}) {
-      const res = await fetch(url, {
-        headers: { 'Content-Type':'application/json', ...(opt.headers||{}) },
-        ...opt
+    function addLog(text, type="system") {
+      const div = document.createElement("div");
+      div.className = "log-entry log-" + type;
+      div.textContent = text;
+      battleLog.appendChild(div);
+      battleLog.scrollTop = battleLog.scrollHeight;
+    }
+
+    // 응원 버튼 이벤트
+    document.querySelectorAll(".cheer-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const msg = btn.dataset.msg;
+        socket.emit("spectator:cheer", { name: spectatorName, msg });
       });
-      let body = null;
-      try { body = await res.json(); } catch {}
-      if (!res.ok) throw new Error(`${res.status} ${body?.message || res.statusText}`);
-      return body ?? {};
-    }
-
-    function pct(n, d){ if(!d) return 0; return Math.max(0, Math.min(100, Math.round((n/d)*100))); }
-    function setBar(el, v){ el.style.width = `${v}%`; }
-
-    // ========= 렌더 =========
-    function fillSide(prefix, p) {
-      const name = p?.name ?? '-';
-      const hp = p?.hp ?? p?.HP ?? 0;
-      const max = p?.maxHp ?? p?.maxHP ?? 100;
-      const alive = (p?.alive !== false);
-      const state = p?.state ?? (alive ? '대기' : '사망');
-      const percent = pct(hp, max);
-
-      $('#'+prefix+'Name').textContent  = name;
-      $('#'+prefix+'State').textContent = `${hp}/${max} HP · ${alive ? '생존' : '사망'} · ${state}`;
-      setBar($('#'+prefix+'HP'), percent);
-      $('#'+prefix+'Pct').textContent = `${percent}%`;
-
-      // 스탯
-      $('#'+prefix+'Atk').textContent = p?.atk ?? p?.attack ?? '-';
-      $('#'+prefix+'Def').textContent = p?.def ?? p?.defense ?? '-';
-      $('#'+prefix+'Agi').textContent = p?.agi ?? p?.agility ?? '-';
-      $('#'+prefix+'Luk').textContent = p?.luk ?? p?.luck ?? '-';
-
-      // 아이템: 배열[{name,count}] 또는 문자열/객체 지원
-      let itemsText = '-';
-      if (Array.isArray(p?.items) && p.items.length) {
-        itemsText = p.items.map(it => {
-          const n = it?.name ?? it?.id ?? '아이템';
-          const c = it?.count ?? 1;
-        return `${n}${c>1?`:${c}`:''}`;
-        }).join(', ');
-      } else if (typeof p?.items === 'string') {
-        itemsText = p.items;
-      } else if (p?.items && typeof p.items === 'object') {
-        itemsText = Object.entries(p.items).map(([k,v]) => `${k}:${v}`).join(', ');
-      }
-      $('#'+prefix+'Items').textContent = itemsText || '-';
-    }
-
-    function renderBattle(data){
-      const phase = data?.phase ?? '-';
-      const turnTeam = data?.turnTeam ?? '-';
-      const winner = data?.winner ?? '미정';
-
-      $('#badgePhase').textContent = phase;
-      $('#badgeTurnTeam').textContent = turnTeam;
-      $('#badgeWinner').textContent = winner;
-
-      $('#topPhase').textContent = phase;
-      $('#topTurnTeam').textContent = (turnTeam && turnTeam !== '-') ? `${turnTeam} 턴` : '-';
-      $('#topTimer').textContent = (data?.teamTimerSec!=null) ? `${data.teamTimerSec}s` : '-';
-      $('#topWinner').textContent = winner;
-
-      $('#phaseText').textContent = phase;
-      $('#turnTime').textContent = (data?.turnTimeSec!=null) ? `${data.turnTimeSec}s` : '-';
-      $('#elapsedTime').textContent = data?.elapsed ?? '-';
-
-      const plist = Array.isArray(data?.players) ? data.players : [];
-      const left  = plist.find(p => p.team === 'phoenix') || plist[0];
-      const right = plist.find(p => p.team === 'eaters')  || plist.find((p,i)=>i===1);
-
-      fillSide('left',  left || {});
-      fillSide('right', right || {});
-    }
-
-    // ========= 데이터 로드 =========
-    async function loadBattleOnce(){
-      if (!BATTLE_ID) return;
-      try {
-        const data = await jfetch(API.battle(BATTLE_ID));
-        renderBattle(data);
-        addLog('전투 상태 갱신','ok');
-      } catch (e) {
-        addLog('전투 상태 실패: ' + e.message,'err');
-      }
-    }
-
-    function startAutoRefresh(ms=3000){
-      if (REFRESH_TIMER) clearInterval(REFRESH_TIMER);
-      REFRESH_TIMER = setInterval(loadBattleOnce, ms);
-    }
-
-    // ========= 응원 =========
-    async function sendCheer(text) {
-      if (!BATTLE_ID) return addLog('배틀 코드가 없습니다','err');
-      try {
-        const res = await fetch(API.cheer(BATTLE_ID), {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ text })
-        });
-        if (res.ok) addLog(`응원 전송: ${text}`,'ok');
-        else addLog(`응원 전송(서버 미응답): ${text}`);
-      } catch {
-        addLog(`응원 전송(로컬 기록): ${text}`);
-      }
-    }
-
-    // ========= 바인딩 & 초기화 =========
-    $('#btnConnect').addEventListener('click', () => {
-      loadBattleOnce();
-      startAutoRefresh(3000);
     });
-    document.querySelectorAll('[data-cheer]').forEach(b => {
-      b.addEventListener('click', () => sendCheer(b.dataset.cheer));
-    });
-    $('#btnClearLog').addEventListener('click', () => { logBox.innerHTML = ''; });
 
-    (function init(){
-      const q = new URLSearchParams(location.search);
-      BATTLE_ID = q.get('battle') || '';
-      $('#battleCode').textContent = BATTLE_ID || '-';
-      if (BATTLE_ID) {
-        addLog(`배틀 코드 인식: ${BATTLE_ID}`,'ok');
-        loadBattleOnce();
-        startAutoRefresh(3000);
-      } else {
-        addLog('URL에 ?battle=코드를 지정하면 상태를 불러옵니다.');
-      }
-    })();
+    // 서버에서 오는 메시지 표시
+    socket.on("battle:chat", ({ name, msg }) => addChat(name, msg));
+    socket.on("battle:log", ({ msg, type }) => addLog(msg, type));
   </script>
 </body>
 </html>
