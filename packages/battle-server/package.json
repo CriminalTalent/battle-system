@@ -1,28 +1,28 @@
 {
   "name": "@battle-system/server",
-  "version": "3.0.0",
-  "description": "PYXIS Battle System - 실시간 턴제 전투 시스템 (완전 개선 버전)",
+  "version": "3.0.1",
+  "description": "PYXIS Battle System - 실시간 턴제 전투 시스템 (개선 패키지 설정)",
   "private": true,
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "NODE_ENV=production node index.js",
-    "dev": "NODE_ENV=development nodemon index.js --watch src --watch public",
-    "debug": "NODE_ENV=development node --inspect index.js",
-    "pm2:start": "NODE_ENV=production pm2 start ecosystem.config.js",
-    "pm2:dev": "NODE_ENV=development pm2 start ecosystem.config.js --watch",
+    "start": "cross-env NODE_ENV=production node index.js",
+    "dev": "cross-env NODE_ENV=development nodemon index.js --watch src --watch public",
+    "debug": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js",
+    "pm2:start": "cross-env NODE_ENV=production pm2 start ecosystem.config.js --only battle-system --env production",
+    "pm2:dev": "cross-env NODE_ENV=development pm2 start ecosystem.config.js --only battle-system --env development --watch",
     "pm2:reload": "pm2 reload battle-system --update-env",
     "pm2:stop": "pm2 stop battle-system",
     "pm2:logs": "pm2 logs battle-system --lines 50",
     "pm2:monit": "pm2 monit",
     "pm2:save": "pm2 save",
-    "setup": "mkdir -p logs uploads public/uploads",
-    "health": "curl -fsS http://127.0.0.1:${PORT:-3001}/api/health || echo 'Server not running'",
-    "test": "echo 'Tests not implemented yet' && exit 0",
-    "lint": "eslint src/ --ext .js",
-    "lint:fix": "eslint src/ --ext .js --fix",
-    "clean": "rm -rf uploads/* logs/* node_modules/.cache",
-    "backup": "node scripts/backup.js",
-    "restore": "node scripts/restore.js"
+    "setup": "node -e \"const fs=require('fs');['logs','uploads','public/uploads'].forEach(d=>fs.mkdirSync(d,{recursive:true}))\"",
+    "health": "curl -fsS http://127.0.0.1:${PORT:-3001}/api/health || echo \"Server not running\"",
+    "test": "echo \"Tests not implemented yet\" && exit 0",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write .",
+    "clean": "rimraf uploads/** logs/** node_modules/.cache"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -31,9 +31,12 @@
     "socket.io": "^4.7.4"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3",
+    "cross-env": "^7.0.3",
     "eslint": "^8.57.0",
-    "prettier": "^3.2.5"
+    "nodemon": "^3.0.3",
+    "pm2": "^5.3.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -54,7 +57,7 @@
     "korean",
     "game",
     "pyxis"
-  ],
+  },
   "author": {
     "name": "CriminalTalent",
     "email": "rntjdrud1@gmail.com",
@@ -65,28 +68,52 @@
     "url": "https://github.com/CriminalTalent/battle-system/issues"
   },
   "homepage": "https://github.com/CriminalTalent/battle-system#readme",
+  "packageManager": "npm@10",
   "nodemonConfig": {
-    "ignore": ["uploads/*", "logs/*", "public/uploads/*"],
+    "ignore": [
+      "uploads/*",
+      "logs/*",
+      "public/uploads/*"
+    ],
     "env": {
       "NODE_ENV": "development"
     },
-    "delay": 1000
+    "delay": "1000"
   },
   "eslintConfig": {
     "env": {
       "node": true,
       "es2021": true
     },
-    "extends": ["eslint:recommended"],
+    "extends": [
+      "eslint:recommended"
+    ],
     "parserOptions": {
-      "ecmaVersion": 12,
-      "sourceType": "module"
+      "ecmaVersion": 2023,
+      "sourceType": "script"
     },
+    "ignorePatterns": [
+      "public/",
+      "logs/",
+      "uploads/"
+    ],
     "rules": {
       "no-console": "off",
-      "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+      "no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_"
+        }
+      ],
       "prefer-const": "error",
       "no-var": "error"
     }
+  },
+  "prettier": {
+    "singleQuote": true,
+    "semi": true,
+    "trailingComma": "es5",
+    "printWidth": 100,
+    "arrowParens": "always"
   }
 }
