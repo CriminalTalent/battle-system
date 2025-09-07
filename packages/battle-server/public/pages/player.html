@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PYXIS - 전투 참여</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wg...00&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     /* ===== Base ===== */
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,17 +31,20 @@
         linear-gradient(180deg, #05080d 0%, #070b12 50%, #080c13 100%);
       color:var(--text); font-family:Inter, system-ui, -apple-system, sans-serif; min-height:100vh;
     }
-    .container{ max-width:1200px; margin:0 auto; padding:24px; }
+    .container{max-width:1600px; margin:0 auto; padding:16px;}
+    .header{text-align:center; margin-bottom:12px;}
+    .brand{font-family:'Cinzel', serif; font-size:32px; letter-spacing:.08em;
+      background:linear-gradient(135deg,var(--gold),#fff,var(--gold-2)); -webkit-background-clip:text; color:transparent}
+    .sub{color:var(--muted); font-size:12px; letter-spacing:.18em; margin-top:4px}
+
     .grid{ display:grid; grid-template-columns: 320px 1fr 360px; gap:16px; align-items:stretch }
     @media (max-width: 1024px){ .grid{ grid-template-columns:1fr; } }
 
-    /* Panels */
     .panel{ background:linear-gradient(180deg, rgba(15,20,27,.75), rgba(15,20,27,.55)); border:var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden }
     .panel .head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:var(--border-sub); background:linear-gradient(180deg, rgba(212,183,126,.08), rgba(212,183,126,.02)); }
     .panel .head h3{ font-family:Cinzel, serif; letter-spacing:.5px; font-weight:700; font-size:15px }
     .panel .body{ padding:14px; }
 
-    /* Auth Modal */
     .modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); backdrop-filter: blur(4px); }
     .modal-card{ width:min(560px, calc(100% - 32px)); background:var(--panel); border:var(--border); border-radius:16px; box-shadow:var(--shadow); overflow:hidden }
     .modal-head{ padding:16px 18px; border-bottom:var(--border-sub); background:linear-gradient(180deg, rgba(212,183,126,.10), rgba(212,183,126,.02)); font-family:Cinzel, serif; font-weight:700 }
@@ -54,22 +57,18 @@
     .btn-primary{ background:linear-gradient(180deg, rgba(212,183,126,.35), rgba(212,183,126,.12)); }
     .hint{ color:var(--muted); font-size:12px }
 
-    /* Player card */
     .stat{ display:flex; gap:6px; align-items:center; font-size:12px; color:var(--dim) }
     .stat b{ color:var(--text); font-weight:600 }
     .hpbar{ height:8px; background:#0b0f15; border:1px solid rgba(212,183,126,.35); border-radius:999px; overflow:hidden }
     .hpbar > i{ display:block; height:100%; width:40%; background:linear-gradient(90deg, #27ae60, #e6d3aa) }
 
-    /* Roster */
     .list{ display:flex; flex-direction:column; gap:10px }
     .item{ padding:12px; border:1px solid rgba(212,183,126,.25); border-radius:10px; background:linear-gradient(180deg, rgba(17,22,29,.75), rgba(17,22,29,.55)); }
     .item .name{ font-weight:700 }
 
-    /* Actions */
     .actions{ display:grid; grid-template-columns: repeat(5,1fr); gap:8px }
     .actions .btn{ min-height:42px }
 
-    /* Log/Chat */
     .scroll{ height:320px; overflow:auto; border:1px solid rgba(212,183,126,.25); border-radius:8px; padding:10px; background:#0c1016 }
     .logline{ font-size:12px; color:var(--dim); padding:3px 0 }
     .logline .tag{ color:var(--gold-2); }
@@ -78,6 +77,13 @@
   </style>
 </head>
 <body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">PYXIS</div>
+      <div class="sub">PLAYER VIEW</div>
+    </div>
+  </div>
+
   <div id="authModal" class="modal">
     <div class="modal-card">
       <div class="modal-head">전투 참여</div>
@@ -88,11 +94,11 @@
         </div>
         <div class="row">
           <label>OTP</label>
-          <input type="text" id="authOtp" placeholder="관리자가 발급한 OTP" />
+          <input type="text" id="otp" placeholder="관리자가 발급한 OTP" />
         </div>
         <div class="row">
           <label>이름</label>
-          <input type="text" id="authName" placeholder="예: 카시엘" />
+          <input type="text" id="pname" placeholder="예: 카시엘" />
         </div>
         <div style="display:flex; gap:8px; align-items:center">
           <button id="btnAuth" class="btn btn-primary">입장</button>
@@ -104,7 +110,6 @@
 
   <div class="container" id="mainUI" style="display:none">
     <div class="grid">
-      <!-- Left: Me -->
       <div class="panel">
         <div class="head"><h3>나</h3></div>
         <div class="body">
@@ -115,7 +120,6 @@
         </div>
       </div>
 
-      <!-- Middle: Battle area -->
       <div class="panel">
         <div class="head"><h3>전투</h3><div class="hint" id="turnStatus">대기중</div></div>
         <div class="body">
@@ -131,7 +135,6 @@
         </div>
       </div>
 
-      <!-- Right: Roster -->
       <div class="panel">
         <div class="head"><h3>로스터</h3></div>
         <div class="body">
@@ -143,21 +146,26 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+  (function(){
+    "use strict";
+    const $ = (s)=>document.querySelector(s);
+
+    const authModal = $("#authModal");
+    const mainUI    = $("#mainUI");
+    const otpEl     = $("#otp");
+    const nameEl    = $("#pname");
+    const authMsg   = $("#authMsg");
+    const btnAuth   = $("#btnAuth");
+
+    const battleId  = new URLSearchParams(location.search).get("battle");
+
+    // State
     let socket;
     let me = null;
     let players = [];
     let myTeamKey = null;
-    let battleId = (new URL(location.href)).searchParams.get("battle") || "";
 
     // UI refs
-    const authModal = document.getElementById("authModal");
-    const mainUI   = document.getElementById("mainUI");
-    const authMsg  = document.getElementById("authMsg");
-    const otpEl    = document.getElementById("authOtp");
-    const nameEl   = document.getElementById("authName");
-    const battleEl = document.getElementById("authBattleId");
-    const btnAuth  = document.getElementById("btnAuth");
-
     const playerNameEl = document.getElementById("playerName");
     const playerTeamEl = document.getElementById("playerTeam");
     const playerHpEl   = document.getElementById("playerHp");
@@ -224,89 +232,70 @@
       if(socket) socket.disconnect();
       socket = io();
 
-      // 인증 버튼
+      // 입장 버튼
       btnAuth.addEventListener("click", ()=>{
-        battleId = (battleEl.value || "").trim();
         const otp  = (otpEl.value || "").trim();
         const name = (nameEl.value || "").trim();
-        if(!battleId || !otp || !name){ authMsg.textContent="battle/OTP/이름을 입력하세요."; return; }
+        let id     = (document.getElementById("authBattleId").value || "").trim() || battleId;
+        if(!id || !otp || !name){ authMsg.textContent="battle/OTP/이름을 입력하세요."; return; }
 
-        // 구버전 서버 호환
-        socket.emit("player:auth", { battleId, otp, name });
-        // 신버전 서버 호환 (통합 join)
-        socket.emit("joinBattle", { battleId, role: "player", otp, playerId: name });
+        // 구버전
+        socket.emit("player:auth", { battleId:id, otp, name });
+        // 신버전
+        try { socket.emit("joinBattle", { battleId:id, role:"player", otp, playerId: name }); } catch(e){}
       });
 
-      // 인증 성공 (구버전)
+      // 인증 성공(구버전)
       socket.on("auth:success", ({ player, roster, battle, firstTurnName })=>{
         me = player;
         players = roster || [];
-        myTeamKey = me.team; // 'phoenix' | 'eaters' or 'A'/'B'
+        myTeamKey = me.team;
         renderAll(battle);
         renderRoster();
         setTurn(battle?.turn?.current, battle?.turn?.currentName || firstTurnName);
         authModal.style.display = "none";
         mainUI.style.display = "block";
+        addLog("관전에… 아니, 전투 참여 인증 완료.", "system");
+      });
+
+      // 인증 성공(신버전)
+      socket.on("joinSuccess", ({ state, role, playerId })=>{
+        if(role && role !== "player") return;
+        const battle = state || {};
+        players = battle.players || [];
+        me = players.find(p=>p.id===playerId || p.name===playerId) || me;
+        myTeamKey = (me?.team === "A") ? "phoenix" : (me?.team === "B" ? "eaters" : me?.team);
+        renderAll(battle);
+        renderRoster();
+        setTurn(battle?.turn?.current, battle?.turn?.currentName);
+        authModal.style.display = "none";
+        mainUI.style.display = "block";
         addLog("전투 참여 인증 완료.", "system");
       });
 
-      // 인증 성공 (신버전 joinBattle → joinSuccess)
-      socket.on("joinSuccess", ({ state, role, playerId })=>{
-        try{
-          if(role !== "player") return;
-          const battle = state || {};
-          players = battle.players || [];
-          me = players.find(p=>p.id === playerId || p.name === playerId) || null;
-          myTeamKey = (me?.team === "A") ? "phoenix" : (me?.team === "B" ? "eaters" : me?.team);
-          renderAll(battle);
-          renderRoster();
-          setTurn(battle?.turn?.current, battle?.turn?.currentName);
-          authModal.style.display = "none";
-          mainUI.style.display = "block";
-          addLog("전투 참여 인증 완료.", "system");
-        }catch(e){
-          authMsg.textContent = "인증 처리 중 오류";
-        }
-      });
-
-      // 인증 실패
+      // 실패
       socket.on("auth:fail", (d)=>{ authMsg.textContent = d?.reason || "인증 실패"; });
 
-      // 전투 상태 갱신
-      socket.on("battle:update", (battle)=>{
-        if(!battle) return;
-        renderAll(battle);
-      });
+      // 상태/로그
+      socket.on("battle:update", (battle)=>{ if(battle){ renderAll(battle); } });
+      socket.on("battleUpdate",  (battle)=>{ if(battle){ renderAll(battle); } });
+      socket.on("state:full",    (battle)=>{ if(battle){ renderAll(battle); } });
+      socket.on("state:delta",   ()=>{ /* 필요시 getState 요청 */ });
+      socket.on("battle:log",    (msg)=>{ addLog(msg?.text || String(msg), msg?.tag); });
 
-      // 로그
-      socket.on("battle:log", (msg)=>{ addLog(msg?.text || String(msg), msg?.tag); });
-
-      // 내 HP 갱신
-      socket.on("player:update", (p)=>{
-        if(!me) return;
-        if(p?.id===me.id || p?.name===me.name){ me = p; renderMe(); }
-      });
-
-      // 턴 변경
-      socket.on("turn:update", ({ current, currentName })=>{
-        setTurn(current, currentName);
-      });
-
-      // 연결
-      socket.on("connect", ()=> addLog("서버 연결됨", "system"));
-      socket.on("disconnect", ()=> addLog("서버 연결 해제", "system"));
+      socket.on("connect",   ()=> addLog("서버 연결됨", "system"));
+      socket.on("disconnect",()=> addLog("서버 연결 해제", "system"));
     }
 
-    // 액션 (기존 이벤트명 유지)
+    // 액션 (이벤트명 유지)
     btnAttack.addEventListener("click", ()=>{ socket.emit("action:attack"); });
     btnDefend.addEventListener("click", ()=>{ socket.emit("action:defend"); });
     btnDodge .addEventListener("click", ()=>{ socket.emit("action:dodge"); });
     btnItem  .addEventListener("click", ()=>{ socket.emit("action:item");  });
     btnPass  .addEventListener("click", ()=>{ socket.emit("action:pass");  });
 
-    // 초기값 세팅
-    if(battleId) document.getElementById("authBattleId").value = battleId;
     connect();
+  })();
   </script>
 </body>
 </html>
