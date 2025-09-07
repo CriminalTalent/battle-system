@@ -184,7 +184,7 @@
         </div>
         <div class="row"><img id="avatarPreview" class="avatar" alt="preview" style="width:48px;height:48px;border-radius:8px;border:1px solid var(--border-bright);object-fit:cover"></div>
 
-        <label style="margin-top:6px">스탯 (0~5, 전송 시 0은 서버에서 1로 보정)</label>
+        <label style="margin-top:6px">스탯 (0~5)</label>
         <div class="row">
           <input id="sAtk" class="input" type="number" min="0" max="5" value="0" placeholder="공격">
           <input id="sDef" class="input" type="number" min="0" max="5" value="0" placeholder="방어">
@@ -237,15 +237,41 @@
     let adminToken = null;
     let socket = null;
 
+    // 초기: URL 파라미터로 기존 배틀 자동 합류
+    document.addEventListener("DOMContentLoaded", () => {
+      const q = new URLSearchParams(location.search);
+      const qb = q.get("battle");
+      const qt = q.get("token");
+      if (qb && qt) {
+        battleId = qb; adminToken = qt;
+        $("#idPill").textContent = "ID: " + battleId;
+        connectSocket();
+        refreshState().then(generateLinks);
+      }
+    });
+
     // 버튼
     $("#btnCreate").addEventListener("click", createBattle);
     $("#btnStart").addEventListener("click", ()=>postAdmin("/start"));
     $("#btnPause").addEventListener("click", ()=>postAdmin("/pause"));
     $("#btnEnd").addEventListener("click",   ()=>postAdmin("/end"));
-    $("#btnApplyMode").addEventListener("click", refreshState);
+
+    // 모드 적용: 새 전투를 생성할 때만 의미 있으니 안내
+    $("#btnApplyMode").addEventListener("click", ()=>{
+      if(!battleId){ alert("아직 전투가 없습니다. '전투 생성'을 눌러 선택된 모드로 생성하세요."); return; }
+      alert("이미 생성된 전투의 모드는 변경되지 않습니다. 새 전투를 생성해 주세요.");
+    });
+
     $("#btnAdd").addEventListener("click", addPlayer);
     $("#btnChat").addEventListener("click", sendChat);
     $("#btnUploadAvatar").addEventListener("click", uploadAvatar);
+
+    // URL 입력 시 프리뷰 즉시 반영
+    $("#pAvatarUrl").addEventListener("input", ()=>{
+      const url = $("#pAvatarUrl").value.trim();
+      const pv = $("#avatarPreview");
+      pv.src = url || "";
+    });
 
     // 복사
     $$("[data-copy]").forEach(btn=>{
@@ -253,9 +279,10 @@
         const sel = btn.getAttribute("data-copy");
         const inp = document.querySelector(sel);
         if(!inp) return;
-        inp.select?.();
-        navigator.clipboard.writeText(inp.value || "");
-        btn.classList.add("shimmer"); setTimeout(()=>btn.classList.remove("shimmer"), 700);
+        const text = inp.value || "";
+        navigator.clipboard.writeText(text);
+        btn.classList.add("shimmer");
+        setTimeout(()=>btn.classList.remove("shimmer"), 700);
       });
     });
 
@@ -273,6 +300,7 @@
     }
 
     function connectSocket(){
+      if(!battleId || !adminToken) return;
       if(socket) socket.disconnect();
       socket = io();
       socket.on("connect", ()=>{
@@ -280,6 +308,7 @@
         socket.emit("admin:requestState", { battleId });
       });
       socket.on("authSuccess", ({ battle })=>{ if(battle) renderAll(battle); });
+      socket.on("authError", ()=>{ addLogLine("system","인증 실패(토큰/배틀 확인)"); });
       socket.on("battleUpdate", (battle)=> renderAll(battle));
       socket.on("chatMessage", ({ sender, message })=> addLogLine("chat", sender + ": " + String(message||"").slice(0,500)));
     }
@@ -311,6 +340,7 @@
 
     async function addPlayer(){
       if(!battleId) return;
+      const btn = $("#btnAdd");
       const name = $("#pName").value.trim();
       if(!name){ alert("플레이어 이름을 입력하세요."); return; }
       const team = $("#pTeam").value;
@@ -332,21 +362,31 @@
 
       const avatar = $("#pAvatarUrl").value.trim();
 
+      btn.disabled = true;
       const r = await fetch(`/api/battles/${encodeURIComponent(battleId)}/players`, {
         method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ name, team, stats, items, avatar })
-      });
-      if(r.ok){ await refreshState(); }
+      }).catch(()=>null);
+      btn.disabled = false;
+
+      if(r && r.ok){
+        $("#pName").value = "";
+        await refreshState();
+        addLogLine("system", `플레이어 추가: ${name}`);
+      }else{
+        alert("플레이어 추가 실패");
+      }
     }
 
     async function uploadAvatar(){
-      if(!battleId){ alert("전투를 먼저 생성하세요."); return; }
+      if(!battleId){ alert("전투를 먼저 생성하거나 배틀에 연결하세요."); return; }
       const f = $("#pAvatarFile").files?.[0];
       if(!f){ $("#uploadMsg").textContent = "이미지 파일을 선택하세요."; return; }
       const fd = new FormData();
       fd.append("avatar", f);
-      const r = await fetch(`/api/battles/${encodeURIComponent(battleId)}/avatar`, { method:"POST", body: fd });
-      if(!r.ok){ $("#uploadMsg").textContent = "업로드 실패"; return; }
+      $("#uploadMsg").textContent = "업로드 중...";
+      const r = await fetch(`/api/battles/${encodeURIComponent(battleId)}/avatar`, { method:"POST", body: fd }).catch(()=>null);
+      if(!r || !r.ok){ $("#uploadMsg").textContent = "업로드 실패"; return; }
       const d = await r.json().catch(()=>({}));
       const url = d?.url || "";
       $("#pAvatarUrl").value = url;
@@ -375,8 +415,8 @@
         log.appendChild(el);
       });
 
-      const a = b.players.filter(p=>p.team==="phoenix");
-      const e = b.players.filter(p=>p.team==="eaters");
+      const a = (b.players||[]).filter(p=>p.team==="phoenix");
+      const e = (b.players||[]).filter(p=>p.team==="eaters");
       renderTeam("#teamA", "#teamACount", a);
       renderTeam("#teamB", "#teamBCount", e);
     }
