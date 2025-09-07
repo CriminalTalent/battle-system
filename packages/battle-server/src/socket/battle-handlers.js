@@ -7,6 +7,7 @@
  * - 상세한 로깅 및 모니터링
  * - 향상된 에러 처리 및 복구
  * - broadcastManager와의 통합 브로드캐스트
+ * - [NEW] 관전자 입장/응원 이벤트 통합
  * ────────────────────────────────────────────────────────────────────
  */
 
@@ -605,6 +606,12 @@ function attach(io) {
   }
 
   io.on('connection', (socket) => {
+    // 소켓 메타(관전자 연결수 집계를 위해)
+    socket.data = socket.data || {};
+    socket.data.role = null;
+    socket.data.battleId = null;
+    socket.data.spectatorName = null;
+
     // battle 생성
     socket.on('battle:create', ({ battleId, mode = '2v2', players = [] } = {}, ack) => {
       try {
@@ -619,7 +626,13 @@ function attach(io) {
         // 스냅샷 & 알림
         const snap = battle.getSnapshot();
         broadcastManager.broadcastBattleEvent(battleId, 'created', { snapshot: snap });
-        ack?.({ ok: true, snapshot: snap, added: added.map(p => p.id), adminOtp: battle.adminOtp, spectatorOtp: battle.spectatorOtp });
+        ack?.({
+          ok: true,
+          snapshot: snap,
+          added: added.map(p => p.id),
+          adminOtp: battle.adminOtp,
+          spectatorOtp: battle.spectatorOtp
+        });
       } catch (e) {
         ack?.({ ok: false, error: e.message });
       }
@@ -704,6 +717,79 @@ function attach(io) {
       } catch (e) {
         ack?.({ ok: false, error: e.message });
       }
+    });
+
+    // ─────────────────────────────────────────
+    // [NEW] 관전자 입장
+    // ─────────────────────────────────────────
+    socket.on('spectator:join', ({ battleId, otp, name } = {}, ack) => {
+      try {
+        const battle = getBattle(battleId);
+        if (!battle) throw new Error('전투를 찾을 수 없습니다');
+        if (otp !== battle.spectatorOtp) throw new Error('잘못된 OTP입니다');
+
+        const safeName = sanitizeString(name, SECURITY_LIMITS.MAX_NAME_LENGTH) || '관전자';
+        socket.join(battleId);
+        socket.data.role = 'spectator';
+        socket.data.battleId = battleId;
+        socket.data.spectatorName = safeName;
+
+        battle.stats.spectatorCount++;
+        if (battle.stats.spectatorCount > battle.stats.maxSpectators) {
+          battle.stats.maxSpectators = battle.stats.spectatorCount;
+        }
+
+        ack?.({ ok: true, snapshot: battle.getSnapshot() });
+        socket.emit('spectator:join_ok', { ok: true });
+
+        // 로그 및 브로드캐스트
+        const entry = battle.addLog('system', `${safeName}님이 관전에 참여했습니다.`);
+        broadcastManager.broadcastBattleEvent(battleId, 'log', { entry });
+        broadcastManager.broadcastBattleEvent(battleId, 'spectator_joined', { name: safeName });
+
+      } catch (e) {
+        ack?.({ ok: false, error: e.message });
+      }
+    });
+
+    // ─────────────────────────────────────────
+    // [NEW] 관전자 응원
+    // ─────────────────────────────────────────
+    socket.on('spectator:cheer', ({ battleId, name, msg } = {}, ack) => {
+      try {
+        const battle = getBattle(battleId);
+        if (!battle) throw new Error('전투를 찾을 수 없습니다');
+
+        const safeName = sanitizeString(name, SECURITY_LIMITS.MAX_NAME_LENGTH) || '관전자';
+        const safeMsg = sanitizeString(msg, 100);
+        if (!safeMsg) throw new Error('응원 메시지를 입력하세요');
+
+        // 로그 기록 (cheer 타입)
+        const entry = battle.addLog('cheer', `${safeName}: ${safeMsg}`);
+
+        // 채팅 + 로그 브로드캐스트
+        broadcastManager.broadcastBattleEvent(battleId, 'chat', { name: safeName, msg: safeMsg, role: 'spectator' });
+        broadcastManager.broadcastBattleEvent(battleId, 'log', { entry });
+
+        ack?.({ ok: true });
+      } catch (e) {
+        ack?.({ ok: false, error: e.message });
+      }
+    });
+
+    // ─────────────────────────────────────────
+    // 연결 해제 처리 (관전자 카운트 다운)
+    // ─────────────────────────────────────────
+    socket.on('disconnect', () => {
+      try {
+        const { role, battleId } = socket.data || {};
+        if (!battleId || role !== 'spectator') return;
+        const battle = getBattle(battleId);
+        if (!battle) return;
+        if (battle.stats.spectatorCount > 0) {
+          battle.stats.spectatorCount--;
+        }
+      } catch (_) {}
     });
   });
 
