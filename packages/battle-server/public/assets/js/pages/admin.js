@@ -1,14 +1,13 @@
 // admin (2).js
 (() => {
-  // ===== Utils =====
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  // ===== Utilities =====
+  const $  = (s, r=document) => r.querySelector(s);
   const qp = new URLSearchParams(location.search);
 
   const UI = {
     logArea: null,
     init() { this.logArea = $('#logArea'); },
-    log(msg, cls = '') {
+    log(msg, cls='') {
       if (!this.logArea) return;
       const el = document.createElement('div');
       el.className = 'logline ' + cls;
@@ -25,56 +24,62 @@
     }
   };
 
-  async function jfetch(url, opt = {}) {
-    const res = await fetch(url, { headers: { 'Content-Type':'application/json', ...(opt.headers||{}) }, ...opt });
+  async function jfetch(url, opt={}) {
+    const res = await fetch(url, { headers:{'Content-Type':'application/json', ...(opt.headers||{})}, ...opt });
     let body = null;
     try { body = await res.json(); } catch {}
     if (!res.ok) throw new Error(`${res.status} ${body?.message || body?.error || res.statusText}`);
     return body ?? {};
   }
 
-  // ===== API =====
+  // ===== API endpoints (REST) =====
   const API = {
     health:       '/api/health',
     battleCreate: '/api/battles',
     battleGet:    (id) => `/api/battles/${id}`,
-    players:      (id) => `/api/battles/${id}/players`,
-    otpCreate:    '/api/admin/otp',
-    otpList:      '/api/admin/otp/list',
-    otpCleanup:   '/api/admin/otp/cleanup',
     battleStart:  (id) => `/api/battles/${id}/start`,
     battlePause:  (id) => `/api/battles/${id}/pause`,
     battleResume: (id) => `/api/battles/${id}/resume`,
     battleEnd:    (id) => `/api/battles/${id}/end`,
     battleReset:  (id) => `/api/battles/${id}/reset`,
+
+    // 필요 시 관리자용 OTP 발급/조회 (서버 구현과 맞춰 사용)
+    otpCreate:    '/api/admin/otp',
+    otpList:      '/api/admin/otp/list',
+    otpCleanup:   '/api/admin/otp/cleanup',
   };
 
-  // ===== 링크 생성 (/play, /watch 기준) =====
+  // ===== Link builders =====
   function setLinks() {
-    const base = $('#baseUrl')?.value?.replace(/\/+$/, '') || location.origin;
+    const base = $('#baseUrl')?.value?.replace(/\/+$/,'') || location.origin;
     const bid  = $('#battleId')?.value?.trim() || '';
     const q    = bid ? `?battle=${encodeURIComponent(bid)}` : '';
+
+    // 표준 경로 가정: /player, /spectator (라우팅은 프로젝트 환경에 맞게 서빙)
     const admin = `${base}/admin${q}`;
-    const play  = `${base}/play${q}`;     // README 기준: /play (플레이어)
-    const spec  = `${base}/watch${q}`;    // README 기준: /watch (관전자)
+    const play  = `${base}/player${q}`;
+    const spec  = `${base}/spectator${q}`;
+
     if ($('#linkAdmin'))     $('#linkAdmin').textContent = admin;
     if ($('#linkPlayer'))    $('#linkPlayer').textContent = play;
     if ($('#linkSpectator')) $('#linkSpectator').textContent = spec;
-    return { admin, play, spec, bid, base };
+
+    return { base, bid, admin, play, spec };
   }
 
-  // 플레이어별 OTP 포함 링크 만들기 (선택)
-  function makePlayerLink(base, battleId, name, otp) {
-    const qp = new URLSearchParams({ battle: battleId });
-    if (otp)  qp.set('otp', otp);
-    if (name) qp.set('name', name);
-    return `${base}/play?${qp.toString()}`;
+  // per-player deep link: /player?battle=..&playerId=..&otp=..
+  function makePlayerDeepLink(base, battleId, playerId, playerToken) {
+    const p = new URLSearchParams({ battle: battleId, playerId });
+    if (playerToken) p.set('otp', playerToken);
+    return `${base}/player?${p.toString()}`;
   }
 
-  function makeSpectatorLink(base, battleId, otp) {
-    const qp = new URLSearchParams({ battle: battleId });
-    if (otp) qp.set('otp', otp);
-    return `${base}/watch?${qp.toString()}`;
+  // spectator deep link: /spectator?battle=..&otp=..&name=..
+  function makeSpectatorDeepLink(base, battleId, spectatorOtp, nickname='') {
+    const p = new URLSearchParams({ battle: battleId });
+    if (spectatorOtp) p.set('otp', spectatorOtp);
+    if (nickname)     p.set('name', nickname);
+    return `${base}/spectator?${p.toString()}`;
   }
 
   // ===== Health =====
@@ -89,92 +94,48 @@
     }
   }
 
-  // ===== State render (레이아웃/디자인 미변경) =====
-  function renderState(_state) {}
-
-  async function refreshState(){
-    const bid = $('#battleId')?.value?.trim();
-    if (!bid) return;
-    try {
-      const s = await jfetch(API.battleGet(bid));
-      renderState(s);
-    } catch(e){
-      UI.log('상태 조회 실패: '+e.message,'err');
-    }
-  }
-
-  // ===== 소켓 =====
+  // ===== Socket (선택) — 필요 시 관리자 소켓 합류 등 =====
   let socket = null;
-  function tryJoinSocket() {
-    if (!window.io) return;
-    if (socket) { try { socket.disconnect(); } catch(e){} socket = null; }
-    const bid = $('#battleId')?.value?.trim();
-    if (!bid) return;
+  function ensureSocket() {
+    if (socket) return socket;
+    if (!window.io) return null;
     // eslint-disable-next-line no-undef
-    socket = io('/', { transports:['websocket','polling'], auth:{ role:'admin', battleId: bid } });
-    socket.on('connect',   () => UI.log('소켓 연결됨','ok'));
-    socket.on('disconnect',(r) => UI.log(`소켓 해제: ${r}`,'err'));
-    socket.on('battle:update', (s) => renderState(s));
-    socket.on('battleUpdate',  (s) => renderState(s));
-    socket.on('state:full',    (s) => renderState(s));
-    socket.on('state:delta',   ()  => refreshState());
-    socket.on('log',           (m) => UI.log(typeof m === 'string' ? m : (m?.text || m?.msg || '')));
+    socket = io('/', { transports:['websocket','polling'] });
+    return socket;
   }
 
-  // ===== 전투 만들기/제어 =====
+  // ===== Battle lifecycle =====
   async function createBattle() {
-    const mode = $('#selMode')?.value || '1v1';
+    const mode = $('#selMode')?.value || '2v2';
     try {
-      const res = await jfetch(API.battleCreate, { method: 'POST', body: JSON.stringify({ mode }) });
+      const res = await jfetch(API.battleCreate, { method:'POST', body: JSON.stringify({ mode }) });
       const id = res?.battleId || res?.id || '';
       if (!id) throw new Error('서버가 battleId를 반환하지 않았습니다.');
-      $('#battleId').value = id;                // 생성 직후 자동 채움
-      setLinks();                               // 링크 즉시 갱신
+      // 생성 직후 자동 채움 + 링크 갱신 + 복사까지
+      $('#battleId').value = id;
+      const links = setLinks();
+      UI.copy(links.admin);
       $('#battleStatus') && ($('#battleStatus').textContent = '생성됨');
       UI.log(`배틀 생성: ${id} (${mode})`, 'ok');
-      tryJoinSocket();
     } catch (e) {
       UI.log('배틀 생성 실패: ' + e.message, 'err');
     }
   }
 
-  async function startBattle() { const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleStart(id), { method:'POST' }); $('#battleStatus')&&($('#battleStatus').textContent='진행중'); UI.log('배틀 시작','ok'); }catch(e){ UI.log('배틀 시작 실패: '+e.message,'err'); } }
-  async function pauseBattle() { const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battlePause(id), { method:'POST' }); UI.log('일시정지','ok'); }catch(e){ UI.log('일시정지 실패: '+e.message,'err'); } }
-  async function resumeBattle(){ const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleResume(id), { method:'POST' }); UI.log('재개','ok'); }catch(e){ UI.log('재개 실패: '+e.message,'err'); } }
-  async function endBattle()   { const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleEnd(id),   { method:'POST' }); $('#battleStatus')&&($('#battleStatus').textContent='종료'); UI.log('종료','ok'); }catch(e){ UI.log('종료 실패: '+e.message,'err'); } }
-  async function resetBattle() { const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleReset(id), { method:'POST' }); UI.log('리셋 완료','ok'); refreshState(); }catch(e){ UI.log('리셋 실패: '+e.message,'err'); } }
+  async function startBattle(){ const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleStart(id),{method:'POST'}); $('#battleStatus')&&($('#battleStatus').textContent='진행중'); UI.log('배틀 시작','ok'); }catch(e){ UI.log('배틀 시작 실패: '+e.message,'err'); } }
+  async function pauseBattle(){ const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battlePause(id),{method:'POST'}); UI.log('일시정지','ok'); }catch(e){ UI.log('일시정지 실패: '+e.message,'err'); } }
+  async function resumeBattle(){const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleResume(id),{method:'POST'}); UI.log('재개','ok'); }catch(e){ UI.log('재개 실패: '+e.message,'err'); } }
+  async function endBattle(){   const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleEnd(id),   {method:'POST'}); $('#battleStatus')&&($('#battleStatus').textContent='종료'); UI.log('종료','ok'); }catch(e){ UI.log('종료 실패: '+e.message,'err'); } }
+  async function resetBattle(){ const id=$('#battleId')?.value?.trim(); if(!id) return UI.log('배틀 ID가 비어있습니다','err'); try{ await jfetch(API.battleReset(id), {method:'POST'}); UI.log('리셋 완료','ok'); }catch(e){ UI.log('리셋 실패: '+e.message,'err'); } }
 
-  // ===== OTP/링크 관련 (선택) =====
-  async function createPlayerOtpAndLink() {
-    const bid  = $('#battleId')?.value?.trim();
-    const base = $('#baseUrl')?.value?.replace(/\/+$/, '') || location.origin;
-    const name = $('#playerNameForLink')?.value?.trim() || ''; // 관리자 UI에 입력칸이 있다고 가정
-    if (!bid)  return UI.log('배틀 ID가 비어있습니다','err');
-    if (!name) return UI.log('플레이어 이름을 입력하세요','err');
-    try {
-      // 서버에서 OTP 발급 (엔드포인트가 다르면 맞춰주세요)
-      const res = await jfetch(API.otpCreate, { method: 'POST', body: JSON.stringify({ battleId: bid, name }) });
-      const otp = res?.otp || res?.token || '';
-      const link = makePlayerLink(base, bid, name, otp);
-      $('#linkPlayer') && ($('#linkPlayer').textContent = link);
-      UI.copy(link);
-      UI.log(`플레이어 링크 생성: ${name}`, 'ok');
-    } catch (e) {
-      UI.log('플레이어 OTP/링크 생성 실패: ' + e.message, 'err');
-    }
-  }
-
+  // ===== Links UI actions =====
   function bindEvents() {
-    // URL 쿼리에 battle= 가 있으면 입력 자동 채움
+    // URL의 ?battle= 가 있으면 자동 채움
     const qBattle = qp.get('battle');
     if (qBattle && $('#battleId')) $('#battleId').value = qBattle;
 
     $('#baseUrl')?.addEventListener('input', setLinks);
-    $('#battleId')?.addEventListener('input', () => { setLinks(); tryJoinSocket(); });
-
-    $('#goAdmin')?.addEventListener('click', () => { const {admin} = setLinks(); window.open(admin, '_blank'); });
-    $('#goPlay')?.addEventListener('click',  () => { const {play}  = setLinks(); window.open(play,  '_blank'); });
-    $('#goSpectator')?.addEventListener('click', () => { const {spec} = setLinks(); window.open(spec, '_blank'); });
+    $('#battleId')?.addEventListener('input', setLinks);
 
     $('#btnCreate')?.addEventListener('click', createBattle);
     $('#btnStart') ?.addEventListener('click', startBattle);
@@ -183,18 +144,45 @@
     $('#btnEnd')   ?.addEventListener('click', endBattle);
     $('#btnReset') ?.addEventListener('click', resetBattle);
 
-    $('#btnCreatePlayerLink')?.addEventListener('click', createPlayerOtpAndLink); // 선택 기능
-    $('#btnCopyAdmin')    ?.addEventListener('click', () => { const {admin} = setLinks(); UI.copy(admin); });
-    $('#btnCopyPlayer')   ?.addEventListener('click', () => { const {play}  = setLinks(); UI.copy(play);  });
-    $('#btnCopySpectator')?.addEventListener('click', () => { const {spec}  = setLinks(); UI.copy(spec);  });
+    $('#goAdmin')     ?.addEventListener('click', ()=>{ const {admin}=setLinks(); window.open(admin,'_blank'); });
+    $('#goPlay')      ?.addEventListener('click', ()=>{ const {play} =setLinks(); window.open(play ,'_blank'); });
+    $('#goSpectator') ?.addEventListener('click', ()=>{ const {spec} =setLinks(); window.open(spec ,'_blank'); });
 
-    UI.init();
+    $('#btnCopyAdmin')    ?.addEventListener('click', ()=>{ const {admin}=setLinks(); UI.copy(admin); });
+    $('#btnCopyPlayer')   ?.addEventListener('click', ()=>{ const {play} =setLinks(); UI.copy(play ); });
+    $('#btnCopySpectator')?.addEventListener('click', ()=>{ const {spec} =setLinks(); UI.copy(spec ); });
+
+    // 선택: 개별 플레이어/관전자 딥링크 만들기 (관리자 UI에 입력칸이 있다면)
+    $('#btnBuildPlayerLink')?.addEventListener('click', ()=>{
+      const { base, bid } = setLinks();
+      const playerId = $('#playerIdForLink')?.value?.trim() || '';
+      const playerToken = $('#playerTokenForLink')?.value?.trim() || '';
+      if (!bid)       return UI.log('배틀 ID를 먼저 설정하세요','err');
+      if (!playerId)  return UI.log('playerId를 입력하세요','err');
+      if (!playerToken) return UI.log('플레이어 토큰(otp)을 입력하세요','err'); // 서버는 개별 플레이어 토큰 필요 :contentReference[oaicite:4]{index=4}
+      const link = makePlayerDeepLink(base, bid, playerId, playerToken);
+      $('#linkPlayer') && ($('#linkPlayer').textContent = link);
+      UI.copy(link);
+      UI.log('플레이어 링크 생성 완료','ok');
+    });
+
+    $('#btnBuildSpectatorLink')?.addEventListener('click', ()=>{
+      const { base, bid } = setLinks();
+      const otp  = $('#spectatorOtpForLink')?.value?.trim() || '';
+      const name = $('#spectatorNameForLink')?.value?.trim() || '';
+      if (!bid) return UI.log('배틀 ID를 먼저 설정하세요','err');
+      if (!otp) return UI.log('관전자 OTP를 입력하세요','err'); // 관전자도 OTP 필수 :contentReference[oaicite:5]{index=5}
+      const link = makeSpectatorDeepLink(base, bid, otp, name);
+      $('#linkSpectator') && ($('#linkSpectator').textContent = link);
+      UI.copy(link);
+      UI.log('관전자 링크 생성 완료','ok');
+    });
   }
 
-  window.addEventListener('DOMContentLoaded', () => {
+  window.addEventListener('DOMContentLoaded', ()=>{
     setLinks();
     bindEvents();
+    UI.init();
     refreshHealth();
-    tryJoinSocket();
   });
 })();
