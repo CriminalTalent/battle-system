@@ -94,11 +94,10 @@
   <div id="authModal" class="auth-modal">
     <div class="auth-box">
       <h2>전투 참여 인증</h2>
-      <input type="text" id="inputOtp" placeholder="OTP 입력" />
-      <input type="text" id="inputName" placeholder="플레이어 이름" />
+      <input type="text" id="inputOtp" placeholder="비밀번호 입력" />
+      <input type="text" id="inputName" placeholder="이름" />
       <button id="btnAuth">참여하기</button>
       <p id="authMsg" class="auth-msg"></p>
-      <p class="tip">※ 관전자 OTP로는 <b>/spectator</b> 페이지에서 입장하세요.</p>
     </div>
   </div>
 
@@ -136,7 +135,6 @@
             <button class="action-btn" data-action="dodge" disabled>회피</button>
             <button class="action-btn" data-action="pass" disabled>패스</button>
           </div>
-          <div class="tip" style="margin-top:6px;">※ 현재 서버 빌드에는 액션 이벤트가 비활성입니다. (추가 서버 핸들러 필요)</div>
         </div>
 
         <div class="card">
@@ -163,14 +161,13 @@
             <input type="text" id="chatInput" class="chat-input" placeholder="메시지 입력..."/>
             <button id="chatSend" class="chat-send">전송</button>
           </div>
-          <div class="tip" style="padding:6px;">운영자/다른 클라이언트 메시지는 로그 폴링으로도 수신됩니다.</div>
         </div>
       </section>
 
       <!-- 우측 -->
       <section>
         <div class="card">
-          <div class="card-header">적군 (죽음을 먹는 자)</div>
+          <div class="card-header">죽음을 먹는 자</div>
           <div id="enemyList"></div>
         </div>
         <div class="card">
@@ -219,17 +216,17 @@
       async function onAuth(){
         const otp  = (inputOtp.value||"").trim();
         const name = (inputName.value||"").trim();
-        if(!otp || !name){ authMsg.textContent = "OTP와 이름을 입력하세요."; return; }
+        if(!otp || !name){ authMsg.textContent = "비밀번호와 이름을 입력하세요."; return; }
 
         // 1) OTP 검증
         const v = await fetch(`/api/otp/${encodeURIComponent(otp)}`).then(r=>r.json()).catch(()=>({valid:false,error:"network"}));
-        if(!v.valid){ authMsg.textContent = "OTP가 유효하지 않거나 사용되었습니다."; return; }
+        if(!v.valid){ authMsg.textContent = "비밀번호가 유효하지 않거나 사용되었습니다."; return; }
         if(v.role !== "player"){
-          authMsg.textContent = "관전자 OTP입니다. /spectator 페이지에서 입장하세요.";
+          authMsg.textContent = "관전자 비밀번호입니다. /spectator 페이지에서 입장하세요.";
           return;
         }
         if(v.data?.battleId !== battleId){
-          authMsg.textContent = "이 OTP는 다른 전투용입니다."; 
+          authMsg.textContent = "이 비밀번호는 다른 전투용입니다."; 
           return;
         }
 
@@ -237,7 +234,7 @@
         const battle = await loadBattle();
         const p = (battle.players||[]).find(x => (x.name||"").trim().toLowerCase() === name.toLowerCase());
         if(!p){
-          authMsg.textContent = "관리자 페이지에서 동일 이름의 플레이어를 먼저 추가해야 합니다.";
+          authMsg.textContent = "관리자 페이지에서 동일 이름의 캐릭터 명을 먼저 추가해야 합니다.";
           return;
         }
 
