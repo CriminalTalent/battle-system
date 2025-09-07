@@ -3,38 +3,18 @@
 
 /**
  * PYXIS Battle Server – Unified (Express + Socket.IO)
- * - In-memory battle store (for demo/prototype)
- * - REST routes:
- *    POST   /api/battles                                   -> create battle
- *    GET    /api/battles/:id                                -> get battle
- *    POST   /api/battles/:id/players                        -> add player
- *    DELETE /api/battles/:id/players/:playerId              -> remove player
- *    POST   /api/admin/battles/:id/start                    -> start (or restart)
- *    POST   /api/admin/battles/:id/pause                    -> pause
- *    POST   /api/admin/battles/:id/end                      -> end
- *    POST   /api/admin/battles/:id/command                  -> admin command (heal_partial, damage)
- *    POST   /api/admin/battles/:id/links                    -> generate links (admin, player, spectator)
- *    POST   /api/admin/battles/:id/otp                      -> issue OTP(s) for player/spectator
- *    GET    /api/otp/:token                                 -> validate OTP
+ * - 기반: 사용자가 업로드한 통합형 엔트리(index.js)에 아래 기능을 추가/보강
+ *   1) 아바타 업로드 엔드포인트: POST /api/battles/:id/avatar
+ *   2) 정적 제공 경로: /uploads  (public/uploads 하위)
+ *   3) /api/health 헬스체크
  *
- * - Socket.IO events:
- *    adminAuth  -> {battleId, token}
- *    playerAuth -> {battleId, token, name?}
- *    admin:ping
- *    admin:requestState
- *    battle:start
- *    chatMessage -> {role:'admin'|'player', message, battleId}
- *    player:action -> {battleId, playerId, action}
- *    admin:generateLinks (optional fallback) -> ack {ok, adminUrl, playerUrl, spectatorUrl}
+ * - 기존 기능(전투 생성/조회, 플레이어 추가/삭제, 시작/일시정지/종료,
+ *   링크/OTP 발급, OTP 검증, 소켓 인증/상태/채팅/행동 등)은 동일 유지
  *
- * Pages:
- *   - /admin       -> public/pages/admin.html
- *   - /play        -> public/pages/player.html
- *   - /spectator   -> public/pages/spectator.html
- *
- * Notes:
- * - This file is self-contained and safe to drop in. Adjust the OTPManager require path if needed.
- * - PUBLIC_BASE_URL environment variable is used when building absolute URLs for links.
+ * - 페이지:
+ *   /admin      -> public/pages/admin.html
+ *   /play       -> public/pages/player.html   (이미 있는 경우)
+ *   /spectator  -> public/pages/spectator.html(이미 있는 경우)
  */
 
 const path = require("path");
@@ -44,9 +24,9 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const multer = require("multer");
 
-// Adjust the path to your OTPManager if different.
-// Example placements tried here: ./OTPManager.js or ./src/utils/OTPManager.js
+// OTPManager 경로 자동 탐색(업로드본과 동일 전략)
 let OTPManager;
 try {
   OTPManager = require("./OTPManager");
@@ -59,39 +39,35 @@ const otpManager = new OTPManager();
 // App setup
 // ----------------------------------------------------------------------------
 const PORT = Number(process.env.PORT || 3001);
-const PUBLIC_BASE_URL =
-  process.env.PUBLIC_BASE_URL ||
-  null; // if null, will be inferred from request scheme+host
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || null;
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST", "DELETE"] },
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST", "DELETE"] } });
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// 정적: /public
 app.use(
   "/",
   express.static(path.join(__dirname, "public"), {
     fallthrough: true,
     index: false,
-    setHeaders(res) {
-      res.setHeader("Cache-Control", "no-store");
-    },
+    setHeaders(res) { res.setHeader("Cache-Control", "no-store"); },
   })
 );
 
-// Shortcut page routes
-app.get("/admin", (_, res) =>
-  res.sendFile(path.join(__dirname, "public/pages/admin.html"))
-);
-app.get("/play", (_, res) =>
-  res.sendFile(path.join(__dirname, "public/pages/player.html"))
-);
-app.get("/spectator", (_, res) =>
-  res.sendFile(path.join(__dirname, "public/pages/spectator.html"))
-);
+// 정적: /uploads (아바타 저장 위치)
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads"), { maxAge: "7d" }));
+
+// 페이지 단축 라우트
+app.get("/admin", (_, res) => res.sendFile(path.join(__dirname, "public/pages/admin.html")));
+app.get("/play",  (_, res) => res.sendFile(path.join(__dirname, "public/pages/player.html")));
+app.get("/spectator", (_, res) => res.sendFile(path.join(__dirname, "public/pages/spectator.html")));
+
+// 헬스체크
+app.get("/api/health", (_req, res) => res.json({ ok: true, service: "battle-server", ts: Date.now() }));
 
 // ----------------------------------------------------------------------------
 // In-memory store (prototype)
@@ -99,22 +75,13 @@ app.get("/spectator", (_, res) =>
 const battles = new Map(); // id -> battle
 
 function makeId(n = 8) {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   let out = "";
   for (let i = 0; i < n; i++) out += chars[(Math.random() * chars.length) | 0];
   return out;
 }
-
-function nowTs() {
-  return Date.now();
-}
-
-function ensureBattle(id) {
-  const b = battles.get(id);
-  if (!b) return null;
-  return b;
-}
+function nowTs() { return Date.now(); }
+function ensureBattle(id) { return battles.get(id) || null; }
 
 function createBattle({ mode = "2v2" } = {}) {
   const id = makeId(10);
@@ -125,42 +92,27 @@ function createBattle({ mode = "2v2" } = {}) {
     createdAt: nowTs(),
     startedAt: null,
     endedAt: null,
-    // Basic turn state: current -> player id or name
     turn: { current: null, lastChange: null },
-    // Minimal admin token for auth simulation
     adminToken: makeId(16),
-    // Players
     players: [],
-    // Log lines
     log: [],
   };
   battles.set(id, battle);
   return battle;
 }
-
 function addLog(battle, type, message) {
   battle.log.push({ t: nowTs(), type, message });
-  // Limit log growth
   if (battle.log.length > 1000) battle.log.splice(0, battle.log.length - 1000);
 }
-
-function playerById(battle, playerId) {
-  return battle.players.find((p) => p.id === playerId);
-}
-
+function playerById(battle, playerId) { return battle.players.find((p) => p.id === playerId); }
 function teamKey(v) {
   const s = String(v || "").toLowerCase();
   if (["phoenix", "a", "team1"].includes(s)) return "phoenix";
-  if (["eaters", "b", "team2", "death", "deatheaters"].includes(s))
-    return "eaters";
+  if (["eaters", "b", "team2", "death", "deatheaters"].includes(s)) return "eaters";
   return "phoenix";
 }
-
 function toAbsBase(req) {
-  return (
-    PUBLIC_BASE_URL ||
-    `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "")
-  );
+  return (PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`.replace(/\/+$/, ""));
 }
 
 // ----------------------------------------------------------------------------
@@ -183,7 +135,7 @@ app.post("/api/battles/:id/players", (req, res) => {
   const battle = ensureBattle(req.params.id);
   if (!battle) return res.status(404).json({ error: "not_found" });
 
-  const { name, team, stats, items } = req.body || {};
+  const { name, team, stats, items, avatar } = req.body || {};
   if (!name) return res.status(400).json({ error: "invalid_name" });
 
   const p = {
@@ -191,12 +143,13 @@ app.post("/api/battles/:id/players", (req, res) => {
     name: String(name),
     team: teamKey(team),
     stats: {
-      atk: Number(stats?.atk || 3),
-      def: Number(stats?.def || 3),
-      agi: Number(stats?.agi || 3),
-      luk: Number(stats?.luk || 3),
+      atk: Number(stats?.atk ?? 3),
+      def: Number(stats?.def ?? 3),
+      agi: Number(stats?.agi ?? 3),
+      luk: Number(stats?.luk ?? 3),
     },
     items: Array.isArray(items) ? items.slice(0, 4) : [],
+    avatar: avatar || "",
     hp: 100,
     maxHp: 100,
   };
@@ -213,8 +166,7 @@ app.delete("/api/battles/:id/players/:playerId", (req, res) => {
   const pid = req.params.playerId;
   const before = battle.players.length;
   battle.players = battle.players.filter((p) => p.id !== pid);
-  if (battle.players.length === before)
-    return res.status(404).json({ error: "player_not_found" });
+  if (battle.players.length === before) return res.status(404).json({ error: "player_not_found" });
 
   addLog(battle, "system", `Player removed: ${pid}`);
   io.to(battle.id).emit("battleUpdate", battle);
@@ -232,12 +184,9 @@ app.post("/api/admin/battles/:id/start", (req, res) => {
   battle.startedAt = battle.startedAt || nowTs();
   addLog(battle, "system", "Battle started");
 
-  // First turn seed: choose first player by team agility sum vs other
   if (!battle.turn.current) {
     const sumAgi = (team) =>
-      battle.players
-        .filter((p) => p.team === team)
-        .reduce((acc, p) => acc + (Number(p.stats?.agi) || 0), 0);
+      battle.players.filter((p) => p.team === team).reduce((acc, p) => acc + (Number(p.stats?.agi) || 0), 0);
     const agiA = sumAgi("phoenix");
     const agiB = sumAgi("eaters");
     const firstTeam = agiA === agiB ? "phoenix" : agiA > agiB ? "phoenix" : "eaters";
@@ -274,8 +223,7 @@ app.post("/api/admin/battles/:id/command", (req, res) => {
   if (!battle) return res.status(404).json({ error: "not_found" });
 
   const { action, playerIds, value } = req.body || {};
-  if (!Array.isArray(playerIds) || !playerIds.length)
-    return res.status(400).json({ error: "invalid_players" });
+  if (!Array.isArray(playerIds) || !playerIds.length) return res.status(400).json({ error: "invalid_players" });
 
   const val = Math.max(0, Number(value) || 0);
 
@@ -305,25 +253,13 @@ app.post("/api/admin/battles/:id/links", (req, res) => {
   const base = toAbsBase(req);
   const id = battle.id;
 
-  // spectator OTP (multi-use with TTL), player needs per-user OTP
   const spectatorOtp = otpManager.generateOTP("spectator", { battleId: id });
 
-  const adminUrl = `${base}/admin?battle=${encodeURIComponent(
-    id
-  )}&token=${encodeURIComponent(battle.adminToken)}`;
-  const playerUrl = `${base}/play?battle=${encodeURIComponent(
-    id
-  )}&token={playerOtp}`;
-  const spectatorUrl = `${base}/spectator?battle=${encodeURIComponent(
-    id
-  )}&token=${encodeURIComponent(spectatorOtp)}`;
+  const adminUrl = `${base}/admin?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(battle.adminToken)}`;
+  const playerUrl = `${base}/play?battle=${encodeURIComponent(id)}&token={playerOtp}`;
+  const spectatorUrl = `${base}/spectator?battle=${encodeURIComponent(id)}&token=${encodeURIComponent(spectatorOtp)}`;
 
-  res.json({
-    admin: adminUrl,
-    player: playerUrl,
-    spectator: spectatorUrl,
-    links: { admin: adminUrl, player: playerUrl, spectator: spectatorUrl },
-  });
+  res.json({ admin: adminUrl, player: playerUrl, spectator: spectatorUrl, links: { admin: adminUrl, player: playerUrl, spectator: spectatorUrl } });
 });
 
 app.post("/api/admin/battles/:id/otp", (req, res) => {
@@ -331,8 +267,7 @@ app.post("/api/admin/battles/:id/otp", (req, res) => {
   if (!battle) return res.status(404).json({ error: "not_found" });
 
   const role = String(req.body?.role || "player").toLowerCase();
-  if (!["player", "spectator"].includes(role))
-    return res.status(400).json({ error: "invalid_role" });
+  if (!["player", "spectator"].includes(role)) return res.status(400).json({ error: "invalid_role" });
 
   const count = role === "player" ? Math.max(1, Math.min(100, Number(req.body?.count || 1))) : 1;
   const otps = [];
@@ -352,14 +287,47 @@ app.get("/api/otp/:token", (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
+// REST: Avatar upload (추가)
+// ----------------------------------------------------------------------------
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const battleId = req.params.id || "common";
+    const dest = path.join(__dirname, "public/uploads/avatars", battleId);
+    fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: function (req, file, cb) {
+    const ts = Date.now();
+    const ext = path.extname(file.originalname || "").toLowerCase() || ".png";
+    cb(null, "avatar_" + ts + ext);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: function (_req, file, cb) {
+    const ok = /image\/(png|jpeg|jpg|gif|webp)/i.test(file.mimetype);
+    cb(ok ? null : new Error("이미지 파일만 업로드 가능합니다."), ok);
+  },
+});
+
+// POST /api/battles/:id/avatar
+app.post("/api/battles/:id/avatar", upload.single("avatar"), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: "파일이 없습니다." });
+    const battleId = req.params.id;
+    const rel = `/uploads/avatars/${encodeURIComponent(battleId)}/${encodeURIComponent(req.file.filename)}`;
+    return res.json({ ok: true, url: rel });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ----------------------------------------------------------------------------
 // Socket.IO
 // ----------------------------------------------------------------------------
 io.on("connection", (socket) => {
   let scope = { role: null, battleId: null, playerId: null };
-
-  function safeBattle() {
-    return scope.battleId ? battles.get(scope.battleId) : null;
-  }
 
   socket.on("adminAuth", ({ battleId, token }) => {
     const b = battles.get(battleId);
@@ -373,43 +341,26 @@ io.on("connection", (socket) => {
   });
 
   socket.on("playerAuth", ({ battleId, token, name }) => {
-    // validate OTP
     const v = otpManager.validateOTP(token, { ip: socket.handshake.address });
     if (!v.valid || v.data?.battleId !== battleId || v.role !== "player") {
       socket.emit("authError", { error: "invalid_token" });
       return;
     }
     const b = battles.get(battleId);
-    if (!b) {
-      socket.emit("authError", { error: "battle_not_found" });
-      return;
-    }
+    if (!b) { socket.emit("authError", { error: "battle_not_found" }); return; }
 
-    // If name is present and not in roster, attach this token to that player, else attach to first unnamed
     let me =
-      (name &&
-        b.players.find(
-          (p) => p.name && p.name.toLowerCase() === String(name).toLowerCase()
-        )) ||
+      (name && b.players.find((p) => p.name && p.name.toLowerCase() === String(name).toLowerCase())) ||
       b.players.find((p) => !p._claimed);
 
     if (!me) {
-      // create a placeholder player
-      me = {
-        id: makeId(12),
-        name: name || "Player",
-        team: "phoenix",
-        stats: { atk: 3, def: 3, agi: 3, luk: 3 },
-        items: [],
-        hp: 100,
-        maxHp: 100,
-      };
+      me = { id: makeId(12), name: name || "Player", team: "phoenix", stats: { atk: 3, def: 3, agi: 3, luk: 3 }, items: [], hp: 100, maxHp: 100 };
       b.players.push(me);
       addLog(b, "system", `Player auto-added: ${me.name}`);
     }
 
     me._claimed = true;
-    me.token = token; // bind for client convenience
+    me.token = token;
 
     scope = { role: "player", battleId, playerId: me.id };
     socket.join(battleId);
@@ -425,9 +376,7 @@ io.on("connection", (socket) => {
     io.to(battleId).emit("battleUpdate", b);
   });
 
-  socket.on("admin:ping", () => {
-    socket.emit("pong", { t: Date.now() });
-  });
+  socket.on("admin:ping", () => { socket.emit("pong", { t: Date.now() }); });
 
   socket.on("admin:requestState", ({ battleId }) => {
     const b = battles.get(battleId);
@@ -456,17 +405,14 @@ io.on("connection", (socket) => {
     io.to(battleId).emit("chatMessage", { sender, message });
   });
 
-  // Minimal action handler: rotate turn and write log
   socket.on("player:action", ({ battleId, playerId, action }, ack) => {
     const b = battles.get(battleId);
     if (!b) return typeof ack === "function" && ack({ success: false });
-
     const me = playerById(b, playerId);
     if (!me) return typeof ack === "function" && ack({ success: false });
 
     addLog(b, "event", `${me.name} acted: ${action}`);
 
-    // naive turn rotation among same team then the other team
     const order = b.players.map((p) => p.id);
     const curIdx = order.indexOf(b.turn.current);
     const nextIdx = (curIdx + 1 + order.length) % order.length;
@@ -477,18 +423,11 @@ io.on("connection", (socket) => {
     typeof ack === "function" && ack({ success: true });
   });
 
-  // Optional socket fallback for link generation
   socket.on("admin:generateLinks", ({ battleId }, ack) => {
     const b = battles.get(battleId);
     if (!b) return typeof ack === "function" && ack({ ok: false, error: "not_found" });
 
-    const base =
-      PUBLIC_BASE_URL ||
-      (socket.handshake.headers.origin ||
-        "").replace(/\/+$/, "") ||
-      null;
-
-    // If we cannot infer base from env/origin, return relative links
+    const base = PUBLIC_BASE_URL || (socket.handshake.headers.origin || "").replace(/\/+$/, "") || null;
     const mk = (p) => (base ? `${base}${p}` : p);
 
     const spectatorOtp = otpManager.generateOTP("spectator", { battleId: b.id });
@@ -499,9 +438,7 @@ io.on("connection", (socket) => {
     typeof ack === "function" && ack({ ok: true, adminUrl, playerUrl, spectatorUrl });
   });
 
-  socket.on("disconnect", () => {
-    // no-op; could track presence
-  });
+  socket.on("disconnect", () => { /* no-op */ });
 });
 
 // ----------------------------------------------------------------------------
