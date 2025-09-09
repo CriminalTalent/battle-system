@@ -5,14 +5,14 @@
   <title>PYXIS 관리자</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- 공용/관리자 스타일 (기존 테마 유지) -->
+  <!-- 공용/관리자 스타일 -->
   <link rel="stylesheet" href="/assets/css/core.css" />
   <link rel="stylesheet" href="/assets/css/pyxis-unified.css" />
   <link rel="stylesheet" href="/assets/css/components.css" />
   <link rel="stylesheet" href="/assets/css/effects.css" />
   <link rel="stylesheet" href="/assets/css/admin.css" />
 
-  <!-- 드롭다운 가독성 강제(일부 브라우저 흰 배경 대응) -->
+  <!-- 드롭다운 가독성 강화 -->
   <style>
     .admin-page select.select{
       background-color: rgba(0,8,13,.95) !important;
@@ -39,7 +39,7 @@
 
   <main id="mainView" class="container admin-container" role="main">
     <div class="grid admin-grid">
-      <!-- 전투 제어 -->
+      <!-- 전투 제어 섹션 -->
       <section class="card" aria-labelledby="sec-control">
         <h2 id="sec-control" class="title">전투 제어</h2>
 
@@ -56,191 +56,222 @@
                 <option value="4v4">4v4</option>
               </select>
             </label>
-
-            <div class="form-field">
-              <span class="label">전투 생성</span>
-              <button id="btnCreateBattle" class="btn btn-primary w-100">전투 생성</button>
-            </div>
-
-            <label class="form-field">
-              <span class="label">전투 ID</span>
-              <input id="battleId" class="input" type="text" placeholder="생성 시 자동 표시" readonly />
-            </label>
+            <button id="btnCreateBattle" class="btn-primary compact" type="button">전투 생성</button>
+            <span id="battleId" class="battle-id" aria-live="polite">-</span>
           </div>
         </div>
 
-        <!-- 전투 진행 제어 -->
+        <!-- 전투 제어 버튼 -->
         <div class="section">
-          <div class="section-title">진행 제어</div>
+          <div class="section-title">제어</div>
           <div class="grid grid-4 compact">
-            <button id="btnStart" class="btn btn-success">시작</button>
-            <button id="btnPause" class="btn btn-warning">일시정지</button>
-            <button id="btnResume" class="btn btn-default">재개</button>
-            <button id="btnEnd" class="btn btn-danger">종료</button>
+            <button id="btnStart" class="btn-success compact" type="button">시작</button>
+            <button id="btnPause" class="btn-warning compact" type="button">일시정지</button>
+            <button id="btnResume" class="btn-info compact" type="button">재개</button>
+            <button id="btnEnd" class="btn-danger compact" type="button">종료</button>
           </div>
         </div>
 
-        <!-- 접속 링크 & 비밀번호 -->
+        <!-- 링크 생성 -->
         <div class="section">
-          <div class="section-title">접속 링크 & 비밀번호</div>
-
-          <div class="grid grid-3 compact">
-            <div class="form-field">
-              <span class="label">전투 참여자 비밀번호</span>
-              <div class="input-group">
-                <input id="playerOtp" class="input" type="text" placeholder="미발급" readonly />
-                <button id="btnGenPlayerOtp" class="btn btn-outline">발급</button>
-              </div>
-            </div>
-
-            <div class="form-field">
-              <span class="label">관전자 비밀번호</span>
-              <div class="input-group">
-                <input id="spectatorOtp" class="input" type="text" placeholder="미발급" readonly />
-                <button id="btnGenSpectatorOtp" class="btn btn-outline">발급</button>
-              </div>
-              <small class="hint">관전자 한도: <b id="spectatorCount">0</b> / <b id="spectatorCap">30</b></small>
-            </div>
-
-            <div class="form-field">
-              <span class="label">관리자 URL</span>
-              <div class="input-group">
-                <input id="adminUrl" class="input" type="text" placeholder="전투 생성 후 표시" readonly />
-                <button data-copy="#adminUrl" class="btn btn-outline btn-copy">복사</button>
-              </div>
-            </div>
+          <div class="section-title">링크 생성</div>
+          <div class="grid grid-2 compact">
+            <button id="btnGenPlayerOtp" class="btn-secondary compact" type="button">플레이어별 링크 생성</button>
+            <button id="btnGenSpectatorOtp" class="btn-secondary compact" type="button">관전자 링크 생성</button>
           </div>
-
-          <div class="grid grid-2 compact links-wrap">
-            <div class="form-field">
-              <span class="label">전투 참여자 URL</span>
-              <div class="input-group">
-                <input id="playerUrl" class="input" type="text" placeholder="전투 생성/비밀번호 발급 후 표시" readonly />
-                <button data-copy="#playerUrl" class="btn btn-outline btn-copy">복사</button>
-              </div>
+          <div class="link-display">
+            <div class="link-item">
+              <span class="link-label">관리자 URL:</span>
+              <span id="adminUrl" class="link-value">-</span>
             </div>
-
-            <div class="form-field">
-              <span class="label">관전자 URL</span>
-              <div class="input-group">
-                <input id="spectatorUrl" class="input" type="text" placeholder="전투 생성/비밀번호 발급 후 표시" readonly />
-                <button data-copy="#spectatorUrl" class="btn btn-outline btn-copy">복사</button>
-              </div>
+            <div class="link-item">
+              <span class="link-label">플레이어 OTP:</span>
+              <span id="playerOtp" class="otp-value">-</span>
+            </div>
+            <div class="link-item">
+              <span class="link-label">관전자 OTP:</span>
+              <span id="spectatorOtp" class="otp-value">-</span>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 전투 참여자 관리 -->
+      <!-- 참여자 관리 섹션 -->
       <section class="card" aria-labelledby="sec-participants">
-        <h2 id="sec-participants" class="title">전투 참여자 관리</h2>
+        <h2 id="sec-participants" class="title">참여자 관리</h2>
 
-        <!-- 추가 폼 -->
+        <!-- 플레이어 추가 -->
         <div class="section">
-          <div class="section-title">전투 참여자 추가</div>
-
+          <div class="section-title">플레이어 추가</div>
           <div class="grid grid-2 compact">
             <label class="form-field">
               <span class="label">이름</span>
-              <input id="pName" class="input" type="text" placeholder="전투 참여자 이름" maxlength="50" />
+              <input id="pName" type="text" class="input" placeholder="플레이어 이름" maxlength="20" />
             </label>
-
             <label class="form-field">
               <span class="label">팀</span>
-              <select id="pTeam" class="select">
+              <select id="pTeam" class="select" aria-label="팀 선택">
                 <option value="phoenix">불사조 기사단</option>
-                <option value="death_eaters">죽음을 먹는 자들</option>
+                <option value="eaters">죽음을 먹는 자들</option>
               </select>
             </label>
           </div>
 
-          <!-- 이미지 업로드/미리보기 -->
-          <div class="grid grid-2 compact">
+          <!-- 아바타 업로드 -->
+          <div class="section-subsection">
+            <div class="section-subtitle">아바타 이미지</div>
             <label class="form-field">
-              <span class="label">이미지</span>
-              <input id="pAvatar" class="input" type="file" accept="image/*" />
-              <small class="hint">권장 비율 3:4 ~ 2:3, 세로형 이미지</small>
-            </label>
-            <div class="form-field">
-              <span class="label">미리보기</span>
-              <div style="display:flex;gap:12px;align-items:flex-start;">
-                <img id="pAvatarPreview" alt="이미지 미리보기" style="width:96px; height:144px; object-fit:cover; border-radius:10px; border:1px solid var(--border-gold); background:rgba(0,0,0,.25);" />
-                <div class="msg subtle" id="pAvatarMeta"></div>
+              <input id="pAvatar" type="file" class="input-file" accept="image/*" />
+              <div id="pAvatarPreview" class="avatar-preview" style="display:none;">
+                <img id="pAvatarImg" alt="아바타 미리보기" />
               </div>
+              <div id="pAvatarMeta" class="file-meta"></div>
+            </label>
+          </div>
+
+          <!-- 스탯 설정 -->
+          <div class="section-subsection">
+            <div class="section-subtitle">스탯 배분 (총 12포인트)</div>
+            <div class="grid grid-4 compact">
+              <label class="form-field">
+                <span class="label">공격</span>
+                <input id="sATK" type="number" class="input" min="1" max="10" value="3" />
+              </label>
+              <label class="form-field">
+                <span class="label">방어</span>
+                <input id="sDEF" type="number" class="input" min="1" max="10" value="3" />
+              </label>
+              <label class="form-field">
+                <span class="label">민첩</span>
+                <input id="sDEX" type="number" class="input" min="1" max="10" value="3" />
+              </label>
+              <label class="form-field">
+                <span class="label">행운</span>
+                <input id="sLUK" type="number" class="input" min="1" max="10" value="3" />
+              </label>
+            </div>
+            <label class="form-field">
+              <span class="label">체력</span>
+              <input id="pHP" type="number" class="input" min="10" max="200" value="100" />
+            </label>
+          </div>
+
+          <!-- 시작 아이템 -->
+          <div class="section-subsection">
+            <div class="section-subtitle">시작 아이템</div>
+            <div class="grid grid-3 compact">
+              <label class="form-field checkbox">
+                <input id="itemDeterni" type="checkbox" checked />
+                <span class="checkmark"></span>
+                <span class="label">디터니 (회복)</span>
+              </label>
+              <label class="form-field checkbox">
+                <input id="itemAtkBoost" type="checkbox" />
+                <span class="checkmark"></span>
+                <span class="label">공격 보정기</span>
+              </label>
+              <label class="form-field checkbox">
+                <input id="itemDefBoost" type="checkbox" />
+                <span class="checkmark"></span>
+                <span class="label">방어 보정기</span>
+              </label>
             </div>
           </div>
 
-          <!-- 스탯 -->
-          <div class="stats-grid">
-            <label class="form-field"><span class="label">공격</span><input id="sATK" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">방어</span><input id="sDEF" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">민첩</span><input id="sDEX" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">행운</span><input id="sLUK" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">체력</span><input id="pHP" class="input" type="number" min="1" max="999" value="100"></label>
-          </div>
-
-          <!-- 아이템 -->
-          <div class="grid grid-3 compact">
-            <label class="form-field">
-              <span class="label">디터니</span>
-              <input id="itemDeterni" class="input" type="number" min="0" max="99" value="0" />
-            </label>
-            <label class="form-field">
-              <span class="label">공격 보정기</span>
-              <input id="itemAtkBoost" class="input" type="number" min="0" max="99" value="0" />
-            </label>
-            <label class="form-field">
-              <span class="label">방어 보정기</span>
-              <input id="itemDefBoost" class="input" type="number" min="0" max="99" value="0" />
-            </label>
-          </div>
-
-          <div class="grid grid-2 compact">
-            <button id="btnAddPlayer" class="btn btn-primary">전투 참여자 추가</button>
-            <span id="addPlayerMsg" class="msg subtle" aria-live="polite"></span>
-          </div>
+          <button id="btnAddPlayer" class="btn-primary" type="button">플레이어 추가</button>
+          <div id="addPlayerMsg" class="message" style="display:none;"></div>
         </div>
 
-        <!-- 팀 구성 -->
+        <!-- 팀 로스터 -->
         <div class="section">
-          <div class="section-title">팀 구성</div>
-          <div class="grid grid-2 roster-wrap">
-            <div>
-              <h3 class="roster-title">불사조 기사단</h3>
-              <ul id="rosterPhoenix" class="roster"></ul>
+          <div class="section-title">팀 로스터</div>
+          <div class="grid grid-2">
+            <div class="team-roster">
+              <h3 class="team-title phoenix">불사조 기사단</h3>
+              <div id="rosterPhoenix" class="roster-list"></div>
             </div>
-            <div>
-              <h3 class="roster-title">죽음을 먹는 자들</h3>
-              <ul id="rosterDE" class="roster"></ul>
+            <div class="team-roster">
+              <h3 class="team-title eaters">죽음을 먹는 자들</h3>
+              <div id="rosterDE" class="roster-list"></div>
             </div>
           </div>
-          <small class="hint">각 항목의 삭제 버튼으로 전투 참여자를 즉시 제거할 수 있습니다.</small>
         </div>
       </section>
 
-      <!-- 로그 & 채팅 -->
-      <section class="card" aria-labelledby="sec-logchat">
-        <h2 id="sec-logchat" class="title">로그 & 채팅</h2>
+      <!-- 로그 & 채팅 섹션 -->
+      <section class="card chat-section" aria-labelledby="sec-logs">
+        <h2 id="sec-logs" class="title">로그 & 채팅</h2>
 
-        <div class="log-panel">
-          <div id="battleLog" class="log"></div>
+        <!-- 전투 로그 -->
+        <div class="section">
+          <div class="section-title">실시간 로그</div>
+          <div id="battleLog" class="log-container" role="log" aria-live="polite"></div>
         </div>
 
-        <div class="chat-panel">
-          <div id="chatView" class="chat-view"></div>
+        <!-- 채팅 -->
+        <div class="section">
+          <div class="section-title">관리자 채팅</div>
+          <div id="chatView" class="chat-container" role="log" aria-live="polite"></div>
           <div class="chat-input">
-            <input id="chatText" class="input" type="text" placeholder="메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)" />
-            <button id="btnChatSend" class="btn btn-default">전송</button>
+            <input id="chatText" type="text" class="input" placeholder="메시지를 입력하세요..." maxlength="200" />
+            <button id="btnChatSend" class="btn-primary compact" type="button">전송</button>
+          </div>
+        </div>
+
+        <!-- 현재 관전자 수 -->
+        <div class="section">
+          <div class="section-title">실시간 현황</div>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">관전자</span>
+              <span id="spectatorCount" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">플레이어</span>
+              <span id="playerCount" class="stat-value">0</span>
+            </div>
           </div>
         </div>
       </section>
     </div>
   </main>
 
-  <div id="toast" class="toast" aria-live="polite"></div>
+  <!-- 토스트 알림 -->
+  <div id="toast" class="toast" style="display:none;" role="alert" aria-live="assertive">
+    <div class="toast-content">
+      <span id="toastMsg" class="toast-message"></span>
+      <button class="toast-close" type="button" aria-label="닫기">&times;</button>
+    </div>
+  </div>
 
-  <!-- Socket.IO & Admin JS -->
+  <!-- 스크립트 로드 -->
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/fx.js"></script>
+  <script src="/assets/js/notify.js"></script>
+  <script src="/assets/js/socket-manager.js"></script>
   <script src="/assets/js/admin.js"></script>
+
+  <!-- 초기화 -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 효과 시스템 초기화
+      if (window.PyxisFX) {
+        window.PyxisFX.init();
+        window.PyxisFX.enhanceClicks();
+      }
+      
+      // 알림 시스템 초기화
+      if (window.PyxisNotify) {
+        window.PyxisNotify.init();
+      }
+
+      // 관리자 페이지 초기화
+      if (window.PyxisAdmin) {
+        window.PyxisAdmin.init();
+      }
+
+      console.log('PYXIS 관리자 페이지 로드 완료');
+    });
+  </script>
 </body>
 </html>
