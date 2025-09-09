@@ -2,7 +2,11 @@
 // - index.js 또는 socketHandlers.js에서 사용
 // - 상태키: waiting | active | paused | ended
 
-export function createBattle({ id, mode = "2v2", adminToken, spectatorOtp }) {
+function createBattle({ id, mode = "2v2", adminToken, spectatorOtp }) {
+  if (!id) {
+    throw new Error('Battle ID is required');
+  }
+
   return {
     id,
     mode,
@@ -22,45 +26,158 @@ export function createBattle({ id, mode = "2v2", adminToken, spectatorOtp }) {
   };
 }
 
-export function pushLog(battle, entry) {
-  battle.log.push({ ...entry, ts: Date.now() });
-  if (battle.log.length > 500) battle.log.splice(0, battle.log.length - 500);
+function pushLog(battle, entry) {
+  if (!battle || !entry) return;
+  
+  const logEntry = {
+    type: entry.type || 'system',
+    message: entry.message || '',
+    ts: Date.now(),
+    ...entry
+  };
+  
+  battle.log = battle.log || [];
+  battle.log.push(logEntry);
+  
+  // 로그 크기 제한 (메모리 관리)
+  if (battle.log.length > 500) {
+    battle.log.splice(0, battle.log.length - 500);
+  }
 }
 
-export function isBattleOver(battle) {
-  const aliveA = (battle.players || []).some(p => p.team === "phoenix" && p.hp > 0);
-  const aliveB = (battle.players || []).some(p => p.team === "eaters" && p.hp > 0);
-  return !(aliveA && aliveB) || battle.status === "ended";
+function isBattleOver(battle) {
+  if (!battle || !Array.isArray(battle.players)) {
+    return true;
+  }
+
+  if (battle.status === "ended") {
+    return true;
+  }
+
+  const aliveA = battle.players.some(p => 
+    p && p.team === "phoenix" && (p.hp || 0) > 0
+  );
+  const aliveB = battle.players.some(p => 
+    p && p.team === "eaters" && (p.hp || 0) > 0
+  );
+  
+  return !(aliveA && aliveB);
 }
 
-export function winnerByHpSum(battle) {
-  const sumA = (battle.players || []).filter(p => p.team === "phoenix").reduce((s, p) => s + (p.hp || 0), 0);
-  const sumB = (battle.players || []).filter(p => p.team === "eaters").reduce((s, p) => s + (p.hp || 0), 0);
+function winnerByHpSum(battle) {
+  if (!battle || !Array.isArray(battle.players)) {
+    return null;
+  }
+
+  const phoenixPlayers = battle.players.filter(p => p && p.team === "phoenix");
+  const eatersPlayers = battle.players.filter(p => p && p.team === "eaters");
+  
+  const sumA = phoenixPlayers.reduce((s, p) => s + (p?.hp || 0), 0);
+  const sumB = eatersPlayers.reduce((s, p) => s + (p?.hp || 0), 0);
+  
   if (sumA === sumB) return null;
   return sumA > sumB ? "phoenix" : "eaters";
 }
 
-export function startBattle(battle) {
-  if (battle.status === "active") return;
+function startBattle(battle) {
+  if (!battle || battle.status === "active") {
+    return;
+  }
+
   battle.status = "active";
   battle.startedAt = Date.now();
 
-  const sumA = (battle.players || []).filter(p => p.team === "phoenix").reduce((s, p) => s + (p.stats?.agi || 0), 0);
-  const sumB = (battle.players || []).filter(p => p.team === "eaters").reduce((s, p) => s + (p.stats?.agi || 0), 0);
+  if (!Array.isArray(battle.players)) {
+    battle.players = [];
+  }
+
+  const phoenixPlayers = battle.players.filter(p => p && p.team === "phoenix");
+  const eatersPlayers = battle.players.filter(p => p && p.team === "eaters");
+  
+  const sumA = phoenixPlayers.reduce((s, p) => s + (p?.stats?.agi || 0), 0);
+  const sumB = eatersPlayers.reduce((s, p) => s + (p?.stats?.agi || 0), 0);
+  
   battle.firstTeamKey = sumA >= sumB ? "phoenix" : "eaters";
   battle.current = battle.firstTeamKey;
   battle.turn = 1;
 }
 
-export function endBattle(battle) {
+function endBattle(battle) {
+  if (!battle) return;
+  
   battle.status = "ended";
   battle.endedAt = Date.now();
 }
 
-export function nextTurn(battle) {
+function nextTurn(battle) {
+  if (!battle) return;
+  
   battle.turn = (battle.turn || 0) + 1;
+  
   // 단순 팀 턴 교대 (팀 단위 턴 구조 기준)
-  if (battle.current === "phoenix") battle.current = "eaters";
-  else if (battle.current === "eaters") battle.current = "phoenix";
-  else battle.current = battle.firstTeamKey || "phoenix";
+  if (battle.current === "phoenix") {
+    battle.current = "eaters";
+  } else if (battle.current === "eaters") {
+    battle.current = "phoenix";
+  } else {
+    battle.current = battle.firstTeamKey || "phoenix";
+  }
 }
+
+function validateBattleState(battle) {
+  if (!battle) {
+    throw new Error('Battle object is required');
+  }
+  
+  if (!battle.id) {
+    throw new Error('Battle ID is required');
+  }
+  
+  if (!Array.isArray(battle.players)) {
+    battle.players = [];
+  }
+  
+  if (!Array.isArray(battle.log)) {
+    battle.log = [];
+  }
+  
+  if (!Array.isArray(battle.effects)) {
+    battle.effects = [];
+  }
+  
+  // 상태 정규화
+  const validStatuses = ["waiting", "active", "paused", "ended"];
+  if (!validStatuses.includes(battle.status)) {
+    battle.status = "waiting";
+  }
+  
+  return battle;
+}
+
+function cleanupBattle(battle) {
+  if (!battle) return;
+  
+  // 메모리 정리
+  if (Array.isArray(battle.log) && battle.log.length > 1000) {
+    battle.log = battle.log.slice(-500);
+  }
+  
+  if (Array.isArray(battle.effects)) {
+    // 만료된 효과 제거
+    battle.effects = battle.effects.filter(effect => 
+      effect && (effect.charges || 0) > 0
+    );
+  }
+}
+
+module.exports = {
+  createBattle,
+  pushLog,
+  isBattleOver,
+  winnerByHpSum,
+  startBattle,
+  endBattle,
+  nextTurn,
+  validateBattleState,
+  cleanupBattle
+};
