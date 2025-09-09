@@ -4,13 +4,14 @@
      emit:   adminAuth
      on:     auth:success, authError, battle:update, battle:chat, battle:log, spectator:count
    - REST:
-     POST /api/battles                 -> 전투 생성
+     POST /api/battles                 -> 전투 생성 (mode: 1v1|2v2|3v3|4v4, 기본 1v1)
      POST /api/battles/:id/start       -> 전투 시작
    - 고정된 DOM 아이디 규격에 의존:
      #authView, #mainView, #authBattle, #authToken, #btnAuth
      #statusPill, #rosterPhoenix, #rosterEaters, #timelineFeed
-     선택: #btnStart, #btnCreate, #adminUrl, #playerBase, #spectatorBase, #btnCopyAdmin, #btnCopyPlayer, #btnCopySpectator
-   - 코드 내 이모지 사용 금지
+     선택: #btnStart, #btnCreate, #battleMode, #adminUrl, #playerBase, #spectatorBase,
+           #btnCopyAdmin, #btnCopyPlayer, #btnCopySpectator, #spectatorCount, #chatInput, #btnChat, #chatMessages
+   - 코드 내 이모지 금지
 */
 
 (function () {
@@ -39,13 +40,19 @@
     // 선택 요소들 (있으면 사용)
     btnStart: $("#btnStart"),
     btnCreate: $("#btnCreate"),
+    battleMode: $("#battleMode"),
     adminUrl: $("#adminUrl"),
     playerBase: $("#playerBase"),
     spectatorBase: $("#spectatorBase"),
     btnCopyAdmin: $("#btnCopyAdmin"),
     btnCopyPlayer: $("#btnCopyPlayer"),
     btnCopySpectator: $("#btnCopySpectator"),
-    spectatorCount: $("#spectatorCount")
+    spectatorCount: $("#spectatorCount"),
+
+    // 채팅
+    chatInput: $("#chatInput"),
+    btnChat: $("#btnChat"),
+    chatMessages: $("#chatMessages")
   };
 
   // -----------------------------
@@ -140,6 +147,11 @@
     if (el.btnCopyAdmin) el.btnCopyAdmin.addEventListener("click", () => copyField(el.adminUrl));
     if (el.btnCopyPlayer) el.btnCopyPlayer.addEventListener("click", () => copyField(el.playerBase));
     if (el.btnCopySpectator) el.btnCopySpectator.addEventListener("click", () => copyField(el.spectatorBase));
+
+    if (el.btnChat) el.btnChat.addEventListener("click", sendChat);
+    if (el.chatInput) el.chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendChat();
+    });
   }
 
   // -----------------------------
@@ -160,10 +172,14 @@
   // 관리자 인증
   // -----------------------------
   function onAdminAuth() {
-    const battleId = (el.authBattle && el.authBattle.value || "").trim() || new URLSearchParams(location.search).get("battle");
-    const token = (el.authToken && el.authToken.value || "").trim() || new URLSearchParams(location.search).get("token");
+    const battleId =
+      (el.authBattle && el.authBattle.value || "").trim() ||
+      new URLSearchParams(location.search).get("battle");
+    const token =
+      (el.authToken && el.authToken.value || "").trim() ||
+      new URLSearchParams(location.search).get("token");
     if (!battleId || !token) {
-      alert("battle, token 을 입력하세요.");
+      alert("전투 ID와 비밀번호를 입력하세요.");
       return;
     }
     state.token = token;
@@ -171,19 +187,22 @@
   }
 
   // -----------------------------
-  // 전투 생성
+  // 전투 생성 (기본 1v1, 드롭다운으로 2v2/3v3/4v4 선택 가능)
   // -----------------------------
   async function onCreateBattle() {
     try {
+      const modeSel = el.battleMode;
+      const mode = (modeSel && modeSel.value) || "1v1";
+
       const res = await fetch("/api/battles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "2v2" })
+        body: JSON.stringify({ mode })
       });
       const json = await res.json();
 
       if (!json || !json.ok) {
-        alert("전투 생성 실패");
+        alert("전투 생성에 실패했습니다.");
         return;
       }
       // 링크 표출
@@ -198,10 +217,10 @@
         el.authToken.value = u.searchParams.get("token") || "";
       }
 
-      appendTimeline("system", "전투가 생성되었습니다.");
+      appendTimeline("system", `전투가 생성되었습니다. 모드: ${mode}`);
     } catch (e) {
       console.error(e);
-      alert("전투 생성 중 오류");
+      alert("전투 생성 중 오류가 발생했습니다.");
     }
   }
 
@@ -216,14 +235,25 @@
     try {
       const res = await fetch(`/api/battles/${state.battleId}/start`, { method: "POST" });
       if (!res.ok) {
-        alert("전투 시작 실패");
+        alert("전투 시작에 실패했습니다.");
         return;
       }
       appendTimeline("system", "전투를 시작했습니다.");
     } catch (e) {
       console.error(e);
-      alert("전투 시작 중 오류");
+      alert("전투 시작 중 오류가 발생했습니다.");
     }
+  }
+
+  // -----------------------------
+  // 채팅
+  // -----------------------------
+  function sendChat() {
+    const msg = (el.chatInput && el.chatInput.value || "").trim();
+    if (!msg) return;
+    // 채팅은 현재 관리자 클라이언트에서만 전송하므로 이름은 공백 처리
+    state.socket.emit("chat:send", { battleId: state.battleId, name: "관리자", message: msg });
+    el.chatInput.value = "";
   }
 
   // -----------------------------
@@ -275,7 +305,6 @@
       line.textContent = `[${ts.toLocaleTimeString()}] ${l.message || ""}`;
       el.timeline.appendChild(line);
     }
-    // 상한 보장
     capTimeline(200);
     el.timeline.scrollTop = el.timeline.scrollHeight;
   }
