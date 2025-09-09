@@ -3,126 +3,105 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PYXIS Admin</title>
+  <title>PYXIS 관리자</title>
 
-  <!-- CSS: core → unified → components → effects → admin -->
   <link rel="stylesheet" href="/assets/css/core.css">
   <link rel="stylesheet" href="/assets/css/pyxis-unified.css">
   <link rel="stylesheet" href="/assets/css/components.css">
   <link rel="stylesheet" href="/assets/css/effects.css">
   <link rel="stylesheet" href="/assets/css/admin.css">
-
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
   <header class="pyxis-header">
-    <div class="brand-wrap">
-      <h1 class="pyxis-logo"><span class="star-l">✦</span> PYXIS <span class="star-r">✦</span></h1>
-      <div class="header-right">
-        <span id="statusPill" class="status-pill waiting">전투 대기 중</span>
-      </div>
+    <h1 class="pyxis-logo"><span>✦</span> PYXIS <span>✦</span></h1>
+    <div class="header-right">
+      <span id="statusPill" class="status-pill waiting">전투 대기 중</span>
     </div>
-    <div class="stars" aria-hidden="true"></div>
+    <div class="stars"></div>
   </header>
 
-  <!-- 인증 뷰 -->
+  <!-- 인증 -->
   <section id="authView" class="container auth-view">
-    <div class="card auth-card">
-      <h2 class="title">관리자 접속</h2>
+    <div class="card">
+      <h2>관리자 접속</h2>
       <div class="grid grid-3">
         <label class="field">
-          <span class="label">Battle ID</span>
+          <span class="label">전투 ID</span>
           <input id="authBattle" type="text" placeholder="예: b_xxxxxxxx" />
         </label>
         <label class="field">
-          <span class="label">Admin Token</span>
-          <input id="authToken" type="text" placeholder="관리자 토큰" />
+          <span class="label">비밀번호</span>
+          <input id="authToken" type="password" placeholder="관리자 비밀번호" />
         </label>
       </div>
-      <div class="actions">
-        <button id="btnAuth" class="btn">접속</button>
-      </div>
-      <p class="hint">URL의 <code>?battle=...&token=...</code> 파라미터를 인식하여 자동 접속합니다.</p>
+      <div class="actions"><button id="btnAuth" class="btn">접속</button></div>
     </div>
   </section>
 
-  <!-- 메인 뷰 -->
+  <!-- 메인 -->
   <main id="mainView" class="container hidden">
     <div class="grid admin-grid">
-      <!-- 좌: 전투 제어 -->
+      <!-- 전투 제어 -->
       <section class="card">
         <h3 class="title">전투 제어</h3>
 
         <div class="section">
           <div class="section-title">전투 생성</div>
           <div class="grid grid-3">
-            <button id="btnCreate" class="btn">새 전투 생성(2v2)</button>
+            <label class="field">
+              <span class="label">전투 모드</span>
+              <select id="battleMode">
+                <option value="1v1" selected>1 대 1</option>
+                <option value="2v2">2 대 2</option>
+                <option value="3v3">3 대 3</option>
+                <option value="4v4">4 대 4</option>
+              </select>
+            </label>
+            <button id="btnCreate" class="btn">전투 생성</button>
           </div>
           <div class="links">
             <label class="field">
-              <span class="label">관리자 URL</span>
-              <div class="copy-row">
-                <input id="adminUrl" type="text" readonly />
-                <button id="btnCopyAdmin" class="btn btn-ghost">복사</button>
-              </div>
+              <span class="label">관리자 주소</span>
+              <div class="copy-row"><input id="adminUrl" readonly /><button id="btnCopyAdmin" class="btn btn-ghost">복사</button></div>
             </label>
             <label class="field">
-              <span class="label">플레이어 URL (Base)</span>
-              <div class="copy-row">
-                <input id="playerBase" type="text" readonly />
-                <button id="btnCopyPlayer" class="btn btn-ghost">복사</button>
-              </div>
+              <span class="label">전투 참여자 주소</span>
+              <div class="copy-row"><input id="playerBase" readonly /><button id="btnCopyPlayer" class="btn btn-ghost">복사</button></div>
             </label>
             <label class="field">
-              <span class="label">관전자 URL (Base)</span>
-              <div class="copy-row">
-                <input id="spectatorBase" type="text" readonly />
-                <button id="btnCopySpectator" class="btn btn-ghost">복사</button>
-              </div>
+              <span class="label">관전자 주소</span>
+              <div class="copy-row"><input id="spectatorBase" readonly /><button id="btnCopySpectator" class="btn btn-ghost">복사</button></div>
             </label>
           </div>
         </div>
 
         <div class="section">
           <div class="section-title">실행</div>
-          <div class="grid grid-3">
-            <button id="btnStart" class="btn">전투 시작</button>
-          </div>
+          <button id="btnStart" class="btn">전투 시작</button>
         </div>
       </section>
 
-      <!-- 중: 참여자 관리 -->
+      <!-- 참여자 관리 -->
       <section class="card">
         <h3 class="title">참여자 관리</h3>
-        <div class="section">
-          <div class="teams">
-            <div class="team">
-              <div class="team-title">불사조</div>
-              <div id="rosterPhoenix" class="roster"></div>
-            </div>
-            <div class="team">
-              <div class="team-title">죽음을 먹는 기사단</div>
-              <div id="rosterEaters" class="roster"></div>
-            </div>
+        <div class="teams">
+          <div class="team">
+            <div class="team-title">불사조 기사단</div>
+            <div id="rosterPhoenix" class="roster"></div>
+          </div>
+          <div class="team">
+            <div class="team-title">죽음을 먹는 자들</div>
+            <div id="rosterEaters" class="roster"></div>
           </div>
         </div>
       </section>
 
-      <!-- 우: 로그 & 채팅 -->
+      <!-- 로그 & 채팅 -->
       <section class="card">
         <h3 class="title">로그 & 채팅</h3>
-
-        <div class="stats-row">
-          <span class="pill">관전자: <span id="spectatorCount">0</span></span>
-        </div>
-
+        <span class="pill">관전자: <span id="spectatorCount">0</span></span>
         <div class="split">
-          <div class="timeline-wrap">
-            <div id="timelineFeed" class="timeline"></div>
-          </div>
+          <div id="timelineFeed" class="timeline"></div>
           <div class="chat-wrap">
             <div id="chatMessages" class="chat-messages"></div>
             <div class="chat-input">
@@ -135,16 +114,9 @@
     </div>
   </main>
 
-  <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
-
-  <!-- 공용 알림(선택) -->
   <script src="/assets/js/notifications.js"></script>
-
-  <!-- 효과 컨트롤러(추가) -->
   <script src="/assets/js/effects.js"></script>
-
-  <!-- 관리자 전용 -->
   <script src="/assets/js/admin.js"></script>
 </body>
 </html>
