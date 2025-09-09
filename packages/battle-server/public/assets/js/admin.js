@@ -1,103 +1,336 @@
-<script type="text/plain" data-filename="packages/battle-server/public/assets/js/admin.js">
-line.className = "tl-line";
-const t = document.createElement("span"); t.className = "tl-time"; t.textContent = `[${new Date().toLocaleTimeString()}]`;
-const tag = document.createElement("span"); tag.className = `tl-tag tl-${type}`; tag.textContent = type === "sys" ? "시스템" : (type === "admin" ? "관리" : "채팅");
-const body = document.createElement("span"); body.className = "tl-msg"; body.textContent = (name && type === "chat") ? `${name}: ${msg}` : msg;
-line.appendChild(t); line.appendChild(tag); line.appendChild(body);
-this.timeline.appendChild(line);
-const lines = this.timeline.querySelectorAll('.tl-line');
-if (lines.length > 200) {
-for (let i=0;i<lines.length-200;i++) lines[i].remove();
-}
-}
-};
+/* PYXIS Admin Client
+   - 상태키: waiting | active | paused | ended
+   - 소켓 이벤트:
+     emit:   adminAuth
+     on:     auth:success, authError, battle:update, battle:chat, battle:log, spectator:count
+   - REST:
+     POST /api/battles                 -> 전투 생성
+     POST /api/battles/:id/start       -> 전투 시작
+   - 고정된 DOM 아이디 규격에 의존:
+     #authView, #mainView, #authBattle, #authToken, #btnAuth
+     #statusPill, #rosterPhoenix, #rosterEaters, #timelineFeed
+     선택: #btnStart, #btnCreate, #adminUrl, #playerBase, #spectatorBase, #btnCopyAdmin, #btnCopyPlayer, #btnCopySpectator
+   - 코드 내 이모지 사용 금지
+*/
 
+(function () {
+  "use strict";
 
-const state = { socket:null, battleId:null, token:null };
+  // -----------------------------
+  // DOM helpers
+  // -----------------------------
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
+  // 필수 DOM
+  const el = {
+    viewAuth: $("#authView"),
+    viewMain: $("#mainView"),
 
-function connect(){
-const socket = window.io ? window.io(undefined, { transports:["websocket"], withCredentials:true }) : null;
-state.socket = socket; bind();
-}
+    authBattle: $("#authBattle"),
+    authToken: $("#authToken"),
+    btnAuth: $("#btnAuth"),
 
+    statusPill: $("#statusPill"),
+    rosterPhoenix: $("#rosterPhoenix"),
+    rosterEaters: $("#rosterEaters"),
+    timeline: $("#timelineFeed"),
 
-function bind(){
-const s = state.socket; if (!s) return;
-s.on("connect", ()=>{});
+    // 선택 요소들 (있으면 사용)
+    btnStart: $("#btnStart"),
+    btnCreate: $("#btnCreate"),
+    adminUrl: $("#adminUrl"),
+    playerBase: $("#playerBase"),
+    spectatorBase: $("#spectatorBase"),
+    btnCopyAdmin: $("#btnCopyAdmin"),
+    btnCopyPlayer: $("#btnCopyPlayer"),
+    btnCopySpectator: $("#btnCopySpectator"),
+    spectatorCount: $("#spectatorCount")
+  };
 
+  // -----------------------------
+  // 상태
+  // -----------------------------
+  const state = {
+    socket: null,
+    battleId: null,
+    token: null,
+    status: "waiting",
+    roster: [],
+    log: [],
+    spectatorCount: 0
+  };
 
-s.on("auth:success", (p)=>{
-if (p.role!=="admin") return; state.battleId=p.battleId; $("#authView").classList.add("hidden"); $("#mainView").classList.remove("hidden");
-});
+  // -----------------------------
+  // 초기화
+  // -----------------------------
+  window.addEventListener("DOMContentLoaded", () => {
+    connectSocket();
+    autoAuthFromURL();
+    bindUI();
+  });
 
+  function connectSocket() {
+    const url = (window.PyxisSocket && window.PyxisSocket.url) || undefined;
+    const socket = window.io ? window.io(url, { transports: ["websocket"], withCredentials: true }) : null;
+    if (!socket) {
+      alert("Socket.IO가 로드되지 않았습니다.");
+      return;
+    }
+    state.socket = socket;
 
-s.on("authError", (e)=>{ alert("인증 실패: "+(e?.error||"")); });
+    // 알림 모듈(Optional)
+    if (window.PyxisNotify && typeof window.PyxisNotify.init === "function") {
+      window.PyxisNotify.init({ socket });
+    }
 
+    bindSocketEvents();
+  }
 
-s.on("battle:update", (b)=>{
-renderStatus(b.status);
-renderRoster(b.players||[]);
-renderLogs(b.log||[]);
-});
+  function bindSocketEvents() {
+    const s = state.socket;
+    if (!s) return;
 
+    s.on("connect", () => { /* noop */ });
+    s.on("disconnect", () => { /* noop */ });
 
-s.on("battle:chat", ({ name, message })=> UI.append("chat", message, name));
-s.on("battle:log", ({ type, message })=> UI.append(type==="system"?"sys":"chat", message));
-}
+    s.on("authError", (e) => {
+      alert("인증 실패: " + (e && e.error ? e.error : ""));
+    });
 
+    s.on("auth:success", (p) => {
+      if (p.role !== "admin") return;
+      state.battleId = p.battleId;
+      showMain();
+      // 최초 상태 동기화를 위해 join
+      s.emit("join", { battleId: state.battleId });
+    });
 
-function adminAuth(){
-const params = new URLSearchParams(location.search);
-const battleId = params.get("battle") || $("#authBattle").value.trim();
-const token = params.get("token") || $("#authToken").value.trim();
-if (!battleId || !token) { alert("battle, token 입력"); return; }
-state.socket.emit("adminAuth", { battleId, token });
-}
+    s.on("battle:update", (b) => {
+      state.status = b.status || "waiting";
+      state.roster = Array.isArray(b.players) ? b.players : [];
+      state.log = Array.isArray(b.log) ? b.log : [];
+      renderAll();
+    });
 
+    s.on("battle:chat", ({ name, message }) => {
+      appendTimeline("chat", name ? `${name}: ${message}` : message);
+    });
 
-function startBattle(){ if (state.battleId) fetch(`/api/battles/${state.battleId}/start`, { method:"POST" }); }
+    s.on("battle:log", ({ type, message }) => {
+      appendTimeline(type || "system", message || "");
+    });
 
+    s.on("spectator:count", ({ count }) => {
+      state.spectatorCount = Number(count) || 0;
+      renderSpectatorCount();
+    });
+  }
 
-function renderStatus(st){
-const el = $("#statusPill");
-el.textContent = st === "active" ? "전투 진행 중" : (st === "ended" ? "전투 종료" : "전투 대기 중");
-el.className = `status-pill ${st}`;
-}
+  // -----------------------------
+  // UI 바인딩
+  // -----------------------------
+  function bindUI() {
+    if (el.btnAuth) el.btnAuth.addEventListener("click", onAdminAuth);
 
+    if (el.btnStart) el.btnStart.addEventListener("click", onStartBattle);
 
-function renderRoster(players){
-const a = $("#rosterPhoenix"); const b = $("#rosterEaters");
-a.innerHTML = ""; b.innerHTML = "";
-players.forEach(p=>{
-const card = document.createElement("div");
-card.className = "player-card";
-card.innerHTML = `<div class="pc-name">${p.name}</div><div class="pc-hp">HP ${p.hp}</div>`;
-(p.team === "phoenix" ? a : b).appendChild(card);
-});
-}
+    if (el.btnCreate) el.btnCreate.addEventListener("click", onCreateBattle);
 
+    if (el.btnCopyAdmin) el.btnCopyAdmin.addEventListener("click", () => copyField(el.adminUrl));
+    if (el.btnCopyPlayer) el.btnCopyPlayer.addEventListener("click", () => copyField(el.playerBase));
+    if (el.btnCopySpectator) el.btnCopySpectator.addEventListener("click", () => copyField(el.spectatorBase));
+  }
 
-function renderLogs(list){
-UI.timeline.innerHTML = "";
-list.forEach(l=>{
-const line = document.createElement("div");
-line.className = "tl-line";
-line.textContent = l.message;
-UI.timeline.appendChild(line);
-});
-const lines = UI.timeline.querySelectorAll('.tl-line');
-if (lines.length > 200) {
-for (let i=0;i<lines.length-200;i++) lines[i].remove();
-}
-}
+  // -----------------------------
+  // 자동 인증 URL 파라미터
+  // -----------------------------
+  function autoAuthFromURL() {
+    const params = new URLSearchParams(location.search);
+    const battle = params.get("battle");
+    const token = params.get("token");
 
+    if (battle) el.authBattle && (el.authBattle.value = battle);
+    if (token) el.authToken && (el.authToken.value = token);
 
-window.addEventListener("DOMContentLoaded", ()=>{
-UI.init();
-connect();
-$("#btnAuth").addEventListener("click", adminAuth);
-$("#btnStart").addEventListener("click", startBattle);
-});
+    if (battle && token) onAdminAuth();
+  }
+
+  // -----------------------------
+  // 관리자 인증
+  // -----------------------------
+  function onAdminAuth() {
+    const battleId = (el.authBattle && el.authBattle.value || "").trim() || new URLSearchParams(location.search).get("battle");
+    const token = (el.authToken && el.authToken.value || "").trim() || new URLSearchParams(location.search).get("token");
+    if (!battleId || !token) {
+      alert("battle, token 을 입력하세요.");
+      return;
+    }
+    state.token = token;
+    state.socket.emit("adminAuth", { battleId, token });
+  }
+
+  // -----------------------------
+  // 전투 생성
+  // -----------------------------
+  async function onCreateBattle() {
+    try {
+      const res = await fetch("/api/battles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "2v2" })
+      });
+      const json = await res.json();
+
+      if (!json || !json.ok) {
+        alert("전투 생성 실패");
+        return;
+      }
+      // 링크 표출
+      if (el.adminUrl) el.adminUrl.value = json.adminUrl || "";
+      if (el.playerBase) el.playerBase.value = json.playerBase || "";
+      if (el.spectatorBase) el.spectatorBase.value = json.spectatorBase || "";
+
+      // 인증창에 자동 채움
+      if (el.authBattle) el.authBattle.value = json.id || "";
+      if (el.authToken) {
+        const u = new URL(json.adminUrl, location.origin);
+        el.authToken.value = u.searchParams.get("token") || "";
+      }
+
+      appendTimeline("system", "전투가 생성되었습니다.");
+    } catch (e) {
+      console.error(e);
+      alert("전투 생성 중 오류");
+    }
+  }
+
+  // -----------------------------
+  // 전투 시작
+  // -----------------------------
+  async function onStartBattle() {
+    if (!state.battleId) {
+      alert("관리자 인증 후 사용할 수 있습니다.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/battles/${state.battleId}/start`, { method: "POST" });
+      if (!res.ok) {
+        alert("전투 시작 실패");
+        return;
+      }
+      appendTimeline("system", "전투를 시작했습니다.");
+    } catch (e) {
+      console.error(e);
+      alert("전투 시작 중 오류");
+    }
+  }
+
+  // -----------------------------
+  // 렌더링
+  // -----------------------------
+  function renderAll() {
+    renderStatus();
+    renderRoster();
+    renderTimelineFromState();
+    renderSpectatorCount();
+  }
+
+  function renderStatus() {
+    if (!el.statusPill) return;
+    const s = state.status;
+    el.statusPill.textContent =
+      s === "active" ? "전투 진행 중" :
+      s === "ended" ? "전투 종료" :
+      s === "paused" ? "전투 일시정지" :
+      "전투 대기 중";
+    el.statusPill.className = `status-pill ${s}`;
+  }
+
+  function renderRoster() {
+    if (!el.rosterPhoenix || !el.rosterEaters) return;
+    el.rosterPhoenix.innerHTML = "";
+    el.rosterEaters.innerHTML = "";
+
+    const roster = Array.isArray(state.roster) ? state.roster : [];
+    for (const p of roster) {
+      const card = document.createElement("div");
+      card.className = "player-card";
+      card.innerHTML = [
+        `<div class="pc-name">${p.name}</div>`,
+        `<div class="pc-hp">HP ${p.hp}</div>`
+      ].join("");
+      (p.team === "phoenix" ? el.rosterPhoenix : el.rosterEaters).appendChild(card);
+    }
+  }
+
+  function renderTimelineFromState() {
+    if (!el.timeline) return;
+    el.timeline.innerHTML = "";
+    const list = Array.isArray(state.log) ? state.log.slice(-200) : [];
+    for (const l of list) {
+      const line = document.createElement("div");
+      line.className = `tl-line tl-${l.type || "system"}`;
+      const ts = new Date(l.ts || Date.now());
+      line.textContent = `[${ts.toLocaleTimeString()}] ${l.message || ""}`;
+      el.timeline.appendChild(line);
+    }
+    // 상한 보장
+    capTimeline(200);
+    el.timeline.scrollTop = el.timeline.scrollHeight;
+  }
+
+  function appendTimeline(type, message) {
+    if (!el.timeline) return;
+    const line = document.createElement("div");
+    line.className = `tl-line tl-${type || "system"}`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message || ""}`;
+    el.timeline.appendChild(line);
+    capTimeline(200);
+    el.timeline.scrollTop = el.timeline.scrollHeight;
+  }
+
+  function capTimeline(max) {
+    if (!el.timeline) return;
+    const lines = el.timeline.querySelectorAll(".tl-line");
+    if (lines.length > max) {
+      for (let i = 0; i < lines.length - max; i++) lines[i].remove();
+    }
+  }
+
+  function renderSpectatorCount() {
+    if (!el.spectatorCount) return;
+    el.spectatorCount.textContent = String(state.spectatorCount || 0);
+  }
+
+  // -----------------------------
+  // 복사 도우미
+  // -----------------------------
+  async function copyField(inputEl) {
+    if (!inputEl) return;
+    const value = (inputEl.value || "").trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      flashCopied(inputEl);
+    } catch {
+      // 폴백
+      inputEl.select();
+      document.execCommand("copy");
+      flashCopied(inputEl);
+    }
+  }
+
+  function flashCopied(elm) {
+    elm.classList.add("copied");
+    setTimeout(() => elm.classList.remove("copied"), 800);
+  }
+
+  // -----------------------------
+  // 화면 전환
+  // -----------------------------
+  function showMain() {
+    if (el.viewAuth) el.viewAuth.classList.add("hidden");
+    if (el.viewMain) el.viewMain.classList.remove("hidden");
+  }
 })();
-</script>
