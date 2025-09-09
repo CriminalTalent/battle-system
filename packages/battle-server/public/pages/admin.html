@@ -4,11 +4,13 @@
   <meta charset="utf-8" />
   <title>PYXIS 관리자</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- 공용 스타일 (레포 기준 경로 유지) -->
   <link rel="stylesheet" href="/assets/css/core.css" />
   <link rel="stylesheet" href="/assets/css/pyxis-unified.css" />
   <link rel="stylesheet" href="/assets/css/components.css" />
   <link rel="stylesheet" href="/assets/css/effects.css" />
+  <!-- 관리자 전용 (이미 사용 중이라 가정) -->
   <link rel="stylesheet" href="/assets/css/admin.css" />
 </head>
 <body class="admin-page">
@@ -63,7 +65,7 @@
           </div>
         </div>
 
-        <!-- 링크 & 비밀번호 -->
+        <!-- 접속 링크 & 비밀번호 -->
         <div class="section">
           <div class="section-title">접속 링크 & 비밀번호</div>
 
@@ -74,7 +76,6 @@
                 <input id="playerOtp" class="input" type="text" placeholder="미발급" readonly />
                 <button id="btnGenPlayerOtp" class="btn btn-outline">발급</button>
               </div>
-              <small class="hint">서버 API 시도 후 실패 시 로컬 임시 비밀번호 생성</small>
             </div>
 
             <div class="form-field">
@@ -112,8 +113,6 @@
               </div>
             </div>
           </div>
-
-          <small class="hint">주소는 항상 <code>location.origin</code> 기반으로 생성되어, IP가 아닌 도메인으로 표기됩니다.</small>
         </div>
       </section>
 
@@ -121,9 +120,10 @@
       <section class="card" aria-labelledby="sec-participants">
         <h2 id="sec-participants" class="title">전투 참여자 관리</h2>
 
-        <!-- 전투 참여자 추가 -->
+        <!-- 추가 폼 -->
         <div class="section">
           <div class="section-title">전투 참여자 추가</div>
+
           <div class="grid grid-2 compact">
             <label class="form-field">
               <span class="label">이름</span>
@@ -139,16 +139,32 @@
             </label>
           </div>
 
-          <div class="stats-grid">
-            <label class="form-field"><span class="label">INT</span><input id="sINT" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">WIL</span><input id="sWIL" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">CHA</span><input id="sCHA" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">DEX</span><input id="sDEX" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">STR</span><input id="sSTR" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">MAG</span><input id="sMAG" class="input stat" type="number" min="0" max="5" value="0"></label>
-            <label class="form-field"><span class="label">HP</span><input id="pHP" class="input" type="number" min="1" max="999" value="100"></label>
+          <!-- 아바타 업로드/미리보기 -->
+          <div class="grid grid-2 compact">
+            <label class="form-field">
+              <span class="label">아바타 이미지(세로형)</span>
+              <input id="pAvatar" class="input" type="file" accept="image/*" />
+              <small class="hint">권장 비율 3:4 ~ 2:3, 세로형 이미지</small>
+            </label>
+            <div class="form-field">
+              <span class="label">미리보기</span>
+              <div style="display:flex;gap:12px;align-items:flex-start;">
+                <img id="pAvatarPreview" alt="아바타 미리보기" style="width:96px; height:144px; object-fit:cover; border-radius:10px; border:1px solid var(--border-gold); background:rgba(0,0,0,.25);" />
+                <div class="msg subtle" id="pAvatarMeta"></div>
+              </div>
+            </div>
           </div>
 
+          <!-- 스탯 -->
+          <div class="stats-grid">
+            <label class="form-field"><span class="label">공격(최대 5)</span><input id="sATK" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">방어(최대 5)</span><input id="sDEF" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">민첩(최대 5)</span><input id="sDEX" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">행운(최대 5)</span><input id="sLUK" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">체력(100)</span><input id="pHP" class="input" type="number" min="1" max="999" value="100"></label>
+          </div>
+
+          <!-- 아이템 -->
           <div class="grid grid-3 compact">
             <label class="form-field">
               <span class="label">디터니 개수</span>
@@ -208,7 +224,8 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
+  <!-- Socket.IO & Admin JS -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/core/pages/admin.js"></script>
+  <script src="/assets/js/admin.js"></script>
 </body>
 </html>
