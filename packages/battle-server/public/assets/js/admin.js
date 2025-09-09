@@ -1,4 +1,55 @@
-// URL 생성
+// 목록에 전투 참가자 추가
+    addPlayerToRoster(player) {
+      const rosterEl = player.team === 'phoenix' ? elements.rosterPhoenix : elements.rosterDE;
+      if (!rosterEl) return;
+
+      const playerCard = document.createElement('div');
+      playerCard.className = 'player-card';
+      playerCard.dataset.playerId = player.id;
+      playerCard.innerHTML = `
+        <div class="player-header">
+          ${player.avatar ? `<img src="${player.avatar}" class="player-avatar" alt="${player.name}">` : '<div class="player-avatar-placeholder">👤</div>'}
+          <div class="player-info">
+            <h4 class="player-name">${player.name}</h4>
+            <div class="player-stats">
+              <span class="stat">공격: ${player.stats.attack}</span>
+              <span class="stat">방어: ${player.stats.defense}</span>
+              <span class="stat">민첩: ${player.stats.dexterity}</span>
+              <span class="stat">행운: ${player.stats.luck}</span>
+            </div>
+          </div>
+        </div>
+        <div class="player-details">
+          <div class="hp-bar">
+            <span class="hp-text">HP: ${player.hp}/${player.maxHp}</span>
+            <div class="hp-fill" style="width: ${(player.hp/player.maxHp)*100}%"></div>
+          </div>
+          <div class="items">
+            ${player.items.deterni > 0 ? `<span class="item">디터니 x${player.items.deterni}</span>` : ''}
+            ${player.items.atkBoost > 0 ? `<span class="item">공격 보정기 x${player.items.atkBoost}</span>` : ''}
+            ${player.items.defBoost > 0 ? `<span class="item">방어 보정기 x${player.items.defBoost}</span>` : ''}
+          </div>
+        </div>
+        <button class="remove-player-btn" onclick="PyxisAdmin.removePlayer('${player.id}')">제거</button>
+      `;
+      
+      rosterEl.appendChild(playerCard);
+      this.updatePlayerCount();
+    },
+
+    // 전투 참가자 제거
+    removePlayer(playerId) {
+      if (confirm('이 전투 참가자를 제거하시겠습니까?')) {
+        state.socket.emit('removePlayer', { playerId, battleId: state.battleId });
+      }
+    },
+
+    // 전투 참가자 수 업데이트
+    updatePlayerCount() {
+      const phoenixCount = elements.rosterPhoenix?.children.length || 0;
+      const deCount = elements.rosterDE?.children.length || 0;
+      state.players = phoenixCount + deCount;
+      elements.playerCount.    // URL 생성
     generateUrls() {
       if (!state.battleId) return;
       
