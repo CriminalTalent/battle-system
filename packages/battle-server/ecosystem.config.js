@@ -3,7 +3,7 @@ module.exports = {
   apps: [
     {
       // PM2 프로세스 이름 (npm 스크립트/로그 명과 일치)
-      name: 'battle-system',
+      name: 'battle-server',  // ← package.json의 --only battle-server 와 일치
 
       // 패키지 기준 실행(cwd를 패키지 폴더로 고정: 의존성/상대경로 혼동 방지)
       cwd: '/root/battle-system/packages/battle-server',
@@ -18,18 +18,18 @@ module.exports = {
       // 재시작/안정성
       watch: false,
       autorestart: true,
-      min_uptime: '30s',                 // 30초 이내 크래시 시 비정상으로 판단
-      max_restarts: 10,                  // 단기간 과도 재시작 방지
-      restart_delay: 3000,               // 재시작 사이 대기
-      exp_backoff_restart_delay: 500,    // 지수 백오프 시작값
-      kill_timeout: 10000,               // SIGINT 후 강제종료까지 대기
-      listen_timeout: 10000,             // 리스닝 대기(ready 사용 안 함)
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 3000,
+      exp_backoff_restart_delay: 500,
+      kill_timeout: 10000,
+      listen_timeout: 10000,
 
       // 메모리 한도 초과 시 재시작
       max_memory_restart: '1G',
 
       // Node.js 런타임 옵션
-      node_args: ['--max-old-space-size=1024', '--optimize-for-size'],
+      node_args: ['--max-old-space-size=1024', '--optimize-for-size', '--enable-source-maps'],
 
       // .env 로딩(루트 .env 사용)
       env_file: '/root/battle-system/.env',
@@ -99,9 +99,9 @@ module.exports = {
       repo: 'git@github.com:CriminalTalent/battle-system.git',
       path: '/root/battle-system',
       'pre-deploy-local': '',
-      // 패키지 폴더에서 의존성 설치 후 무중단 reload
+      // 패키지 폴더에서 의존성 설치 + 디렉토리 보장 + 무중단 reload
       'post-deploy':
-        'cd /root/battle-system/packages/battle-server && npm ci --omit=dev && pm2 reload /root/battle-system/ecosystem.config.js --env production && pm2 save',
+        'mkdir -p /root/battle-system/logs /root/battle-system/packages/battle-server/public/uploads/avatars && cd /root/battle-system/packages/battle-server && npm ci --omit=dev && pm2 reload /root/battle-system/ecosystem.config.js --env production && pm2 save',
       'pre-setup': ''
     }
   }
