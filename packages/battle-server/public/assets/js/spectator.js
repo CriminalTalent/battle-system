@@ -2,22 +2,30 @@
    - 상태키: waiting | active | paused | ended
    - 고정 응원 버튼 6개, 단축키 없음
    - 타임라인 최대 200라인 유지
+   - 인증 입력: 전투 ID + 비밀번호(내부 키는 otp)
    - socket:
-     emit: spectatorAuth, join, chat:send, cheer:send
+     emit: spectatorAuth({ battleId, otp, name }), join({ battleId }), chat:send, cheer:send
      on:   auth:success, authError, battle:update, battle:chat, battle:log, spectator:count
+   - 이모지 사용 금지
 */
 
 (function () {
   "use strict";
 
+  // -----------------------------
+  // DOM helpers
+  // -----------------------------
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
+  // -----------------------------
+  // Elements
+  // -----------------------------
   const el = {
     // 인증
     viewAuth: $("#authView"),
     authBattle: $("#authBattle"),
-    authOtp: $("#authOtp"),
+    authOtp: $("#authOtp"),      // 화면엔 '비밀번호'로 표기되지만 내부 키는 otp
     authName: $("#authName"),
     btnAuth: $("#btnAuth"),
 
@@ -26,26 +34,37 @@
     statusPill: $("#statusPill"),
     spectatorCount: $("#spectatorCount"),
 
+    // 로스터
     rosterPhoenix: $("#rosterPhoenix"),
     rosterEaters: $("#rosterEaters"),
 
+    // 타임라인
     timeline: $("#timelineFeed"),
 
+    // 채팅
     chatMessages: $("#chatMessages"),
     chatInput: $("#chatInput"),
     btnChat: $("#btnChat"),
 
-    cheerButtons: $$(".cheer-btn"),
+    // 응원
+    cheerButtons: $$(".cheer-btn")
   };
 
+  // -----------------------------
+  // State
+  // -----------------------------
   const state = {
     socket: null,
     battleId: null,
     status: "waiting",
     roster: [],
-    log: []
+    log: [],
+    spectatorCount: 0
   };
 
+  // -----------------------------
+  // Init
+  // -----------------------------
   window.addEventListener("DOMContentLoaded", () => {
     connectSocket();
     autoFillFromURL();
@@ -61,7 +80,7 @@
     }
     state.socket = socket;
 
-    // 공용 알림(선택)
+    // 알림 모듈(Optional)
     if (window.PyxisNotify && typeof window.PyxisNotify.init === "function") {
       window.PyxisNotify.init({ socket });
     }
@@ -69,6 +88,9 @@
     bindSocket();
   }
 
+  // -----------------------------
+  // Socket events
+  // -----------------------------
   function bindSocket() {
     const s = state.socket;
     if (!s) return;
@@ -84,6 +106,7 @@
       if (p.role !== "spectator") return;
       state.battleId = p.battleId;
       showMain();
+      // 상태 동기화를 위해 룸 합류
       s.emit("join", { battleId: state.battleId });
     });
 
@@ -103,10 +126,14 @@
     });
 
     s.on("spectator:count", ({ count }) => {
-      if (el.spectatorCount) el.spectatorCount.textContent = String(Number(count) || 0);
+      state.spectatorCount = Number(count) || 0;
+      if (el.spectatorCount) el.spectatorCount.textContent = String(state.spectatorCount);
     });
   }
 
+  // -----------------------------
+  // UI handlers
+  // -----------------------------
   function bindUI() {
     if (el.btnAuth) el.btnAuth.addEventListener("click", onAuth);
 
@@ -115,56 +142,52 @@
       if (e.key === "Enter") sendChat();
     });
 
-    // 고정 6개 응원 버튼
+    // 고정 6개 응원 버튼 (단축키 없음)
     el.cheerButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
         const cheer = btn.getAttribute("data-cheer") || btn.textContent || "";
         sendCheer(cheer);
+        // 시각효과(effects.css/.js가 있으면 shimmer 클래스 적용)
+        try {
+          btn.classList.add("shimmer");
+          setTimeout(() => btn.classList.remove("shimmer"), 1500);
+        } catch (_) {}
       });
     });
-
-    // 단축키 없음: 의도적으로 keydown 바인딩을 추가하지 않음
   }
 
   function autoFillFromURL() {
     const params = new URLSearchParams(location.search);
     const battle = params.get("battle");
-    const otp = params.get("otp");
+    const otp = params.get("otp");     // 내부 키는 여전히 otp
     const name = params.get("name");
 
     if (battle) el.authBattle && (el.authBattle.value = battle);
     if (otp) el.authOtp && (el.authOtp.value = otp);
     if (name) el.authName && (el.authName.value = name);
 
-    if (battle && otp) onAuth();
+    if (battle && otp) onAuth(); // 이름은 선택 입력
   }
 
   function onAuth() {
-    const battleId = (el.authBattle && el.authBattle.value || "").trim() || new URLSearchParams(location.search).get("battle");
-    const otp = (el.authOtp && el.authOtp.value || "").trim() || new URLSearchParams(location.search).get("otp");
-    const name = (el.authName && el.authName.value || "").trim() || new URLSearchParams(location.search).get("name");
+    const params = new URLSearchParams(location.search);
+    const battleId =
+      (el.authBattle && el.authBattle.value || "").trim() || params.get("battle");
+    const otp =
+      (el.authOtp && el.authOtp.value || "").trim() || params.get("otp");
+    const name =
+      (el.authName && el.authName.value || "").trim() || params.get("name");
+
     if (!battleId || !otp) {
-      alert("Battle ID와 OTP를 입력하세요.");
+      alert("전투 ID와 비밀번호를 입력하세요.");
       return;
     }
     state.socket.emit("spectatorAuth", { battleId, otp, name });
   }
 
-  function sendChat() {
-    if (!state.battleId) return;
-    const message = (el.chatInput && el.chatInput.value || "").trim();
-    const name = (el.authName && el.authName.value) || "";
-    if (!message) return;
-    state.socket.emit("chat:send", { battleId: state.battleId, name, message });
-    el.chatInput.value = "";
-  }
-
-  function sendCheer(cheer) {
-    if (!state.battleId) return;
-    state.socket.emit("cheer:send", { battleId: state.battleId, cheer });
-  }
-
-  // 렌더링
+  // -----------------------------
+  // Render
+  // -----------------------------
   function renderAll() {
     renderStatus();
     renderRoster();
@@ -192,8 +215,8 @@
       const card = document.createElement("div");
       card.className = "player-card";
       card.innerHTML = [
-        `<div class="pc-name">${p.name}</div>`,
-        `<div class="pc-hp">HP ${p.hp}</div>`
+        `<div class="pc-name">${escapeHtml(p.name)}</div>`,
+        `<div class="pc-hp">HP ${Number(p.hp || 0)}</div>`
       ].join("");
       (p.team === "phoenix" ? el.rosterPhoenix : el.rosterEaters).appendChild(card);
     }
@@ -215,7 +238,69 @@
     el.timeline.scrollTop = el.timeline.scrollHeight;
   }
 
-  // 화면 전환
+  // -----------------------------
+  // Chat & Cheer
+  // -----------------------------
+  function sendChat() {
+    if (!state.battleId) return;
+    const message = (el.chatInput && el.chatInput.value || "").trim();
+    const name = (el.authName && el.authName.value) || "";
+    if (!message) return;
+    state.socket.emit("chat:send", { battleId: state.battleId, name, message });
+    el.chatInput.value = "";
+  }
+
+  function appendChat(name, message) {
+    if (!el.chatMessages) return;
+    const line = document.createElement("div");
+    line.className = "chat-line";
+    line.textContent = name ? `${name}: ${message}` : message;
+    el.chatMessages.appendChild(line);
+    capChildren(el.chatMessages, 200);
+    el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  }
+
+  function sendCheer(cheer) {
+    if (!state.battleId) return;
+    state.socket.emit("cheer:send", { battleId: state.battleId, cheer });
+  }
+
+  function appendLog(type, message) {
+    if (!el.timeline) return;
+    const line = document.createElement("div");
+    line.className = `tl-line tl-${type || "system"}`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${message || ""}`;
+    el.timeline.appendChild(line);
+    capChildren(el.timeline, 200);
+    el.timeline.scrollTop = el.timeline.scrollHeight;
+    // 시각효과: 새 줄 강조
+    try {
+      line.classList.add("tl-flash");
+      setTimeout(() => line.classList.remove("tl-flash"), 1200);
+    } catch (_) {}
+  }
+
+  function capChildren(container, max) {
+    const nodes = container.querySelectorAll(":scope > *");
+    if (nodes.length > max) {
+      for (let i = 0; i < nodes.length - max; i++) nodes[i].remove();
+    }
+  }
+
+  // -----------------------------
+  // Utils
+  // -----------------------------
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // -----------------------------
+  // View switch
+  // -----------------------------
   function showMain() {
     if (el.viewAuth) el.viewAuth.classList.add("hidden");
     if (el.viewMain) el.viewMain.classList.remove("hidden");
