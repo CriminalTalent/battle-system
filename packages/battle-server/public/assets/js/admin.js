@@ -1,4 +1,16 @@
-/* PYXIS Admin - 우아한 전투 관리 시스템 */
+// URL 생성
+    generateUrls() {
+      if (!state.battleId) return;
+      
+      const baseUrl = window.location.origin;
+      const adminUrl = `${baseUrl}/admin?battle=${state.battleId}`;
+      const playerUrl = `${baseUrl}/play?battle=${state.battleId}`;
+      const spectatorUrl = `${baseUrl}/watch?battle=${state.battleId}`;
+      
+      elements.adminUrl.textContent = adminUrl;
+      elements.playerUrl.textContent = playerUrl;
+      elements.spectatorUrl.textContent = spectatorUrl;
+    },/* PYXIS Admin - 우아한 전투 관리 시스템 */
 (function() {
   'use strict';
 
