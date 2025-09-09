@@ -1,108 +1,222 @@
-/* 관리자 전용 보완 스타일 - 테마 변경 없이 가독성/인터랙션만 개선 */
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>PYXIS 관리자</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-/* 색상 시스템 (고정 팔레트 재사용) */
-:root{
-  --navy-1:#00080D;
-  --navy-2:#001E35;
-  --gold-1:#DCC7A2;
-  --gold-2:#D4BA8D;
+  <!-- 폰트 (지정 유지) -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  --surface: rgba(0,0,0,.35);
-  --glass: rgba(255,255,255,.04);
-  --border: rgba(255,255,255,.08);
-  --border-strong: rgba(255,255,255,.14);
-  --ink: #f2ead7;
-  --ink-dim: #cfc5ae;
-  --danger:#b14b4b;
-  --warning:#b38a3a;
-  --success:#3a8e5a;
-}
+  <!-- 테마/컴포넌트 CSS (기존 구조 유지) -->
+  <link rel="stylesheet" href="/assets/css/core.css" />
+  <link rel="stylesheet" href="/assets/css/pyxis-unified.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+  <link rel="stylesheet" href="/assets/css/effects.css" />
+  <!-- 관리자 전용 CSS (드롭다운 가독성, 레이아웃 보완) -->
+  <link rel="stylesheet" href="/assets/css/admin.css" />
+</head>
+<body>
+  <header class="pyxis-header" role="banner" aria-label="PYXIS 관리자 헤더">
+    <div class="header-inner">
+      <h1 class="pyxis-logo"><span class="star">✦</span> PYXIS <span class="star">✦</span></h1>
+      <span id="statusPill" class="status-pill waiting" aria-live="polite">전투 대기 중</span>
+    </div>
+    <div class="header-bg" aria-hidden="true"></div>
+  </header>
 
-/* 레이아웃 */
-.admin-container{max-width:1200px;margin:0 auto;padding:16px}
-.admin-grid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:16px}
-@media (max-width:1200px){.admin-grid{grid-template-columns:1fr}}
-.card{background:var(--glass);backdrop-filter:saturate(120%) blur(10px);border:1px solid var(--border);border-radius:14px;padding:16px}
-.title{font-family:"Cinzel",serif;color:var(--gold-1);font-weight:700;letter-spacing:.5px;margin:0 0 12px 0}
+  <main id="mainView" class="container admin-container" role="main">
+    <div class="grid admin-grid">
+      <!-- 전투 제어 -->
+      <section class="card" aria-labelledby="sec-control">
+        <h2 id="sec-control" class="title">전투 제어</h2>
 
-/* 섹션 */
-.section{margin-top:14px}
-.section-title{font-weight:600;color:var(--ink);margin-bottom:10px}
+        <!-- 전투 생성 -->
+        <div class="section">
+          <div class="section-title">전투 생성</div>
+          <div class="grid grid-3 compact">
+            <label class="form-field">
+              <span class="label">전투 모드</span>
+              <select id="battleMode" class="select">
+                <option value="1v1">1v1</option>
+                <option value="2v2">2v2</option>
+                <option value="3v3">3v3</option>
+                <option value="4v4">4v4</option>
+              </select>
+            </label>
 
-/* 폼 */
-.form-field{display:flex;flex-direction:column;gap:6px}
-.label{font-size:.9rem;color:var(--ink-dim)}
-.input,.select{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--ink);border-radius:10px;padding:10px 12px;outline:none}
-.input::placeholder{color:#bfb69d}
-.input:focus,.select:focus{border-color:var(--gold-2);box-shadow:0 0 0 3px rgba(212,186,141,.18)}
-.input[readonly]{opacity:.9}
+            <div class="form-field">
+              <span class="label">전투 생성</span>
+              <button id="btnCreateBattle" class="btn btn-primary w-100">전투 생성</button>
+            </div>
 
-/* 드롭다운(가독성 개선) */
-.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6' fill='%23DCC7A2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:10px 6px}
-.select option{background:var(--navy-2);color:var(--ink)} /* 드롭다운 펼침 시 흰 배경 문제 해결 */
+            <div class="form-field">
+              <span class="label">전투 ID</span>
+              <input id="battleId" class="input" type="text" placeholder="생성 시 자동 표시" readonly />
+            </div>
+          </div>
+        </div>
 
-/* 버튼 */
-.btn{border-radius:12px;padding:10px 14px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));color:var(--ink);cursor:pointer;transition:transform .08s ease, box-shadow .2s ease}
-.btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.25)}
-.btn:active{transform:translateY(0)}
-.btn.w-100{width:100%}
-.btn-primary{border-color:rgba(212,186,141,.45);background:linear-gradient(180deg,rgba(212,186,141,.22),rgba(212,186,141,.14));color:#1a1a1a}
-.btn-default{color:var(--ink)}
-.btn-success{border-color:rgba(58,142,90,.5);background:linear-gradient(180deg,rgba(58,142,90,.25),rgba(58,142,90,.12))}
-.btn-warning{border-color:rgba(179,138,58,.5);background:linear-gradient(180deg,rgba(179,138,58,.25),rgba(179,138,58,.12))}
-.btn-danger{border-color:rgba(177,75,75,.5);background:linear-gradient(180deg,rgba(177,75,75,.25),rgba(177,75,75,.12))}
-.btn-outline{background:transparent;border-color:var(--border-strong)}
-.btn-copy{min-width:72px}
+        <!-- 전투 진행 제어 -->
+        <div class="section">
+          <div class="section-title">진행 제어</div>
+          <div class="grid grid-4 compact">
+            <button id="btnStart" class="btn btn-success">시작</button>
+            <button id="btnPause" class="btn btn-warning">일시정지</button>
+            <button id="btnResume" class="btn btn-default">재개</button>
+            <button id="btnEnd" class="btn btn-danger">종료</button>
+          </div>
+        </div>
 
-/* 그리드 유틸 */
-.grid{display:grid;gap:12px}
-.grid.compact{gap:10px}
-.grid-2{grid-template-columns:1fr 1fr}
-.grid-3{grid-template-columns:1fr 1fr 1fr}
-.grid-4{grid-template-columns:repeat(4,1fr)}
-@media (max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+        <!-- 링크 생성 (관리자/플레이어/관전자) + 비밀번호(OTP) -->
+        <div class="section">
+          <div class="section-title">접속 링크 & 비밀번호</div>
 
-.input-group{display:grid;grid-template-columns:1fr auto;gap:8px}
+          <!-- 비밀번호(OTP) 발급 -->
+          <div class="grid grid-3 compact">
+            <div class="form-field">
+              <span class="label">플레이어 비밀번호</span>
+              <div class="input-group">
+                <input id="playerOtp" class="input" type="text" placeholder="미발급" readonly />
+                <button id="btnGenPlayerOtp" class="btn btn-outline">발급</button>
+              </div>
+              <small class="hint">가능하면 서버 API를 통해 발급, 실패 시 로컬 임시 비밀번호 생성</small>
+            </div>
 
-/* 상태알약 */
-.status-pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:6px 12px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--ink)}
-.status-pill.waiting{color:var(--gold-1);border-color:rgba(212,199,162,.45)}
+            <div class="form-field">
+              <span class="label">관전자 비밀번호</span>
+              <div class="input-group">
+                <input id="spectatorOtp" class="input" type="text" placeholder="미발급" readonly />
+                <button id="btnGenSpectatorOtp" class="btn btn-outline">발급</button>
+              </div>
+              <small class="hint">30분 제한/최대 30인 정책을 가정. 서버 지원 시 자동 적용</small>
+            </div>
 
-/* 로스터 */
-.roster-wrap{gap:16px}
-.roster-title{font-weight:700;color:var(--gold-2);margin:0 0 6px 0}
-.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.roster-item{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:10px;padding:10px;background:rgba(255,255,255,.04)}
-.roster-item .meta{display:flex;flex-wrap:wrap;gap:10px;color:var(--ink-dim);font-size:.9rem}
-.roster-item .name{color:var(--ink);font-weight:600}
-.roster-item .btn-remove{min-width:76px}
+            <div class="form-field">
+              <span class="label">관리자 공유</span>
+              <div class="input-group">
+                <input id="adminUrl" class="input" type="text" placeholder="전투 생성 후 표시" readonly />
+                <button data-copy="#adminUrl" class="btn btn-outline btn-copy">복사</button>
+              </div>
+            </div>
+          </div>
 
-/* 로그/채팅 */
-.log-panel{border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03);height:220px;overflow:auto;margin-bottom:12px}
-.log{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;font-size:.9rem;color:var(--ink);padding:10px;line-height:1.45}
-.chat-panel{display:flex;flex-direction:column;gap:8px}
-.chat-view{border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03);height:180px;overflow:auto;padding:10px}
-.chat-input{display:grid;grid-template-columns:1fr auto;gap:8px}
+          <!-- 링크 목록 -->
+          <div class="grid grid-2 compact links-wrap">
+            <div class="form-field">
+              <span class="label">플레이어 URL</span>
+              <div class="input-group">
+                <input id="playerUrl" class="input" type="text" placeholder="전투 생성/비밀번호 발급 후 표시" readonly />
+                <button data-copy="#playerUrl" class="btn btn-outline btn-copy">복사</button>
+              </div>
+            </div>
 
-/* 토스트 */
-.toast{position:fixed;top:16px;right:16px;background:rgba(20,20,20,.9);color:#f0ead4;border:1px solid var(--border-strong);padding:10px 14px;border-radius:10px;opacity:0;transform:translateY(-8px);transition:opacity .2s, transform .2s;z-index:1000}
-.toast.show{opacity:1;transform:translateY(0)}
+            <div class="form-field">
+              <span class="label">관전자 URL</span>
+              <div class="input-group">
+                <input id="spectatorUrl" class="input" type="text" placeholder="전투 생성/비밀번호 발급 후 표시" readonly />
+                <button data-copy="#spectatorUrl" class="btn btn-outline btn-copy">복사</button>
+              </div>
+            </div>
+          </div>
 
-/* 헤더 */
-.pyxis-header{position:relative;padding:16px 16px 10px}
-.header-inner{display:flex;align-items:center;justify-content:space-between}
-.pyxis-logo{font-family:"Cinzel",serif;color:var(--gold-1);font-weight:800;letter-spacing:.6px;margin:0}
-.star{color:var(--gold-2)}
-.header-bg{position:absolute;inset:0;background:radial-gradient(80% 60% at 50% -10%, rgba(212,186,141,.15), transparent), linear-gradient(180deg, rgba(0,0,0,.4), transparent);pointer-events:none}
+          <small class="hint">주소는 항상 <code>location.origin</code> 기반으로 생성되어, IP가 아닌 도메인으로 표기됩니다.</small>
+        </div>
+      </section>
 
-/* 보조 */
-.hint{display:block;color:var(--ink-dim);font-size:.8rem;margin-top:4px}
-.msg.subtle{color:var(--ink-dim);align-self:center}
+      <!-- 참여자 관리 -->
+      <section class="card" aria-labelledby="sec-participants">
+        <h2 id="sec-participants" class="title">참여자 관리</h2>
 
-/* 통계 입력 묶음 */
-.stats-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
-@media (max-width:900px){.stats-grid{grid-template-columns:repeat(3,1fr)}}
-.stat::-webkit-outer-spin-button,.stat::-webkit-inner-spin-button{appearance:none;margin:0}
+        <!-- 플레이어 추가 -->
+        <div class="section">
+          <div class="section-title">플레이어 추가</div>
+          <div class="grid grid-2 compact">
+            <label class="form-field">
+              <span class="label">이름</span>
+              <input id="pName" class="input" type="text" placeholder="플레이어 이름" maxlength="50" />
+            </label>
 
-/* 링크 줄바꿈 방지 및 스크롤 대응 */
-.links-wrap input.input{white-space:nowrap;overflow:auto}
+            <label class="form-field">
+              <span class="label">팀</span>
+              <select id="pTeam" class="select">
+                <option value="phoenix">불사조 기사단</option>
+                <option value="death_eaters">죽음을 먹는 자들</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="stats-grid">
+            <label class="form-field"><span class="label">INT</span><input id="sINT" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">WIL</span><input id="sWIL" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">CHA</span><input id="sCHA" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">DEX</span><input id="sDEX" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">STR</span><input id="sSTR" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">MAG</span><input id="sMAG" class="input stat" type="number" min="0" max="5" value="0"></label>
+            <label class="form-field"><span class="label">HP</span><input id="pHP" class="input" type="number" min="1" max="999" value="100"></label>
+          </div>
+
+          <div class="grid grid-3 compact">
+            <label class="form-field">
+              <span class="label">디터니 개수</span>
+              <input id="itemDeterni" class="input" type="number" min="0" max="99" value="0" />
+            </label>
+            <label class="form-field">
+              <span class="label">공격 보정기 개수</span>
+              <input id="itemAtkBoost" class="input" type="number" min="0" max="99" value="0" />
+            </label>
+            <label class="form-field">
+              <span class="label">방어 보정기 개수</span>
+              <input id="itemDefBoost" class="input" type="number" min="0" max="99" value="0" />
+            </label>
+          </div>
+
+          <div class="grid grid-2 compact">
+            <button id="btnAddPlayer" class="btn btn-primary">플레이어 추가</button>
+            <span id="addPlayerMsg" class="msg subtle" aria-live="polite"></span>
+          </div>
+        </div>
+
+        <!-- 팀 로스터 -->
+        <div class="section">
+          <div class="section-title">팀 로스터</div>
+          <div class="grid grid-2 roster-wrap">
+            <div>
+              <h3 class="roster-title">불사조 기사단</h3>
+              <ul id="rosterPhoenix" class="roster"></ul>
+            </div>
+            <div>
+              <h3 class="roster-title">죽음을 먹는 자들</h3>
+              <ul id="rosterDE" class="roster"></ul>
+            </div>
+          </div>
+          <small class="hint">각 항목의 삭제 버튼으로 참여자를 즉시 제거할 수 있습니다.</small>
+        </div>
+      </section>
+
+      <!-- 로그 & 채팅 -->
+      <section class="card" aria-labelledby="sec-logchat">
+        <h2 id="sec-logchat" class="title">로그 & 채팅</h2>
+
+        <div class="log-panel">
+          <div id="battleLog" class="log"></div>
+        </div>
+
+        <div class="chat-panel">
+          <div id="chatView" class="chat-view"></div>
+          <div class="chat-input">
+            <input id="chatText" class="input" type="text" placeholder="메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)" />
+            <button id="btnChatSend" class="btn btn-default">전송</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- Socket.IO & 관리자 스크립트 -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/core/pages/admin.js"></script>
+</body>
+</html>
