@@ -1,228 +1,115 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1"
-    />
-    <title>PYXIS 관전자</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PYXIS Spectator</title>
 
-    <!-- 기본 스타일: 페이지 레이아웃 최소치 (프로젝트 공용 CSS가 있다면 그대로 유지 가능) -->
-    <style>
-      :root {
-        --gold1: #dcc7a2;
-        --gold2: #d4ba8d;
-        --bg1: #00080d;
-        --bg2: #001e35;
-        --glass: rgba(0, 30, 53, 0.7);
-        --glass-2: rgba(0, 42, 75, 0.6);
-        --ink: #e2e8f0;
-        --muted: #94a3b8;
-        --border: rgba(220, 199, 162, 0.25);
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        height: 100%;
-        margin: 0;
-        color: var(--ink);
-        background: linear-gradient(135deg, var(--bg1), var(--bg2));
-        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, Helvetica, sans-serif;
-      }
-      .wrap {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 16px;
-      }
-      header {
-        background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(0,42,75,.8));
-        border: 2px solid var(--border);
-        border-radius: 14px;
-        padding: 16px 18px;
-        text-align: center;
-        box-shadow: 0 6px 24px rgba(0,8,13,.5);
-      }
-      header h1 {
-        margin: 0 0 6px 0;
-        font-weight: 700;
-        letter-spacing: .5px;
-        color: var(--gold1);
-      }
-      header .sub { color: var(--muted); font-size: 14px; }
+  <!-- CSS 로딩 순서: core → pyxis-unified → components → effects → spectator -->
+  <link rel="stylesheet" href="/assets/css/core.css">
+  <link rel="stylesheet" href="/assets/css/pyxis-unified.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/effects.css">
+  <link rel="stylesheet" href="/assets/css/spectator.css">
 
-      .grid {
-        display: grid;
-        grid-template-columns: 380px 1fr;
-        grid-gap: 16px;
-        margin-top: 16px;
-      }
-      @media (max-width: 900px) {
-        .grid { grid-template-columns: 1fr; }
-      }
-
-      .card {
-        background: linear-gradient(145deg, var(--glass), var(--glass-2));
-        border: 2px solid var(--border);
-        border-radius: 14px;
-        padding: 14px;
-        box-shadow: 0 8px 32px rgba(0,8,13,.45);
-        backdrop-filter: blur(8px);
-      }
-      .card h3.title {
-        margin: 0 0 12px 0;
-        color: var(--gold1);
-        font-size: 18px;
-      }
-      .row { display: grid; grid-template-columns: 1fr 120px; gap: 10px; }
-      .row .input, .input {
-        width: 100%;
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 2px solid var(--border);
-        background: rgba(0,30,53,.6);
-        color: var(--ink);
-        outline: none;
-      }
-      .btn {
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 2px solid var(--gold1);
-        background: linear-gradient(145deg, var(--gold1), var(--gold2));
-        color: #00080d;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      .btn:hover { filter: brightness(1.02); }
-      .muted { color: var(--muted); font-size: 13px; }
-
-      .status {
-        margin-top: 10px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--muted);
-        font-weight: 600;
-      }
-      .dot {
-        width: 10px; height: 10px; border-radius: 50%;
-        background: #ef4444;
-      }
-      .status-connected .dot { background: #22c55e; }
-      .stats {
-        display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 12px;
-      }
-      .kpi {
-        background: rgba(0,8,13,.5);
-        border: 1px solid rgba(220,199,162,.18);
-        border-radius: 10px;
-        padding: 10px 12px;
-      }
-      .kpi .label { color: var(--muted); font-size: 12px; }
-      .kpi .val { font-weight: 800; margin-top: 4px; color: var(--gold1); }
-
-      /* 응원 */
-      .cheers {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-      }
-      @media (max-width: 560px) {
-        .cheers { grid-template-columns: repeat(2, 1fr); }
-      }
-      .cbtn {
-        padding: 10px 8px;
-        border-radius: 10px;
-        border: 2px solid rgba(220,199,162,.35);
-        background: rgba(0,30,53,.55);
-        color: var(--gold1);
-        font-weight: 700;
-        cursor: pointer;
-        transition: transform .08s ease;
-      }
-      .cbtn:hover { transform: translateY(-1px); }
-      .note { margin-top: 10px; color: var(--muted); font-size: 12px; }
-
-      /* 로그 뷰 */
-      .logbox {
-        height: 520px;
-        overflow: auto;
-        border: 1px solid rgba(220,199,162,.25);
-        border-radius: 12px;
-        background: rgba(0,8,13,.58);
-        padding: 12px;
-        font-family: ui-monospace, Menlo, Consolas, monospace;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .log-entry{margin-bottom:8px;padding:8px 12px;border-radius:8px;border-left:3px solid transparent}
-      .log-system{color:#94A3B8;border-left-color:#3B82F6;background:rgba(59,130,246,.05)}
-      .log-cheer{color:#DCC7A2;border-left-color:#F59E0B;background:rgba(245,158,11,.05)}
-      .log-battle{color:#22C55E;border-left-color:#22C55E;background:rgba(34,197,94,.05)}
-      .log-result{color:#EF4444;border-left-color:#EF4444;background:rgba(239,68,68,.05);font-weight:700}
-      .log-timestamp{color:#64748B;font-size:11px;margin-right:8px}
-    </style>
-  </head>
-
-  <body>
-    <div class="wrap">
-      <header>
-        <h1>PYXIS 관전자</h1>
-        <div class="sub">관전자는 채팅 입력 불가, 응원만 가능합니다</div>
-      </header>
-
-      <div class="grid">
-        <!-- 왼쪽: 로그인/상태/응원 -->
-        <section class="card">
-          <h3 class="title">입장</h3>
-          <div id="autoLoginInfo" class="muted" style="margin-bottom:10px;"></div>
-          <div class="row">
-            <input id="spectatorName" class="input" type="text" placeholder="관전자 이름을 입력하세요" />
-            <button id="loginBtn" class="btn" type="button">입장</button>
-          </div>
-          <div id="connectionStatus" class="status">
-            <span class="dot"></span>
-            <span>연결 끊김</span>
-          </div>
-
-          <div class="stats">
-            <div class="kpi">
-              <div class="label">관전자 수</div>
-              <div id="spectatorCount" class="val">0명 관전 중</div>
-            </div>
-            <div class="kpi">
-              <div class="label">전투 상태</div>
-              <div id="battleStatus" class="val">대기 중</div>
-            </div>
-          </div>
-
-          <h3 class="title" style="margin-top:16px;">응원</h3>
-          <div id="cheerBtns" class="cheers">
-            <button class="cbtn" data-msg="멋지다!">멋지다!</button>
-            <button class="cbtn" data-msg="이겨라!">이겨라!</button>
-            <button class="cbtn" data-msg="살아서 돌아와!">살아서 돌아와!</button>
-            <button class="cbtn" data-msg="화이팅!">화이팅!</button>
-            <button class="cbtn" data-msg="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
-            <button class="cbtn" data-msg="힘내요!">힘내요!</button>
-          </div>
-          <div class="note">관전자는 채팅 입력 불가 · 응원만 가능합니다</div>
-        </section>
-
-        <!-- 오른쪽: 로그 -->
-        <section class="card">
-          <h3 class="title">타임라인</h3>
-          <div id="battleLogViewer" class="logbox"></div>
-        </section>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- 타이틀: Cinzel, 본문: Inter (Playfair는 관리자/플레이어와 동일하게 선택 가능) -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="pyxis-header">
+    <div class="brand-wrap">
+      <h1 class="pyxis-logo"><span class="star-l">✦</span> PYXIS <span class="star-r">✦</span></h1>
+      <div class="header-right">
+        <span id="statusPill" class="status-pill waiting">전투 대기 중</span>
+        <span id="spectatorCount" class="badge-pill">0</span>
       </div>
     </div>
+    <div class="stars" aria-hidden="true"></div>
+  </header>
 
-    <!-- Socket.IO 클라이언트 -->
-    <script src="/socket.io/socket.io.js"></script>
-    <!-- 효과/알림 모듈이 있으면 먼저 로드(없으면 무시) -->
-    <script>
-      window.PyxisFX = window.PyxisFX || null;
-      window.PyxisNotify = window.PyxisNotify || null;
-    </script>
-    <!-- 관전자 전용 스크립트 -->
-    <script src="/assets/js/spectator.js"></script>
-  </body>
+  <!-- 인증 뷰 -->
+  <section id="authView" class="container auth-view">
+    <div class="card auth-card">
+      <h2 class="title">관전자 접속</h2>
+      <div class="grid grid-3">
+        <label class="field">
+          <span class="label">Battle ID</span>
+          <input id="authBattle" type="text" placeholder="예: b_xxxxxxxx" />
+        </label>
+        <label class="field">
+          <span class="label">OTP</span>
+          <input id="authOtp" type="text" placeholder="관전자 OTP" />
+        </label>
+        <label class="field">
+          <span class="label">닉네임(선택)</span>
+          <input id="authName" type="text" placeholder="관전자 별명" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btnAuth" class="btn">접속</button>
+      </div>
+      <p class="hint">URL의 <code>?battle=...&otp=...</code> 파라미터를 인식해 자동 접속합니다.</p>
+    </div>
+  </section>
+
+  <!-- 메인 뷰 -->
+  <main id="mainView" class="container hidden">
+    <div class="grid grid-3">
+      <!-- 좌: 팀 로스터 -->
+      <section class="card">
+        <h3 class="title">팀 로스터</h3>
+        <div class="teams">
+          <div class="team">
+            <div class="team-title">불사조</div>
+            <div id="rosterPhoenix" class="roster"></div>
+          </div>
+          <div class="team">
+            <div class="team-title">죽음을 먹는 기사단</div>
+            <div id="rosterEaters" class="roster"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 중: 실시간 로그 -->
+      <section class="card">
+        <h3 class="title">실시간 로그</h3>
+        <div id="timelineFeed" class="timeline"></div>
+      </section>
+
+      <!-- 우: 응원/채팅 -->
+      <section class="card">
+        <h3 class="title">응원 & 채팅</h3>
+
+        <div class="cheer-buttons">
+          <button class="btn btn-ghost cheer-btn" data-cheer="멋지다!">멋지다!</button>
+          <button class="btn btn-ghost cheer-btn" data-cheer="이겨라!">이겨라!</button>
+          <button class="btn btn-ghost cheer-btn" data-cheer="살아서 돌아와!">살아서 돌아와!</button>
+          <button class="btn btn-ghost cheer-btn" data-cheer="화이팅!">화이팅!</button>
+          <button class="btn btn-ghost cheer-btn" data-cheer="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
+          <button class="btn btn-ghost cheer-btn" data-cheer="힘내요!">힘내요!</button>
+        </div>
+
+        <div class="chat-wrap">
+          <div id="chatMessages" class="chat-messages"></div>
+          <div class="chat-input">
+            <input id="chatInput" type="text" placeholder="메시지 입력" />
+            <button id="btnChat" class="btn">전송</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- 공용 알림(선택) -->
+  <script src="/assets/js/notifications.js"></script>
+
+  <!-- 관전자 전용 -->
+  <script src="/assets/js/spectator.js"></script>
+</body>
 </html>
