@@ -28,6 +28,7 @@
     // 인증 입력
     authBattle: $("#authBattle"),
     authName: $("#authName"),
+    authToken: $("#authToken"),
     btnAuth: $("#btnAuth"),
 
     // 상태/정보
@@ -113,7 +114,11 @@
       if (p.role !== "player") return;
       state.battleId = p.battleId;
       state.playerId = p.playerId;
+      // 내 전투 참여자 ID를 알림 모듈에서 활용할 수 있도록 노출
+      window.__PYXIS_PLAYER_ID = p.playerId;
       showMain();
+      // 서버 최신 상태 요청을 위해 룸 조인
+      s.emit("join", { battleId: state.battleId });
     });
 
     s.on("battle:update", (b) => {
@@ -166,17 +171,21 @@
     const params = new URLSearchParams(location.search);
     const battle = params.get("battle");
     const name = params.get("name");
+    const token = params.get("token");
     if (battle) el.authBattle && (el.authBattle.value = battle);
     if (name) el.authName && (el.authName.value = name);
+    if (token) el.authToken && (el.authToken.value = token);
     // 자동 인증
-    if (battle && name) onAuth();
+    if (battle && name && token) onAuth();
   }
 
   function onAuth() {
-    const battleId = (el.authBattle && el.authBattle.value || "").trim() || new URLSearchParams(location.search).get("battle");
-    const name = (el.authName && el.authName.value || "").trim() || new URLSearchParams(location.search).get("name");
-    if (!battleId || !name) { alert("배틀ID와 이름을 입력하세요."); return; }
-    state.socket.emit("playerAuth", { battleId, name });
+    const params = new URLSearchParams(location.search);
+    const battleId = (el.authBattle && el.authBattle.value || "").trim() || params.get("battle");
+    const name = (el.authName && el.authName.value || "").trim() || params.get("name");
+    const token = (el.authToken && el.authToken.value || "").trim() || params.get("token");
+    if (!battleId || !name || !token) { alert("전투 ID, 이름, 비밀번호를 모두 입력하세요."); return; }
+    state.socket.emit("playerAuth", { battleId, name, token });
   }
 
   function onReady() {
@@ -270,12 +279,12 @@
     if (!el.myPanel) return;
     const me = getMe();
     if (!me) {
-      el.myPanel.innerHTML = "<div class=\"my-info\">플레이어 인증 대기</div>";
+      el.myPanel.innerHTML = "<div class=\"my-info\">전투 참여자 인증 대기</div>";
       return;
     }
     el.myPanel.innerHTML = [
-      `<div class="my-info">이름: ${me.name}</div>`,
-      `<div class="my-hp">HP ${me.hp}</div>`,
+      `<div class="my-info">이름: ${escapeHtml(me.name)}</div>`,
+      `<div class="my-hp">HP ${Number(me.hp || 0)}</div>`,
       `<div class="my-stats">STR ${safeStat(me, "str")} / DEX ${safeStat(me, "agi")} / INT ${safeStat(me, "int")} / WIL ${safeStat(me, "wil")} / CHA ${safeStat(me, "cha")} / MAG ${safeStat(me, "mag")}</div>`
     ].join("");
   }
@@ -290,8 +299,8 @@
       const card = document.createElement("div");
       card.className = "player-card";
       card.innerHTML = [
-        `<div class="pc-name">${p.name}</div>`,
-        `<div class="pc-hp">HP ${p.hp}</div>`
+        `<div class="pc-name">${escapeHtml(p.name)}</div>`,
+        `<div class="pc-hp">HP ${Number(p.hp || 0)}</div>`
       ].join("");
       (p.team === "phoenix" ? el.rosterPhoenix : el.rosterEaters).appendChild(card);
     }
@@ -371,6 +380,14 @@
   function safeStat(p, key) {
     const n = p && p.stats && typeof p.stats[key] === "number" ? p.stats[key] : 0;
     return Math.max(0, Math.min(5, n));
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   // -----------------------------
