@@ -1,4 +1,4 @@
-/* PYXIS Admin – 이미지 필드 표기/팀 구성, 참여자 추가 호환(서버 스키마 유지) */
+/* PYXIS Admin – 참가자 추가 다중 호환(HTTP/Socket), 라벨/아이템 표기 정정, 드롭다운 가독성 유지 */
 (function(){
   'use strict';
 
@@ -75,8 +75,9 @@
   // Utils
   const origin = () => window.location.origin;
   const clamp = (v, min, max) => { v = Number(v); if(Number.isNaN(v)) return min; return Math.max(min, Math.min(max, v)); };
+  const nonEmpty = v => v !== undefined && v !== null && v !== '';
   function toastMsg(text, timeout=1600){ if(!toast) return; toast.textContent = text; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), timeout); }
-  function linkFor(pathname, params){ const u = new URL(origin()+pathname); Object.entries(params||{}).forEach(([k,v])=>{ if(v!=null&&v!=='') u.searchParams.set(k,v); }); return u.toString(); }
+  function linkFor(pathname, params){ const u = new URL(origin()+pathname); Object.entries(params||{}).forEach(([k,v])=>{ if(nonEmpty(v)) u.searchParams.set(k,v); }); return u.toString(); }
   function refreshAllLinks(){ if(!currentBattleId) return; adminUrlEl.value = linkFor('/admin',{battle:currentBattleId}); playerUrlEl.value = linkFor('/play',{battle:currentBattleId,otp:playerOtp||''}); spectatorUrlEl.value = linkFor('/spectator',{battle:currentBattleId,otp:spectatorOtp||''}); }
   function copyBySelector(sel){ const el = document.querySelector(sel); if(!el) return; el.select(); el.setSelectionRange(0, el.value.length); document.execCommand('copy'); const btn = document.querySelector(`[data-copy="${sel}"]`); if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); } toastMsg('복사되었습니다'); }
   function logLine(text){ if(!battleLog) return; const ts = new Date().toLocaleTimeString(); const div = document.createElement('div'); div.textContent = `[${ts}] ${text}`; battleLog.appendChild(div); battleLog.scrollTop = battleLog.scrollHeight; }
@@ -182,22 +183,18 @@
     const reader = new FileReader();
     reader.onload = ()=>{ avatarDataUrl = reader.result; pAvatarPreview.src = avatarDataUrl; const kb = Math.round(file.size/1024); pAvatarMeta.textContent = `${file.name} • ${file.type} • ${kb} KB`; };
     reader.readAsDataURL(file);
-    // 서버 업로드 사용 시:
-    // const form = new FormData(); form.append('file', file);
-    // const res = await fetch('/api/uploads',{method:'POST',body:form}); const data = await res.json();
-    // avatarDataUrl = data.url; // 서버 URL
   });
 
-  // ===== 참여자 추가/삭제 =====
-  // 서버 호환: 원래 스키마(STR/WIL/CHA/DEX/STR/MAG)로 전송하되 INT/MAG는 0으로 채움
+  // ===== 서버 호환 스탯/아이템 =====
   function serverStatPayload(){
+    // 서버가 INT/MAG을 요구하는 스키마를 사용할 수 있어 0으로 채워 보냄
     return {
       STR: clamp(sATK.value,0,5),   // 공격
       WIL: clamp(sDEF.value,0,5),   // 방어
       DEX: clamp(sDEX.value,0,5),   // 민첩
       CHA: clamp(sLUK.value,0,5),   // 행운
-      INT: 0,                       // 사용 안 함
-      MAG: 0                        // 사용 안 함
+      INT: 0,
+      MAG: 0
     };
   }
   function itemPayload(){
@@ -208,7 +205,6 @@
     };
   }
   function toDisplayStats(stats){
-    // 서버가 돌려준 키(STR/WIL/DEX/CHA/INT/MAG) 또는 클라이언트 키(ATK/DEF/DEX/LUK)를 모두 대응
     const ATK = stats.ATK ?? stats.STR ?? 0;
     const DEF = stats.DEF ?? stats.WIL ?? 0;
     const DEX = stats.DEX ?? 0;
@@ -216,67 +212,128 @@
     return { ATK, DEF, DEX, LUK };
   }
 
+  // ===== 참여자 추가 (다중 HTTP 후보 + 소켓 대체) =====
   async function addPlayer(){
     if(!currentBattleId){ toastMsg('전투를 먼저 생성하세요'); return; }
     const name = (pName.value||'').trim();
     if(!name){ toastMsg('이름을 입력하세요'); pName.focus(); return; }
 
-    const payload = {
+    const base = {
       name,
       team: pTeam.value === 'phoenix' ? 'phoenix' : 'death_eaters',
+      teamKey: pTeam.value === 'phoenix' ? 'phoenix' : 'death_eaters',
+      teamName: pTeam.value === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자들',
       hp: clamp(pHP.value,1,999),
-      stats: serverStatPayload(),              // 서버 호환 스키마
-      items: itemPayload(),
-      avatar: avatarDataUrl ? { dataUrl: avatarDataUrl, mime: avatarMime, name: avatarName } : null
+      stats: serverStatPayload(),
+      items: itemPayload()
     };
+    // avatar는 있을 때만 보냄(일부 서버에서 알 수 없는 필드 거부 방지)
+    if(avatarDataUrl){
+      base.avatar = { dataUrl: avatarDataUrl, mime: avatarMime, name: avatarName };
+    }
+
+    const candidates = [
+      // REST (배틀별 players)
+      { url: `/api/battles/${encodeURIComponent(currentBattleId)}/players`, body: base },
+      { url: `/api/battles/${encodeURIComponent(currentBattleId)}/players`, body: { player: base } },
+      // REST (배틀별 participants)
+      { url: `/api/battles/${encodeURIComponent(currentBattleId)}/participants`, body: base },
+      { url: `/api/battles/${encodeURIComponent(currentBattleId)}/participants`, body: { participant: base } },
+      // REST (전역 players)
+      { url: `/api/players`, body: { battleId: currentBattleId, ...base } },
+      { url: `/api/participants`, body: { battleId: currentBattleId, ...base } },
+    ];
 
     let created = null, ok = false, errText = '';
-    try{
-      const res = await fetch(`/api/battles/${encodeURIComponent(currentBattleId)}/players`,{
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
-      });
-      if(res.ok){ const data = await res.json(); created = data.player || data; ok = true; }
-      else{ try{ errText = await res.text(); }catch{} }
-    }catch(e){ errText = e?.message || 'network error'; }
 
+    // 다중 시도
+    for(const c of candidates){
+      try{
+        const res = await fetch(c.url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c.body) });
+        if(res.ok){
+          let data=null; try{ data = await res.json(); }catch{}
+          created = normalizeCreated(data);
+          if(created){ ok = true; break; }
+        }else{
+          // 읽을 수 있는 에러를 한번 저장
+          try{ errText = await res.text(); }catch{}
+        }
+      }catch(e){
+        errText = e?.message || errText;
+      }
+    }
+
+    // 소켓 대체
     if(!ok && socket?.connected){
-      socket.emit('admin:addPlayer',{ battleId: currentBattleId, player: payload }, (resp)=>{
-        if(resp?.ok){ created = resp.player; finalize(created); }
-        else { fail(resp?.error || errText); }
-      });
-    }else if(ok){
+      const socketCandidates = [
+        { ev:'admin:addPlayer', key:'player' },
+        { ev:'battle:addPlayer', key:'player' },
+        { ev:'player:add', key:'player' },
+        { ev:'participant:add', key:'participant' }
+      ];
+      for(const sc of socketCandidates){
+        const payload = (sc.key === 'participant') ? { battleId: currentBattleId, participant: base } : { battleId: currentBattleId, player: base };
+        const got = await emitAck(sc.ev, payload);
+        if(got?.ok && (got.player || got.participant || got.data)){
+          created = normalizeCreated(got);
+          ok = true; break;
+        }
+      }
+    }
+
+    if(ok){
       finalize(created);
     }else{
       fail(errText);
     }
 
+    function normalizeCreated(data){
+      if(!data) return null;
+      if(data.player) return data.player;
+      if(data.participant) return data.participant;
+      if(data.data) return data.data;
+      return data;
+    }
+
     function finalize(createdPlayer){
       toastMsg('전투 참여자가 추가되었습니다');
       const pid = (createdPlayer && createdPlayer.id) ? createdPlayer.id : ('P_' + Math.random().toString(36).slice(2,8));
-      const disp = toDisplayStats(createdPlayer?.stats || payload.stats);
+      const disp = toDisplayStats(createdPlayer?.stats || base.stats);
       addRosterItem({
         id: pid,
-        name: payload.name,
-        team: payload.team,
-        hp: payload.hp,
+        name: base.name,
+        team: base.team,
+        hp: base.hp,
         stats: disp,
-        items: payload.items,
-        avatar: (createdPlayer && createdPlayer.avatar) ? createdPlayer.avatar : payload.avatar
+        items: base.items,
+        avatar: (createdPlayer && createdPlayer.avatar) ? createdPlayer.avatar : base.avatar
       });
       // reset
       pName.value=''; itemDeterni.value=0; itemAtkBoost.value=0; itemDefBoost.value=0;
       sATK.value=0; sDEF.value=0; sDEX.value=0; sLUK.value=0; pHP.value=100;
-      avatarDataUrl=''; avatarMime=''; avatarName='';
-      if(pAvatar){ pAvatar.value=''; } pAvatarPreview.src=''; pAvatarMeta.textContent='';
+      avatarDataUrl=''; avatarMime=''; avatarName=''; if(pAvatar){ pAvatar.value=''; }
+      pAvatarPreview.src=''; pAvatarMeta.textContent='';
       addPlayerMsg.textContent='';
     }
     function fail(msg){
       addPlayerMsg.textContent = '추가 실패' + (msg ? `: ${msg}` : '');
-      setTimeout(()=> addPlayerMsg.textContent='', 2000);
+      setTimeout(()=> addPlayerMsg.textContent='', 2500);
       toastMsg('전투 참여자 추가 실패');
     }
   }
 
+  // 소켓 ACK 유틸
+  function emitAck(event, payload){
+    return new Promise(resolve=>{
+      try{
+        socket.emit(event, payload, (resp)=> resolve(resp));
+        // 일부 서버는 콜백을 안 주므로 타임아웃 보정
+        setTimeout(()=> resolve(null), 1200);
+      }catch{ resolve(null); }
+    });
+  }
+
+  // ===== 로스터 표시 =====
   function addRosterItem(player){
     const li = document.createElement('li');
     li.className = 'roster-item';
@@ -298,13 +355,21 @@
     name.className = 'name';
     name.textContent = player.name;
 
+    // 아이템 표기는 개수 없이 이름만, 없으면 '없음'
+    const items = player.items || {};
+    const itemNames = [];
+    if((items.deterni|0) > 0) itemNames.push('디터니');
+    if((items.attack_boost|0) > 0) itemNames.push('공격 보정기');
+    if((items.defense_boost|0) > 0) itemNames.push('방어 보정기');
+    const itemLine = `아이템: ${itemNames.length ? itemNames.join(', ') : '없음'}`;
+
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.innerHTML = [
       `팀: ${player.team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자들'}`,
       `HP: ${player.hp}`,
       `공:${player.stats.ATK} 방:${player.stats.DEF} 민:${player.stats.DEX} 행:${player.stats.LUK}`,
-      `아이템: D(${player.items.deterni}) A(${player.items.attack_boost}) Df(${player.items.defense_boost})`
+      itemLine
     ].join(' | ');
 
     textWrap.appendChild(name);
@@ -337,6 +402,7 @@
     });
   }
 
+  // ===== 삭제 =====
   function removePlayer(playerId){
     if(!currentBattleId) return;
     fetch(`/api/battles/${encodeURIComponent(currentBattleId)}/players/${encodeURIComponent(playerId)}`,{method:'DELETE'})
