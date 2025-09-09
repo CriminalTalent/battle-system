@@ -2,8 +2,8 @@
 // - resolveAction 을 외부에 제공 (현재 combat.js와 동일 인터페이스)
 // - 상태키: waiting | active | paused | ended
 
-import { roll } from "./dice.js";
-import {
+const { roll } = require("./dice.js");
+const {
   ITEMS,
   normalizeItemKey,
   computeHit,
@@ -12,9 +12,9 @@ import {
   consumeAttackMultiplier,
   consumeDefenseMultiplierOnHit,
   applyItemEffect
-} from "./rules.js";
+} = require("./rules.js");
 
-export class BattleEngine {
+class BattleEngine {
   constructor(battle) {
     this.battle = battle;
   }
@@ -39,14 +39,28 @@ export class BattleEngine {
 
     if (kind === "defend") {
       this.ensureEffects();
-      this.battle.effects.push({ ownerId: actor.id, type: "defenseBoost", factor: 1.25, charges: 1, success: true, source: "action:defend" });
+      this.battle.effects.push({ 
+        ownerId: actor.id, 
+        type: "defenseBoost", 
+        factor: 1.25, 
+        charges: 1, 
+        success: true, 
+        source: "action:defend" 
+      });
       logs.push({ type: "system", message: `${actor.name} 방어 태세` });
       return { logs, updates, turnEnded: true };
     }
 
     if (kind === "dodge") {
       this.ensureEffects();
-      this.battle.effects.push({ ownerId: actor.id, type: "dodgePrep", add: 4, charges: 1, success: true, source: "action:dodge" });
+      this.battle.effects.push({ 
+        ownerId: actor.id, 
+        type: "dodgePrep", 
+        add: 4, 
+        charges: 1, 
+        success: true, 
+        source: "action:dodge" 
+      });
       logs.push({ type: "system", message: `${actor.name} 회피 준비` });
       return { logs, updates, turnEnded: true };
     }
@@ -62,9 +76,17 @@ export class BattleEngine {
         logs.push({ type: "system", message: "사망자에게는 회복 불가" });
         return { logs, updates, turnEnded: true };
       }
-      const { logs: l2, updates: up } = applyItemEffect(this.battle, { actor, target, itemType: key });
-      (l2 || []).forEach(x => logs.push(x));
-      Object.assign(updates.hp, up?.hp || {});
+      
+      const itemResult = applyItemEffect(this.battle, { actor, target, itemType: key });
+      const { logs: l2, updates: up } = itemResult || {};
+      
+      if (Array.isArray(l2)) {
+        l2.forEach(x => logs.push(x));
+      }
+      if (up?.hp) {
+        Object.assign(updates.hp, up.hp);
+      }
+      
       return { logs, updates, turnEnded: true };
     }
 
@@ -79,7 +101,10 @@ export class BattleEngine {
 
       // 회피 보너스 소비
       let evasionBonus = 0;
-      if (this.hasDodgePrep(target)) { evasionBonus = 4; this.consumeDodge(target); }
+      if (this.hasDodgePrep(target)) { 
+        evasionBonus = 4; 
+        this.consumeDodge(target); 
+      }
 
       const isHit = computeHit({ attacker: actor, defender: target, evasionBonus });
       if (!isHit) {
@@ -88,13 +113,20 @@ export class BattleEngine {
       }
 
       const defMul = this.applyDefenseBoostFactor(target);
-      const { dmg, crit } = computeDamage({ attacker: actor, defender: target, attackScore, defenseMultiplier: defMul });
+      const { dmg, crit } = computeDamage({ 
+        attacker: actor, 
+        defender: target, 
+        attackScore, 
+        defenseMultiplier: defMul 
+      });
 
       updates.hp[target.id] = Math.max(0, (target.hp || 0) - dmg);
 
-      logs.push({ type: "battle", message: crit
-        ? `${actor.name}의 치명타 적중! ${target.name}에게 ${dmg} 피해`
-        : `${actor.name}가 ${target.name}에게 ${dmg} 피해`
+      logs.push({ 
+        type: "battle", 
+        message: crit
+          ? `${actor.name}의 치명타 적중! ${target.name}에게 ${dmg} 피해`
+          : `${actor.name}가 ${target.name}에게 ${dmg} 피해`
       });
 
       consumeAttackMultiplier(this.battle, actor);
@@ -109,11 +141,17 @@ export class BattleEngine {
 
   // 보조: 효과/탐색
 
-  ensureEffects() { if (!this.battle.effects) this.battle.effects = []; }
+  ensureEffects() { 
+    if (!this.battle.effects) {
+      this.battle.effects = []; 
+    }
+  }
 
   applyDefenseBoostFactor(defender) {
     let mul = 1;
-    for (const fx of this.battle.effects || []) {
+    const effects = this.battle.effects || [];
+    
+    for (const fx of effects) {
       if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
       if (fx.type === "defenseBoost") {
         mul *= fx.factor || 1;
@@ -124,30 +162,46 @@ export class BattleEngine {
   }
 
   hasDodgePrep(defender) {
-    for (const fx of this.battle.effects || []) {
+    const effects = this.battle.effects || [];
+    
+    for (const fx of effects) {
       if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
       if (fx.type === "dodgePrep") return true;
     }
     return false;
   }
+
   consumeDodge(defender) {
-    for (const fx of this.battle.effects || []) {
+    const effects = this.battle.effects || [];
+    
+    for (const fx of effects) {
       if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-      if (fx.type === "dodgePrep") { fx.charges -= 1; return; }
+      if (fx.type === "dodgePrep") { 
+        fx.charges -= 1; 
+        return; 
+      }
     }
   }
 
   findAny(id) {
-    return (this.battle.players || []).find(p => p.id === id) || null;
+    const players = this.battle.players || [];
+    return players.find(p => p && p.id === id) || null;
   }
+
   findAlive(id) {
     const p = this.findAny(id);
     return p && p.hp > 0 ? p : null;
   }
+
   opponentsOf(actor) {
-    return (this.battle.players || []).filter(p => p.team !== actor.team && p.hp > 0);
+    const players = this.battle.players || [];
+    return players.filter(p => p && p.team !== actor.team && p.hp > 0);
   }
+
   findAliveOpponent(actor) {
-    return this.opponentsOf(actor)[0] || null;
+    const opponents = this.opponentsOf(actor);
+    return opponents[0] || null;
   }
 }
+
+module.exports = { BattleEngine };
