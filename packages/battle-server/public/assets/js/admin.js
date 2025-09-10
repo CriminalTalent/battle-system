@@ -1,5 +1,4 @@
-/* PYXIS Admin - 관리자 클라이언트 */
-
+/* PYXIS Admin - 관리자 클라이언트 (비밀번호 발급 / 참가자 관리 강화) */
 (() => {
   const $ = (id) => document.getElementById(id);
 
@@ -14,6 +13,9 @@
       this.currentBattleId = null;
       this.token = null;
       this.connected = false;
+
+      /** 최신 전투 상태의 플레이어 목록(서버에서 내려주는 원본) */
+      this.players = [];
     }
 
     init() {
@@ -56,14 +58,9 @@
 
       $('btnAddPlayer')?.addEventListener('click', () => this.addPlayer());
 
-      $('btnGenParticipantLinks')?.addEventListener('click', () => {
-        if (!this.currentBattleId) return alert('전투 ID가 없습니다.');
-        this.socket.emit('generatePlayerPassword', { battleId: this.currentBattleId });
-      });
-      $('btnGenSpectatorLink')?.addEventListener('click', () => {
-        if (!this.currentBattleId) return alert('전투 ID가 없습니다.');
-        this.socket.emit('generateSpectatorOtp', { battleId: this.currentBattleId });
-      });
+      // 비밀번호 발급(링크 아님)
+      $('btnIssuePlayerPw')?.addEventListener('click', () => this.issuePlayerPasswords());
+      $('btnIssueSpectatorPw')?.addEventListener('click', () => this.issueSpectatorPassword());
 
       $('btnChatSend')?.addEventListener('click', () => {
         const text = $('chatText').value.trim();
@@ -86,17 +83,13 @@
         this.setConn(true);
         this.log('system', '서버와 연결됨');
 
-        // 방 조인(일반)
+        // 룸 합류
         if (this.currentBattleId) {
           this.socket.emit('join', { battleId: this.currentBattleId });
         }
-
-        // 관리자 인증(쿼리 파라미터 있을 때)
+        // 관리자 인증
         if (this.currentBattleId && this.token) {
-          this.socket.emit('adminAuth', {
-            battleId: this.currentBattleId,
-            token: this.token
-          });
+          this.socket.emit('adminAuth', { battleId: this.currentBattleId, token: this.token });
         }
       });
 
@@ -106,14 +99,12 @@
         this.log('system', '서버 연결 해제');
       });
 
-      // 인증 성공
+      // 인증 성공/오류
       this.socket.on('auth:success', ({ role, battleId }) => {
         if (battleId) this.currentBattleId = battleId;
         $('currentBattleId').textContent = this.currentBattleId || '-';
         this.log('system', `인증 성공 (${role})`);
       });
-
-      // 인증 에러
       this.socket.on('authError', (e) => {
         console.error('authError', e);
         alert('관리자 시스템 로드 실패: ' + (e?.error || '인증 오류'));
@@ -124,68 +115,62 @@
         this.currentBattleId = data.battleId;
         $('currentBattleId').textContent = data.battleId;
         $('currentMode').textContent = data.mode;
-        $('adminUrl').textContent = data.adminUrl;
-        $('playerUrl').textContent = data.playerBase;
-        $('spectatorUrl').textContent = data.spectatorBase;
+        $('adminUrl').textContent = data.adminUrl || '-';
+        $('playerUrl').textContent = data.playerBase || '-';
+        $('spectatorUrl').textContent = data.spectatorBase || '-';
         this.log('system', `전투 생성됨: ${data.battleId}`);
       });
 
-      // 전투 상태 업데이트 수신 → 목록 렌더
+      // 상태 업데이트
       this.socket.on('battle:update', (battle) => {
         if (!battle || !battle.id) return;
         this.currentBattleId = battle.id;
         $('currentBattleId').textContent = battle.id;
         $('currentMode').textContent = battle.mode || '-';
-        this.renderRoster(battle.players || []);
+        this.players = Array.isArray(battle.players) ? battle.players : [];
+        this.renderRoster();
       });
 
-      // 전투 시작/종료/일시정지/재개 알림 → 최신 상태로 반영
-      this.socket.on('battle:started', (battle) => this.renderRoster(battle.players || []));
-      this.socket.on('battle:ended',   (battle) => this.renderRoster(battle.players || []));
-      this.socket.on('battle:paused',  (battle) => this.renderRoster(battle.players || []));
-      this.socket.on('battle:resumed', (battle) => this.renderRoster(battle.players || []));
-
-      // 전투 참가자 추가 결과(서버는 {success, player} 형태로 내려줌)
+      // 참가자 추가 결과
       this.socket.on('playerAdded', (payload) => {
         const ok = payload?.success ?? false;
-        const player = payload?.player ?? payload; // 호환
+        const player = payload?.player ?? payload;
         if (ok && player) {
-          this.addPlayerToRoster(player);
+          // 최신 목록을 재요청하지 않아도 되도록 로컬 반영 + 렌더
+          const exists = this.players.find((p) => p.id === player.id);
+          if (!exists) this.players.push(player);
+          this.renderRoster();
           this.log('system', `전투 참가자 추가됨: ${player.name}`);
         } else if (!ok) {
           alert('전투 참가자 추가 실패: ' + (payload?.error || '알 수 없는 오류'));
         }
       });
 
-      // 링크 발급 결과
-      this.socket.on('playerPasswordGenerated', (res) => {
-        if (!res?.success) {
-          $('issueResult').textContent = '전투 참가자 링크 발급 실패: ' + (res?.error || '알 수 없는 오류');
-          return;
+      // 참가자 제거 결과
+      this.socket.on('playerRemoved', (payload) => {
+        if (payload?.success) {
+          const id = payload.playerId;
+          this.players = this.players.filter((p) => p.id !== id);
+          this.renderRoster();
+          this.log('system', `전투 참가자 제거됨: ${id}`);
+        } else {
+          alert('전투 참가자 제거 실패: ' + (payload?.error || '알 수 없는 오류'));
         }
-        const lines = (res.playerLinks || []).map(
-          (p) => `• ${TEAM_LABEL[p.team] || p.team} - ${p.name}: ${p.url}`
-        );
-        $('issueResult').textContent = lines.length ? lines.join('\n') : '발급된 링크가 없습니다.';
       });
 
-      this.socket.on('spectatorOtpGenerated', (res) => {
-        if (!res?.success) {
-          $('issueResult').textContent = '관전자 링크 발급 실패: ' + (res?.error || '알 수 없는 오류');
-          return;
-        }
-        $('issueResult').textContent = `관전자 링크: ${res.spectatorUrl}`;
+      // 전투 이벤트들
+      ['battle:started','battle:ended','battle:paused','battle:resumed'].forEach(evt => {
+        this.socket.on(evt, (battle) => {
+          if (battle?.players) {
+            this.players = battle.players;
+            this.renderRoster();
+          }
+        });
       });
 
-      // 채팅 수신
-      this.socket.on('battle:chat', (msg) => {
-        this.addChat(msg.name || '익명', msg.message || '');
-      });
-
-      // 로그 수신
-      this.socket.on('battle:log', (entry) => {
-        this.log(entry.type || 'log', entry.message || '');
-      });
+      // 채팅/로그
+      this.socket.on('battle:chat', (msg) => this.addChat(msg.name || '익명', msg.message || ''));
+      this.socket.on('battle:log',  (entry) => this.log(entry.type || 'log', entry.message || ''));
     }
 
     setConn(ok) {
@@ -222,8 +207,7 @@
       if (file) {
         try {
           const fd = new FormData();
-          // 서버는 필드명을 'avatar'로 기대한다 (엔드포인트: /api/upload/avatar)
-          fd.append('avatar', file);
+          fd.append('avatar', file); // 서버 필드명: avatar
           const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd });
           const data = await res.json();
           if (data?.ok && data?.avatarUrl) {
@@ -237,27 +221,91 @@
       }
 
       const playerData = { name, team, stats, hp, items, avatar: avatarUrl };
-
-      // 서버가 기대하는 페이로드: { battleId, playerData }
+      // 서버 스펙: { battleId, playerData }
       this.socket.emit('addPlayer', { battleId: this.currentBattleId, playerData });
       this.log('system', `전투 참가자 추가 요청: ${name} (${TEAM_LABEL[team] || team})`);
     }
 
-    renderRoster(players) {
+    /** 참가자 목록 렌더 + 상세/삭제 버튼 */
+    renderRoster() {
       const px = $('rosterPhoenix');
       const et = $('rosterEaters');
       if (px) px.innerHTML = '';
       if (et) et.innerHTML = '';
-      (players || []).forEach((p) => this.addPlayerToRoster(p));
+
+      (this.players || []).forEach((p) => {
+        const container = p.team === 'phoenix' ? px : et;
+        if (!container) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'roster-player';
+
+        const title = document.createElement('div');
+        title.style.display = 'flex';
+        title.style.justifyContent = 'space-between';
+        title.style.alignItems = 'center';
+        title.innerHTML = `<strong>${TEAM_LABEL[p.team] || p.team} - ${p.name}</strong> <span class="muted">HP: ${p.hp}</span>`;
+
+        // details: 스탯/아이템 확인
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = '자세히';
+        const inner = document.createElement('div');
+        inner.style.marginTop = '6px';
+        inner.innerHTML = `
+          <div class="mono">ID: ${p.id}</div>
+          <div>스탯 - ATK ${p.stats?.attack}, DEF ${p.stats?.defense}, AGI ${p.stats?.agility}, LUK ${p.stats?.luck}</div>
+          <div>아이템 - 디터니 ${p.items?.dittany ?? 0}, 공격 보정기 ${p.items?.attack_booster ?? 0}, 방어 보정기 ${p.items?.defense_booster ?? 0}</div>
+          ${p.avatar ? `<div>이미지: <a href="${p.avatar}" target="_blank">${p.avatar}</a></div>` : ''}
+        `;
+        details.appendChild(summary);
+        details.appendChild(inner);
+
+        // 삭제 버튼
+        const btnRow = document.createElement('div');
+        btnRow.className = 'row-buttons';
+        const delBtn = document.createElement('button');
+        delBtn.className = 'danger';
+        delBtn.textContent = '삭제';
+        delBtn.addEventListener('click', () => {
+          if (!this.currentBattleId) return alert('전투 ID가 없습니다.');
+          if (!confirm(`전투 참가자 "${p.name}"을(를) 삭제할까요?`)) return;
+          this.socket.emit('removePlayer', { battleId: this.currentBattleId, playerId: p.id });
+        });
+        btnRow.appendChild(delBtn);
+
+        wrap.appendChild(title);
+        wrap.appendChild(details);
+        wrap.appendChild(btnRow);
+        container.appendChild(wrap);
+      });
     }
 
-    addPlayerToRoster(player) {
-      const container = player.team === 'phoenix' ? $('rosterPhoenix') : $('rosterEaters');
-      if (!container) return;
-      const el = document.createElement('div');
-      el.className = 'roster-player';
-      el.textContent = `${TEAM_LABEL[player.team] || player.team} - ${player.name} (HP: ${player.hp})`;
-      container.appendChild(el);
+    /** 전투 참가자 비밀번호 발급 (링크가 아닌 순수 토큰) */
+    issuePlayerPasswords() {
+      if (!this.currentBattleId) {
+        $('issueResult').textContent = '전투 ID가 없습니다.';
+        return;
+      }
+      if (!this.players.length) {
+        $('issueResult').textContent = '발급할 전투 참가자가 없습니다.';
+        return;
+      }
+      const lines = this.players.map((p) => {
+        const pw = `player-${p.name}-${this.currentBattleId}`;
+        return `• ${TEAM_LABEL[p.team] || p.team} - ${p.name}: ${pw}`;
+      });
+      $('issueResult').textContent = lines.join('\n');
+    }
+
+    /** 관전자 비밀번호 발급 */
+    issueSpectatorPassword() {
+      if (!this.currentBattleId) {
+        $('issueResult').textContent = '전투 ID가 없습니다.';
+        return;
+      }
+      const pw = `spectator-${this.currentBattleId}`;
+      $('issueResult').textContent = `관전자 비밀번호: ${pw}`;
     }
 
     log(type, message) {
