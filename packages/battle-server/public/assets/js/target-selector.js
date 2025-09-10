@@ -1,7 +1,7 @@
 /* packages/battle-server/public/assets/js/target-selector.js
    PYXIS Target Selector Component - Enhanced Gaming Edition
    - 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
-   - 스탯 시스템: 1-5 범위, 총합 제한 없음
+   - 스탯 시스템: 1-5 범위, 총합 제한 없음 
    - 이모지/특수문자 미사용 (제목 장식 기호 제거)
 */
 
