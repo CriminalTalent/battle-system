@@ -14,7 +14,6 @@ class PyxisAdmin {
     this.battleState = 'waiting';
     this.socket = null;
     this.isConnected = false;
-
     this.state = {};
   }
 
@@ -26,9 +25,7 @@ class PyxisAdmin {
   }
 
   setupSocket() {
-    this.socket = io({
-      withCredentials: true
-    });
+    this.socket = io({ withCredentials: true });
 
     this.socket.on('connect', () => {
       console.log('[SOCKET] Connected');
@@ -45,7 +42,6 @@ class PyxisAdmin {
     // battle events
     this.socket.on('battleCreated', (data) => {
       this.currentBattleId = data.battleId;
-      document.getElementById('battleId').textContent = data.battleId;
       document.getElementById('currentBattleId').textContent = data.battleId;
       document.getElementById('currentMode').textContent = data.mode;
       document.getElementById('adminUrl').textContent = data.adminUrl;
@@ -144,11 +140,21 @@ class PyxisAdmin {
   }
 
   addPlayerToRoster(player) {
-    const container = document.getElementById(player.team === 'phoenix' ? 'rosterPhoenix' : 'rosterEaters');
+    let teamName = '';
+    let container = null;
+
+    if (player.team === 'phoenix') {
+      teamName = '불사조 기사단';
+      container = document.getElementById('rosterPhoenix');
+    } else if (player.team === 'eaters') {
+      teamName = '죽음을 먹는 자';
+      container = document.getElementById('rosterEaters');
+    }
+
     if (!container) return;
     const el = document.createElement('div');
     el.className = 'roster-player';
-    el.textContent = `${player.name} (HP: ${player.hp})`;
+    el.textContent = `${teamName} - ${player.name} (HP: ${player.hp})`;
     container.appendChild(el);
   }
 
@@ -184,7 +190,7 @@ class PyxisAdmin {
 
 window.PyxisAdmin = new PyxisAdmin();
 
-/* === 자동 초기화 추가 === */
+/* === 자동 초기화 === */
 document.addEventListener('DOMContentLoaded', () => {
   if (window.PyxisAdmin && typeof window.PyxisAdmin.init === 'function') {
     window.PyxisAdmin.init();
