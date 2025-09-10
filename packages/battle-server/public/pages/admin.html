@@ -231,6 +231,30 @@
   <script src="https://pyxisbattlesystem.monster/socket.io/socket.io.js"></script>
   <script>
     window.PYXIS_SERVER_URL = "https://pyxisbattlesystem.monster";
+
+    // 채팅 엔터 전송 및 버튼 전송 연결
+    document.addEventListener("DOMContentLoaded", function () {
+      const chatInput = document.getElementById("chatText");
+      const chatBtn = document.getElementById("btnChatSend");
+      let socket = window.adminSocket;
+
+      // 소켓 연결이 admin.js에서 window.adminSocket으로 되어 있다고 가정
+      function sendChat() {
+        const msg = (chatInput.value || "").trim();
+        if (!msg) return;
+        if (socket && socket.connected) {
+          socket.emit("admin:chat", { message: msg });
+        }
+        chatInput.value = "";
+      }
+
+      chatBtn?.addEventListener("click", sendChat);
+      chatInput?.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          sendChat();
+        }
+      });
+    });
   </script>
   <script src="/assets/js/admin.js"></script>
 </body>
