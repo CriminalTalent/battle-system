@@ -1,21 +1,237 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PYXIS 전투 참여자</title>
 
-  <!-- CSS: core → unified → components → effects → player -->
+  <!-- Cinzel 폰트 통일 + CSS: core → unified → components → effects → player -->
   <link rel="stylesheet" href="/assets/css/core.css">
   <link rel="stylesheet" href="/assets/css/pyxis-unified.css">
   <link rel="stylesheet" href="/assets/css/components.css">
   <link rel="stylesheet" href="/assets/css/effects.css">
   <link rel="stylesheet" href="/assets/css/player.css">
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <!-- Cinzel 폰트만 사용 -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body {
+      font-family: 'Cinzel', serif !important;
+      background: #0a0f1a;
+      color: #f5f5f5;
+      margin: 0;
+      letter-spacing: 0.01em;
+    }
+    .pyxis-header, .card, .btn, .chat-messages, .timeline, .chat-input input, .chat-input button, .my-panel, .team-title, .roster, .hint, .status-pill, .badge-pill {
+      font-family: 'Cinzel', serif !important;
+    }
+    .pyxis-header {
+      background: #111827;
+      border-bottom: 1px solid #2b3340;
+      padding: 16px 24px 12px 24px;
+    }
+    .pyxis-logo {
+      font-size: 26px;
+      color: #d4b77e;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      margin: 0;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-right {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .status-pill {
+      background: #2a2f3a;
+      color: #d4b77e;
+      border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .badge-pill {
+      background: #d4b77e;
+      color: #111;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 0;
+    }
+    .card {
+      background: #1a1f2b;
+      border-radius: 12px;
+      padding: 18px 18px 16px 18px;
+      box-shadow: 0 2px 16px 0 rgba(0,0,0,0.08);
+      margin-bottom: 18px;
+    }
+    .title {
+      color: #d4b77e;
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 14px 0;
+      text-align: center;
+      letter-spacing: 0.03em;
+    }
+    .grid.player-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 24px;
+    }
+    .teams {
+      display: flex;
+      gap: 18px;
+      justify-content: space-between;
+    }
+    .team-title {
+      color: #d4b77e;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .roster {
+      background: #0f1419;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      min-height: 60px;
+      padding: 8px;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .my-panel {
+      background: #141a24;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+    .turn-box {
+      background: #0f1419;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .turn-title {
+      color: #d4b77e;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .hint {
+      color: #a9b1c7;
+      font-size: 13px;
+      margin-top: 2px;
+      text-align: center;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 10px 0;
+    }
+    .btn {
+      background: #d4b77e;
+      color: #111;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: background 0.15s;
+    }
+    .btn:disabled {
+      background: #bfa05e;
+      color: #888;
+      cursor: not-allowed;
+    }
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .chat-wrap {
+      background: #0f1419;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      min-height: 120px;
+    }
+    .chat-messages {
+      min-height: 80px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 8px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .chat-input {
+      display: flex;
+      gap: 8px;
+    }
+    .chat-input input {
+      flex: 1;
+      background: #1a1f2b;
+      color: #f5f5f5;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 15px;
+      outline: none;
+    }
+    .chat-input button {
+      min-width: 60px;
+    }
+    .timeline-wrap {
+      background: #0f1419;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 80px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .timeline {
+      font-size: 14px;
+      color: #f5f5f5;
+    }
+    /* 균형 잡힌 출력 */
+    .chat-messages > div, .timeline > div, .roster, .my-panel, .copy-row, .copy-value {
+      font-family: 'Cinzel', serif !important;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+      line-height: 1.6;
+      word-break: keep-all;
+      text-align: left;
+    }
+    @media (max-width: 1100px) {
+      .grid.player-grid { grid-template-columns: 1fr; gap: 10px; }
+      .container { padding: 10px 0; }
+      .card { padding: 10px; }
+    }
+  </style>
 </head>
 <body>
   <!-- 헤더 -->
@@ -67,7 +283,7 @@
             <div id="rosterPhoenix" class="roster"></div>
           </div>
           <div class="team">
-            <div class="team-title">죽음을 먹는 자들</div>
+            <div class="team-title">죽음을 먹는 자</div>
             <div id="rosterEaters" class="roster"></div>
           </div>
         </div>
@@ -124,15 +340,38 @@
     </div>
   </main>
 
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Socket.IO (서버 도메인만 사용) -->
+  <script src="https://pyxisbattlesystem.monster/socket.io/socket.io.js"></script>
+  <script>
+    window.PYXIS_SERVER_URL = "https://pyxisbattlesystem.monster";
 
+    // 채팅 엔터 전송 및 버튼 전송 연결
+    document.addEventListener("DOMContentLoaded", function () {
+      const chatInput = document.getElementById("chatInput");
+      const chatBtn = document.getElementById("btnChat");
+      let socket = window.playerSocket;
+
+      function sendChat() {
+        const msg = (chatInput.value || "").trim();
+        if (!msg) return;
+        if (socket && socket.connected) {
+          socket.emit("player:chat", { message: msg });
+        }
+        chatInput.value = "";
+      }
+
+      chatBtn?.addEventListener("click", sendChat);
+      chatInput?.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          sendChat();
+        }
+      });
+    });
+  </script>
   <!-- 공용 알림 -->
   <script src="/assets/js/notifications.js"></script>
-
   <!-- 효과 컨트롤러 -->
   <script src="/assets/js/effects.js"></script>
-
   <!-- 플레이어 전용 -->
   <script src="/assets/js/player.js"></script>
 </body>
