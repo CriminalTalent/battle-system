@@ -225,6 +225,14 @@
       // 채팅/로그
       this.socket.on('battle:chat', (msg) => this.addChat(msg.name || '익명', msg.message || ''));
       this.socket.on('battle:log',  (entry) => this.log(entry.type || 'log', entry.message || ''));
+
+      // 전투 시작 알림 및 선공 메시지 한글화
+      this.socket.on('battle:started', (data) => {
+        // data: { firstTeam, agility1, agility2, team1, team2 }
+        const team1 = TEAM_LABEL[data.team1] || data.team1;
+        const team2 = TEAM_LABEL[data.team2] || data.team2;
+        this.log('system', `전투 시작! ${team1} 팀 선공 (민첩성: ${team1}=${data.agility1}, ${team2}=${data.agility2})`);
+      });
     }
 
     setConn(ok) {
