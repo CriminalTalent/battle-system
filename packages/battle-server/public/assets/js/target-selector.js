@@ -9,7 +9,7 @@ class PyxisTargetSelector {
       showTeam: true,
       showAvatar: true,
       allowMultiSelect: false,
-      theme: 'default', // default, combat, selection
+      theme: 'default',
       battleMode: '2v2',
       enableSoundEffects: false,
       enableAnimations: true,
@@ -22,7 +22,6 @@ class PyxisTargetSelector {
     this.callback = null;
     this.battleData = null;
 
-    // 바인딩
     this._onEscKey = this._onEscKey.bind(this);
     this._onOverlayClick = this._onOverlayClick.bind(this);
     this._onKeyboardNav = this._onKeyboardNav.bind(this);
@@ -33,14 +32,12 @@ class PyxisTargetSelector {
     this.init();
   }
 
-  // 초기화
   init() {
     this.createOverlay();
     this.setupEventListeners();
     this.injectStyles();
   }
 
-  // 스타일 주입
   injectStyles() {
     if (document.getElementById('pyxis-target-selector-enhanced-styles')) return;
 
@@ -653,15 +650,10 @@ class PyxisTargetSelector {
     document.head.appendChild(styleSheet);
   }
 
-  // 오버레이 생성
   createOverlay() {
-    // 기존 오버레이 제거
     const existing = document.getElementById('pyxis-target-overlay');
-    if (existing) {
-      existing.remove();
-    }
+    if (existing) existing.remove();
 
-    // 새 오버레이 생성
     this.overlay = document.createElement('div');
     this.overlay.id = 'pyxis-target-overlay';
     this.overlay.className = 'target-overlay';
@@ -673,20 +665,13 @@ class PyxisTargetSelector {
     this.overlay.innerHTML = `
       <div class="target-panel sparkle-effect">
         <div class="target-title" id="targetTitle">전투 대상 선택</div>
-        
-        ${this.battleData ? `
-          <div class="battle-info">
-            <div class="battle-mode">${this.battleData.mode || '2v2'} 전투</div>
-            <div class="turn-info">턴 ${this.battleData.currentTurn || 1} • ${this.battleData.currentTeam || '불사조 기사단'} 차례</div>
-          </div>
-        ` : ''}
-        
+        <div class="battle-info" style="display:none;">
+          <div class="battle-mode"></div>
+          <div class="turn-info"></div>
+        </div>
         <div class="target-list" id="targetList" role="listbox" aria-multiselectable="${this.options.allowMultiSelect}"></div>
-        
         <div class="target-actions">
-          <button class="btn" id="cancelTarget" type="button">
-            취소
-          </button>
+          <button class="btn" id="cancelTarget" type="button">취소</button>
           ${this.options.allowMultiSelect ? `
             <button class="btn btn-gold" id="confirmTarget" type="button" disabled>
               확인 (<span id="selectedCount">0</span>)
@@ -698,31 +683,25 @@ class PyxisTargetSelector {
 
     document.body.appendChild(this.overlay);
 
-    // 요소 참조 저장
     this.titleEl = this.overlay.querySelector('#targetTitle');
     this.listEl = this.overlay.querySelector('#targetList');
     this.cancelBtn = this.overlay.querySelector('#cancelTarget');
     this.confirmBtn = this.overlay.querySelector('#confirmTarget');
     this.selectedCountEl = this.overlay.querySelector('#selectedCount');
+    this.battleInfoEl = this.overlay.querySelector('.battle-info');
   }
 
-  // 이벤트 리스너 설정
   setupEventListeners() {
     this.teardownEventListeners();
 
-    // 취소 버튼
     if (this.cancelBtn) {
       this._cancelHandler = () => this.hide();
       this.cancelBtn.addEventListener('click', this._cancelHandler);
     }
-
-    // 확인 버튼
     if (this.confirmBtn) {
       this._confirmHandler = () => this.confirm();
       this.confirmBtn.addEventListener('click', this._confirmHandler);
     }
-
-    // 전역 이벤트
     document.addEventListener('keydown', this._onEscKey);
     document.addEventListener('keydown', this._onKeyboardNav);
     this.overlay.addEventListener('click', this._onOverlayClick);
@@ -730,11 +709,8 @@ class PyxisTargetSelector {
     this._listenersBound = true;
   }
 
-  // 리스너 해제
   teardownEventListeners() {
     if (!this._listenersBound) return;
-
-    // 버튼 핸들러
     if (this._cancelHandler && this.cancelBtn) {
       this.cancelBtn.removeEventListener('click', this._cancelHandler);
       this._cancelHandler = null;
@@ -743,18 +719,14 @@ class PyxisTargetSelector {
       this.confirmBtn.removeEventListener('click', this._confirmHandler);
       this._confirmHandler = null;
     }
-
-    // 전역 이벤트
     document.removeEventListener('keydown', this._onEscKey);
     document.removeEventListener('keydown', this._onKeyboardNav);
     if (this.overlay) {
       this.overlay.removeEventListener('click', this._onOverlayClick);
     }
-
     this._listenersBound = false;
   }
 
-  // ESC 키 핸들러
   _onEscKey(e) {
     if (e.key === 'Escape' && this.isVisible) {
       e.preventDefault();
@@ -763,13 +735,10 @@ class PyxisTargetSelector {
     }
   }
 
-  // 키보드 네비게이션
   _onKeyboardNav(e) {
     if (!this.isVisible) return;
-
     const targetCards = this.listEl.querySelectorAll('.target-card:not(.disabled)');
     if (targetCards.length === 0) return;
-
     switch (e.key) {
       case 'ArrowDown':
       case 'ArrowRight':
@@ -777,14 +746,12 @@ class PyxisTargetSelector {
         this._focusedIndex = Math.min(this._focusedIndex + 1, targetCards.length - 1);
         this.updateFocus(targetCards);
         break;
-
       case 'ArrowUp':
       case 'ArrowLeft':
         e.preventDefault();
         this._focusedIndex = Math.max(this._focusedIndex - 1, 0);
         this.updateFocus(targetCards);
         break;
-
       case 'Enter':
       case ' ':
         e.preventDefault();
@@ -792,13 +759,11 @@ class PyxisTargetSelector {
           targetCards[this._focusedIndex].click();
         }
         break;
-
       case 'Home':
         e.preventDefault();
         this._focusedIndex = 0;
         this.updateFocus(targetCards);
         break;
-
       case 'End':
         e.preventDefault();
         this._focusedIndex = targetCards.length - 1;
@@ -807,7 +772,6 @@ class PyxisTargetSelector {
     }
   }
 
-  // 포커스 업데이트
   updateFocus(targetCards) {
     targetCards.forEach((card, index) => {
       card.classList.toggle('focused', index === this._focusedIndex);
@@ -818,14 +782,12 @@ class PyxisTargetSelector {
     });
   }
 
-  // 오버레이 클릭 핸들러
   _onOverlayClick(e) {
     if (e.target === this.overlay) {
       this.hide();
     }
   }
 
-  // 타겟 선택 표시
   show(title, targets, callback, battleData = null) {
     this.titleEl.textContent = title || '전투 대상 선택';
     this.targets = Array.isArray(targets) ? targets : [];
@@ -834,21 +796,20 @@ class PyxisTargetSelector {
     this.selectedTargets = [];
     this._focusedIndex = 0;
 
-    // 배틀 정보가 있으면 UI 업데이트
-    if (this.battleData) {
-      const battleInfo = this.overlay.querySelector('.battle-info');
-      if (battleInfo) {
-        battleInfo.querySelector('.battle-mode').textContent = `${this.battleData.mode || '2v2'} 전투`;
-        battleInfo.querySelector('.turn-info').textContent = 
-          `턴 ${this.battleData.currentTurn || 1} • ${this.battleData.currentTeam || '불사조 기사단'} 차례`;
-      }
+    // 배틀 정보 UI
+    if (this.battleInfoEl && battleData) {
+      this.battleInfoEl.style.display = '';
+      this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
+      this.battleInfoEl.querySelector('.turn-info').textContent =
+        `턴 ${battleData.currentTurn || 1} • ${battleData.currentTeam === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자'} 차례`;
+    } else if (this.battleInfoEl) {
+      this.battleInfoEl.style.display = 'none';
     }
 
     this.renderTargets();
     this.overlay.style.display = 'flex';
     this.isVisible = true;
 
-    // 접근성: 첫 번째 유효한 타겟에 포커스
     const firstCard = this.listEl.querySelector('.target-card:not(.disabled)');
     if (firstCard) {
       setTimeout(() => {
@@ -858,37 +819,28 @@ class PyxisTargetSelector {
     }
   }
 
-  // 타겟 목록 렌더링
   renderTargets() {
     this.listEl.innerHTML = '';
-
     if (this.targets.length === 0) {
-      this.listEl.innerHTML = `
-        <div class="no-targets">
-          선택할 수 있는 대상이 없습니다
-        </div>
-      `;
+      this.listEl.innerHTML = `<div class="no-targets">선택할 수 있는 대상이 없습니다</div>`;
       return;
     }
-
     this.targets.forEach((target, index) => {
       const card = this.createTargetCard(target, index);
       this.listEl.appendChild(card);
     });
   }
 
-  // 타겟 카드 생성
   createTargetCard(target, index) {
     const card = document.createElement('div');
     const isDisabled = target.alive === false || target.hp <= 0;
-    
-    card.className = `target-card ${isDisabled ? 'disabled' : ''}`;
+    card.className = `target-card${isDisabled ? ' disabled' : ''}`;
     card.tabIndex = isDisabled ? -1 : 0;
     card.setAttribute('role', 'option');
     card.setAttribute('aria-selected', 'false');
     card.setAttribute('aria-label', `${target.name || `대상 ${index + 1}`} 선택`);
 
-    // 헤더 섹션
+    // 헤더
     const header = document.createElement('div');
     header.className = 'target-header';
 
@@ -907,7 +859,7 @@ class PyxisTargetSelector {
       avatar.textContent = (target.name || 'U').charAt(0).toUpperCase();
     }
 
-    // 정보 섹션
+    // 정보
     const info = document.createElement('div');
     info.className = 'target-info';
 
@@ -920,7 +872,7 @@ class PyxisTargetSelector {
     if (this.options.showTeam && target.team) {
       const team = document.createElement('div');
       team.className = `target-team ${target.team}`;
-      team.textContent = target.team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자들';
+      team.textContent = target.team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자';
       info.appendChild(team);
     }
 
@@ -929,7 +881,7 @@ class PyxisTargetSelector {
     header.appendChild(info);
     card.appendChild(header);
 
-    // HP 정보
+    // HP
     if (this.options.showHp && target.hp !== undefined) {
       const hpContainer = document.createElement('div');
       hpContainer.className = 'target-hp';
@@ -944,11 +896,7 @@ class PyxisTargetSelector {
       const hpBar = document.createElement('div');
       hpBar.className = 'target-hp-bar';
       const hpPercent = Math.max(0, Math.min(100, (target.hp / (target.maxHp || 100)) * 100));
-      
-      if (hpPercent <= 25) {
-        hpBar.classList.add('low');
-      }
-      
+      if (hpPercent <= 25) hpBar.classList.add('low');
       hpBar.style.width = `${hpPercent}%`;
 
       hpBarContainer.appendChild(hpBar);
@@ -957,11 +905,10 @@ class PyxisTargetSelector {
       card.appendChild(hpContainer);
     }
 
-    // 스탯 정보 (1-5 범위 적용)
+    // 스탯
     if (this.options.showStats && target.stats) {
       const statsContainer = document.createElement('div');
       statsContainer.className = 'target-stats';
-
       const stats = target.stats;
       const statNames = [
         { key: 'attack', label: '공격', alt: 'atk' },
@@ -969,35 +916,23 @@ class PyxisTargetSelector {
         { key: 'agility', label: '민첩', alt: 'agi' },
         { key: 'luck', label: '행운', alt: 'luk' }
       ];
-
       statNames.forEach(stat => {
         const statEl = document.createElement('div');
         statEl.className = 'target-stat';
-        
-        // 1-5 범위에 맞게 기본값 조정
         const value = stats[stat.key] ?? stats[stat.alt] ?? 3;
-        statEl.innerHTML = `
-          <span>${stat.label}</span>
-          <span>${value}</span>
-        `;
-        
+        statEl.innerHTML = `<span>${stat.label}</span><span>${value}</span>`;
         statsContainer.appendChild(statEl);
       });
-
       card.appendChild(statsContainer);
     }
 
-    // 상태 정보
+    // 상태
     const statusContainer = document.createElement('div');
     statusContainer.className = 'target-status';
-
-    // 생존 상태
     const aliveStatus = document.createElement('div');
     aliveStatus.className = `status-pill ${isDisabled ? 'dead' : 'alive'}`;
     aliveStatus.textContent = isDisabled ? '전투불능' : '전투가능';
     statusContainer.appendChild(aliveStatus);
-
-    // 버프/디버프 상태
     if (target.effects && Array.isArray(target.effects)) {
       target.effects.forEach(effect => {
         const effectPill = document.createElement('div');
@@ -1006,97 +941,63 @@ class PyxisTargetSelector {
         statusContainer.appendChild(effectPill);
       });
     }
-
     card.appendChild(statusContainer);
 
-    // 클릭/키보드 이벤트
     if (!isDisabled) {
       const selectHandler = (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.selectTarget(target, card);
       };
-
       card.addEventListener('click', selectHandler);
       card.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectHandler(e);
-        }
+        if (e.key === 'Enter' || e.key === ' ') selectHandler(e);
       });
-
-      // 호버 시 사운드 효과 (옵션)
       if (this.options.enableSoundEffects) {
-        card.addEventListener('mouseenter', () => {
-          this.playSound('hover');
-        });
+        card.addEventListener('mouseenter', () => this.playSound('hover'));
       }
     }
 
     return card;
   }
 
-  // 타겟 선택
   selectTarget(target, cardEl) {
     if (target.alive === false || target.hp <= 0) return;
-
-    // 사운드 효과
-    if (this.options.enableSoundEffects) {
-      this.playSound('select');
-    }
-
+    if (this.options.enableSoundEffects) this.playSound('select');
     if (this.options.allowMultiSelect) {
-      // 다중 선택 모드
-      const index = this.selectedTargets.findIndex(t => 
+      const index = this.selectedTargets.findIndex(t =>
         (t.id && t.id === target.id) || (t.name === target.name)
       );
-
       if (index > -1) {
-        // 이미 선택된 경우 제거
         this.selectedTargets.splice(index, 1);
         cardEl.classList.remove('selected');
         cardEl.setAttribute('aria-selected', 'false');
       } else {
-        // 새로 선택
         this.selectedTargets.push(target);
         cardEl.classList.add('selected');
         cardEl.setAttribute('aria-selected', 'true');
       }
-
-      // 확인 버튼 상태 업데이트
       this.updateConfirmButton();
     } else {
-      // 단일 선택 모드: 즉시 실행
       this.hide();
-      if (this.callback) {
-        setTimeout(() => {
-          this.callback(target);
-        }, 100);
-      }
+      if (this.callback) setTimeout(() => this.callback(target), 100);
     }
   }
 
-  // 확인 버튼 상태 업데이트
   updateConfirmButton() {
     if (this.confirmBtn && this.selectedCountEl) {
       const count = this.selectedTargets.length;
       this.confirmBtn.disabled = count === 0;
       this.selectedCountEl.textContent = count;
-      
       if (count > 0) {
         this.confirmBtn.setAttribute('aria-label', `${count}명의 대상 선택 확인`);
       }
     }
   }
 
-  // 다중 선택 확인
   confirm() {
     if (this.selectedTargets.length === 0) return;
-
-    // 사운드 효과
-    if (this.options.enableSoundEffects) {
-      this.playSound('confirm');
-    }
-
+    if (this.options.enableSoundEffects) this.playSound('confirm');
     this.hide();
     if (this.callback) {
       setTimeout(() => {
@@ -1105,14 +1006,10 @@ class PyxisTargetSelector {
     }
   }
 
-  // 숨기기
   hide() {
     if (!this.overlay) return;
-
-    // 페이드 아웃 애니메이션
     this.overlay.style.opacity = '0';
     this.overlay.querySelector('.target-panel').style.transform = 'scale(0.9) translateY(20px)';
-
     setTimeout(() => {
       this.overlay.style.display = 'none';
       this.isVisible = false;
@@ -1121,27 +1018,20 @@ class PyxisTargetSelector {
       this.callback = null;
       this.battleData = null;
       this._focusedIndex = 0;
-
-      // 포커스 복원
       if (document.activeElement && document.activeElement.blur) {
         document.activeElement.blur();
       }
     }, 200);
   }
 
-  // 사운드 재생 (옵션)
   playSound(type) {
     if (!this.options.enableSoundEffects) return;
-
-    // Web Audio API를 사용한 간단한 사운드 효과
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-
       switch (type) {
         case 'hover':
           oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
@@ -1160,15 +1050,13 @@ class PyxisTargetSelector {
           gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
           break;
       }
-
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.3);
     } catch (error) {
-      console.warn('Sound effects not available:', error);
+      // ignore
     }
   }
 
-  // 필터링
   filterTargets(predicate) {
     this.targets = this.targets.filter(predicate);
     this.selectedTargets = this.selectedTargets.filter(predicate);
@@ -1176,7 +1064,6 @@ class PyxisTargetSelector {
     this.updateConfirmButton();
   }
 
-  // 타겟 업데이트
   updateTargets(targets) {
     this.targets = Array.isArray(targets) ? targets : [];
     this.selectedTargets = [];
@@ -1184,47 +1071,40 @@ class PyxisTargetSelector {
     this.updateConfirmButton();
   }
 
-  // 특정 타겟 업데이트
   updateTarget(targetId, updates) {
-    const targetIndex = this.targets.findIndex(t => 
+    const targetIndex = this.targets.findIndex(t =>
       (t.id && t.id === targetId) || (t.name === targetId)
     );
-    
     if (targetIndex > -1) {
       this.targets[targetIndex] = { ...this.targets[targetIndex], ...updates };
       this.renderTargets();
     }
   }
 
-  // 타겟 추가
   addTarget(target) {
     this.targets.push(target);
     this.renderTargets();
   }
 
-  // 타겟 제거
   removeTarget(targetId) {
-    this.targets = this.targets.filter(t => 
+    this.targets = this.targets.filter(t =>
       (t.id && t.id !== targetId) && (t.name !== targetId)
     );
-    this.selectedTargets = this.selectedTargets.filter(t => 
+    this.selectedTargets = this.selectedTargets.filter(t =>
       (t.id && t.id !== targetId) && (t.name !== targetId)
     );
     this.renderTargets();
     this.updateConfirmButton();
   }
 
-  // 표시 여부 확인
   isShown() {
     return this.isVisible;
   }
 
-  // 선택된 타겟들 가져오기
   getSelectedTargets() {
     return [...this.selectedTargets];
   }
 
-  // 모든 선택 해제
   clearSelection() {
     this.selectedTargets = [];
     if (this.listEl) {
@@ -1236,12 +1116,9 @@ class PyxisTargetSelector {
     this.updateConfirmButton();
   }
 
-  // 옵션 업데이트
   updateOptions(newOptions) {
     const oldMultiSelect = this.options.allowMultiSelect;
     this.options = { ...this.options, ...newOptions };
-
-    // 다중 선택 모드 변경시 UI 재구성
     if (oldMultiSelect !== this.options.allowMultiSelect) {
       this.teardownEventListeners();
       this.createOverlay();
@@ -1249,31 +1126,25 @@ class PyxisTargetSelector {
     }
   }
 
-  // 전투 데이터 업데이트
   updateBattleData(battleData) {
     this.battleData = battleData;
-    
-    const battleInfo = this.overlay?.querySelector('.battle-info');
-    if (battleInfo && this.isVisible) {
-      battleInfo.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
-      battleInfo.querySelector('.turn-info').textContent = 
-        `턴 ${battleData.currentTurn || 1} • ${battleData.currentTeam || '불사조 기사단'} 차례`;
+    if (this.battleInfoEl && this.isVisible) {
+      this.battleInfoEl.style.display = '';
+      this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
+      this.battleInfoEl.querySelector('.turn-info').textContent =
+        `턴 ${battleData.currentTurn || 1} • ${battleData.currentTeam === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자'} 차례`;
     }
   }
 
-  // 테마 변경
   setTheme(theme) {
     this.options.theme = theme;
-    
     if (this.overlay) {
       this.overlay.className = `target-overlay theme-${theme}`;
     }
   }
 
-  // 스타일 커스터마이징
   setCustomStyles(styles) {
     if (!styles || typeof styles !== 'object') return;
-
     Object.entries(styles).forEach(([selector, cssText]) => {
       const elements = this.overlay?.querySelectorAll(selector) || [];
       elements.forEach(el => {
@@ -1286,10 +1157,8 @@ class PyxisTargetSelector {
     });
   }
 
-  // 애니메이션 토글
   toggleAnimations(enabled) {
     this.options.enableAnimations = enabled;
-    
     if (this.overlay) {
       this.overlay.style.transition = enabled ? '' : 'none';
       const panel = this.overlay.querySelector('.target-panel');
@@ -1299,12 +1168,10 @@ class PyxisTargetSelector {
     }
   }
 
-  // 사운드 효과 토글
   toggleSoundEffects(enabled) {
     this.options.enableSoundEffects = enabled;
   }
 
-  // 키보드 단축키 추가
   addKeyboardShortcut(key, callback) {
     const handler = (e) => {
       if (this.isVisible && e.key === key) {
@@ -1312,12 +1179,10 @@ class PyxisTargetSelector {
         callback(e);
       }
     };
-
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }
 
-  // 통계 정보 가져오기
   getStats() {
     return {
       totalTargets: this.targets.length,
@@ -1328,7 +1193,6 @@ class PyxisTargetSelector {
     };
   }
 
-  // 접근성 향상
   announceToScreenReader(message) {
     const announcement = document.createElement('div');
     announcement.setAttribute('aria-live', 'polite');
@@ -1341,27 +1205,19 @@ class PyxisTargetSelector {
       overflow: hidden;
     `;
     announcement.textContent = message;
-
     document.body.appendChild(announcement);
     setTimeout(() => {
       document.body.removeChild(announcement);
     }, 1000);
   }
 
-  // 정리
   destroy() {
     this.teardownEventListeners();
-
     if (this.overlay && this.overlay.parentNode) {
       this.overlay.parentNode.removeChild(this.overlay);
     }
-
-    // 스타일시트 제거
     const styleSheet = document.getElementById('pyxis-target-selector-enhanced-styles');
-    if (styleSheet) {
-      styleSheet.remove();
-    }
-
+    if (styleSheet) styleSheet.remove();
     this.targets = [];
     this.selectedTargets = [];
     this.callback = null;
@@ -1371,71 +1227,43 @@ class PyxisTargetSelector {
   }
 }
 
-// 전역 접근을 위한 윈도우 객체에 등록
 window.PyxisTargetSelector = PyxisTargetSelector;
-
-// 전역 인스턴스 생성 (편의용)
 window.PyxisTarget = new PyxisTargetSelector({
   enableAnimations: true,
-  enableSoundEffects: false, // 기본값은 false로 설정
+  enableSoundEffects: false,
   showStats: true,
   showHp: true,
   showTeam: true,
   showAvatar: true
 });
 
-// 사용 예시와 유틸리티 함수들 (1-5 스탯 범위 적용)
 window.PyxisTargetUtils = {
-  // 팀별 타겟 필터링
-  filterByTeam: (targets, team) => {
-    return targets.filter(target => target.team === team);
-  },
-
-  // 생존 타겟만 필터링
-  filterAlive: (targets) => {
-    return targets.filter(target => target.alive !== false && target.hp > 0);
-  },
-
-  // HP가 낮은 순으로 정렬
-  sortByHp: (targets, ascending = true) => {
-    return [...targets].sort((a, b) => {
-      const hpA = a.hp || 0;
-      const hpB = b.hp || 0;
-      return ascending ? hpA - hpB : hpB - hpA;
-    });
-  },
-
-  // 스탯 총합으로 정렬 (1-5 범위 적용)
-  sortByTotalStats: (targets, ascending = false) => {
-    return [...targets].sort((a, b) => {
-      const statsA = a.stats ? Object.values(a.stats).reduce((sum, val) => sum + (val || 0), 0) : 0;
-      const statsB = b.stats ? Object.values(b.stats).reduce((sum, val) => sum + (val || 0), 0) : 0;
-      return ascending ? statsA - statsB : statsB - statsA;
-    });
-  },
-
-  // 전투 적합성 체크
-  isValidTarget: (target) => {
-    return target && target.alive !== false && target.hp > 0;
-  },
-
-  // 타겟 데이터 정규화 (1-5 스탯 범위 적용)
-  normalizeTarget: (target) => {
-    return {
-      id: target.id || target.name || Math.random().toString(36),
-      name: target.name || '무명의 전사',
-      team: target.team || 'phoenix',
-      hp: Math.max(0, target.hp || 100),
-      maxHp: target.maxHp || 100,
-      stats: {
-        attack: Math.max(1, Math.min(5, target.stats?.attack || target.stats?.atk || 3)),
-        defense: Math.max(1, Math.min(5, target.stats?.defense || target.stats?.def || 3)),
-        agility: Math.max(1, Math.min(5, target.stats?.agility || target.stats?.agi || 3)),
-        luck: Math.max(1, Math.min(5, target.stats?.luck || target.stats?.luk || 3))
-      },
-      alive: target.alive !== false && (target.hp || 100) > 0,
-      avatar: target.avatar || null,
-      effects: target.effects || []
-    };
-  }
+  filterByTeam: (targets, team) => targets.filter(target => target.team === team),
+  filterAlive: (targets) => targets.filter(target => target.alive !== false && target.hp > 0),
+  sortByHp: (targets, ascending = true) => [...targets].sort((a, b) => {
+    const hpA = a.hp || 0, hpB = b.hp || 0;
+    return ascending ? hpA - hpB : hpB - hpA;
+  }),
+  sortByTotalStats: (targets, ascending = false) => [...targets].sort((a, b) => {
+    const statsA = a.stats ? Object.values(a.stats).reduce((sum, val) => sum + (val || 0), 0) : 0;
+    const statsB = b.stats ? Object.values(b.stats).reduce((sum, val) => sum + (val || 0), 0) : 0;
+    return ascending ? statsA - statsB : statsB - statsA;
+  }),
+  isValidTarget: (target) => target && target.alive !== false && target.hp > 0,
+  normalizeTarget: (target) => ({
+    id: target.id || target.name || Math.random().toString(36),
+    name: target.name || '무명의 전사',
+    team: target.team || 'phoenix',
+    hp: Math.max(0, target.hp || 100),
+    maxHp: target.maxHp || 100,
+    stats: {
+      attack: Math.max(1, Math.min(5, target.stats?.attack || target.stats?.atk || 3)),
+      defense: Math.max(1, Math.min(5, target.stats?.defense || target.stats?.def || 3)),
+      agility: Math.max(1, Math.min(5, target.stats?.agility || target.stats?.agi || 3)),
+      luck: Math.max(1, Math.min(5, target.stats?.luck || target.stats?.luk || 3))
+    },
+    alive: target.alive !== false && (target.hp || 100) > 0,
+    avatar: target.avatar || null,
+    effects: target.effects || []
+  }),
 };
