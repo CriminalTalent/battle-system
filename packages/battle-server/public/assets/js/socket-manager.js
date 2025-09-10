@@ -1,10 +1,7 @@
 // PYXIS Spectator Interface - Enhanced Gaming Viewer (Revised)
-// - 안정화: DOM 준비 상태 즉시 실행(중복 DOMContentLoaded 의존 제거)
-// - 보안: 로그/텍스트 출력 시 XSS 방지(escape 적용, 텍스트 노드 사용)
-// - UX: 빠른 응원 10번째 버튼('0'키) 매핑 버그 수정(index 9 → 0)
-// - 회복력: 요소 미존재 환경에서도 안전하게 동작, 정리(cleanup) 강화
-// - 호환: 팀 키(eaters/death) 동시 지원, 서버 'error' 알림 안전 처리
-// - 품질: 쿨타임 표시/해제, 키보드 단축키, 알림/이펙트 연동 그대로 유지
+// - 단축키(키보드) 응원 기능 제거
+// - 빠른 응원 메시지 → 버튼 고정 6개, 멘트: "멋지다!", "이겨라!", "살아서 돌아와!", "화이팅!", "죽으면 나한테 죽어!", "힘내요!"
+// - 버튼 내 멘트 고정, 랜덤 메시지/번호 매핑 제거
 
 class PyxisSpectatorInterface {
   constructor() {
@@ -23,53 +20,17 @@ class PyxisSpectatorInterface {
     this.cheerCooldown = 1000; // 1초
     this.loadingToastId = null;
 
-    // 빠른 응원 메시지 사전 (0~9)
-    this.cheerMessages = {
-      1: ['힘내라!', '파이팅!', '할 수 있다!', '버텨라!'],
-      2: ['최고야!', '잘한다!', '멋지다!', '그렇지!'],
-      3: ['역전이다!', '뒤집어라!', '반격 시작!', '기회다!'],
-      4: ['집중해라!', '침착하게!', '정신 차려!', '꾸준히!'],
-      5: ['치명타!', '크리티컬!', '완벽해!', '대박!'],
-      6: ['방어해라!', '막아내라!', '버텨내자!', '견뎌라!'],
-      7: ['회피해라!', '피해라!', '빠져라!', '조심해!'],
-      8: ['아이템 써라!', '디터니다!', '회복해라!', '치료해!'],
-      9: ['마지막이다!', '끝장내라!', '결정타!', '승부처!'],
-      0: ['응원한다!', '화이팅!', '열심히!', '계속 가자!']
-    };
+    // 고정 응원 메시지 (버튼 6개)
+    this.fixedCheerMessages = [
+      '멋지다!',
+      '이겨라!',
+      '살아서 돌아와!',
+      '화이팅!',
+      '죽으면 나한테 죽어!',
+      '힘내요!'
+    ];
 
-    // 팀별 응원 (키 호환: phoenix / eaters / death)
-    this.teamCheerMessages = {
-      phoenix: [
-        '불사조 기사단 화이팅!',
-        '기사단의 영광을!',
-        '불멸의 용기로!',
-        '명예로운 승리를!'
-      ],
-      eaters: [
-        '죽음을 먹는 자들 파이팅!',
-        '어둠의 힘으로!',
-        '공포를 선사하라!',
-        '절망을 뿌려라!'
-      ],
-      death: [
-        '죽음을 먹는 자들 파이팅!',
-        '어둠의 힘으로!',
-        '공포를 선사하라!',
-        '절망을 뿌려라!'
-      ]
-    };
-
-    // 상황별 자동 응원
-    this.situationMessages = {
-      lowHp: ['위험해!', '체력 조심!', '회복해라!'],
-      critical: ['치명타다!', '대박!', '완벽해!'],
-      miss: ['아쉽다!', '다음엔 맞춰!', '괜찮아!'],
-      victory: ['승리다!', '완승!', '최고야!'],
-      defeat: ['아쉽다...', '다음엔 이긴다!', '고생했어!']
-    };
-
-    // 바인딩된 핸들러(정리용)
-    this._onKeyDown = (e) => this._handleKeydown(e);
+    // 팀별 응원/상황별 자동응원 등은 사용하지 않음
 
     // 부트스트랩: DOM 준비 상태에 따라 즉시 실행/대기
     this._bootstrap();
@@ -88,7 +49,7 @@ class PyxisSpectatorInterface {
     this.injectStyles();
     this.initElements();
     this.setupEventListeners();
-    this.setupKeyboardShortcuts();
+    // 단축키 제거: this.setupKeyboardShortcuts();
 
     const urlParams = new URLSearchParams(window.location.search);
     const otp = urlParams.get('otp');
@@ -190,11 +151,13 @@ class PyxisSpectatorInterface {
     this.teamCheerBtns = document.querySelectorAll('.team-cheer-btn');
     this.autoLoginInfo = document.querySelector('#autoLoginInfo');
 
-    // 버튼 키캡 표시 & 클릭 매핑(10번째는 '0')
-    this.quickCheerBtns?.forEach((btn, index) => {
-      const key = index === 9 ? '0' : String(index + 1);
-      btn.setAttribute('data-key', key);
-    });
+    // 버튼 내 멘트 고정
+    if (this.quickCheerBtns?.length) {
+      this.quickCheerBtns.forEach((btn, idx) => {
+        btn.textContent = this.fixedCheerMessages[idx] || '';
+        btn.removeAttribute('data-key');
+      });
+    }
   }
 
   setupEventListeners() {
@@ -203,10 +166,12 @@ class PyxisSpectatorInterface {
       if (e.key === 'Enter') this.login();
     });
 
-    this.quickCheerBtns?.forEach((btn, index) => {
-      btn.addEventListener('click', () => this.sendQuickCheer(index === 9 ? 0 : index + 1));
+    // 고정 응원 버튼 클릭
+    this.quickCheerBtns?.forEach((btn, idx) => {
+      btn.addEventListener('click', () => this.sendFixedCheer(idx));
     });
 
+    // 팀 응원/커스텀 응원 등은 필요시 유지
     this.teamCheerBtns?.forEach(btn => {
       btn.addEventListener('click', () => {
         const team = btn.classList.contains('phoenix') ? 'phoenix' : (btn.classList.contains('eaters') ? 'eaters' : 'death');
@@ -222,32 +187,9 @@ class PyxisSpectatorInterface {
     window.addEventListener('beforeunload', () => this.cleanup());
   }
 
-  setupKeyboardShortcuts() {
-    document.addEventListener('keydown', this._onKeyDown);
-  }
-
-  _handleKeydown(e) {
-    // 입력 필드에서는 단축키 무시
-    const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-    if (e.key >= '1' && e.key <= '9') {
-      e.preventDefault();
-      this.sendQuickCheer(parseInt(e.key, 10));
-    } else if (e.key === '0') {
-      e.preventDefault();
-      this.sendQuickCheer(0);
-    } else if (e.key.toLowerCase() === 'p') {
-      e.preventDefault();
-      this.sendTeamCheer('phoenix');
-    } else if (e.key.toLowerCase() === 'e') {
-      e.preventDefault();
-      this.sendTeamCheer('eaters'); // death 별칭도 지원됨
-    } else if (e.key.toLowerCase() === 'c') {
-      e.preventDefault();
-      this.customCheerInput?.focus();
-    }
-  }
+  // 단축키 기능 완전 제거
+  // setupKeyboardShortcuts() { ... }
+  // _handleKeydown(e) { ... }
 
   /* ========== Login / Socket ========== */
   async login() {
@@ -359,7 +301,7 @@ class PyxisSpectatorInterface {
       else if (result === 'dodge') logMessage += ' → 회피됨';
 
       this.addLog('battle', logMessage);
-      this.triggerAutoCheer(result, damage);
+      // 자동 응원 기능 제거
     });
 
     this.socket.on('battle:end', (result) => {
@@ -371,7 +313,6 @@ class PyxisSpectatorInterface {
       window.PyxisNotify?.victoryNotification(winner, reason || '');
       if (window.PyxisFX) {
         window.PyxisFX.screenFlash('rgba(220, 199, 162, 0.3)');
-        // 'victory' 타입은 없지만 frequency 지정으로 재생
         window.PyxisFX.playSound('victory', 800, 0.8, 0.4);
       }
     });
@@ -391,14 +332,12 @@ class PyxisSpectatorInterface {
       this.addLog('system', `${name || '플레이어'}님이 전투를 떠났습니다`);
     });
 
-    // 서버 커스텀 에러 이벤트(권장)
     this.socket.on('server:error', (errorData) => {
       const msg = errorData?.message || '알 수 없는 오류';
       this.addLog('system', `오류: ${msg}`);
       this.showError(msg);
     });
 
-    // 레거시/일반 error 이벤트도 수신(가능 시)
     this.socket.on('error', (errorData) => {
       const msg = (typeof errorData === 'string') ? errorData : (errorData?.message || '알 수 없는 오류');
       this.addLog('system', `오류: ${msg}`);
@@ -407,32 +346,19 @@ class PyxisSpectatorInterface {
   }
 
   /* ========== Cheers ========== */
-  triggerAutoCheer(result) {
-    if (!this.isConnected || Date.now() - this.lastCheerTime < this.cheerCooldown * 3) return;
-    let autoMessage = null;
-    if (result === 'critical') autoMessage = this.getRandomMessage(this.situationMessages.critical);
-    else if (result === 'miss') autoMessage = this.getRandomMessage(this.situationMessages.miss);
-    else if (result === 'lowHp') autoMessage = this.getRandomMessage(this.situationMessages.lowHp);
-
-    if (autoMessage && Math.random() < 0.3) {
-      setTimeout(() => this.sendCheer(autoMessage, 'auto'), 500 + Math.random() * 1000);
-    }
-  }
-
-  sendQuickCheer(number) {
+  sendFixedCheer(idx) {
     if (!this.canSendCheer()) return;
-    const messages = this.cheerMessages[number] || this.cheerMessages[1];
-    const message = this.getRandomMessage(messages);
-    this.sendCheer(message, 'quick', number);
+    const message = this.fixedCheerMessages[idx] || '';
+    if (!message) return;
+    this.sendCheer(message, 'fixed', idx);
     this.applyCooldown();
   }
 
   sendTeamCheer(teamKey) {
     if (!this.canSendCheer()) return;
-    const key = (teamKey === 'death') ? 'death' : (teamKey === 'eaters' ? 'eaters' : 'phoenix');
-    const messages = this.teamCheerMessages[key] || ['팀 응원!'];
-    const message = this.getRandomMessage(messages);
-    this.sendCheer(message, 'team', key);
+    // 팀 응원 메시지 고정(옵션)
+    const message = teamKey === 'phoenix' ? '불사조 기사단 화이팅!' : '죽음을 먹는 자들 파이팅!';
+    this.sendCheer(message, 'team', teamKey);
     this.applyCooldown();
   }
 
@@ -595,7 +521,6 @@ class PyxisSpectatorInterface {
       <div class="auto-login-notice">
         <div class="notice-title">관전자 OTP 확인됨</div>
         <div class="notice-text">관전자 이름을 입력하고 입장해주세요</div>
-        <div class="notice-text">키보드 단축키: 1-9,0 (빠른응원), P (불사조), E (죽음을먹는자들), C (커스텀응원)</div>
       </div>
     `;
   }
@@ -626,8 +551,6 @@ class PyxisSpectatorInterface {
   }
 
   /* ========== Utils ========== */
-  getRandomMessage(arr) { return arr[Math.floor(Math.random() * arr.length)] || ''; }
-
   isInappropriateName(name) {
     const bad = ['관리자', 'admin', 'root', 'system', 'bot'];
     const lower = String(name).toLowerCase();
@@ -681,9 +604,8 @@ class PyxisSpectatorInterface {
 
   /* ========== Cleanup / Debug ========== */
   cleanup() {
-    try {
-      document.removeEventListener('keydown', this._onKeyDown);
-    } catch {}
+    // 단축키 제거
+    // try { document.removeEventListener('keydown', this._onKeyDown); } catch {}
 
     if (this.socket) {
       try { this.socket.removeAllListeners && this.socket.removeAllListeners(); } catch {}
