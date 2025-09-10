@@ -1,4 +1,16 @@
-// ESM Entry for PYXIS Battle Server
+function addPlayerToBattle(battleId, playerData) {
+  const battle = ensureBattle(battleId);
+  
+  // 중복 확인 (대소문자 구분 없이)
+  const existing = battle.players.find(p => 
+    p.name.toLowerCase().trim() === (playerData.name || '').toLowerCase().trim()
+  );
+  if (existing) {
+    throw new Error(`이미 등록된 이름입니다: ${playerData.name}`);
+  }
+  
+  // 이름 검증
+  const// ESM Entry for PYXIS Battle Server
 // - Loads .env
 // - Serves static files
 // - Adds /admin /player /spectator routes
@@ -32,6 +44,8 @@ const PORT = Number(process.env.PORT || 3001);
 if (!Number.isFinite(PORT) || PORT <= 0 || PORT >= 65536) {
   throw new Error(`Invalid PORT: ${process.env.PORT}`);
 }
+
+// PUBLIC_BASE_URL 환경변수 우선, 없으면 기본값
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://pyxisbattlesystem.monster';
 
 console.log(`[PYXIS] 서버 시작 중...`);
@@ -39,6 +53,8 @@ console.log(`- 환경: ${process.env.NODE_ENV || 'development'}`);
 console.log(`- 포트: ${PORT}`);
 console.log(`- 호스트: ${HOST}`);
 console.log(`- 기본 URL: ${PUBLIC_BASE_URL}`);
+console.log(`- 환경변수 PUBLIC_BASE_URL: ${process.env.PUBLIC_BASE_URL || '설정되지 않음'}`);
+
 
 // --------------------------------------------------
 // 디렉토리 생성
@@ -1212,7 +1228,20 @@ io.on('connection', (socket) => {
       timestamp: new Date().toISOString()
     };
     
+    // 모든 클라이언트에게 채팅 메시지 전송
     io.to(battleId).emit('battle:chat', chatData);
+    
+    // 전투 로그에도 채팅 기록
+    const battle = ensureBattle(battleId);
+    pushLog(battle, 'chat', `[채팅] ${chatData.name}: ${trimmedMessage}`);
+    
+    // 로그 업데이트 전송
+    io.to(battleId).emit('battle:log', {
+      type: 'chat',
+      message: `[채팅] ${chatData.name}: ${trimmedMessage}`,
+      timestamp: new Date().toISOString()
+    });
+    
     console.log(`[SOCKET] 채팅: ${chatData.name} -> ${trimmedMessage}`);
   });
 
@@ -1259,12 +1288,12 @@ io.on('connection', (socket) => {
 // 서버 시작
 // --------------------------------------------------
 server.listen(PORT, HOST, () => {
-  console.log(`[PYXIS] 서버 실행 중: http://${HOST}:${PORT}`);
-  console.log(`[PYXIS] 공개 URL: ${PUBLIC_BASE_URL}`);
-  console.log(`[PYXIS] 관리자: ${PUBLIC_BASE_URL}/admin`);
-  console.log(`[PYXIS] 전투 참가자: ${PUBLIC_BASE_URL}/player`);
-  console.log(`[PYXIS] 관전자: ${PUBLIC_BASE_URL}/spectator`);
-  console.log(`[PYXIS] 헬스체크: ${PUBLIC_BASE_URL}/api/health`);
+  console.log(`[PYXIS] 🚀 서버 실행 중: http://${HOST}:${PORT}`);
+  console.log(`[PYXIS] 📊 공개 URL: ${PUBLIC_BASE_URL}`);
+  console.log(`[PYXIS] 🛡️  관리자: ${PUBLIC_BASE_URL}/admin`);
+  console.log(`[PYXIS] ⚔️  전투 참가자: ${PUBLIC_BASE_URL}/player`);
+  console.log(`[PYXIS] 👁️  관전자: ${PUBLIC_BASE_URL}/spectator`);
+  console.log(`[PYXIS] ❤️  헬스체크: ${PUBLIC_BASE_URL}/api/health`);
 });
 
 // --------------------------------------------------
