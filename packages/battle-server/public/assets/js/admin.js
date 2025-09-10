@@ -1,4 +1,7 @@
-/* PYXIS Admin - 우아한 전투 관리 시스템 */
+// 비밀번호 생성 응답 (수정된 이벤트명)
+      socket.on('playerPasswordGenerated', (data) => {
+        if (data.success) {
+          this.displayPlayerLinks(/* PYXIS Admin - 우아한 전투 관리 시스템 */
 (function() {
   'use strict';
 
@@ -470,7 +473,6 @@
       if (elements.pAvatar) elements.pAvatar.value = '';
       if (elements.pAvatarPreview) elements.pAvatarPreview.style.display = 'none';
       if (elements.pAvatarMeta) elements.pAvatarMeta.textContent = '';
-      if (elements.statTotal) elements.statTotal.textContent = '12';
     },
 
     // 채팅
