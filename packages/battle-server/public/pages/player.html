@@ -8,9 +8,7 @@
   <link rel="stylesheet" href="/assets/css/pyxis-theme.css">
   <style>
     :root{
-      --r: 14px;
-      --gap: 14px;
-      --pad: 14px;
+      --r: 14px; --gap: 14px; --pad: 14px;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{background:var(--deep-navy);color:var(--text);font-family:ui-sans-serif,system-ui,AppleSDGothicNeo,Segoe UI,Roboto,Helvetica,Arial;font-size:14px;line-height:1.55}
@@ -22,12 +20,11 @@
     .title-sub{color:var(--text-muted);font-size:11px}
 
     .grid{display:grid;grid-template-columns:320px 1fr 360px;gap:var(--gap);padding:var(--gap)}
-    @media (max-width:1200px){.grid{grid-template-columns:1fr;}}
+    @media (max-width:1200px){.grid{grid-template-columns:1fr}}
     .panel{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border-light);border-radius:var(--r);padding:var(--pad)}
-
     .title-sm{font-weight:800;color:var(--gold-bright);margin-bottom:8px;font-size:14px}
 
-    /* 왼쪽 - 내정보 */
+    /* 왼쪽 - 내 정보 */
     .me{display:flex;flex-direction:column;align-items:center;gap:10px}
     .avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);background:var(--navy-surface)}
     .name{font-weight:800;color:var(--gold-bright)}
@@ -36,12 +33,10 @@
     .stat{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:10px;padding:10px;text-align:center}
     .stat .k{font-size:12px;color:var(--text-muted)}
     .stat .v{font-weight:800;color:var(--gold-bright);font-size:18px}
-
     .hp{width:100%}
     .hpbar{position:relative;height:18px;border-radius:10px;border:1px solid var(--border-light);background:var(--navy-surface);overflow:hidden}
     .hpbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--success),#1fa86f)}
     .hpbar>span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;color:#fff}
-
     .items{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
     .item{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:10px;padding:8px;text-align:center}
     .item .n{font-size:11px;color:var(--text-muted)}
@@ -49,16 +44,7 @@
 
     /* 중앙 - 큰 턴 이미지 + 로그 */
     .turn-wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
-    .turn-card{
-      width:min(90vw, 700px);
-      aspect-ratio:1/1;
-      border-radius:28px;
-      border:3px solid var(--gold);
-      background:var(--navy-surface);
-      overflow:hidden;
-      box-shadow:var(--shadow-glow);
-      display:flex;align-items:center;justify-content:center;
-    }
+    .turn-card{width:min(90vw, 700px);aspect-ratio:1/1;border-radius:28px;border:3px solid var(--gold);background:var(--navy-surface);overflow:hidden;box-shadow:var(--shadow-glow);display:flex;align-items:center;justify-content:center}
     .turn-img{width:100%;height:100%;object-fit:cover;display:block}
     .turn-name{font-weight:800;color:var(--gold-bright);margin-top:2px}
     .turn-timer{font-size:13px;color:var(--text-muted)}
@@ -85,6 +71,12 @@
     .form{display:flex;flex-direction:column;gap:10px}
     .label{font-size:12px;color:var(--text-muted)}
     .field{border:1px solid var(--border-light);border-radius:10px;background:var(--glass-1);padding:10px;color:var(--text)}
+
+    /* 로딩 오버레이 (자동 로그인 시 표시) */
+    .loading-overlay{position:fixed;inset:0;background:rgba(10,15,26,.86);display:flex;align-items:center;justify-content:center;z-index:1000}
+    .loading-content{text-align:center;color:var(--text)}
+    .spinner{width:44px;height:44px;border:3px solid var(--glass-2);border-top:3px solid var(--gold);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
@@ -104,15 +96,12 @@
       <div class="form">
         <label class="label">전투 ID</label>
         <input id="battleId" class="field" placeholder="전투 ID">
-
         <label class="label">전투 참가자 이름</label>
         <input id="playerName" class="field" placeholder="전투 참가자 이름">
-
         <label class="label">비밀번호</label>
         <input id="authToken" class="field" placeholder="전투 참가자 비밀번호">
-
         <button id="btnAuth" class="btn primary">접속</button>
-        <div class="line system">URL 파라미터(battle, name, token)로 자동 접속합니다.</div>
+        <div class="line system" style="margin-top:8px">URL 파라미터(battle, name, token)로 자동 접속합니다.</div>
       </div>
     </div>
   </section>
@@ -127,18 +116,15 @@
           <img id="myAvatar" class="avatar" src="/assets/images/default-avatar.png" alt="아바타">
           <div id="myName" class="name">전투 참가자</div>
           <div><span id="myTeam" class="badge">A팀</span></div>
-
           <div class="grid-2">
             <div class="stat"><div class="k">공격</div><div id="statATK" class="v">3</div></div>
             <div class="stat"><div class="k">방어</div><div id="statDEF" class="v">3</div></div>
             <div class="stat"><div class="k">민첩</div><div id="statAGI" class="v">3</div></div>
             <div class="stat"><div class="k">행운</div><div id="statLUK" class="v">3</div></div>
           </div>
-
           <div class="hp">
             <div class="hpbar"><i id="hpFill" style="width:100%"></i><span id="hpText">100 / 100</span></div>
           </div>
-
           <div class="items">
             <div class="item"><div class="n">디터니</div><div id="itemDittany" class="c">1</div></div>
             <div class="item"><div class="n">공격 보정기</div><div id="itemAttack" class="c">1</div></div>
@@ -155,7 +141,6 @@
           </div>
           <div id="turnName" class="turn-name">대기 중</div>
           <div id="turnTimer" class="turn-timer">턴 시간: --</div>
-
           <div class="log" id="battleLog" style="margin-top:10px;width:min(90vw, 700px);">
             <div class="line system">전투 시작을 기다리는 중...</div>
           </div>
@@ -176,7 +161,6 @@
             <button id="btnItemAttack"  class="btn ghost" disabled>공격 보정기</button>
             <button id="btnItemDefense" class="btn ghost" disabled>방어 보정기</button>
           </div>
-
           <div class="title-sm" style="margin-top:6px">채팅</div>
           <div id="chatList" class="chat"></div>
           <div class="chat-box">
@@ -188,11 +172,18 @@
     </div>
   </main>
 
+  <!-- 로딩 오버레이 (자동/수동 인증 중 표시) -->
+  <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <p>접속 중...</p>
+    </div>
+  </div>
+
   <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // 필요하면 절대 URL로 지정
-    window.PYXIS_SERVER_URL = "";
+    window.PYXIS_SERVER_URL = ""; /* 동일 오리진 사용시 비워둠 */
   </script>
   <script src="/assets/js/player.js"></script>
 </body>
