@@ -54,11 +54,30 @@
       if (meId && (b.current === meId)) {
         Notify.show("당신의 턴입니다!", "지금 행동하세요.");
       }
+      // 상태별 알림
+      if (b.status === "ended") {
+        Notify.show("전투 종료", "전투가 종료되었습니다.");
+      }
+      if (b.status === "waiting") {
+        Notify.show("대기 중", "전투가 곧 시작됩니다.");
+      }
     });
 
     socket.on("battle:log", ({ type, message }) => {
       if (type === "cheer") {
         Notify.show("응원", message);
+      }
+      if (type === "attack") {
+        Notify.show("공격", message);
+      }
+      if (type === "defend") {
+        Notify.show("방어", message);
+      }
+      if (type === "evade") {
+        Notify.show("회피", message);
+      }
+      if (type === "system") {
+        Notify.show("알림", message);
       }
     });
   }
