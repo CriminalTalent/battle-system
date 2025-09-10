@@ -1,6 +1,10 @@
-// PYXIS Target Selector Component - Enhanced Gaming Edition
-// 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
-// 스탯 시스템: 1-5 범위, 총합 제한 없음
+/* packages/battle-server/public/assets/js/target-selector.js
+   PYXIS Target Selector Component - Enhanced Gaming Edition
+   - 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
+   - 스탯 시스템: 1-5 범위, 총합 제한 없음
+   - 이모지/특수문자 미사용 (제목 장식 기호 제거)
+*/
+
 class PyxisTargetSelector {
   constructor(options = {}) {
     this.options = {
@@ -96,7 +100,7 @@ class PyxisTargetSelector {
         max-height: 85vh;
         width: 100%;
         max-width: 900px;
-        box-shadow: 
+        box-shadow:
           0 25px 50px rgba(0, 0, 0, 0.5),
           0 0 0 1px rgba(220, 199, 162, 0.1),
           inset 0 1px 0 rgba(220, 199, 162, 0.2);
@@ -137,31 +141,6 @@ class PyxisTargetSelector {
         margin-bottom: 24px;
         text-shadow: 0 2px 8px rgba(220, 199, 162, 0.3);
         position: relative;
-      }
-
-      .target-title::before,
-      .target-title::after {
-        content: '✦';
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--pyxis-gold-warm);
-        font-size: 16px;
-        animation: twinkle 2s ease-in-out infinite alternate;
-      }
-
-      .target-title::before {
-        left: -40px;
-      }
-
-      .target-title::after {
-        right: -40px;
-        animation-delay: 1s;
-      }
-
-      @keyframes twinkle {
-        0% { opacity: 0.4; transform: translateY(-50%) scale(0.8); }
-        100% { opacity: 1; transform: translateY(-50%) scale(1.2); }
       }
 
       .target-list {
@@ -231,7 +210,7 @@ class PyxisTargetSelector {
           rgba(0, 30, 53, 0.95) 0%,
           rgba(42, 52, 65, 0.9) 100%
         );
-        box-shadow: 
+        box-shadow:
           0 12px 24px rgba(0, 0, 0, 0.3),
           0 0 0 1px var(--pyxis-gold-bright),
           0 0 20px rgba(220, 199, 162, 0.2);
@@ -239,7 +218,7 @@ class PyxisTargetSelector {
 
       .target-card.focused {
         border-color: var(--pyxis-gold-bright);
-        box-shadow: 
+        box-shadow:
           0 8px 16px rgba(0, 0, 0, 0.2),
           0 0 0 2px var(--pyxis-gold-bright),
           0 0 20px rgba(220, 199, 162, 0.3);
@@ -252,8 +231,8 @@ class PyxisTargetSelector {
           rgba(220, 199, 162, 0.15) 0%,
           rgba(212, 183, 126, 0.1) 100%
         ) !important;
-        box-shadow: 
-          0 8px 16px rgba(0, 0, 0, 0.2), 
+        box-shadow:
+          0 8px 16px rgba(0, 0, 0, 0.2),
           0 0 0 2px var(--pyxis-gold-bright),
           inset 0 0 20px rgba(220, 199, 162, 0.1) !important;
       }
@@ -513,7 +492,7 @@ class PyxisTargetSelector {
           rgba(0, 30, 53, 0.95) 0%,
           rgba(42, 52, 65, 0.9) 100%
         );
-        box-shadow: 
+        box-shadow:
           0 8px 16px rgba(0, 0, 0, 0.2),
           0 0 20px rgba(220, 199, 162, 0.2);
         transform: translateY(-2px);
@@ -535,7 +514,7 @@ class PyxisTargetSelector {
           var(--pyxis-gold-bright) 0%,
           var(--pyxis-gold-warm) 100%
         );
-        box-shadow: 
+        box-shadow:
           0 8px 16px rgba(0, 0, 0, 0.3),
           0 0 20px rgba(220, 199, 162, 0.4);
       }
@@ -610,11 +589,6 @@ class PyxisTargetSelector {
           margin-bottom: 16px;
         }
 
-        .target-title::before,
-        .target-title::after {
-          display: none;
-        }
-
         .target-actions {
           flex-direction: column;
           gap: 8px;
@@ -640,7 +614,7 @@ class PyxisTargetSelector {
         .target-card {
           border-width: 3px;
         }
-        
+
         .btn {
           border-width: 3px;
         }
@@ -663,7 +637,7 @@ class PyxisTargetSelector {
     this.overlay.setAttribute('aria-labelledby', 'targetTitle');
 
     this.overlay.innerHTML = `
-      <div class="target-panel sparkle-effect">
+      <div class="target-panel">
         <div class="target-title" id="targetTitle">전투 대상 선택</div>
         <div class="battle-info" style="display:none;">
           <div class="battle-mode"></div>
@@ -911,10 +885,10 @@ class PyxisTargetSelector {
       statsContainer.className = 'target-stats';
       const stats = target.stats;
       const statNames = [
-        { key: 'attack', label: '공격', alt: 'atk' },
+        { key: 'attack',  label: '공격', alt: 'atk' },
         { key: 'defense', label: '방어', alt: 'def' },
         { key: 'agility', label: '민첩', alt: 'agi' },
-        { key: 'luck', label: '행운', alt: 'luk' }
+        { key: 'luck',    label: '행운', alt: 'luk' }
       ];
       statNames.forEach(stat => {
         const statEl = document.createElement('div');
@@ -1009,7 +983,8 @@ class PyxisTargetSelector {
   hide() {
     if (!this.overlay) return;
     this.overlay.style.opacity = '0';
-    this.overlay.querySelector('.target-panel').style.transform = 'scale(0.9) translateY(20px)';
+    const panel = this.overlay.querySelector('.target-panel');
+    if (panel) panel.style.transform = 'scale(0.9) translateY(20px)';
     setTimeout(() => {
       this.overlay.style.display = 'none';
       this.isVisible = false;
@@ -1053,7 +1028,7 @@ class PyxisTargetSelector {
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.3);
     } catch (error) {
-      // ignore
+      /* ignore */
     }
   }
 
@@ -1227,7 +1202,10 @@ class PyxisTargetSelector {
   }
 }
 
+/* 전역 바인딩 및 호환 래퍼 */
 window.PyxisTargetSelector = PyxisTargetSelector;
+
+/* 싱글톤 인스턴스 */
 window.PyxisTarget = new PyxisTargetSelector({
   enableAnimations: true,
   enableSoundEffects: false,
@@ -1237,7 +1215,37 @@ window.PyxisTarget = new PyxisTargetSelector({
   showAvatar: true
 });
 
-window.PyxisTargetUtils = {
+/* 플레이어 클라이언트 호환용 래퍼
+   - 기대 시그니처: window.PYXISTargetSelector.open({ players, onPick, title?, battleData?, allowMultiSelect? })
+   - onPick에는 선택된 target의 id를 넘김(단일 선택 기본)
+*/
+window.PYXISTargetSelector = {
+  open({ players = [], onPick, title = '전투 대상 선택', battleData = null, allowMultiSelect = false } = {}) {
+    try {
+      window.PyxisTarget.updateOptions({ allowMultiSelect });
+      const normalized = (players || []).map(window.PyxisTargetUtils
+        ? window.PyxisTargetUtils.normalizeTarget
+        : (t) => t
+      );
+      window.PyxisTarget.show(title, normalized, (selected) => {
+        if (!onPick) return;
+        if (Array.isArray(selected)) {
+          onPick(selected.map(t => t.id || t.name));
+        } else {
+          onPick(selected.id || selected.name);
+        }
+      }, battleData);
+    } catch (e) {
+      console.error('PYXISTargetSelector.open 에러:', e);
+    }
+  },
+  close() {
+    try { window.PyxisTarget.hide(); } catch (_) {}
+  }
+};
+
+/* 유틸리티 */
+window.PyxisTargetUtils = window.PyxisTargetUtils || {
   filterByTeam: (targets, team) => targets.filter(target => target.team === team),
   filterAlive: (targets) => targets.filter(target => target.alive !== false && target.hp > 0),
   sortByHp: (targets, ascending = true) => [...targets].sort((a, b) => {
@@ -1257,13 +1265,13 @@ window.PyxisTargetUtils = {
     hp: Math.max(0, target.hp || 100),
     maxHp: target.maxHp || 100,
     stats: {
-      attack: Math.max(1, Math.min(5, target.stats?.attack || target.stats?.atk || 3)),
-      defense: Math.max(1, Math.min(5, target.stats?.defense || target.stats?.def || 3)),
-      agility: Math.max(1, Math.min(5, target.stats?.agility || target.stats?.agi || 3)),
-      luck: Math.max(1, Math.min(5, target.stats?.luck || target.stats?.luk || 3))
+      attack:  Math.max(1, Math.min(5, target.stats?.attack  ?? target.stats?.atk  ?? 3)),
+      defense: Math.max(1, Math.min(5, target.stats?.defense ?? target.stats?.def  ?? 3)),
+      agility: Math.max(1, Math.min(5, target.stats?.agility ?? target.stats?.agi  ?? 3)),
+      luck:    Math.max(1, Math.min(5, target.stats?.luck    ?? target.stats?.luk  ?? 3))
     },
-    alive: target.alive !== false && (target.hp || 100) > 0,
+    alive: target.alive !== false && (target.hp ?? 100) > 0,
     avatar: target.avatar || null,
     effects: target.effects || []
-  }),
+  })
 };
