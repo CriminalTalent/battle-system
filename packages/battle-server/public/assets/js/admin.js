@@ -289,7 +289,7 @@
       // 이미지 업로드
       elements.pAvatar?.addEventListener('change', (e) => this.handleAvatarUpload(e));
 
-      // 스탯 변경 감지
+      // 스탯 변경 감지 (12포인트 제한 제거)
       [elements.sATK, elements.sDEF, elements.sDEX, elements.sLUK].forEach(el => {
         el?.addEventListener('input', () => this.updateStatTotal());
       });
@@ -426,20 +426,10 @@
       reader.readAsDataURL(file);
     },
 
-    // 스탯 합계 업데이트
+    // 스탯 합계 업데이트 (12포인트 제한 제거)
     updateStatTotal() {
-      const total = [elements.sATK, elements.sDEF, elements.sDEX, elements.sLUK]
-        .reduce((sum, el) => sum + parseInt(el?.value || 0), 0);
-      
-      if (elements.statTotal) {
-        elements.statTotal.textContent = total;
-        elements.statTotal.className = `stat-total ${total === 12 ? 'valid' : total > 12 ? 'over' : 'under'}`;
-      }
-      
-      // HP 계산 (기본 100)
-      if (elements.pHP) {
-        elements.pHP.value = 100;
-      }
+      // HP는 수동으로 설정 가능하도록 변경
+      // 더 이상 스탯 총합을 체크하지 않음
     },
 
     clearStats() {
@@ -447,7 +437,6 @@
         if (el) el.value = 3;
       });
       if (elements.pHP) elements.pHP.value = 100;
-      this.updateStatTotal();
     },
 
     // 전투 참가자 추가
@@ -472,10 +461,12 @@
         luck: parseInt(elements.sLUK?.value || 3)
       };
 
-      const total = Object.values(stats).reduce((a, b) => a + b, 0);
-      if (total !== 12) {
-        this.showToast('스탯 총합은 12여야 합니다', 'warning');
-        return;
+      // 스탯 유효성 검증 (1-10 범위)
+      for (const [key, value] of Object.entries(stats)) {
+        if (value < 1 || value > 10) {
+          this.showToast(`${key} 스탯은 1-10 사이여야 합니다`, 'warning');
+          return;
+        }
       }
 
       const items = {
@@ -1116,21 +1107,6 @@
 
       .chat-message {
         color: #e2e8f0;
-      }
-
-      .stat-total.valid {
-        color: #10b981;
-        font-weight: 600;
-      }
-
-      .stat-total.over {
-        color: #dc2626;
-        font-weight: 600;
-      }
-
-      .stat-total.under {
-        color: #f59e0b;
-        font-weight: 600;
       }
 
       button.disabled {
