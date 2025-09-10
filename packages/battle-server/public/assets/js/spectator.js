@@ -50,6 +50,16 @@
     cheerButtons: $$(".cheer-btn")
   };
 
+  // 고정 응원 멘트
+  const CHEER_MENT = [
+    "멋지다!",
+    "이겨라!",
+    "살아서 돌아와!",
+    "화이팅!",
+    "죽으면 나한테 죽어!",
+    "힘내요!"
+  ];
+
   // -----------------------------
   // State
   // -----------------------------
@@ -66,10 +76,18 @@
   // Init
   // -----------------------------
   window.addEventListener("DOMContentLoaded", () => {
+    setCheerButtonLabels();
     connectSocket();
     autoFillFromURL();
     bindUI();
   });
+
+  function setCheerButtonLabels() {
+    el.cheerButtons.forEach((btn, idx) => {
+      btn.textContent = CHEER_MENT[idx] || "";
+      btn.setAttribute("data-cheer", CHEER_MENT[idx] || "");
+    });
+  }
 
   function connectSocket() {
     const url = (window.PyxisSocket && window.PyxisSocket.url) || undefined;
