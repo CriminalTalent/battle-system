@@ -23,9 +23,6 @@
       margin: 0;
       letter-spacing: 0.01em;
     }
-    .pyxis-header, .card, .btn, .chat-messages, .timeline, .chat-input input, .chat-input button, .my-panel, .team-title, .roster, .hint, .status-pill, .badge-pill {
-      font-family: 'Cinzel', serif !important;
-    }
     .pyxis-header {
       background: #111827;
       border-bottom: 1px solid #2b3340;
@@ -69,12 +66,19 @@
       margin: 0 auto;
       padding: 24px 0;
     }
+    .player-main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
     .card {
       background: #1a1f2b;
       border-radius: 12px;
       padding: 18px 18px 16px 18px;
       box-shadow: 0 2px 16px 0 rgba(0,0,0,0.08);
       margin-bottom: 18px;
+      font-family: 'Cinzel', serif;
     }
     .title {
       color: #d4b77e;
@@ -84,15 +88,11 @@
       text-align: center;
       letter-spacing: 0.03em;
     }
-    .grid.player-grid {
-      display: grid;
-      grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 24px;
-    }
+    /* 좌측: 팀원 정보 */
     .teams {
       display: flex;
-      gap: 18px;
-      justify-content: space-between;
+      flex-direction: column;
+      gap: 12px;
     }
     .team-title {
       color: #d4b77e;
@@ -110,21 +110,85 @@
       font-size: 14px;
       margin-bottom: 8px;
     }
+    /* 중앙: 플레이어 액션 */
+    .player-action-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      height: 100%;
+    }
     .my-panel {
       background: #141a24;
       border: 1px solid #2b3340;
       border-radius: 8px;
       padding: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       font-size: 15px;
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .avatar-img {
+      width: 90px;
+      height: 120px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #222;
+      margin-bottom: 8px;
+      border: 2px solid #d4b77e;
+    }
+    .stat-list {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 10px;
+      margin-bottom: 6px;
+    }
+    .stat-label {
+      color: #a9b1c7;
+      font-size: 13px;
+      text-align: right;
+    }
+    .stat-value {
+      color: #f5f5f5;
+      font-size: 13px;
+      text-align: left;
+    }
+    .hp-bar-wrap {
+      width: 100%;
+      margin: 6px 0 0 0;
+    }
+    .hp-bar-bg {
+      background: #222;
+      border-radius: 6px;
+      height: 14px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .hp-bar {
+      background: linear-gradient(90deg, #d4b77e 60%, #89a894 100%);
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.3s;
+    }
+    .hp-label {
+      font-size: 13px;
+      color: #d4b77e;
+      text-align: center;
+      margin-top: 2px;
     }
     .turn-box {
       background: #0f1419;
       border: 1px solid #2b3340;
       border-radius: 8px;
       padding: 10px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       text-align: center;
+      width: 100%;
+      max-width: 320px;
     }
     .turn-title {
       color: #d4b77e;
@@ -142,30 +206,79 @@
       display: flex;
       gap: 10px;
       justify-content: center;
-      margin: 10px 0;
+      margin: 10px 0 0 0;
+      width: 100%;
+      max-width: 320px;
+    }
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 320px;
     }
     .btn {
       background: #d4b77e;
       color: #111;
       border: none;
       border-radius: 8px;
-      padding: 8px 16px;
+      padding: 8px 0;
       font-weight: 700;
       font-size: 15px;
       cursor: pointer;
       letter-spacing: 0.02em;
       transition: background 0.15s;
+      width: 100%;
     }
     .btn:disabled {
       background: #bfa05e;
       color: #888;
       cursor: not-allowed;
     }
-    .action-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-top: 10px;
+    /* 중앙: 현재 턴 플레이어 아바타 */
+    .current-turn-avatar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .current-turn-img {
+      width: 120px;
+      height: 160px;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #222;
+      border: 2px solid #d4b77e;
+      margin-bottom: 6px;
+    }
+    .current-turn-name {
+      color: #d4b77e;
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    /* 우측: 상대 정보 + 채팅/로그 */
+    .opponent-panel {
+      background: #141a24;
+      border: 1px solid #2b3340;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 15px;
+      width: 100%;
+    }
+    .opponent-title {
+      color: #d4b77e;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .opponent-info-list {
+      font-size: 13px;
+      color: #f5f5f5;
+      margin-bottom: 6px;
     }
     .chat-wrap {
       background: #0f1419;
@@ -227,9 +340,10 @@
       text-align: left;
     }
     @media (max-width: 1100px) {
-      .grid.player-grid { grid-template-columns: 1fr; gap: 10px; }
+      .player-main-grid { grid-template-columns: 1fr; gap: 10px; }
       .container { padding: 10px 0; }
       .card { padding: 10px; }
+      .player-action-center, .opponent-panel { max-width: 100%; }
     }
   </style>
 </head>
@@ -273,67 +387,70 @@
 
   <!-- 메인 뷰 -->
   <main id="mainView" class="container hidden">
-    <div class="grid player-grid">
-      <!-- 좌: 팀원 정보 -->
-      <section class="card">
-        <h3 class="title">팀원 정보</h3>
-        <div class="teams">
-          <div class="team">
-            <div class="team-title">불사조 기사단</div>
-            <div id="rosterPhoenix" class="roster"></div>
+    <div class="player-main-grid">
+      <!-- 좌: 내 정보 및 행동 -->
+      <section>
+        <div class="card">
+          <h3 class="title">내 정보</h3>
+          <div id="myPanel" class="my-panel">
+            <!-- 아바타, 스탯, HP바 등 JS로 렌더링 -->
+            <img id="myAvatar" class="avatar-img" src="" alt="아바타" />
+            <div class="stat-list" id="myStats"></div>
+            <div class="hp-bar-wrap">
+              <div class="hp-bar-bg">
+                <div id="myHpBar" class="hp-bar" style="width:100%"></div>
+              </div>
+              <div id="myHpLabel" class="hp-label">HP 100 / 100</div>
+            </div>
           </div>
-          <div class="team">
-            <div class="team-title">죽음을 먹는 자</div>
-            <div id="rosterEaters" class="roster"></div>
+          <div class="turn-box">
+            <div class="turn-title">턴 정보</div>
+            <div id="targetHint" class="hint">필요 시 대상 선택 창이 열립니다.</div>
+          </div>
+          <div class="actions">
+            <button id="btnReady" class="btn">준비완료</button>
+          </div>
+          <div class="action-grid">
+            <button id="btnAtk" class="btn action-btn" disabled>공격</button>
+            <button id="btnDef" class="btn action-btn" disabled>방어</button>
+            <button id="btnDodge" class="btn action-btn" disabled>회피</button>
+            <button id="btnItemAtk" class="btn action-btn" disabled>공격 보정기</button>
+            <button id="btnItemDef" class="btn action-btn" disabled>방어 보정기</button>
+            <button id="btnItemHeal" class="btn action-btn" disabled>디터니</button>
+            <button id="btnPass" class="btn action-btn" disabled>패스</button>
           </div>
         </div>
       </section>
 
-      <!-- 중: 내 정보 / 턴 정보 / 액션 -->
-      <section class="card">
-        <h3 class="title">플레이어 액션</h3>
-
-        <!-- 내 정보 -->
-        <div id="myPanel" class="my-panel"></div>
-
-        <!-- 턴 안내 -->
-        <div class="turn-box">
-          <div class="turn-title">턴 정보</div>
-          <div id="targetHint" class="hint">필요 시 대상 선택 창이 열립니다.</div>
-        </div>
-
-        <!-- 준비 버튼 -->
-        <div class="actions">
-          <button id="btnReady" class="btn">준비완료</button>
-        </div>
-
-        <!-- 액션 버튼 묶음 -->
-        <div class="action-grid">
-          <button id="btnAtk" class="btn action-btn" disabled>공격</button>
-          <button id="btnDef" class="btn action-btn" disabled>방어</button>
-          <button id="btnDodge" class="btn action-btn" disabled>회피</button>
-          <button id="btnItemAtk" class="btn action-btn" disabled>공격 보정기</button>
-          <button id="btnItemDef" class="btn action-btn" disabled>방어 보정기</button>
-          <button id="btnItemHeal" class="btn action-btn" disabled>디터니</button>
-          <button id="btnPass" class="btn action-btn" disabled>패스</button>
+      <!-- 중앙: 현재 턴 플레이어 아바타 + 로그 -->
+      <section>
+        <div class="card player-action-center">
+          <div class="current-turn-avatar">
+            <img id="turnAvatar" class="current-turn-img" src="" alt="현재 턴 플레이어" />
+            <div id="turnName" class="current-turn-name">-</div>
+          </div>
+          <div class="timeline-wrap" style="width:100%;max-width:340px;">
+            <div id="battleLog" class="timeline"></div>
+          </div>
         </div>
       </section>
 
-      <!-- 우: 채팅 & 로그 -->
-      <section class="card">
-        <h3 class="title">채팅 & 로그</h3>
-        <div class="split">
-          <!-- 채팅 -->
+      <!-- 우: 상대 정보 + 채팅 -->
+      <section>
+        <div class="card opponent-panel">
+          <div class="opponent-title">상대 정보</div>
+          <div id="opponentInfo" class="opponent-info-list">
+            <!-- JS로 상대방 정보 렌더링 -->
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="title">채팅</h3>
           <div class="chat-wrap">
             <div id="chatMessages" class="chat-messages"></div>
             <div class="chat-input">
               <input id="chatInput" type="text" placeholder="메시지 입력" />
               <button id="btnChat" class="btn">전송</button>
             </div>
-          </div>
-          <!-- 로그 -->
-          <div class="timeline-wrap">
-            <div id="battleLog" class="timeline"></div>
           </div>
         </div>
       </section>
