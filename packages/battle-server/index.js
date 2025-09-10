@@ -1288,12 +1288,12 @@ io.on('connection', (socket) => {
 // 서버 시작
 // --------------------------------------------------
 server.listen(PORT, HOST, () => {
-  console.log(`[PYXIS] 🚀 서버 실행 중: http://${HOST}:${PORT}`);
-  console.log(`[PYXIS] 📊 공개 URL: ${PUBLIC_BASE_URL}`);
-  console.log(`[PYXIS] 🛡️  관리자: ${PUBLIC_BASE_URL}/admin`);
-  console.log(`[PYXIS] ⚔️  전투 참가자: ${PUBLIC_BASE_URL}/player`);
-  console.log(`[PYXIS] 👁️  관전자: ${PUBLIC_BASE_URL}/spectator`);
-  console.log(`[PYXIS] ❤️  헬스체크: ${PUBLIC_BASE_URL}/api/health`);
+  console.log(`[PYXIS] 서버 실행 중: http://${HOST}:${PORT}`);
+  console.log(`[PYXIS] 공개 URL: ${PUBLIC_BASE_URL}`);
+  console.log(`[PYXIS] 관리자: ${PUBLIC_BASE_URL}/admin`);
+  console.log(`[PYXIS] 전투 참가자: ${PUBLIC_BASE_URL}/player`);
+  console.log(`[PYXIS] 관전자: ${PUBLIC_BASE_URL}/spectator`);
+  console.log(`[PYXIS] 헬스체크: ${PUBLIC_BASE_URL}/api/health`);
 });
 
 // --------------------------------------------------
