@@ -1,4 +1,4 @@
-/* PYXIS Admin - A/B 팀표기, 스탯 한글, 아바타 미리보기, 로그 꼬리표 숨김, 관전자 발급 연동 */
+/* PYXIS Admin - A/B 팀표기, 스탯 한글, 아바타 미리보기, 로그 꼬리표 숨김, 관전자 발급 연동 + B팀 아바타 보강 + 캐릭터 삭제 */
 (() => {
   const $  = (sel, r = document) => r.querySelector(sel);
   const $$ = (sel, r = document) => Array.from(r.querySelectorAll(sel));
@@ -111,6 +111,11 @@
         }
         this.copyList([{ label: '관전자 링크', value: res.spectatorUrl }]);
       });
+
+      // 플레이어 삭제 결과(옵션) - 서버가 보낸다면 UI 갱신
+      s.on('playerRemoved', () => {
+        // 최신 상태는 battle:update로 동기화된다고 가정
+      });
     }
 
     // 참가자 추가
@@ -138,18 +143,20 @@
       if (file) {
         try {
           const fd = new FormData();
-          fd.append('avatar', file);
-          const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd });
+          fd.append('avatar', file); // 서버 /api/upload/avatar에서 field명 'avatar' 기대
+          const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
           const data = await res.json();
           if (data?.ok && data?.avatarUrl) avatarUrl = data.avatarUrl;
-        } catch (e) { console.warn('이미지 업로드 실패', e); }
+        } catch (e) {
+          console.warn('이미지 업로드 실패', e);
+        }
       }
 
       const playerData = { name, team, hp, stats, items, avatar: avatarUrl };
       this.socket.emit('addPlayer', { battleId: this.battleId, playerData });
     }
 
-    // 인원 목록 렌더 (아바타 + 한글 스탯, 팀 A/B 뱃지)
+    // 인원 목록 렌더 (아바타 + 한글 스탯, 팀 A/B 뱃지 + 삭제 버튼)
     renderRoster() {
       const a = $('#rosterPhoenix'); const b = $('#rosterEaters');
       if (a) a.innerHTML = ''; if (b) b.innerHTML = '';
@@ -158,12 +165,13 @@
         const box = document.createElement('div');
         box.className = 'player';
 
-        // avatar
+        // avatar (p.avatar 또는 p.avatarUrl 모두 처리)
         const av = document.createElement('div');
         av.className = 'avatar';
-        if (p.avatar) {
+        const avatarSrc = p.avatar || p.avatarUrl || '';
+        if (avatarSrc) {
           const img = document.createElement('img');
-          img.src = p.avatar;
+          img.src = avatarSrc;
           img.alt = p.name || 'avatar';
           img.onerror = () => { av.textContent = (p.name||'U').charAt(0).toUpperCase(); };
           av.appendChild(img);
@@ -171,17 +179,16 @@
           av.textContent = (p.name||'U').charAt(0).toUpperCase();
         }
 
-        const info = document.createElement('div');
-
-        const name = document.createElement('div');
-        name.style.fontWeight = '800';
-        name.textContent = p.name || '이름없음';
+        const infoWrap = document.createElement('div');
+        const nameLine = document.createElement('div');
+        nameLine.style.fontWeight = '800';
+        nameLine.textContent = p.name || '이름없음';
 
         const tag = document.createElement('span');
         tag.className = 'badge';
         tag.style.marginLeft = '6px';
         tag.textContent = `팀 ${TEAM_SHORT(p.team)}`;
-        name.appendChild(tag);
+        nameLine.appendChild(tag);
 
         const hp = document.createElement('div');
         hp.className = 'mono';
@@ -193,15 +200,34 @@
         const s = p.stats || {};
         st.textContent = `공격 ${s.attack ?? 0} | 방어 ${s.defense ?? 0} | 민첩 ${s.agility ?? 0} | 행운 ${s.luck ?? 0}`;
 
-        info.appendChild(name);
-        info.appendChild(hp);
-        info.appendChild(st);
+        // 버튼들 (삭제)
+        const btnRow = document.createElement('div');
+        btnRow.className = 'row-buttons';
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn danger';
+        delBtn.textContent = '삭제';
+        delBtn.addEventListener('click', () => this.removePlayer(p));
+        btnRow.appendChild(delBtn);
+
+        infoWrap.appendChild(nameLine);
+        infoWrap.appendChild(hp);
+        infoWrap.appendChild(st);
+        infoWrap.appendChild(btnRow);
 
         box.appendChild(av);
-        box.appendChild(info);
+        box.appendChild(infoWrap);
 
         (p.team === 'eaters' ? b : a).appendChild(box);
       });
+    }
+
+    async removePlayer(player) {
+      if (!this.battleId || !player?.name) return;
+      const ok = confirm(`정말로 ${player.name} 을(를) 삭제하시겠어요?`);
+      if (!ok) return;
+      // 서버 구현체에 맞춰 이벤트명/페이로드 사용
+      this.socket.emit('removePlayer', { battleId: this.battleId, name: player.name });
+      // 즉시 UI 반영은 서버의 battle:update를 기다림
     }
 
     renderLogs(list) {
