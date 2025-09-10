@@ -397,4 +397,69 @@
     if (el.viewAuth) el.viewAuth.classList.add("hidden");
     if (el.viewMain) el.viewMain.classList.remove("hidden");
   }
+
+  // 공격 판정
+  function calcAttack(player, target) {
+    // 공격력 + 주사위(1~20) - 상대 방어력
+    const dice = rollDice();
+    const attack = player.atk + dice - target.def;
+    return Math.max(0, attack);
+  }
+
+  // 명중 판정
+  function calcHit(player) {
+    // 행운 + 주사위(1~20)
+    return player.luk + rollDice();
+  }
+
+  // 회피 판정
+  function calcDodge(player) {
+    // 민첩 + 주사위(1~20)
+    return player.dex + rollDice();
+  }
+
+  // 치명타 판정
+  function isCritical(player) {
+    // 주사위(1~20) ≥ (20 - 행운/2)
+    const dice = rollDice();
+    return dice >= (20 - player.luk / 2);
+  }
+
+  // 방어 판정
+  function calcDefense(player, attacker) {
+    // 민첩 + 주사위(1~20) - 상대 공격수치
+    return player.dex + rollDice() - attacker.atk;
+  }
+
+  // 피해 계산
+  function calcDamage(attacker, defender) {
+    // 방어력 - 상대 공격력 = 남은 수만큼 대미지
+    return Math.max(0, attacker.atk - defender.def);
+  }
+
+  // 회피 성공 여부
+  function isDodgeSuccess(player, attacker) {
+    // 민첩 + 주사위(1~20) ≥ 상대 공격수치
+    return (player.dex + rollDice()) >= attacker.atk;
+  }
+
+  // 아이템 효과
+  function useAtkItem(player) {
+    // 공격력 ×1.5, 성공확률 10%
+    if (Math.random() < 0.1) return player.atk * 1.5;
+    return player.atk;
+  }
+  function useDefItem(player) {
+    // 방어력 ×1.5, 성공확률 10%
+    if (Math.random() < 0.1) return player.def * 1.5;
+    return player.def;
+  }
+  function useHealItem(player) {
+    // HP 10 고정 회복
+    player.hp = Math.min(player.maxHp, player.hp + 10);
+  }
+
+  function rollDice() {
+    return Math.floor(Math.random() * 20) + 1;
+  }
 })();
