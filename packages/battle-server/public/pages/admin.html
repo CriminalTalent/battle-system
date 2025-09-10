@@ -104,8 +104,8 @@
         <div class="section">
           <div class="section-title">링크 생성</div>
           <div class="grid grid-2 compact">
-            <button id="btnGenPlayerOtp" class="btn-secondary compact" type="button">참가자별 링크 생성</button>
-            <button id="btnGenSpectatorOtp" class="btn-secondary compact" type="button">관전자 링크 생성</button>
+            <button id="btnGenPlayerPassword" class="btn-secondary compact" type="button">참가자 비밀번호 발급</button>
+            <button id="btnGenSpectatorPassword" class="btn-secondary compact" type="button">관전자 비밀번호 발급</button>
           </div>
           <div class="link-display">
             <div class="link-item">
@@ -114,11 +114,11 @@
             </div>
             <div class="link-item">
               <span class="link-label">참가자 비밀번호:</span>
-              <div id="playerOtp" class="otp-value">-</div>
+              <div id="playerPassword" class="password-value">-</div>
             </div>
             <div class="link-item">
-              <span class="link-label">관전자 비밀번호:</span>
-              <div id="spectatorOtp" class="otp-value">-</div>
+              <span class="link-label">관전자 비밀번호 (30명 수용):</span>
+              <div id="spectatorPassword" class="password-value">-</div>
             </div>
             <div class="link-item">
               <span class="link-label">참가자 URL:</span>
@@ -132,18 +132,20 @@
         </div>
       </section>
 
-      <!-- 참가자 관리 섹션 -->
-      <section class="card" aria-labelledby="sec-participants">
-        <h2 id="sec-participants" class="title">참가자 관리</h2>
+      <!-- 전투 참가자 관리 섹션 -->
+      <section class="card" aria-labelledby="sec-players">
+        <h2 id="sec-players" class="title">전투 참가자 관리</h2>
 
-        <!-- 전투 참가자 추가 -->
+        <!-- 전투 참가자 추가 폼 -->
         <div class="section">
           <div class="section-title">전투 참가자 추가</div>
+          
           <div class="grid grid-2 compact">
             <label class="form-field">
-              <span class="label">이름</span>
-              <input id="pName" type="text" class="input" placeholder="참가자 이름" maxlength="20" />
+              <span class="label">이름 (최대 20글자)</span>
+              <input id="pName" type="text" class="input" placeholder="전투 참가자 이름" maxlength="20" aria-label="전투 참가자 이름" />
             </label>
+            
             <label class="form-field">
               <span class="label">팀</span>
               <select id="pTeam" class="select" aria-label="팀 선택">
@@ -153,205 +155,174 @@
             </label>
           </div>
 
-          <!-- 이미지 업로드 -->
-          <div class="section-subsection">
-            <div class="section-subtitle">이미지 업로드</div>
+          <!-- 스탯 배분 -->
+          <div class="section-subtitle">스탯 배분 (각 1-10, 총합 12포인트)</div>
+          <div class="grid grid-4 compact">
             <label class="form-field">
-              <input id="pAvatar" type="file" class="input-file" accept="image/*" />
-              <div class="avatar-preview-container">
-                <img id="pAvatarPreview" class="avatar-preview" style="display:none;" alt="이미지 미리보기" />
-                <div id="pAvatarMeta" class="file-meta"></div>
-              </div>
+              <span class="label">공격</span>
+              <input id="sATK" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="공격력" />
+            </label>
+            <label class="form-field">
+              <span class="label">방어</span>
+              <input id="sDEF" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="방어력" />
+            </label>
+            <label class="form-field">
+              <span class="label">민첩</span>
+              <input id="sDEX" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="민첩성" />
+            </label>
+            <label class="form-field">
+              <span class="label">행운</span>
+              <input id="sLUK" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="행운" />
             </label>
           </div>
-
-          <!-- 스탯 설정 (12포인트 제한 제거) -->
-          <div class="section-subsection">
-            <div class="section-subtitle">스탯 배분 (각 1-10)</div>
-            <div class="grid grid-4 compact">
-              <label class="form-field">
-                <span class="label">공격</span>
-                <input id="sATK" type="number" class="input" min="1" max="10" value="3" />
-              </label>
-              <label class="form-field">
-                <span class="label">방어</span>
-                <input id="sDEF" type="number" class="input" min="1" max="10" value="3" />
-              </label>
-              <label class="form-field">
-                <span class="label">민첩</span>
-                <input id="sDEX" type="number" class="input" min="1" max="10" value="3" />
-              </label>
-              <label class="form-field">
-                <span class="label">행운</span>
-                <input id="sLUK" type="number" class="input" min="1" max="10" value="3" />
-              </label>
-            </div>
+          
+          <div class="grid grid-2 compact">
             <label class="form-field">
               <span class="label">체력</span>
-              <input id="pHP" type="number" class="input" min="1" max="200" value="100" />
+              <input id="pHP" type="number" class="input" min="50" max="200" value="100" aria-label="체력" />
+            </label>
+            <div class="stat-summary">
+              <span class="label">스탯 총합:</span>
+              <span id="statTotal" class="stat-total">12</span>
+            </div>
+          </div>
+
+          <!-- 아이템 설정 -->
+          <div class="section-subtitle">시작 아이템</div>
+          <div class="grid grid-3 compact">
+            <label class="form-field">
+              <span class="label">디터니 (회복)</span>
+              <input id="itemDittany" type="number" class="input" min="0" max="5" value="1" aria-label="디터니 개수" />
+            </label>
+            <label class="form-field">
+              <span class="label">공격 보정기</span>
+              <input id="itemAtkBoost" type="number" class="input" min="0" max="3" value="1" aria-label="공격 보정기 개수" />
+            </label>
+            <label class="form-field">
+              <span class="label">방어 보정기</span>
+              <input id="itemDefBoost" type="number" class="input" min="0" max="3" value="1" aria-label="방어 보정기 개수" />
             </label>
           </div>
 
-          <!-- 시작 아이템 -->
-          <div class="section-subsection">
-            <div class="section-subtitle">시작 아이템</div>
-            <div class="grid grid-3 compact">
-              <label class="form-field">
-                <span class="label">디터니 (회복)</span>
-                <input id="itemDittany" type="number" class="input" min="0" max="9" value="1" />
-              </label>
-              <label class="form-field">
-                <span class="label">공격 보정기</span>
-                <input id="itemAtkBoost" type="number" class="input" min="0" max="9" value="1" />
-              </label>
-              <label class="form-field">
-                <span class="label">방어 보정기</span>
-                <input id="itemDefBoost" type="number" class="input" min="0" max="9" value="1" />
-              </label>
+          <!-- 아바타 업로드 -->
+          <div class="section-subtitle">아바타 이미지 (선택사항, 최대 5MB)</div>
+          <div class="avatar-upload">
+            <input id="pAvatar" type="file" class="file-input" accept="image/*" aria-label="아바타 이미지" />
+            <div id="pAvatarPreview" class="avatar-preview" style="display: none;">
+              <img id="pAvatarImg" alt="아바타 미리보기" />
             </div>
+            <div id="pAvatarMeta" class="avatar-meta"></div>
           </div>
 
           <button id="btnAddPlayer" class="btn-primary" type="button">전투 참가자 추가</button>
-          <div id="addPlayerMsg" class="message" style="display:none;"></div>
+          <div id="addPlayerMsg" class="message" role="status" aria-live="polite"></div>
         </div>
 
-        <!-- 팀 목록 -->
+        <!-- 팀 로스터 -->
         <div class="section">
-          <div class="section-title">팀 목록</div>
-          <div class="grid grid-2">
-            <div class="team-roster">
-              <h3 class="team-title phoenix">불사조 기사단</h3>
-              <div id="rosterPhoenix" class="roster-list" aria-live="polite"></div>
+          <div class="section-title">팀 로스터</div>
+          <div class="grid grid-2 compact">
+            <div class="roster-team">
+              <div class="team-title phoenix">불사조 기사단</div>
+              <div id="rosterPhoenix" class="roster-list"></div>
             </div>
-            <div class="team-roster">
-              <h3 class="team-title eaters">죽음을 먹는 자들</h3>
-              <div id="rosterEaters" class="roster-list" aria-live="polite"></div>
+            <div class="roster-team">
+              <div class="team-title eaters">죽음을 먹는 자들</div>
+              <div id="rosterEaters" class="roster-list"></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 로그 & 채팅 섹션 -->
-      <section class="card chat-section" aria-labelledby="sec-logs">
-        <h2 id="sec-logs" class="title">로그 & 채팅</h2>
+      <!-- 모니터링 섹션 -->
+      <section class="card" aria-labelledby="sec-monitor">
+        <h2 id="sec-monitor" class="title">실시간 모니터링</h2>
+
+        <!-- 전투 진행 상황 -->
+        <div class="section">
+          <div class="section-title">전투 진행 상황</div>
+          <div class="battle-info">
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">전투 ID:</span>
+                <span id="currentBattleId" class="info-value">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">모드:</span>
+                <span id="currentMode" class="info-value">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">턴:</span>
+                <span id="currentTurn" class="info-value">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">현재 팀:</span>
+                <span id="currentTeam" class="info-value">-</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">참가자 수:</span>
+                <span id="playerCount" class="info-value">0</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">관전자 수:</span>
+                <span id="spectatorCount" class="info-value">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- 전투 로그 -->
         <div class="section">
-          <div class="section-title">실시간 로그</div>
-          <div id="battleLog" class="log-container" role="log" aria-live="polite"></div>
+          <div class="section-title">전투 로그</div>
+          <div id="battleLog" class="log-feed" role="log" aria-live="polite" aria-label="전투 로그"></div>
         </div>
 
         <!-- 채팅 -->
         <div class="section">
-          <div class="section-title">관리자 채팅</div>
-          <div id="chatView" class="chat-container" role="log" aria-live="polite"></div>
-          <div class="chat-input">
-            <input id="chatText" type="text" class="input" placeholder="메시지를 입력하세요..." maxlength="200" />
-            <button id="btnChatSend" class="btn-primary compact" type="button">전송</button>
-          </div>
-        </div>
-
-        <!-- 현재 관전자 수 -->
-        <div class="section">
-          <div class="section-title">실시간 현황</div>
-          <div class="stats-grid">
-            <div class="stat-item">
-              <span class="stat-label">관전자</span>
-              <span id="spectatorCount" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">전투 참가자</span>
-              <span id="playerCount" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">전투 수</span>
-              <span id="battleCount" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">서버 상태</span>
-              <span id="serverStatus" class="stat-value">확인 중</span>
-            </div>
+          <div class="section-title">실시간 채팅</div>
+          <div id="chatView" class="chat-feed" role="log" aria-live="polite" aria-label="채팅"></div>
+          <div class="chat-input-area">
+            <input id="chatText" type="text" class="input" placeholder="메시지 입력..." maxlength="200" aria-label="채팅 메시지" />
+            <button id="btnChatSend" class="btn-secondary" type="button">전송</button>
           </div>
         </div>
       </section>
     </div>
   </main>
 
+  <!-- Toast 알림 -->
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <!-- 스크립트 로드 -->
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/socket-config.js"></script>
+  <script src="/assets/js/notifications.js"></script>
   <script src="/assets/js/admin.js"></script>
 
-  <!-- 초기화 -->
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('PYXIS 관리자 페이지 로드 시작');
-      
-      // 연결 상태 표시 업데이트
-      const connectionIndicator = document.getElementById('connectionIndicator');
-      
-      function updateConnectionIndicator(status, text) {
-        if (!connectionIndicator) return;
-        connectionIndicator.className = `connection-indicator ${status}`;
-        connectionIndicator.textContent = text;
+    // 연결 상태 업데이트
+    function updateConnectionIndicator(status, message) {
+      const indicator = document.getElementById('connectionIndicator');
+      if (indicator) {
+        indicator.className = `connection-indicator ${status}`;
+        indicator.textContent = message || status;
       }
-      
-      // Socket.IO 로드 확인
-      if (typeof io === 'undefined') {
-        console.error('Socket.IO가 로드되지 않았습니다!');
-        updateConnectionIndicator('disconnected', '연결 실패');
-        alert('Socket.IO 로드 실패. 서버 연결을 확인하세요.');
-        return;
-      }
-      
-      updateConnectionIndicator('connecting', '연결 중...');
-      
-      // 관리자 시스템 초기화
-      if (window.PyxisAdmin) {
-        console.log('PyxisAdmin 초기화 중...');
+    }
+
+    // 페이지 로드 시 초기화
+    document.addEventListener('DOMContentLoaded', function() {
+      try {
+        updateConnectionIndicator('connecting', '연결 중...');
         
-        // 연결 상태 모니터링을 위한 이벤트 추가
-        const originalSetupSocket = window.PyxisAdmin.setupSocket;
-        window.PyxisAdmin.setupSocket = function() {
-          originalSetupSocket.call(this);
-          
-          if (this.state && this.state.socket) {
-            this.state.socket.on('connect', () => {
-              updateConnectionIndicator('connected', '연결됨');
-            });
-            
-            this.state.socket.on('disconnect', () => {
-              updateConnectionIndicator('disconnected', '연결 해제됨');
-            });
-            
-            this.state.socket.on('connect_error', () => {
-              updateConnectionIndicator('disconnected', '연결 오류');
-            });
-          }
-        };
-        
-        window.PyxisAdmin.init();
-        
-        // 서버 상태 모니터링
-        const updateServerStats = async () => {
-          try {
-            const response = await fetch('/api/health');
-            const data = await response.json();
-            
-            if (data.ok) {
-              document.getElementById('serverStatus').textContent = '정상';
-              document.getElementById('battleCount').textContent = data.battles || 0;
-            }
-          } catch (error) {
-            document.getElementById('serverStatus').textContent = '오류';
-          }
-        };
-        
-        // 5초마다 서버 상태 확인
-        updateServerStats();
-        setInterval(updateServerStats, 5000);
-        
-      } else {
-        console.error('PyxisAdmin이 로드되지 않았습니다!');
+        // 관리자 시스템 초기화
+        if (window.PyxisAdmin && typeof window.PyxisAdmin.init === 'function') {
+          window.PyxisAdmin.init();
+          updateConnectionIndicator('connected', '연결됨');
+        } else {
+          throw new Error('PyxisAdmin 모듈을 찾을 수 없습니다');
+        }
+      } catch (error) {
+        console.error('관리자 페이지 초기화 오류:', error);
         updateConnectionIndicator('disconnected', '시스템 오류');
         alert('관리자 시스템 로드 실패');
       }
