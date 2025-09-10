@@ -180,10 +180,21 @@ function createNewBattle(mode = '1v1') {
 function addPlayerToBattle(battleId, playerData) {
   const battle = ensureBattle(battleId);
   
-  // 중복 확인
-  const existing = battle.players.find(p => p.name === playerData.name);
+  // 중복 확인 (대소문자 구분 없이)
+  const existing = battle.players.find(p => 
+    p.name.toLowerCase().trim() === (playerData.name || '').toLowerCase().trim()
+  );
   if (existing) {
     throw new Error(`이미 등록된 이름입니다: ${playerData.name}`);
+  }
+  
+  // 이름 길이 검증
+  const playerName = (playerData.name || '').trim();
+  if (!playerName || playerName.length === 0) {
+    throw new Error('이름을 입력해주세요');
+  }
+  if (playerName.length > 20) {
+    throw new Error('이름은 20글자 이하로 입력해주세요');
   }
   
   // 팀별 인원수 체크
@@ -195,10 +206,14 @@ function addPlayerToBattle(battleId, playerData) {
   }
   
   // 스탯 총합 검증 (총 12포인트)
-  const totalStats = (playerData.stats?.attack || 3) + 
-                    (playerData.stats?.defense || 3) + 
-                    (playerData.stats?.agility || 3) + 
-                    (playerData.stats?.luck || 3);
+  const stats = {
+    attack: parseInt(playerData.stats?.attack || 3),
+    defense: parseInt(playerData.stats?.defense || 3),
+    agility: parseInt(playerData.stats?.agility || 3),
+    luck: parseInt(playerData.stats?.luck || 3)
+  };
+  
+  const totalStats = stats.attack + stats.defense + stats.agility + stats.luck;
   
   if (totalStats !== 12) {
     throw new Error(`스탯 총합은 12포인트여야 합니다 (현재: ${totalStats})`);
@@ -206,15 +221,15 @@ function addPlayerToBattle(battleId, playerData) {
   
   const player = {
     id: `player_${Math.random().toString(36).slice(2, 10)}`,
-    name: playerData.name.trim(),
+    name: playerName,
     team: playerData.team || 'phoenix',
     hp: parseInt(playerData.hp || 100),
     maxHp: parseInt(playerData.hp || 100),
     stats: {
-      attack: clampStat(playerData.stats?.attack || 3, 10),
-      defense: clampStat(playerData.stats?.defense || 3, 10),
-      agility: clampStat(playerData.stats?.agility || 3, 10),
-      luck: clampStat(playerData.stats?.luck || 3, 10)
+      attack: clampStat(stats.attack, 10),
+      defense: clampStat(stats.defense, 10),
+      agility: clampStat(stats.agility, 10),
+      luck: clampStat(stats.luck, 10)
     },
     items: {
       dittany: parseInt(playerData.items?.dittany || 1),
@@ -1244,12 +1259,12 @@ io.on('connection', (socket) => {
 // 서버 시작
 // --------------------------------------------------
 server.listen(PORT, HOST, () => {
-  console.log(`[PYXIS] 🚀 서버 실행 중: http://${HOST}:${PORT}`);
-  console.log(`[PYXIS] 📊 공개 URL: ${PUBLIC_BASE_URL}`);
-  console.log(`[PYXIS] 🛡️  관리자: ${PUBLIC_BASE_URL}/admin`);
-  console.log(`[PYXIS] ⚔️  전투 참가자: ${PUBLIC_BASE_URL}/player`);
-  console.log(`[PYXIS] 👁️  관전자: ${PUBLIC_BASE_URL}/spectator`);
-  console.log(`[PYXIS] ❤️  헬스체크: ${PUBLIC_BASE_URL}/api/health`);
+  console.log(`[PYXIS] 서버 실행 중: http://${HOST}:${PORT}`);
+  console.log(`[PYXIS] 공개 URL: ${PUBLIC_BASE_URL}`);
+  console.log(`[PYXIS] 관리자: ${PUBLIC_BASE_URL}/admin`);
+  console.log(`[PYXIS] 전투 참가자: ${PUBLIC_BASE_URL}/player`);
+  console.log(`[PYXIS] 관전자: ${PUBLIC_BASE_URL}/spectator`);
+  console.log(`[PYXIS] 헬스체크: ${PUBLIC_BASE_URL}/api/health`);
 });
 
 // --------------------------------------------------
