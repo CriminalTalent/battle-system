@@ -5,186 +5,237 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PYXIS Battle System - 전투 참가자</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/css/pyxis-theme.css">
   <style>
-    :root{
-      --r: 14px; --gap: 14px; --pad: 14px;
-    }
+    :root{ --radius:12px; --radius-small:10px; --transition-fast:.18s ease; --ease-smooth:cubic-bezier(.22,.61,.36,1); }
     *{box-sizing:border-box;margin:0;padding:0}
-    html,body{background:var(--deep-navy);color:var(--text);font-family:ui-sans-serif,system-ui,AppleSDGothicNeo,Segoe UI,Roboto,Helvetica,Arial;font-size:14px;line-height:1.55}
-    .container{max-width:1400px;margin:0 auto;padding:0 14px}
+    html,body{font-family:'Cinzel',serif;background:var(--deep-navy);color:var(--text);line-height:1.55;letter-spacing:.01em;overflow-x:hidden;font-size:14px}
+    .container{max-width:1400px;margin:0 auto;padding:0 16px}
 
-    .header{position:sticky;top:0;z-index:10;background:var(--glass-2);backdrop-filter:var(--blur-light);border-bottom:1px solid var(--border-light);padding:10px 0}
-    .title{display:flex;justify-content:center;gap:8px;font-weight:800;letter-spacing:1px}
-    .title-main{color:var(--gold-bright)}
-    .title-sub{color:var(--text-muted);font-size:11px}
+    .header{background:var(--glass-2);backdrop-filter:var(--blur-light);border-bottom:1px solid var(--border-light);padding:14px 0;position:sticky;top:0;z-index:10;box-shadow:var(--shadow-soft)}
+    .title{text-align:center}
+    .title-main{font-size:22px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--gold),var(--gold-bright));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .title-sub{font-size:11px;color:var(--text-muted);margin-left:6px;letter-spacing:.8px;text-transform:uppercase}
 
-    .grid{display:grid;grid-template-columns:320px 1fr 360px;gap:var(--gap);padding:var(--gap)}
-    @media (max-width:1200px){.grid{grid-template-columns:1fr}}
-    .panel{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border-light);border-radius:var(--r);padding:var(--pad)}
-    .title-sm{font-weight:800;color:var(--gold-bright);margin-bottom:8px;font-size:14px}
+    .player-main-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;max-width:1400px;margin:0 auto;padding:20px;align-items:start}
+    @media(max-width:1200px){.player-main-grid{grid-template-columns:1fr;gap:16px}}
+
+    .panel{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border-light);border-radius:var(--radius);padding:20px}
+    .title-sm{font-size:14px;font-weight:700;color:var(--gold-bright);text-align:left;margin-bottom:12px;letter-spacing:.8px}
 
     /* 왼쪽 - 내 정보 */
-    .me{display:flex;flex-direction:column;align-items:center;gap:10px}
-    .avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);background:var(--navy-surface)}
-    .name{font-weight:800;color:var(--gold-bright)}
-    .badge{display:inline-block;border:1px solid var(--border-light);border-radius:999px;padding:4px 10px;color:var(--text);font-size:12px}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
-    .stat{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:10px;padding:10px;text-align:center}
-    .stat .k{font-size:12px;color:var(--text-muted)}
-    .stat .v{font-weight:800;color:var(--gold-bright);font-size:18px}
-    .hp{width:100%}
-    .hpbar{position:relative;height:18px;border-radius:10px;border:1px solid var(--border-light);background:var(--navy-surface);overflow:hidden}
-    .hpbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--success),#1fa86f)}
-    .hpbar>span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;color:#fff}
-    .items{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
-    .item{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:10px;padding:8px;text-align:center}
-    .item .n{font-size:11px;color:var(--text-muted)}
-    .item .c{font-weight:800;color:var(--gold-bright);font-size:16px}
+    .avatar-img{width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);background:var(--navy-surface);box-shadow:var(--shadow-glow);display:block;margin:0 auto}
+    .player-name{font-family:var(--serif);font-size:24px;font-weight:600;color:var(--gold-bright);margin:12px 0 8px;text-align:center;text-shadow:0 2px 4px rgba(0,0,0,.3)}
+    .team-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+    .team-phoenix{background:linear-gradient(135deg,#ff6b35,#f7931e);color:#fff}
+    .team-death{background:linear-gradient(135deg,#2c3e50,#34495e);color:#fff}
+    .badge-wrap{text-align:center}
 
-    /* 중앙 - 큰 턴 이미지 + 로그 */
-    .turn-wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
-    .turn-card{width:min(90vw, 700px);aspect-ratio:1/1;border-radius:28px;border:3px solid var(--gold);background:var(--navy-surface);overflow:hidden;box-shadow:var(--shadow-glow);display:flex;align-items:center;justify-content:center}
-    .turn-img{width:100%;height:100%;object-fit:cover;display:block}
-    .turn-name{font-weight:800;color:var(--gold-bright);margin-top:2px}
-    .turn-timer{font-size:13px;color:var(--text-muted)}
-    .log{height:300px;overflow:auto;border:1px solid var(--border-subtle);border-radius:12px;background:var(--glass-1);padding:10px;width:100%}
-    .line{padding:6px;border-left:3px solid var(--border-subtle);border-radius:6px;background:rgba(255,255,255,.02);margin-bottom:6px}
-    .line.system{border-left-color:var(--gold)}
-    .line.chat{border-left-color:var(--success);color:#a9ffd2}
+    .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+    .stat-item{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:var(--radius-small);padding:12px;text-align:center}
+    .stat-label{font-size:12px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+    .stat-value{font-size:20px;font-weight:700;color:var(--gold-bright);font-family:var(--serif)}
 
-    /* 오른쪽 - 액션/채팅 */
-    .stack{display:flex;flex-direction:column;gap:10px}
-    .grid-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .btn{border:none;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer}
-    .btn.primary{background:linear-gradient(135deg,var(--gold),var(--gold-bright));color:var(--deep-navy)}
-    .btn.ghost{background:var(--glass-1);color:var(--text);border:1px solid var(--border-light)}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .chat{height:220px;overflow:auto;border:1px solid var(--border-subtle);border-radius:12px;background:var(--glass-1);padding:10px}
-    .msg{padding:6px;border-radius:6px;background:rgba(255,255,255,.02);margin-bottom:6px}
-    .chat-box{display:flex;gap:8px}
-    .input{flex:1;border:1px solid var(--border-light);border-radius:10px;background:var(--glass-1);padding:8px;color:var(--text)}
+    .hp-container{margin:16px 0}
+    .hp-label{font-size:14px;color:var(--text-accent);margin-bottom:8px;text-align:center}
+    .hp-bar-bg{background:var(--navy-surface);border:1px solid var(--border-light);border-radius:10px;height:20px;overflow:hidden;position:relative}
+    .hp-bar{background:linear-gradient(90deg,var(--success),#27ae60);height:100%;transition:width .3s var(--ease-smooth);box-shadow:inset 0 2px 4px rgba(255,255,255,.1)}
+    .hp-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+
+    .items-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .item-slot{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:var(--radius-small);padding:8px;text-align:center}
+    .item-name{font-size:10px;color:var(--text-muted);margin-bottom:4px}
+    .item-count{font-size:16px;font-weight:700;color:var(--gold-bright)}
+
+    /* 중앙 - 턴/로그 (이미지 축소, 로그 확대) */
+    .turn-box{text-align:center}
+    .current-turn-img{width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);box-shadow:var(--shadow-glow)}
+    .current-turn-name{font-family:var(--serif);font-size:18px;font-weight:700;color:var(--gold-bright);margin-top:10px}
+    .turn-timer{font-size:14px;color:var(--text-muted);margin-top:6px}
+
+    .log-box{height:420px;overflow-y:auto}
+    .log-entry{margin-bottom:8px;padding:8px 12px;border-radius:var(--radius-small);background:var(--glass-1);border-left:3px solid var(--border-subtle)}
+    .log-entry.system{color:var(--text-accent);border-left-color:var(--gold)}
+    .log-entry.battle{color:var(--text);border-left-color:var(--info)}
+    .log-entry.chat{color:#96ffc8;border-left-color:var(--success);background:var(--success-light)}
+
+    /* 오른쪽 - 액션/채팅 (콤팩트) */
+    .action-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .action-btn{background:linear-gradient(135deg,var(--gold),var(--gold-bright));color:var(--deep-navy);border:none;border-radius:10px;padding:10px 12px;font-family:var(--serif);font-size:13px;font-weight:700;cursor:pointer;transition:all var(--transition-fast);text-transform:uppercase;letter-spacing:.5px;box-shadow:var(--shadow-soft)}
+    .action-btn:hover:not(:disabled){background:linear-gradient(135deg,var(--gold-bright),var(--gold-shimmer));transform:translateY(-2px);box-shadow:var(--shadow-medium)}
+    .action-btn:disabled{background:var(--glass-1);color:var(--text-muted);cursor:not-allowed;transform:none;box-shadow:none}
+    .ready-btn{width:100%;background:linear-gradient(135deg,var(--success),#27ae60);color:#fff;margin-bottom:12px}
+    .ready-btn.ready{background:linear-gradient(135deg,var(--warning),#f39c12)}
+
+    .chat-panel{height:300px;display:flex;flex-direction:column}
+    .chat-messages{flex:1;overflow-y:auto;margin-bottom:10px;font-size:13px;line-height:1.6}
+    .chat-message{margin-bottom:6px;padding:8px 12px;border-radius:10px;background:var(--glass-1)}
+    .chat-input-wrap{display:flex;gap:8px}
+    .chat-input,.chat-select{flex:1;background:var(--glass-1);border:1px solid var(--border-light);border-radius:10px;padding:8px 12px;color:var(--text);font-size:14px}
+    .chat-input:focus,.chat-select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 2px rgba(212,183,126,.2)}
+    .chat-send-btn{background:linear-gradient(135deg,var(--gold),var(--gold-bright));color:var(--deep-navy);border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer;transition:all var(--transition-fast)}
+    .chat-send-btn:hover{background:linear-gradient(135deg,var(--gold-bright),var(--gold-shimmer))}
+
+    .teammate-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    .teammate-item{background:var(--glass-1);border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;border:1px solid var(--border-subtle)}
+    .teammate-avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)}
+    .teammate-name{font-weight:700;color:var(--gold-bright);margin-bottom:4px}
+    .teammate-hp{font-size:12px;color:var(--text-muted)}
+
+    .auth-card{max-width:520px;margin:20px auto}
+    .section-title{font-size:16px;font-weight:800;color:var(--gold-bright);margin-bottom:12px;text-align:center}
+    .form-group{margin-bottom:12px}
+    .form-group .label{display:block;font-size:12px;font-weight:700;color:var(--text-accent);margin-bottom:6px;text-transform:uppercase}
+    .form-group input{width:100%;background:var(--glass-1);border:1px solid var(--border-light);border-radius:8px;padding:10px;color:var(--text);font-size:13px}
+    .form-group input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 2px rgba(212,183,126,.18)}
+    .btn{background:linear-gradient(135deg,var(--gold),var(--gold-bright));color:var(--deep-navy);border:none;border-radius:8px;padding:10px 14px;font-weight:800;cursor:pointer;box-shadow:var(--shadow-soft);text-transform:uppercase;font-size:12px}
+    .hint{margin-top:8px;color:var(--text-muted);font-size:12px;text-align:center}
+
+    .loading-overlay{position:fixed;inset:0;background:rgba(10,15,26,.9);display:flex;align-items:center;justify-content:center;z-index:1000}
+    .loading-content{text-align:center;color:var(--text)}
+    .spinner{width:40px;height:40px;border:3px solid var(--glass-2);border-top:3px solid var(--gold);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px}
+    @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
     .hidden{display:none!important}
 
-    /* 인증 카드 */
-    .auth-card{max-width:520px;margin:20px auto}
-    .form{display:flex;flex-direction:column;gap:10px}
-    .label{font-size:12px;color:var(--text-muted)}
-    .field{border:1px solid var(--border-light);border-radius:10px;background:var(--glass-1);padding:10px;color:var(--text)}
-
-    /* 로딩 오버레이 (자동 로그인 시 표시) */
-    .loading-overlay{position:fixed;inset:0;background:rgba(10,15,26,.86);display:flex;align-items:center;justify-content:center;z-index:1000}
-    .loading-content{text-align:center;color:var(--text)}
-    .spinner{width:44px;height:44px;border:3px solid var(--glass-2);border-top:3px solid var(--gold);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px}
-    @keyframes spin{to{transform:rotate(360deg)}}
+    .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:1200}
+    .modal-card{background:var(--glass-2);border:1px solid var(--border-light);border-radius:12px;max-width:520px;width:92%;padding:16px}
+    .modal-title{font-weight:800;color:var(--gold-bright);margin-bottom:10px}
+    .target-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto}
+    .target-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;background:var(--glass-1);border:1px solid var(--border-subtle);cursor:pointer}
+    .target-item:hover{border-color:var(--gold)}
+    .target-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)}
+    .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+    .btn-ghost{background:var(--glass-1);color:var(--text);border:1px solid var(--border-light)}
   </style>
 </head>
 <body>
   <header class="header">
     <div class="container">
-      <div class="title">
-        <div class="title-main">PYXIS</div>
-        <div class="title-sub">전투 시스템</div>
-      </div>
+      <h1 class="title">
+        <span class="title-main">PYXIS</span>
+        <span class="title-sub">전투 시스템</span>
+      </h1>
     </div>
   </header>
 
-  <!-- 인증 -->
+  <!-- 인증 뷰 -->
   <section id="authView" class="container">
-    <div class="panel auth-card">
-      <div class="title-sm" style="text-align:center">전투 참가자 인증</div>
-      <div class="form">
-        <label class="label">전투 ID</label>
-        <input id="battleId" class="field" placeholder="전투 ID">
-        <label class="label">전투 참가자 이름</label>
-        <input id="playerName" class="field" placeholder="전투 참가자 이름">
-        <label class="label">비밀번호</label>
-        <input id="authToken" class="field" placeholder="전투 참가자 비밀번호">
-        <button id="btnAuth" class="btn primary">접속</button>
-        <div class="line system" style="margin-top:8px">URL 파라미터(battle, name, token)로 자동 접속합니다.</div>
-      </div>
+    <div class="auth-card panel">
+      <h2 class="section-title">전투 참가자 인증</h2>
+      <div class="form-group"><label><span class="label">전투 ID</span><input id="battleId" type="text" placeholder="전투 ID"></label></div>
+      <div class="form-group"><label><span class="label">전투 참가자 이름</span><input id="playerName" type="text" placeholder="전투 참가자 이름"></label></div>
+      <div class="form-group"><label><span class="label">비밀번호</span><input id="authToken" type="password" placeholder="전투 참가자 비밀번호"></label></div>
+      <div class="form-group"><label><span class="label">역할</span><select id="roleSelect" class="chat-select"><option value="player">전투 참가자</option><option value="spectator">관전자</option></select></label></div>
+      <button id="btnAuth" class="btn">접속</button>
+      <p class="hint">URL 파라미터(battle, name, token, role)를 인식하여 자동 접속합니다.</p>
     </div>
   </section>
 
-  <!-- 본화면 -->
+  <!-- 메인 뷰 -->
   <main id="mainView" class="container hidden">
-    <div class="grid">
-      <!-- 좌: 내 정보 -->
+    <div class="player-main-grid">
+      <!-- 왼쪽 -->
       <section class="panel">
-        <div class="title-sm">내 정보</div>
-        <div class="me">
-          <img id="myAvatar" class="avatar" src="/assets/images/default-avatar.png" alt="아바타">
-          <div id="myName" class="name">전투 참가자</div>
-          <div><span id="myTeam" class="badge">A팀</span></div>
-          <div class="grid-2">
-            <div class="stat"><div class="k">공격</div><div id="statATK" class="v">3</div></div>
-            <div class="stat"><div class="k">방어</div><div id="statDEF" class="v">3</div></div>
-            <div class="stat"><div class="k">민첩</div><div id="statAGI" class="v">3</div></div>
-            <div class="stat"><div class="k">행운</div><div id="statLUK" class="v">3</div></div>
+        <h3 class="title-sm">내 정보</h3>
+        <img id="myAvatar" class="avatar-img" src="/assets/images/default-avatar.png" alt="내 아바타">
+        <div id="myName" class="player-name">전투 참가자</div>
+        <div class="badge-wrap"><span id="myTeam" class="team-badge team-phoenix">A팀</span></div>
+
+        <div class="stats-grid">
+          <div class="stat-item"><div class="stat-label">공격</div><div class="stat-value" id="statATK">3</div></div>
+          <div class="stat-item"><div class="stat-label">방어</div><div class="stat-value" id="statDEF">3</div></div>
+          <div class="stat-item"><div class="stat-label">민첩</div><div class="stat-value" id="statAGI">3</div></div>
+          <div class="stat-item"><div class="stat-label">행운</div><div class="stat-value" id="statLUK">3</div></div>
+        </div>
+
+        <div class="hp-container">
+          <div class="hp-label">체력</div>
+          <div class="hp-bar-bg">
+            <div id="myHpBar" class="hp-bar" style="width:100%"></div>
+            <div id="myHpText" class="hp-text">100 / 100</div>
           </div>
-          <div class="hp">
-            <div class="hpbar"><i id="hpFill" style="width:100%"></i><span id="hpText">100 / 100</span></div>
+        </div>
+
+        <div>
+          <div class="stat-label" style="text-align:center">보유 아이템</div>
+          <div class="items-grid">
+            <div class="item-slot"><div class="item-name">디터니</div><div class="item-count" id="itemDittany">1</div></div>
+            <div class="item-slot"><div class="item-name">공격 보정기</div><div class="item-count" id="itemAttack">1</div></div>
+            <div class="item-slot"><div class="item-name">방어 보정기</div><div class="item-count" id="itemDefense">1</div></div>
           </div>
-          <div class="items">
-            <div class="item"><div class="n">디터니</div><div id="itemDittany" class="c">1</div></div>
-            <div class="item"><div class="n">공격 보정기</div><div id="itemAttack" class="c">1</div></div>
-            <div class="item"><div class="n">방어 보정기</div><div id="itemDefense" class="c">1</div></div>
-          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px;padding:16px">
+          <h3 class="title-sm">팀원 정보</h3>
+          <div id="teammateList" class="teammate-list"><div class="teammate-item">팀원이 없습니다</div></div>
         </div>
       </section>
 
-      <!-- 중: 턴 & 로그 -->
+      <!-- 중앙 -->
       <section class="panel">
-        <div class="turn-wrap">
-          <div class="turn-card">
-            <img id="turnAvatar" class="turn-img" src="/assets/images/default-avatar.png" alt="현재 턴">
-          </div>
-          <div id="turnName" class="turn-name">대기 중</div>
+        <h3 class="title-sm">턴 정보</h3>
+        <div class="turn-box">
+          <img id="turnAvatar" class="current-turn-img" src="/assets/images/default-avatar.png" alt="현재 턴">
+          <div id="turnName" class="current-turn-name">대기 중</div>
           <div id="turnTimer" class="turn-timer">턴 시간: --</div>
-          <div class="log" id="battleLog" style="margin-top:10px;width:min(90vw, 700px);">
-            <div class="line system">전투 시작을 기다리는 중...</div>
-          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px;padding:16px">
+          <h3 class="title-sm">전투 로그</h3>
+          <div id="battleLog" class="log-box"><div class="log-entry system">전투 시작을 기다리는 중...</div></div>
         </div>
       </section>
 
-      <!-- 우: 액션/채팅 -->
+      <!-- 오른쪽 -->
       <section class="panel">
-        <div class="title-sm">액션</div>
-        <div class="stack">
-          <button id="btnReady" class="btn primary">준비하기</button>
-          <div class="grid-actions">
-            <button id="btnAttack" class="btn ghost" disabled>공격</button>
-            <button id="btnDefend" class="btn ghost" disabled>방어</button>
-            <button id="btnDodge"  class="btn ghost" disabled>회피</button>
-            <button id="btnPass"   class="btn ghost" disabled>패스</button>
-            <button id="btnItemDittany" class="btn ghost" disabled>디터니</button>
-            <button id="btnItemAttack"  class="btn ghost" disabled>공격 보정기</button>
-            <button id="btnItemDefense" class="btn ghost" disabled>방어 보정기</button>
+        <h3 class="title-sm">액션</h3>
+        <button id="btnReady" class="action-btn ready-btn">준비하기</button>
+        <div class="action-grid">
+          <button id="btnAttack" class="action-btn" disabled>공격</button>
+          <button id="btnDefend" class="action-btn" disabled>방어</button>
+          <button id="btnDodge"  class="action-btn" disabled>회피</button>
+          <button id="btnPass"   class="action-btn" disabled>패스</button>
+          <button id="btnItemDittany" class="action-btn" disabled>디터니</button>
+          <button id="btnItemAttack"  class="action-btn" disabled>공격 보정기</button>
+          <button id="btnItemDefense" class="action-btn" disabled>방어 보정기</button>
+        </div>
+
+        <div class="panel chat-panel" style="margin-top:16px;padding:16px">
+          <h3 class="title-sm">채팅</h3>
+          <div id="chatMessages" class="chat-messages"><div class="chat-message"><strong>시스템</strong> : 채팅을 시작하세요.</div></div>
+          <div class="chat-input-wrap">
+            <input id="chatInput" class="chat-input" type="text" placeholder="메시지 입력..." maxlength="200">
+            <button id="btnChat" class="chat-send-btn">전송</button>
           </div>
-          <div class="title-sm" style="margin-top:6px">채팅</div>
-          <div id="chatList" class="chat"></div>
-          <div class="chat-box">
-            <input id="chatInput" class="input" placeholder="메시지 입력…" maxlength="200">
-            <button id="btnChat" class="btn primary">전송</button>
-          </div>
+          <div id="spectatorHint" class="hint" style="display:none;margin-top:8px">관전자는 고정 응원 멘트만 전송할 수 있습니다.</div>
         </div>
       </section>
     </div>
   </main>
 
-  <!-- 로딩 오버레이 (자동/수동 인증 중 표시) -->
-  <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite">
+  <!-- 로딩 오버레이 -->
+  <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-content">
       <div class="spinner"></div>
       <p>접속 중...</p>
     </div>
   </div>
 
-  <!-- Socket.IO -->
+  <!-- 타겟 선택 모달 -->
+  <div id="targetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="targetModalTitle">
+    <div class="modal-card">
+      <div id="targetModalTitle" class="modal-title">대상 선택</div>
+      <div id="targetList" class="target-list"></div>
+      <div class="modal-actions"><button id="btnTargetCancel" class="btn btn-ghost">취소</button></div>
+    </div>
+  </div>
+
+  <!-- Socket.IO: 현재 오리진 사용 -->
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    window.PYXIS_SERVER_URL = ""; /* 동일 오리진 사용시 비워둠 */
-  </script>
+  <!-- Player JS -->
   <script src="/assets/js/player.js"></script>
 </body>
 </html>
