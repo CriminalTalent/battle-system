@@ -174,9 +174,9 @@
         </div>
       </section>
 
-      <!-- 중앙: 참가자 관리 -->
+      <!-- 중앙: 전투 참가자 관리 -->
       <section class="section">
-        <h3>참가자 관리</h3>
+        <h3>전투 참가자 관리</h3>
 
         <div class="form-group">
           <label>전투 참가자 이름</label>
@@ -285,6 +285,15 @@
       return teamValue === 'phoenix' ? 'A팀' : 'B팀';
     }
 
+    // URL 파라미터 파서
+    function getParams(){
+      const p = new URLSearchParams(location.search);
+      return {
+        battle: p.get('battle') || p.get('id') || null,
+        password: p.get('password') || p.get('token') || null
+      };
+    }
+
     class PyxisAdminConsole {
       constructor() {
         this.socket = null;
@@ -352,7 +361,7 @@
         this.btnCreateBattle.addEventListener('click', () => this.createBattle());
         this.btnStartBattle.addEventListener('click', () => this.startBattle());
         this.btnEndBattle.addEventListener('click', () => this.endBattle());
-        this.btnGenerateLinks.addEventListener('click', () => this.generateLinks());
+        this.btnGenerateLinks.addEventListener('click', () => this.requestLinks());
 
         // 참가자 추가
         this.btnAddPlayer.addEventListener('click', () => this.addPlayer());
@@ -406,7 +415,7 @@
         });
       }
 
-      /* ===== 소켓 연결 ===== */
+      /* ===== 소켓 연결 & 인증 ===== */
       connectSocket() {
         this.addLog('system', '서버 연결 중...');
 
@@ -419,20 +428,32 @@
           this.isConnected = true;
           this.addLog('system', '서버에 연결되었습니다.');
           this.showToast('서버 연결 성공', 'success');
+
+          // URL 파라미터 기반 관리자 인증 (비밀번호/토큰)
+          const { battle, password } = getParams();
+          if (battle && password) {
+            this.addLog('system', '관리자 인증 요청 중...');
+            this.socket.emit('adminAuth', { battleId: battle, password }); // 표준 이벤트명
+          }
         });
 
-        this.socket.on('auth:success', (data) => {
+        // 인증 성공/실패 양식 모두 대응
+        const onAuthSuccess = (data) => {
           this.battleData = data.battle;
           this.currentBattleId = data.battle.id;
           this.updateUI();
           this.addLog('system', `전투 ID ${data.battle.id}로 인증되었습니다.`);
-        });
+        };
+        const onAuthError = (err) => {
+          this.addLog('system', `인증 실패: ${err.message || err}`);
+          this.showToast(`인증 실패: ${err.message || err}`, 'error');
+        };
+        this.socket.on('authSuccess', onAuthSuccess);
+        this.socket.on('auth:success', onAuthSuccess);
+        this.socket.on('authError', onAuthError);
+        this.socket.on('auth:error', onAuthError);
 
-        this.socket.on('auth:error', (err) => {
-          this.addLog('system', `인증 실패: ${err.message}`);
-          this.showToast(`인증 실패: ${err.message}`, 'error');
-        });
-
+        // 전투 라이프사이클
         this.socket.on('battle:created', (data) => {
           this.currentBattleId = data.battleId;
           this.battleIdEl.textContent = data.battleId;
@@ -470,6 +491,12 @@
           this.stopUptime();
         });
 
+        // 링크 응답 (서버 표준)
+        this.socket.on('admin:links', (payload) => {
+          this.renderLinksPayload(payload);
+        });
+
+        // 로그/채팅/기타
         this.socket.on('battle:log', (entry) => this.addLog(entry.type || 'battle', entry.message));
         this.socket.on('chat:message', (msg) => this.addChatMessage(msg));
 
@@ -549,7 +576,7 @@
 
         const playerData = {
           name,
-          team: this.playerTeamEl.value, // 내부 값은 유지, 표시는 A/B팀으로
+          team: this.playerTeamEl.value, // 내부 값은 유지, 표시는 A/B팀
           stats,
           items,
           hp: 100,
@@ -570,7 +597,8 @@
 
         this.addLog('system', '아바타 업로드 중...');
 
-        fetch('/api/upload-avatar', { method: 'POST', body: formData })
+        // 표준 업로드 경로
+        fetch('/api/upload', { method: 'POST', body: formData })
           .then(r => r.json())
           .then(data => {
             if (data.ok) {
@@ -588,43 +616,69 @@
       }
 
       /* ===== 링크 생성 ===== */
-      generateLinks() {
-        if (!this.battleData || !this.battleData.players || this.battleData.players.length === 0) {
-          this.showToast('먼저 전투 참가자를 추가하세요.', 'error');
+      requestLinks() {
+        if (!this.socket || !this.isConnected || !this.currentBattleId) {
+          this.showToast('전투가 생성되지 않았습니다.', 'error');
           return;
         }
+        // 서버 표준 이벤트로 요청
+        this.addLog('system', '링크 생성 요청 중...');
+        this.socket.emit('admin:generate_links', { battleId: this.currentBattleId });
+      }
 
+      renderLinksPayload(payload){
         const baseUrl = window.location.origin;
-        const battleId = this.battleData.id;
 
         // 참가자 링크
         this.playerLinks.innerHTML = '';
-        this.battleData.players.forEach(player => {
-          const playerUrl = `${baseUrl}/player?battle=${battleId}&name=${encodeURIComponent(player.name)}&token=${player.token}`;
-          const linkItem = document.createElement('div');
-          linkItem.className = 'link-item';
-          linkItem.innerHTML = `
-            <div class="link-label">${player.name} (${teamLabel(player.team)})</div>
-            <div class="link-url" title="클릭하여 복사">${playerUrl}</div>
-          `;
-          const urlEl = linkItem.querySelector('.link-url');
-          urlEl.addEventListener('click', () => {
-            navigator.clipboard.writeText(playerUrl).then(() => this.showToast('링크가 복사되었습니다.', 'success'));
+        if (payload && Array.isArray(payload.players)) {
+          payload.players.forEach(p => {
+            const url = p.url || `${baseUrl}/player?battle=${this.currentBattleId}&name=${encodeURIComponent(p.name)}&token=${encodeURIComponent(p.token||'')}`;
+            const el = document.createElement('div');
+            el.className = 'link-item';
+            el.innerHTML = `
+              <div class="link-label">${p.name} (${teamLabel(p.team)})</div>
+              <div class="link-url" title="클릭하여 복사">${url}</div>
+            `;
+            el.querySelector('.link-url').addEventListener('click', () => {
+              navigator.clipboard.writeText(url).then(()=>this.showToast('링크가 복사되었습니다.', 'success'));
+            });
+            this.playerLinks.appendChild(el);
           });
-          this.playerLinks.appendChild(linkItem);
-        });
+        } else if (this.battleData && Array.isArray(this.battleData.players)) {
+          // 플랜 B: 로컬 조합
+          this.battleData.players.forEach(player => {
+            const playerUrl = `${baseUrl}/player?battle=${this.battleData.id}&name=${encodeURIComponent(player.name)}&token=${encodeURIComponent(player.token||'')}`;
+            const linkItem = document.createElement('div');
+            linkItem.className = 'link-item';
+            linkItem.innerHTML = `
+              <div class="link-label">${player.name} (${teamLabel(player.team)})</div>
+              <div class="link-url" title="클릭하여 복사">${playerUrl}</div>
+            `;
+            linkItem.querySelector('.link-url').addEventListener('click', () => {
+              navigator.clipboard.writeText(playerUrl).then(() => this.showToast('링크가 복사되었습니다.', 'success'));
+            });
+            this.playerLinks.appendChild(linkItem);
+          });
+        }
 
         // 관전자 링크
-        const spectatorUrl = `${baseUrl}/spectator?battle=${battleId}`;
+        const specUrl =
+          (payload && payload.spectatorUrl)
+            ? payload.spectatorUrl
+            : (() => {
+                const token = payload && payload.spectatorToken ? `&token=${encodeURIComponent(payload.spectatorToken)}` : '';
+                return `${baseUrl}/spectator?battle=${this.currentBattleId}${token}`;
+              })();
+
         this.spectatorLink.innerHTML = `
           <div class="link-item">
-            <div class="link-label">관전자 링크 (최대 30명)</div>
-            <div class="link-url" title="클릭하여 복사">${spectatorUrl}</div>
+            <div class="link-label">관전자 링크 (최대 30명 / 30분 제한)</div>
+            <div class="link-url" title="클릭하여 복사">${specUrl}</div>
           </div>
         `;
-        const sUrlEl = this.spectatorLink.querySelector('.link-url');
-        sUrlEl.addEventListener('click', () => {
-          navigator.clipboard.writeText(spectatorUrl).then(() => this.showToast('관전자 링크가 복사되었습니다.', 'success'));
+        this.spectatorLink.querySelector('.link-url').addEventListener('click', () => {
+          navigator.clipboard.writeText(specUrl).then(() => this.showToast('관전자 링크가 복사되었습니다.', 'success'));
         });
 
         this.linkSection.style.display = 'block';
@@ -707,138 +761,4 @@
       createPlayerItem(player) {
         const div = document.createElement('div');
         div.className = 'player-item';
-        const status = player.isConnected ? (player.isReady ? 'ready' : 'waiting') : 'offline';
-        const statusText = player.isConnected ? (player.isReady ? '준비완료' : '대기중') : '오프라인';
-        const hpPercent = Math.max(0, Math.round((player.hp / player.maxHp) * 100));
-
-        div.innerHTML = `
-          <img class="player-avatar" src="${player.avatar || '/assets/images/default-avatar.png'}" alt="${player.name}">
-          <div class="player-info">
-            <div class="player-name">${player.name}</div>
-            <div class="player-stats">공:${player.stats.attack} 방:${player.stats.defense} 민:${player.stats.agility} 행:${player.stats.luck} | HP: ${player.hp}/${player.maxHp} (${hpPercent}%)</div>
-            <div class="player-items">디터니:${player.items.dittany} 공격보정:${player.items.attack_booster} 방어보정:${player.items.defense_booster}</div>
-          </div>
-          <div class="player-status status-${status}">${statusText}</div>
-        `;
-        return div;
-      }
-
-      updateButtons() {
-        if (!this.battleData) return;
-        const hasPlayers = this.battleData.players.length >= 2;
-        const allReady = this.battleData.players.length > 0 && this.battleData.players.every(p => p.isReady);
-        this.btnStartBattle.disabled = this.battleData.status !== 'waiting' || !hasPlayers || !allReady;
-        this.btnEndBattle.disabled = this.battleData.status === 'ended';
-        this.btnGenerateLinks.disabled = !this.currentBattleId || this.battleData.players.length === 0;
-        this.btnAddPlayer.disabled = this.battleData.status === 'active';
-      }
-
-      updateStatistics(stats) {
-        if (!stats) return;
-        this.statPlayersEl.textContent   = `${stats.connectedPlayers}/${stats.totalPlayers}`;
-        this.statSpectatorsEl.textContent= stats.spectators || 0;
-        this.statTurnEl.textContent      = stats.turnNumber || 0;
-        if (stats.uptime) {
-          const minutes = Math.floor(stats.uptime / 60000);
-          const seconds = Math.floor((stats.uptime % 60000) / 1000);
-          this.statUptimeEl.textContent = `${minutes}:${seconds.toString().padStart(2,'0')}`;
-        }
-      }
-
-      /* ===== 유틸 ===== */
-      startUptime() {
-        this.startTime = Date.now();
-        this.uptimeInterval = setInterval(() => {
-          const elapsed = Date.now() - this.startTime;
-          const minutes = Math.floor(elapsed / 60000);
-          const seconds = Math.floor((elapsed % 60000) / 1000);
-          this.statUptimeEl.textContent = `${minutes}:${seconds.toString().padStart(2,'0')}`;
-        }, 1000);
-      }
-
-      stopUptime() {
-        if (this.uptimeInterval) {
-          clearInterval(this.uptimeInterval);
-          this.uptimeInterval = null;
-        }
-      }
-
-      clearPlayerForm() {
-        this.playerNameEl.value = '';
-        this.statAttackEl.value = '3';
-        this.statDefenseEl.value = '3';
-        this.statAgilityEl.value = '3';
-        this.statLuckEl.value = '3';
-        this.itemDittanyEl.value = '1';
-        this.itemAttackEl.value = '1';
-        this.itemDefenseEl.value = '1';
-        this.playerAvatarEl.value = '';
-        this.updateStatTotal();
-      }
-
-      addLog(type, message) {
-        const div = document.createElement('div');
-        div.className = `log-entry ${type || 'system'}`;
-        const timestamp = new Date().toLocaleTimeString();
-        div.textContent = `[${timestamp}] ${message}`;
-        this.battleLogEl.appendChild(div);
-        this.battleLogEl.scrollTop = this.battleLogEl.scrollHeight;
-        if (this.battleLogEl.children.length > 150) {
-          this.battleLogEl.removeChild(this.battleLogEl.firstChild);
-        }
-      }
-
-      getStatusText(status) {
-        const map = { waiting: '대기', active: '진행중', paused: '일시정지', ended: '종료' };
-        return map[status] || status;
-      }
-
-      showToast(message, type = 'info') {
-        this.toastEl.textContent = message;
-        this.toastEl.className = `toast ${type}`;
-        this.toastEl.classList.add('show');
-        setTimeout(() => this.toastEl.classList.remove('show'), 2400);
-      }
-
-      clampInt(v, min, max, fallback=0){
-        const n = parseInt(v,10);
-        if (Number.isNaN(n)) return fallback;
-        return Math.max(min, Math.min(max, n));
-      }
-
-      disconnect() {
-        if (this.socket) {
-          this.socket.disconnect();
-          this.socket = null;
-        }
-        this.stopUptime();
-        this.addLog('system', '관리자 콘솔이 종료되었습니다.');
-      }
-    }
-
-    // 페이지 로드 시 인스턴스 생성
-    document.addEventListener('DOMContentLoaded', () => {
-      window.pyxisAdmin = new PyxisAdminConsole();
-
-      // 페이지 언로드 시 정리
-      window.addEventListener('beforeunload', () => {
-        if (window.pyxisAdmin) window.pyxisAdmin.disconnect();
-      });
-    });
-
-    // F5 새로고침 방지 알림 (실수 방지)
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'F5') {
-        e.preventDefault();
-        if (window.pyxisAdmin) window.pyxisAdmin.showToast('새로고침이 비활성화되어 있습니다.', 'info');
-      }
-    });
-
-    // 전역 에러 핸들링
-    window.addEventListener('error', (e) => {
-      console.error('전역 에러:', e);
-      if (window.pyxisAdmin) window.pyxisAdmin.showToast('예상치 못한 오류가 발생했습니다.', 'error');
-    });
-  </script>
-</body>
-</html>
+        const status =
