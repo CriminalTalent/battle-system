@@ -1,370 +1,143 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <title>PYXIS 관리자</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- 공용/관리자 스타일 -->
-  <link rel="stylesheet" href="/assets/css/core.css" />
-  <link rel="stylesheet" href="/assets/css/pyxis-unified.css" />
-  <link rel="stylesheet" href="/assets/css/components.css" />
-  <link rel="stylesheet" href="/assets/css/effects.css" />
-  <link rel="stylesheet" href="/assets/css/admin.css" />
-
-  <!-- 드롭다운 가독성 강화 -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    .admin-page select.select{
-      background-color: rgba(0,8,13,.95) !important;
-      color: var(--ink, #f2ead7) !important;
-      border-color: var(--border-gold, rgba(220,199,162,.2)) !important;
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: #0a0f1a;
+      color: #f5f5f5;
     }
-    .admin-page select.select option{
-      background-color: #001E35 !important;
-      color: #f2ead7 !important;
+    header {
+      background: #111827;
+      padding: 12px 20px;
+      border-bottom: 1px solid #333;
     }
-    @supports (color-scheme: dark){
-      .admin-page select{ color-scheme: dark; }
+    header h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 20px;
+      margin: 0;
+      color: #d4b77e;
     }
-    
-    /* 연결 상태 표시 */
-    .connection-indicator {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      padding: 8px 12px;
+    main {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+    }
+    section {
+      flex: 1;
+      background: #1a1f2b;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    h2, h3 {
+      margin-top: 0;
+      color: #d4b77e;
+    }
+    input, select, button {
+      margin: 4px 0;
+      padding: 6px 8px;
+      border: none;
+      border-radius: 4px;
+    }
+    button {
+      background: #d4b77e;
+      color: #111;
+      cursor: pointer;
+    }
+    #battleLog, #chatView {
+      background: #0f1419;
+      padding: 8px;
       border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 9999;
-      transition: all 0.3s ease;
+      height: 200px;
+      overflow-y: auto;
+      font-size: 14px;
     }
-    .connection-indicator.connected {
-      background: #059669;
-      color: white;
+    .roster-player {
+      padding: 4px;
+      margin-bottom: 2px;
+      background: #2a2f3a;
+      border-radius: 4px;
     }
-    .connection-indicator.disconnected {
-      background: #dc2626;
-      color: white;
-    }
-    .connection-indicator.connecting {
-      background: #d97706;
-      color: white;
+    .chat-entry {
+      padding: 2px 0;
     }
   </style>
 </head>
-<body class="admin-page">
-  <!-- 연결 상태 표시 -->
-  <div id="connectionIndicator" class="connection-indicator connecting">연결 중...</div>
-
-  <header class="pyxis-header" role="banner" aria-label="PYXIS 관리자 헤더">
-    <div class="header-inner">
-      <h1 class="pyxis-logo"><span class="star">✦</span> PYXIS <span class="star">✦</span></h1>
-      <span id="statusPill" class="status-pill waiting" aria-live="polite">전투 대기 중</span>
-    </div>
-    <div class="header-bg" aria-hidden="true"></div>
+<body>
+  <header>
+    <h1>PYXIS 관리자 페이지</h1>
   </header>
+  <main>
+    <!-- 왼쪽 패널: 전투 제어 -->
+    <section>
+      <h2>전투 제어</h2>
+      <label for="battleMode">전투 모드:</label>
+      <select id="battleMode">
+        <option value="1v1">1 vs 1</option>
+        <option value="2v2">2 vs 2</option>
+        <option value="3v3">3 vs 3</option>
+        <option value="4v4">4 vs 4</option>
+      </select>
+      <br />
+      <button id="btnCreateBattle">전투 생성</button>
+      <p>전투 ID: <span id="currentBattleId">-</span></p>
+      <p>모드: <span id="currentMode">-</span></p>
+      <p>관리자 URL: <span id="adminUrl">-</span></p>
+      <p>플레이어 URL: <span id="playerUrl">-</span></p>
+      <p>관전자 URL: <span id="spectatorUrl">-</span></p>
+    </section>
 
-  <main id="mainView" class="container admin-container" role="main">
-    <div class="grid admin-grid">
-      <!-- 전투 제어 섹션 -->
-      <section class="card" aria-labelledby="sec-control">
-        <h2 id="sec-control" class="title">전투 제어</h2>
+    <!-- 가운데 패널: 참가자 관리 -->
+    <section>
+      <h2>참가자 추가</h2>
+      <input id="pName" type="text" placeholder="플레이어 이름" />
+      <select id="pTeam">
+        <option value="phoenix">불사조 기사단</option>
+        <option value="eaters">죽음을 먹는 자</option>
+      </select>
+      <br />
+      <label>공격: <input id="sATK" type="number" value="3" /></label><br />
+      <label>방어: <input id="sDEF" type="number" value="3" /></label><br />
+      <label>민첩: <input id="sDEX" type="number" value="3" /></label><br />
+      <label>행운: <input id="sLUK" type="number" value="3" /></label><br />
+      <label>HP: <input id="pHP" type="number" value="100" /></label><br />
+      <label>디터니: <input id="itemDittany" type="number" value="1" /></label><br />
+      <label>공격 보정기: <input id="itemAtkBoost" type="number" value="1" /></label><br />
+      <label>방어 보정기: <input id="itemDefBoost" type="number" value="1" /></label><br />
+      <label>아바타: <input id="pAvatar" type="file" /></label><br />
+      <button id="btnAddPlayer">전투 참가자 추가</button>
 
-        <!-- 전투 생성 -->
-        <div class="section">
-          <div class="section-title">전투 생성</div>
-          <div class="grid grid-3 compact">
-            <label class="form-field">
-              <span class="label">전투 모드</span>
-              <select id="battleMode" class="select" aria-label="전투 모드">
-                <option value="1v1">1v1</option>
-                <option value="2v2">2v2</option>
-                <option value="3v3">3v3</option>
-                <option value="4v4">4v4</option>
-              </select>
-            </label>
-            <button id="btnCreateBattle" class="btn-primary compact" type="button">전투 생성</button>
-            <span id="battleId" class="battle-id" aria-live="polite">-</span>
-          </div>
-        </div>
+      <h3>불사조 기사단 목록</h3>
+      <div id="rosterPhoenix"></div>
 
-        <!-- 전투 제어 버튼 -->
-        <div class="section">
-          <div class="section-title">제어</div>
-          <div class="grid grid-4 compact">
-            <button id="btnStart" class="btn-success compact" type="button">시작</button>
-            <button id="btnPause" class="btn-warning compact" type="button">일시정지</button>
-            <button id="btnResume" class="btn-info compact" type="button">재개</button>
-            <button id="btnEnd" class="btn-danger compact" type="button">종료</button>
-          </div>
-        </div>
+      <h3>죽음을 먹는 자 목록</h3>
+      <div id="rosterEaters"></div>
+    </section>
 
-        <!-- 링크 생성 -->
-        <div class="section">
-          <div class="section-title">링크 생성</div>
-          <div class="grid grid-2 compact">
-            <button id="btnGenPlayerPassword" class="btn-secondary compact" type="button">참가자 비밀번호 발급</button>
-            <button id="btnGenSpectatorPassword" class="btn-secondary compact" type="button">관전자 비밀번호 발급</button>
-          </div>
-          <div class="link-display">
-            <div class="link-item">
-              <span class="link-label">관리자 URL:</span>
-              <span id="adminUrl" class="link-value" title="클릭하여 복사">-</span>
-            </div>
-            <div class="link-item">
-              <span class="link-label">참가자 비밀번호:</span>
-              <div id="playerPassword" class="password-value">-</div>
-            </div>
-            <div class="link-item">
-              <span class="link-label">관전자 비밀번호 (30명 수용):</span>
-              <div id="spectatorPassword" class="password-value">-</div>
-            </div>
-            <div class="link-item">
-              <span class="link-label">참가자 URL:</span>
-              <span id="playerUrl" class="link-value" title="클릭하여 복사">-</span>
-            </div>
-            <div class="link-item">
-              <span class="link-label">관전자 URL:</span>
-              <span id="spectatorUrl" class="link-value" title="클릭하여 복사">-</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 전투 참가자 관리 섹션 -->
-      <section class="card" aria-labelledby="sec-players">
-        <h2 id="sec-players" class="title">전투 참가자 관리</h2>
-
-        <!-- 전투 참가자 추가 폼 -->
-        <div class="section">
-          <div class="section-title">전투 참가자 추가</div>
-          
-          <div class="grid grid-2 compact">
-            <label class="form-field">
-              <span class="label">이름</span>
-              <input id="pName" type="text" class="input" placeholder="전투 참가자 이름" aria-label="전투 참가자 이름" />
-            </label>
-            
-            <label class="form-field">
-              <span class="label">팀</span>
-              <select id="pTeam" class="select" aria-label="팀 선택">
-                <option value="phoenix">불사조 기사단</option>
-                <option value="eaters">죽음을 먹는 자들</option>
-              </select>
-            </label>
-          </div>
-
-          <!-- 스탯 배분 -->
-          <div class="section-subtitle">스탯 배분 (각 1-10, 총합 12포인트)</div>
-          <div class="grid grid-4 compact">
-            <label class="form-field">
-              <span class="label">공격</span>
-              <input id="sATK" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="공격력" />
-            </label>
-            <label class="form-field">
-              <span class="label">방어</span>
-              <input id="sDEF" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="방어력" />
-            </label>
-            <label class="form-field">
-              <span class="label">민첩</span>
-              <input id="sDEX" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="민첩성" />
-            </label>
-            <label class="form-field">
-              <span class="label">행운</span>
-              <input id="sLUK" type="number" class="input stat-input" min="1" max="10" value="3" aria-label="행운" />
-            </label>
-          </div>
-          
-          <div class="grid grid-2 compact">
-            <label class="form-field">
-              <span class="label">체력</span>
-              <input id="pHP" type="number" class="input" min="50" max="200" value="100" aria-label="체력" />
-            </label>
-            <div class="stat-summary">
-              <span class="label">스탯 총합:</span>
-              <span id="statTotal" class="stat-total">12</span>
-            </div>
-          </div>
-
-          <!-- 아이템 설정 -->
-          <div class="section-subtitle">시작 아이템</div>
-          <div class="grid grid-3 compact">
-            <label class="form-field">
-              <span class="label">디터니 (회복)</span>
-              <input id="itemDittany" type="number" class="input" min="0" max="5" value="1" aria-label="디터니 개수" />
-            </label>
-            <label class="form-field">
-              <span class="label">공격 보정기</span>
-              <input id="itemAtkBoost" type="number" class="input" min="0" max="3" value="1" aria-label="공격 보정기 개수" />
-            </label>
-            <label class="form-field">
-              <span class="label">방어 보정기</span>
-              <input id="itemDefBoost" type="number" class="input" min="0" max="3" value="1" aria-label="방어 보정기 개수" />
-            </label>
-          </div>
-
-          <!-- 아바타 업로드 -->
-          <div class="section-subtitle">아바타 이미지 (선택사항, 최대 5MB)</div>
-          <div class="avatar-upload">
-            <input id="pAvatar" type="file" class="file-input" accept="image/*" aria-label="아바타 이미지" />
-            <div id="pAvatarPreview" class="avatar-preview" style="display: none;">
-              <img id="pAvatarImg" alt="아바타 미리보기" />
-            </div>
-            <div id="pAvatarMeta" class="avatar-meta"></div>
-          </div>
-
-          <button id="btnAddPlayer" class="btn-primary" type="button">전투 참가자 추가</button>
-          <div id="addPlayerMsg" class="message" role="status" aria-live="polite"></div>
-        </div>
-
-        <!-- 팀 로스터 -->
-        <div class="section">
-          <div class="section-title">팀 로스터</div>
-          <div class="grid grid-2 compact">
-            <div class="roster-team">
-              <div class="team-title phoenix">불사조 기사단</div>
-              <div id="rosterPhoenix" class="roster-list"></div>
-            </div>
-            <div class="roster-team">
-              <div class="team-title eaters">죽음을 먹는 자들</div>
-              <div id="rosterEaters" class="roster-list"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 모니터링 섹션 -->
-      <section class="card" aria-labelledby="sec-monitor">
-        <h2 id="sec-monitor" class="title">실시간 모니터링</h2>
-
-        <!-- 전투 진행 상황 -->
-        <div class="section">
-          <div class="section-title">전투 진행 상황</div>
-          <div class="battle-info">
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">전투 ID:</span>
-                <span id="currentBattleId" class="info-value">-</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">모드:</span>
-                <span id="currentMode" class="info-value">-</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">턴:</span>
-                <span id="currentTurn" class="info-value">-</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">현재 팀:</span>
-                <span id="currentTeam" class="info-value">-</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">참가자 수:</span>
-                <span id="playerCount" class="info-value">0</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">관전자 수:</span>
-                <span id="spectatorCount" class="info-value">0</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 전투 로그 -->
-        <div class="section">
-          <div class="section-title">전투 로그</div>
-          <div id="battleLog" class="log-feed" role="log" aria-live="polite" aria-label="전투 로그"></div>
-        </div>
-
-        <!-- 채팅 -->
-        <div class="section">
-          <div class="section-title">실시간 채팅</div>
-          <div id="chatView" class="chat-feed" role="log" aria-live="polite" aria-label="채팅"></div>
-          <div class="chat-input-area">
-            <input id="chatText" type="text" class="input" placeholder="메시지 입력..." maxlength="200" aria-label="채팅 메시지" />
-            <button id="btnChatSend" class="btn-secondary" type="button">전송</button>
-          </div>
-        </div>
-      </section>
-    </div>
+    <!-- 오른쪽 패널: 로그 & 채팅 -->
+    <section>
+      <h2>전투 로그</h2>
+      <div id="battleLog"></div>
+      <h2>채팅</h2>
+      <div id="chatView"></div>
+      <input id="chatText" type="text" placeholder="메시지 입력" />
+      <button id="btnChatSend">전송</button>
+    </section>
   </main>
 
-  <!-- Toast 알림 -->
-  <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- 스크립트 로드 -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/socket-config.js"></script>
-  <script src="/assets/js/notifications.js"></script>
   <script src="/assets/js/admin.js"></script>
-
   <script>
-    // 연결 상태 업데이트
-    function updateConnectionIndicator(status, message) {
-      const indicator = document.getElementById('connectionIndicator');
-      if (indicator) {
-        indicator.className = `connection-indicator ${status}`;
-        indicator.textContent = message || status;
-      }
-    }
-
-    // 페이지 로드 시 초기화
-    document.addEventListener('DOMContentLoaded', function() {
-      try {
-        updateConnectionIndicator('connecting', '연결 중...');
-        
-        // 관리자 시스템 초기화
-        if (window.PyxisAdmin && typeof window.PyxisAdmin.init === 'function') {
-          window.PyxisAdmin.init();
-          updateConnectionIndicator('connected', '연결됨');
-        } else {
-          throw new Error('PyxisAdmin 모듈을 찾을 수 없습니다');
-        }
-      } catch (error) {
-        console.error('관리자 페이지 초기화 오류:', error);
-        updateConnectionIndicator('disconnected', '시스템 오류');
-        alert('관리자 시스템 로드 실패');
-      }
-
-      console.log('PYXIS 관리자 페이지 로드 완료');
-    });
-
-    // 디버그용 전역 함수
-    window.debugAdmin = function() {
-      if (window.PyxisAdmin && typeof window.PyxisAdmin.getDebugInfo === 'function') {
-        console.log('=== PYXIS Admin 디버그 정보 ===');
-        console.log(window.PyxisAdmin.getDebugInfo());
-      }
-    };
-
-    // 빠른 테스트 함수
-    window.quickTest = function() {
-      console.log('=== 빠른 연결 테스트 ===');
-      if (window.PyxisAdmin) {
-        window.PyxisAdmin.createBattle('1v1');
-        setTimeout(() => {
-          console.log('전투 생성 후 상태:', window.PyxisAdmin.state);
-        }, 2000);
-      }
-    };
-
-    // 에러 핸들링
-    window.addEventListener('error', function(e) {
-      console.error('JavaScript 오류:', e.error);
-      document.getElementById('connectionIndicator').className = 'connection-indicator disconnected';
-      document.getElementById('connectionIndicator').textContent = 'JS 오류';
-    });
-
-    window.addEventListener('unhandledrejection', function(e) {
-      console.error('Promise 오류:', e.reason);
-    });
-
-    // 페이지 종료 시 경고
-    window.addEventListener('beforeunload', function(e) {
-      if (window.PyxisAdmin && window.PyxisAdmin.state && window.PyxisAdmin.state.battleId) {
-        e.preventDefault();
-        e.returnValue = '전투가 진행 중입니다. 정말 페이지를 떠나시겠습니까?';
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.PyxisAdmin && typeof window.PyxisAdmin.init === 'function') {
+        window.PyxisAdmin.init();
+      } else {
+        console.error("PyxisAdmin 모듈 초기화 실패");
       }
     });
   </script>
