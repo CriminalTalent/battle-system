@@ -1,382 +1,1037 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS 관리자</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Cinzel 폰트 적용 (Google Fonts) -->
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
-
-  <!-- CSS 경로 고정 -->
-  <link rel="stylesheet" href="/assets/css/core.css" />
-  <link rel="stylesheet" href="/assets/css/components.css" />
-  <link rel="stylesheet" href="/assets/css/admin.css" />
-
-  <!-- 다크 테마 최소 오버라이드 + 복사 리스트 스타일 + Cinzel 폰트 통일 -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PYXIS Battle System - 관리자</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/pyxis-theme.css">
+  <link rel="stylesheet" href="/assets/css/admin.css">
   <style>
-    :root {
-      --bg: #0a0f1a;
-      --panel: #1a1f2b;
-      --text: #f5f5f5;
-      --muted: #a9b1c7;
-      --accent: #d4b77e;
-      --input-bg: #0f1419;
-      --input-border: #2b3340;
-      --chip: #2a2f3a;
-      --danger: #c08d8d;
-      --ok: #89a894;
-    }
-    html, body {
-      font-family: 'Cinzel', serif !important;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      letter-spacing: 0.01em;
-    }
-    header {
-      background: #111827;
-      border-bottom: 1px solid #2b3340;
-      padding: 16px 24px 12px 24px;
-      font-family: 'Cinzel', serif;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 22px;
-      color: var(--accent);
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      font-family: 'Cinzel', serif;
-    }
-    main {
-      display: grid;
-      grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 24px;
+    /* 관리자 페이지 전용 스타일 */
+    .admin-container {
+      max-width: 1600px;
+      margin: 0 auto;
       padding: 24px;
-      font-family: 'Cinzel', serif;
     }
-    section {
-      background: var(--panel);
-      border-radius: 12px;
-      padding: 18px 18px 16px 18px;
-      font-family: 'Cinzel', serif;
-      box-shadow: 0 2px 16px 0 rgba(0,0,0,0.08);
+
+    .admin-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      align-items: start;
     }
-    h2 {
-      margin: 0 0 14px;
-      color: var(--accent);
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      font-family: 'Cinzel', serif;
-      text-align: center;
+
+    @media (max-width: 1200px) {
+      .admin-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
     }
-    h3 {
-      margin: 20px 0 10px;
-      color: var(--accent);
-      font-size: 16px;
+
+    .section {
+      background: var(--glass-2);
+      backdrop-filter: var(--blur-light);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .section h3 {
+      font-family: var(--serif);
+      font-size: 20px;
       font-weight: 600;
-      font-family: 'Cinzel', serif;
-      letter-spacing: 0.02em;
+      color: var(--gold-bright);
+      margin-bottom: 20px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
-    .row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
+
+    .form-group {
+      margin-bottom: 16px;
     }
-    .stack > * {
+
+    .form-group label {
       display: block;
-      margin: 7px 0;
-    }
-    label {
-      color: var(--muted);
       font-size: 14px;
-      font-family: 'Cinzel', serif;
-      font-weight: 400;
+      font-weight: 600;
+      color: var(--text-accent);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
-    input[type="text"], input[type="number"], input[type="file"], select, textarea {
+
+    .form-group input,
+    .form-group select {
       width: 100%;
-      background: var(--input-bg);
+      background: var(--glass-1);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-small);
+      padding: 12px 16px;
       color: var(--text);
-      border: 1px solid var(--input-border);
-      border-radius: 8px;
-      padding: 8px 10px;
+      font-size: 14px;
+      font-family: var(--serif);
+      transition: all var(--transition-fast);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
       outline: none;
-      font-family: 'Cinzel', serif;
-      font-size: 15px;
-      letter-spacing: 0.01em;
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(212, 183, 126, 0.2);
     }
-    select { appearance: none; }
-    button {
-      background: var(--accent);
-      color: #111;
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .stat-input {
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .items-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, var(--gold), var(--gold-bright));
+      color: var(--deep-navy);
       border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-weight: 700;
-      font-family: 'Cinzel', serif;
-      font-size: 15px;
+      border-radius: var(--radius-small);
+      padding: 12px 16px;
+      font-family: var(--serif);
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
-      letter-spacing: 0.02em;
-      transition: background 0.15s;
+      transition: all var(--transition-fast);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: var(--shadow-soft);
+      width: 100%;
+      margin-bottom: 8px;
     }
-    button.ghost {
-      background: transparent;
-      color: var(--accent);
-      border: 1px solid var(--accent);
+
+    .btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, var(--gold-bright), var(--gold-shimmer));
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-medium);
     }
-    button:active {
-      background: #bfa05e;
+
+    .btn:disabled {
+      background: var(--glass-1);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
-    .muted {
-      color: var(--muted);
-      font-size: 13px;
-      font-family: 'Cinzel', serif;
+
+    .btn.danger {
+      background: linear-gradient(135deg, var(--danger), #c0392b);
+      color: white;
     }
-    .kpi {
+
+    .btn.danger:hover:not(:disabled) {
+      background: linear-gradient(135deg, #c0392b, #a93226);
+    }
+
+    .btn.success {
+      background: linear-gradient(135deg, var(--success), #229954);
+      color: white;
+    }
+
+    .btn.success:hover:not(:disabled) {
+      background: linear-gradient(135deg, #229954, #1e8449);
+    }
+
+    .control-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 10px;
+      gap: 12px;
+      margin-bottom: 16px;
     }
-    .kpi .card {
-      background: #141a24;
-      border: 1px solid #2b3340;
-      padding: 10px;
-      border-radius: 8px;
-      font-family: 'Cinzel', serif;
+
+    .roster-section {
+      margin-top: 20px;
+    }
+
+    .team-roster {
+      background: var(--glass-1);
+      border-radius: var(--radius-small);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .team-title {
+      font-weight: 600;
+      color: var(--gold-bright);
+      margin-bottom: 12px;
       text-align: center;
     }
-    .mono {
-      font-family: 'Cinzel', ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 15px;
-      letter-spacing: 0.01em;
+
+    .player-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
-    #battleLog, #chatView {
-      background: #0f1419;
-      border: 1px solid #2b3340;
-      border-radius: 8px;
-      height: 240px;
-      overflow-y: auto;
-      font-size: 14px;
-      padding: 10px;
-      font-family: 'Cinzel', serif;
-      line-height: 1.6;
-      letter-spacing: 0.01em;
+
+    .player-item {
+      background: var(--glass-2);
+      border-radius: var(--radius-small);
+      padding: 12px;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    .roster-player {
-      background: var(--chip);
-      border-radius: 8px;
-      padding: 10px;
+
+    .player-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--gold);
+    }
+
+    .player-info {
+      flex: 1;
+    }
+
+    .player-name {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .player-stats {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .player-status {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-ready {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .status-waiting {
+      background: var(--warning-light);
+      color: var(--warning);
+    }
+
+    .status-offline {
+      background: var(--danger-light);
+      color: var(--danger);
+    }
+
+    .battle-info {
+      background: var(--glass-1);
+      border-radius: var(--radius-small);
+      padding: 16px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .battle-id {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      font-family: var(--serif);
       margin-bottom: 8px;
-      font-size: 14px;
-      font-family: 'Cinzel', serif;
-      letter-spacing: 0.01em;
     }
-    .list { display: grid; gap: 8px; }
-    .connection { display: flex; align-items: center; gap: 10px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #999; }
-    .dot.ok { background: var(--ok); }
-    .dot.bad { background: var(--danger); }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    details summary { cursor: pointer; color: var(--accent); }
-    .row-buttons { display: flex; gap: 8px; margin-top: 10px; }
-    .danger { background: var(--danger); color: #111; }
-    .copy-list { display: grid; gap: 8px; }
-    .copy-row {
-      display: grid; grid-template-columns: 1fr auto; gap: 10px;
-      align-items: center; background: #0f1419; border: 1px dashed var(--input-border);
-      border-radius: 8px; padding: 8px 10px;
-      font-family: 'Cinzel', serif;
+
+    .battle-status {
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      display: inline-block;
     }
-    .copy-label { color: var(--muted); font-size: 13px; }
-    .copy-value {
-      font-family: 'Cinzel', ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      background: #0b1117; border: 1px solid #243043; border-radius: 6px; padding: 6px 8px;
-      cursor: pointer; user-select: all; white-space: pre-wrap; word-break: break-all;
-      font-size: 14px;
+
+    .status-waiting {
+      background: var(--warning-light);
+      color: var(--warning);
     }
-    .copy-value:hover { outline: 1px dashed var(--accent); }
-    /* 균형 잡힌 출력(로그/채팅/목록 등) */
-    #battleLog > div, #chatView > div, .roster-player, .copy-row, .copy-value {
-      font-family: 'Cinzel', serif;
-      font-size: 14px;
-      letter-spacing: 0.01em;
+
+    .status-active {
+      background: var(--success-light);
+      color: var(--success);
+    }
+
+    .status-ended {
+      background: var(--danger-light);
+      color: var(--danger);
+    }
+
+    .log-container {
+      background: var(--glass-1);
+      border-radius: var(--radius-small);
+      height: 300px;
+      overflow-y: auto;
+      padding: 16px;
+      font-size: 13px;
       line-height: 1.6;
-      word-break: keep-all;
-      text-align: left;
     }
-    @media (max-width: 1100px) {
-      main { grid-template-columns: 1fr; padding: 10px; gap: 10px; }
-      section { padding: 10px; }
+
+    .log-container::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .log-container::-webkit-scrollbar-track {
+      background: var(--glass-2);
+      border-radius: 3px;
+    }
+
+    .log-container::-webkit-scrollbar-thumb {
+      background: var(--gold);
+      border-radius: 3px;
+    }
+
+    .log-entry {
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      border-radius: var(--radius-small);
+      background: var(--glass-2);
+      border-left: 3px solid var(--border-light);
+    }
+
+    .log-entry.system {
+      border-left-color: var(--gold);
+      background: rgba(212, 183, 126, 0.05);
+    }
+
+    .log-entry.battle {
+      border-left-color: var(--info);
+      background: rgba(52, 152, 219, 0.05);
+    }
+
+    .log-entry.chat {
+      border-left-color: var(--success);
+      background: var(--success-light);
+      color: #96ffc8;
+    }
+
+    .chat-input-container {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--glass-1);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-small);
+      padding: 8px 12px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .chat-send {
+      background: linear-gradient(135deg, var(--gold), var(--gold-bright));
+      color: var(--deep-navy);
+      border: none;
+      border-radius: var(--radius-small);
+      padding: 8px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      min-width: 60px;
+    }
+
+    .statistics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: var(--glass-1);
+      border-radius: var(--radius-small);
+      padding: 12px;
+      text-align: center;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      font-family: var(--serif);
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .link-section {
+      background: var(--glass-1);
+      border-radius: var(--radius-small);
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .link-item {
+      margin-bottom: 12px;
+      padding: 8px;
+      background: var(--glass-2);
+      border-radius: var(--radius-small);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .link-label {
+      font-size: 12px;
+      color: var(--text-accent);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .link-url {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+      word-break: break-all;
+      background: var(--navy-surface);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .link-url:hover {
+      color: var(--gold-bright);
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="row">
-      <h1>PYXIS 관리자</h1>
-      <div class="connection" style="margin-left:auto;">
-        <div id="connDot" class="dot"></div>
-        <span id="connText" class="muted">연결 대기</span>
-      </div>
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="container">
+      <h1 class="title">
+        <span class="title-main">PYXIS</span>
+        <span class="title-sub">관리자 콘솔</span>
+      </h1>
     </div>
   </header>
 
-  <main>
-    <!-- 좌: 전투 제어 -->
-    <section>
-      <h2>전투 제어</h2>
-      <div class="stack">
-        <div class="row" style="width:100%;">
-          <label for="battleMode">전투 모드</label>
-          <select id="battleMode" style="flex:1;">
-            <option value="1v1">1 vs 1</option>
-            <option value="2v2">2 vs 2</option>
-            <option value="3v3">3 vs 3</option>
-            <option value="4v4">4 vs 4</option>
+  <!-- 메인 컨테이너 -->
+  <main class="admin-container">
+    <div class="admin-grid">
+      <!-- 왼쪽: 전투 제어 -->
+      <section class="section">
+        <h3>전투 제어</h3>
+        
+        <!-- 전투 정보 -->
+        <div class="battle-info">
+          <div id="battleId" class="battle-id">대기 중</div>
+          <div id="battleStatus" class="battle-status status-waiting">대기</div>
+        </div>
+
+        <!-- 전투 생성 -->
+        <div class="form-group">
+          <label>전투 모드</label>
+          <select id="battleMode">
+            <option value="1v1">1대1</option>
+            <option value="2v2">2대2</option>
+            <option value="3v3">3대3</option>
+            <option value="4v4">4대4</option>
           </select>
         </div>
-        <div class="row">
-          <button id="btnCreateBattle">전투 생성</button>
-          <button id="btnStartBattle" class="ghost">전투 시작</button>
-          <button id="btnPauseBattle" class="ghost">일시 정지</button>
-          <button id="btnResumeBattle" class="ghost">재개</button>
-          <button id="btnEndBattle" class="ghost">종료</button>
+        
+        <button id="btnCreateBattle" class="btn">전투 생성</button>
+
+        <!-- 전투 제어 버튼 -->
+        <div class="control-grid">
+          <button id="btnStartBattle" class="btn success" disabled>전투 시작</button>
+          <button id="btnEndBattle" class="btn danger" disabled>전투 종료</button>
         </div>
 
-        <div class="kpi">
-          <div class="card"><div class="muted">전투 ID</div><div id="currentBattleId" class="mono">-</div></div>
-          <div class="card"><div class="muted">모드</div><div id="currentMode" class="mono">-</div></div>
+        <!-- 링크 생성 -->
+        <button id="btnGenerateLinks" class="btn" disabled>링크 생성</button>
+
+        <!-- 생성된 링크들 -->
+        <div id="linkSection" class="link-section" style="display: none;">
+          <h4 style="color: var(--gold-bright); margin-bottom: 12px;">생성된 링크</h4>
+          <div id="playerLinks"></div>
+          <div id="spectatorLink"></div>
         </div>
 
-        <h3>비밀번호 / 링크 발급</h3>
-        <div class="row">
-          <button id="btnIssuePlayerPw">전투 참가자 비밀번호</button>
-          <button id="btnIssueSpectatorPw" class="ghost">관전자 비밀번호</button>
-          <button id="btnIssuePlayerLinks" class="ghost">전투 참가자 링크</button>
-          <button id="btnIssueSpectatorLink" class="ghost">관전자 링크</button>
+        <!-- 통계 -->
+        <div class="statistics-grid">
+          <div class="stat-card">
+            <div id="statPlayers" class="stat-value">0</div>
+            <div class="stat-label">접속 플레이어</div>
+          </div>
+          <div class="stat-card">
+            <div id="statSpectators" class="stat-value">0</div>
+            <div class="stat-label">관전자</div>
+          </div>
+          <div class="stat-card">
+            <div id="statTurn" class="stat-value">0</div>
+            <div class="stat-label">현재 턴</div>
+          </div>
+          <div class="stat-card">
+            <div id="statUptime" class="stat-value">0:00</div>
+            <div class="stat-label">진행 시간</div>
+          </div>
         </div>
-        <div class="stack">
-          <div class="muted">발급 결과 (각 항목 클릭 시 복사)</div>
-          <div id="issueList" class="copy-list"><div class="copy-row"><span class="copy-label">-</span><code class="copy-value">-</code></div></div>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- 중: 전투 참가자 -->
-    <section>
-      <h2>전투 참가자 추가</h2>
-      <div class="grid2">
-        <div class="stack">
-          <label>전투 참가자 이름</label>
-          <input id="pName" type="text" placeholder="이름" />
+      <!-- 중앙: 참가자 관리 -->
+      <section class="section">
+        <h3>참가자 관리</h3>
+        
+        <!-- 플레이어 추가 폼 -->
+        <div class="form-group">
+          <label>플레이어 이름</label>
+          <input id="playerName" type="text" placeholder="플레이어 이름" maxlength="20">
         </div>
-        <div class="stack">
-          <label>소속 팀</label>
-          <select id="pTeam">
+
+        <div class="form-group">
+          <label>팀 선택</label>
+          <select id="playerTeam">
             <option value="phoenix">불사조 기사단</option>
-            <option value="eaters">죽음을 먹는 자</option>
+            <option value="death">죽음을 먹는 자들</option>
           </select>
         </div>
 
-        <div class="stack">
-          <label>공격</label>
-          <input id="sATK" type="number" value="3" />
-        </div>
-        <div class="stack">
-          <label>방어</label>
-          <input id="sDEF" type="number" value="3" />
-        </div>
-        <div class="stack">
-          <label>민첩</label>
-          <input id="sDEX" type="number" value="3" />
-        </div>
-        <div class="stack">
-          <label>행운</label>
-          <input id="sLUK" type="number" value="3" />
-        </div>
-        <div class="stack">
-          <label>HP</label>
-          <input id="pHP" type="number" value="100" />
-        </div>
-        <div class="stack">
-          <label>이미지</label>
-          <input id="pImage" type="file" accept="image/*" />
+        <div class="form-group">
+          <label>스탯 배분 (총 12포인트)</label>
+          <div class="stats-grid">
+            <input id="statAttack" type="number" class="stat-input" min="1" max="5" value="3" placeholder="공격">
+            <input id="statDefense" type="number" class="stat-input" min="1" max="5" value="3" placeholder="방어">
+            <input id="statAgility" type="number" class="stat-input" min="1" max="5" value="3" placeholder="민첨">
+            <input id="statLuck" type="number" class="stat-input" min="1" max="5" value="3" placeholder="행운">
+          </div>
+          <div id="statTotal" style="text-align: center; color: var(--text-muted); font-size: 12px;">
+            총합: 12 / 12
+          </div>
         </div>
 
-        <div class="stack">
-          <label>디터니</label>
-          <input id="itemDittany" type="number" value="1" />
+        <div class="form-group">
+          <label>시작 아이템</label>
+          <div class="items-grid">
+            <input id="itemDittany" type="number" min="0" max="5" value="1" placeholder="디터니">
+            <input id="itemAttack" type="number" min="0" max="5" value="1" placeholder="공격 보정기">
+            <input id="itemDefense" type="number" min="0" max="5" value="1" placeholder="방어 보정기">
+          </div>
         </div>
-        <div class="stack">
-          <label>공격 보정기</label>
-          <input id="itemAtkBoost" type="number" value="1" />
+
+        <div class="form-group">
+          <label>아바타 이미지</label>
+          <input id="playerAvatar" type="file" accept="image/*">
         </div>
-        <div class="stack">
-          <label>방어 보정기</label>
-          <input id="itemDefBoost" type="number" value="1" />
+
+        <button id="btnAddPlayer" class="btn">플레이어 추가</button>
+
+        <!-- 팀 로스터 -->
+        <div class="roster-section">
+          <div class="team-roster">
+            <div class="team-title">불사조 기사단</div>
+            <div id="phoenixTeam" class="player-list">
+              <div style="text-align: center; color: var(--text-muted); padding: 20px;">
+                팀원이 없습니다
+              </div>
+            </div>
+          </div>
+
+          <div class="team-roster">
+            <div class="team-title">죽음을 먹는 자들</div>
+            <div id="deathTeam" class="player-list">
+              <div style="text-align: center; color: var(--text-muted); padding: 20px;">
+                팀원이 없습니다
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="row" style="margin-top:8px;">
-        <button id="btnAddPlayer">전투 참가자 추가</button>
-      </div>
+      <!-- 오른쪽: 로그 및 채팅 -->
+      <section class="section">
+        <h3>실시간 모니터링</h3>
+        
+        <!-- 전투 로그 -->
+        <div style="margin-bottom: 20px;">
+          <h4 style="color: var(--gold-bright); margin-bottom: 8px;">전투 로그</h4>
+          <div id="battleLog" class="log-container">
+            <div class="log-entry system">관리자 콘솔이 시작되었습니다.</div>
+          </div>
+        </div>
 
-      <h3>불사조 기사단 목록</h3>
-      <div id="rosterPhoenix" class="list"></div>
-
-      <h3>죽음을 먹는 자 목록</h3>
-      <div id="rosterEaters" class="list"></div>
-    </section>
-
-    <!-- 우: 로그 & 채팅 -->
-    <section>
-      <h2>전투 로그</h2>
-      <div id="battleLog"></div>
-
-      <h2 style="margin-top:12px;">채팅</h2>
-      <div id="chatView"></div>
-      <div class="row" style="margin-top:8px;">
-        <input id="chatText" type="text" placeholder="메시지 입력" />
-        <button id="btnChatSend">전송</button>
-      </div>
-    </section>
+        <!-- 채팅 -->
+        <div>
+          <h4 style="color: var(--gold-bright); margin-bottom: 8px;">채팅</h4>
+          <div id="chatLog" class="log-container" style="height: 200px;">
+            <div class="log-entry system">채팅을 시작하세요!</div>
+          </div>
+          <div class="chat-input-container">
+            <input id="chatInput" class="chat-input" type="text" placeholder="메시지 입력..." maxlength="200">
+            <button id="btnSendChat" class="chat-send">전송</button>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
 
-  <!-- 서버 주소는 도메인만 사용, IP 노출 금지 -->
+  <!-- 스크립트 -->
   <script src="https://pyxisbattlesystem.monster/socket.io/socket.io.js"></script>
   <script>
+    // 전역 설정
     window.PYXIS_SERVER_URL = "https://pyxisbattlesystem.monster";
-
-    // 채팅 엔터 전송 및 버튼 전송 연결
-    document.addEventListener("DOMContentLoaded", function () {
-      const chatInput = document.getElementById("chatText");
-      const chatBtn = document.getElementById("btnChatSend");
-      let socket = window.adminSocket;
-
-      // 소켓 연결이 admin.js에서 window.adminSocket으로 되어 있다고 가정
-      function sendChat() {
-        const msg = (chatInput.value || "").trim();
-        if (!msg) return;
-        if (socket && socket.connected) {
-          socket.emit("admin:chat", { message: msg });
-        }
-        chatInput.value = "";
+    
+    // 관리자 클래스
+    class PyxisAdmin {
+      constructor() {
+        this.socket = null;
+        this.battleData = null;
+        this.isConnected = false;
+        this.currentBattleId = null;
+        
+        this.initElements();
+        this.initEventListeners();
+        this.connectSocket();
       }
 
-      chatBtn?.addEventListener("click", sendChat);
-      chatInput?.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") {
-          sendChat();
+      initElements() {
+        // 전투 제어
+        this.battleIdEl = document.getElementById('battleId');
+        this.battleStatusEl = document.getElementById('battleStatus');
+        this.battleModeEl = document.getElementById('battleMode');
+        this.btnCreateBattle = document.getElementById('btnCreateBattle');
+        this.btnStartBattle = document.getElementById('btnStartBattle');
+        this.btnEndBattle = document.getElementById('btnEndBattle');
+        this.btnGenerateLinks = document.getElementById('btnGenerateLinks');
+        this.linkSection = document.getElementById('linkSection');
+        this.playerLinks = document.getElementById('playerLinks');
+        this.spectatorLink = document.getElementById('spectatorLink');
+
+        // 플레이어 관리
+        this.playerNameEl = document.getElementById('playerName');
+        this.playerTeamEl = document.getElementById('playerTeam');
+        this.statAttackEl = document.getElementById('statAttack');
+        this.statDefenseEl = document.getElementById('statDefense');
+        this.statAgilityEl = document.getElementById('statAgility');
+        this.statLuckEl = document.getElementById('statLuck');
+        this.statTotalEl = document.getElementById('statTotal');
+        this.itemDittanyEl = document.getElementById('itemDittany');
+        this.itemAttackEl = document.getElementById('itemAttack');
+        this.itemDefenseEl = document.getElementById('itemDefense');
+        this.playerAvatarEl = document.getElementById('playerAvatar');
+        this.btnAddPlayer = document.getElementById('btnAddPlayer');
+        this.phoenixTeamEl = document.getElementById('phoenixTeam');
+        this.deathTeamEl = document.getElementById('deathTeam');
+
+        // 통계
+        this.statPlayersEl = document.getElementById('statPlayers');
+        this.statSpectatorsEl = document.getElementById('statSpectators');
+        this.statTurnEl = document.getElementById('statTurn');
+        this.statUptimeEl = document.getElementById('statUptime');
+
+        // 로그 및 채팅
+        this.battleLogEl = document.getElementById('battleLog');
+        this.chatLogEl = document.getElementById('chatLog');
+        this.chatInputEl = document.getElementById('chatInput');
+        this.btnSendChatEl = document.getElementById('btnSendChat');
+      }
+
+      initEventListeners() {
+        // 전투 제어
+        this.btnCreateBattle.addEventListener('click', () => this.createBattle());
+        this.btnStartBattle.addEventListener('click', () => this.startBattle());
+        this.btnEndBattle.addEventListener('click', () => this.endBattle());
+        this.btnGenerateLinks.addEventListener('click', () => this.generateLinks());
+
+        // 플레이어 관리
+        this.btnAddPlayer.addEventListener('click', () => this.addPlayer());
+        
+        // 스탯 총합 체크
+        [this.statAttackEl, this.statDefenseEl, this.statAgilityEl, this.statLuckEl].forEach(el => {
+          el.addEventListener('input', () => this.updateStatTotal());
+        });
+
+        // 채팅
+        this.btnSendChatEl.addEventListener('click', () => this.sendChat());
+        this.chatInputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') this.sendChat();
+        });
+      }
+
+      connectSocket() {
+        this.socket = io(window.PYXIS_SERVER_URL);
+
+        this.socket.on('connect', () => {
+          console.log('관리자 소켓 연결됨');
+          this.isConnected = true;
+          this.addLog('system', '서버에 연결되었습니다.');
+        });
+
+        this.socket.on('auth:success', (data) => {
+          console.log('관리자 인증 성공:', data);
+          this.battleData = data.battle;
+          this.currentBattleId = data.battle.id;
+          this.updateUI();
+        });
+
+        this.socket.on('auth:error', (error) => {
+          console.error('관리자 인증 실패:', error);
+          this.addLog('system', `인증 실패: ${error.message}`);
+        });
+
+        this.socket.on('battle:created', (data) => {
+          console.log('전투 생성됨:', data);
+          this.currentBattleId = data.battleId;
+          this.battleIdEl.textContent = data.battleId;
+          this.updateButtons();
+        });
+
+        this.socket.on('admin:update', (data) => {
+          console.log('관리자 업데이트:', data);
+          this.battleData = data.battle;
+          this.updateUI();
+          this.updateStatistics(data.statistics);
+        });
+
+        this.socket.on('player:added', (data) => {
+          console.log('플레이어 추가됨:', data);
+          this.addLog('system', `플레이어 추가: ${data.player.name}`);
+          this.clearPlayerForm();
+        });
+
+        this.socket.on('player:error', (error) => {
+          console.error('플레이어 에러:', error);
+          alert(`오류: ${error.message}`);
+        });
+
+        this.socket.on('battle:log', (entry) => {
+          this.addLog(entry.type || 'system', entry.message);
+        });
+
+        this.socket.on('chat:message', (data) => {
+          this.addChatMessage(data);
+        });
+
+        this.socket.on('player:connected', (data) => {
+          this.addLog('system', `${data.playerName}이 접속했습니다.`);
+        });
+
+        this.socket.on('player:disconnected', (data) => {
+          this.addLog('system', `${data.playerName}이 연결을 끊었습니다.`);
+        });
+
+        this.socket.on('disconnect', () => {
+          console.log('관리자 소켓 연결 끊어짐');
+          this.isConnected = false;
+          this.addLog('system', '서버 연결이 끊어졌습니다. 재연결 중...');
+        });
+      }
+
+      createBattle() {
+        if (!this.socket || !this.isConnected) return;
+        
+        const mode = this.battleModeEl.value;
+        this.socket.emit('admin:create_battle', { mode });
+      }
+
+      startBattle() {
+        if (!this.socket || !this.isConnected || !this.currentBattleId) return;
+        
+        if (confirm('전투를 시작하시겠습니까?')) {
+          this.socket.emit('admin:start_battle', { battleId: this.currentBattleId });
         }
-      });
+      }
+
+      endBattle() {
+        if (!this.socket || !this.isConnected || !this.currentBattleId) return;
+        
+        if (confirm('전투를 종료하시겠습니까?')) {
+          this.socket.emit('admin:end_battle', { battleId: this.currentBattleId });
+        }
+      }
+
+      addPlayer() {
+        if (!this.socket || !this.isConnected || !this.currentBattleId) return;
+
+        const name = this.playerNameEl.value.trim();
+        if (!name) {
+          alert('플레이어 이름을 입력하세요.');
+          return;
+        }
+
+        const stats = {
+          attack: parseInt(this.statAttackEl.value) || 3,
+          defense: parseInt(this.statDefenseEl.value) || 3,
+          agility: parseInt(this.statAgilityEl.value) || 3,
+          luck: parseInt(this.statLuckEl.value) || 3
+        };
+
+        const total = Object.values(stats).reduce((sum, val) => sum + val, 0);
+        if (total !== 12) {
+          alert('스탯 총합이 12가 되어야 합니다.');
+          return;
+        }
+
+        const items = {
+          dittany: parseInt(this.itemDittanyEl.value) || 0,
+          attack_booster: parseInt(this.itemAttackEl.value) || 0,
+          defense_booster: parseInt(this.itemDefenseEl.value) || 0
+        };
+
+        const playerData = {
+          name,
+          team: this.playerTeamEl.value,
+          stats,
+          items,
+          hp: 100,
+          maxHp: 100
+        };
+
+        // 아바타 업로드 처리
+        const avatarFile = this.playerAvatarEl.files[0];
+        if (avatarFile) {
+          this.uploadAvatar(avatarFile, playerData);
+        } else {
+          this.socket.emit('admin:add_player', playerData);
+        }
+      }
+
+      uploadAvatar(file, playerData) {
+        const formData = new FormData();
+        formData.append('avatar', file);
+
+        fetch('/api/upload-avatar', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.ok) {
+            playerData.avatar = data.url;
+            this.socket.emit('admin:add_player', playerData);
+          } else {
+            alert('아바타 업로드 실패: ' + data.error);
+          }
+        })
+        .catch(error => {
+          console.error('아바타 업로드 에러:', error);
+          alert('아바타 업로드 중 오류가 발생했습니다.');
+        });
+      }
+
+      generateLinks() {
+        if (!this.battleData) return;
+
+        const baseUrl = window.location.origin;
+        const battleId = this.battleData.id;
+
+        // 플레이어 링크들
+        this.playerLinks.innerHTML = '';
+        this.battleData.players.forEach(player => {
+          const playerUrl = `${baseUrl}/player?battle=${battleId}&name=${encodeURIComponent(player.name)}&token=${player.token}`;
+          
+          const linkItem = document.createElement('div');
+          linkItem.className = 'link-item';
+          linkItem.innerHTML = `
+            <div class="link-label">${player.name} (${player.team === 'phoenix' ? '불사조' : '죽음을 먹는 자'}팀)</div>
+            <div class="link-url" onclick="navigator.clipboard.writeText('${playerUrl}')">${playerUrl}</div>
+          `;
+          this.playerLinks.appendChild(linkItem);
+        });
+
+        // 관전자 링크
+        const spectatorUrl = `${baseUrl}/spectator?battle=${battleId}`;
+        this.spectatorLink.innerHTML = `
+          <div class="link-item">
+            <div class="link-label">관전자 링크</div>
+            <div class="link-url" onclick="navigator.clipboard.writeText('${spectatorUrl}')">${spectatorUrl}</div>
+          </div>
+        `;
+
+        this.linkSection.style.display = 'block';
+      }
+
+      sendChat() {
+        const message = this.chatInputEl.value.trim();
+        if (!message || !this.socket || !this.isConnected) return;
+
+        this.socket.emit('admin:chat', { message });
+        this.chatInputEl.value = '';
+      }
+
+      updateStatTotal() {
+        const total = parseInt(this.statAttackEl.value || 0) +
+                     parseInt(this.statDefenseEl.value || 0) +
+                     parseInt(this.statAgilityEl.value || 0) +
+                     parseInt(this.statLuckEl.value || 0);
+        
+        this.statTotalEl.textContent = `총합: ${total} / 12`;
+        this.statTotalEl.style.color = total === 12 ? 'var(--success)' : 'var(--danger)';
+      }
+
+      updateUI() {
+        if (!this.battleData) return;
+
+        // 전투 정보
+        this.battleIdEl.textContent = this.battleData.id;
+        this.battleStatusEl.textContent = this.getStatusText(this.battleData.status);
+        this.battleStatusEl.className = `battle-status status-${this.battleData.status}`;
+
+        // 팀 로스터
+        this.updateTeamRoster();
+        this.updateButtons();
+      }
+
+      updateTeamRoster() {
+        if (!this.battleData) return;
+
+        const phoenixPlayers = this.battleData.players.filter(p => p.team === 'phoenix');
+        const deathPlayers = this.battleData.players.filter(p => p.team === 'death');
+
+        // 불사조 기사단
+        this.phoenixTeamEl.innerHTML = '';
+        if (phoenixPlayers.length === 0) {
+          this.phoenixTeamEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">팀원이 없습니다</div>';
+        } else {
+          phoenixPlayers.forEach(player => {
+            this.phoenixTeamEl.appendChild(this.createPlayerItem(player));
+          });
+        }
+
+        // 죽음을 먹는 자들
+        this.deathTeamEl.innerHTML = '';
+        if (deathPlayers.length === 0) {
+          this.deathTeamEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">팀원이 없습니다</div>';
+        } else {
+          deathPlayers.forEach(player => {
+            this.deathTeamEl.appendChild(this.createPlayerItem(player));
+          });
+        }
+      }
+
+      createPlayerItem(player) {
+        const div = document.createElement('div');
+        div.className = 'player-item';
+        
+        const status = player.isConnected ? (player.isReady ? 'ready' : 'waiting') : 'offline';
+        const statusText = player.isConnected ? (player.isReady ? '준비완료' : '대기중') : '오프라인';
+        
+        div.innerHTML = `
+          <img class="player-avatar" src="${player.avatar || '/assets/images/default-avatar.png'}" alt="${player.name}">
+          <div class="player-info">
+            <div class="player-name">${player.name}</div>
+            <div class="player-stats">공:${player.stats.attack} 방:${player.stats.defense} 민:${player.stats.agility} 행:${player.stats.luck}</div>
+          </div>
+          <div class="player-status status-${status}">${statusText}</div>
+        `;
+        
+        return div;
+      }
+
+      updateButtons() {
+        if (!this.battleData) return;
+
+        const hasPlayers = this.battleData.players.length >= 2;
+        const allReady = this.battleData.players.every(p => p.isReady);
+        
+        this.btnStartBattle.disabled = this.battleData.status !== 'waiting' || !hasPlayers || !allReady;
+        this.btnEndBattle.disabled = this.battleData.status === 'ended';
+        this.btnGenerateLinks.disabled = !this.currentBattleId || this.battleData.players.length === 0;
+        this.btnAddPlayer.disabled = this.battleData.status === 'active';
+      }
+
+      updateStatistics(stats) {
+        if (!stats) return;
+
+        this.statPlayersEl.textContent = `${stats.connectedPlayers}/${stats.totalPlayers}`;
+        this.statSpectatorsEl.textContent = stats.spectators || 0;
+        this.statTurnEl.textContent = stats.turnNumber || 0;
+        
+        if (stats.uptime) {
+          const minutes = Math.floor(stats.uptime / 60000);
+          const seconds = Math.floor((stats.uptime % 60000) / 1000);
+          this.statUptimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+      }
+
+      clearPlayerForm() {
+        this.playerNameEl.value = '';
+        this.statAttackEl.value = '3';
+        this.statDefenseEl.value = '3';
+        this.statAgilityEl.value = '3';
+        this.statLuckEl.value = '3';
+        this.itemDittanyEl.value = '1';
+        this.itemAttackEl.value = '1';
+        this.itemDefenseEl.value = '1';
+        this.playerAvatarEl.value = '';
+        this.updateStatTotal();
+      }
+
+      addLog(type, message) {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type || 'system'}`;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        
+        this.battleLogEl.appendChild(div);
+        this.battleLogEl.scrollTop = this.battleLogEl.scrollHeight;
+
+        // 로그가 너무 많으면 오래된 것 제거
+        if (this.battleLogEl.children.length > 100) {
+          this.battleLogEl.removeChild(this.battleLogEl.firstChild);
+        }
+      }
+
+      addChatMessage(data) {
+        const div = document.createElement('div');
+        div.className = 'log-entry chat';
+        
+        const timestamp = new Date().toLocaleTimeString();
+        div.textContent = `[${timestamp}] ${data.senderName}: ${data.message}`;
+        
+        this.chatLogEl.appendChild(div);
+        this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
+
+        // 채팅이 너무 많으면 오래된 것 제거
+        if (this.chatLogEl.children.length > 50) {
+          this.chatLogEl.removeChild(this.chatLogEl.firstChild);
+        }
+      }
+
+      getStatusText(status) {
+        const statusTexts = {
+          waiting: '대기',
+          active: '진행중',
+          paused: '일시정지',
+          ended: '종료'
+        };
+        return statusTexts[status] || status;
+      }
+    }
+
+    // 페이지 로드 시 관리자 인스턴스 생성
+    document.addEventListener('DOMContentLoaded', () => {
+      window.pyxisAdmin = new PyxisAdmin();
     });
   </script>
-  <!-- 관리자 클라이언트용 JS -->
-  <script src="/assets/js/admin.js"></script>
-  <!-- 공통 전투 룰 계산 함수 추가 -->
-  <script src="/assets/js/common-battle-rules.js"></script>
 </body>
 </html>
