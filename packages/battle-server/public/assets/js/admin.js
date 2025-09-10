@@ -1,9 +1,39 @@
-/* PYXIS Admin - A/B 팀표기, 스탯 한글, 아바타 미리보기, 로그 꼬리표 숨김, 관전자 발급 연동 + B팀 아바타 보강 + 캐릭터 삭제 */
+/* PYXIS Admin - A/B 팀표기, 스탯 한글, 아바타 미리보기, 로그 정리(팀 A/B, 괄호 부가정보 제거) */
 (() => {
   const $  = (sel, r = document) => r.querySelector(sel);
   const $$ = (sel, r = document) => Array.from(r.querySelectorAll(sel));
 
-  const TEAM_SHORT = (key) => (key === 'eaters' ? 'B' : 'A'); // 화면 표시만 A/B
+  // 화면 표시는 A/B로만 유지 (내부 키는 phoenix/eaters 그대로)
+  const TEAM_SHORT = (key) => (String(key).toLowerCase() === 'eaters' ? 'B' : 'A');
+
+  // 로그 메시지 화면 표시용 정리:
+  //  1) phoenix/eaters/death → A팀/B팀
+  //  2) "(phoenix팀)/(eaters팀)" 같은 꼬리표 제거
+  //  3) (행운:…)/(주사위:…)/(치명타:…)/(명중:…)/(민첩성:…) 등 괄호 부가정보 제거
+  //  4) 공백 정리
+  function cleanLogMessage(raw) {
+    let msg = String(raw || '');
+
+    // 팀키를 A/B 팀 표기로 일괄 치환
+    msg = msg
+      .replace(/\bphoenix\b/gi, 'A팀')
+      .replace(/\b(eaters|death)\b/gi, 'B팀');
+
+    // "(phoenix팀)"/"(eaters팀)"/"(A팀)"/"(B팀)" 꼬리표 제거
+    msg = msg.replace(/\s*\(((?:phoenix|eaters)\s*팀|[AB]팀)\)\s*/gi, ' ');
+
+    // 턴/선공 문구 내 중복 "팀 차례" 정돈
+    msg = msg
+      .replace(/A팀\s*팀\s*차례/gi, 'A팀 차례')
+      .replace(/B팀\s*팀\s*차례/gi, 'B팀 차례');
+
+    // 괄호 속 부가정보 제거
+    msg = msg.replace(/\s*\((?:행운|주사위|치명타|명중|민첩성)[^)]*\)/gi, '');
+
+    // 다중 공백 및 트리밍
+    msg = msg.replace(/\s{2,}/g, ' ').trim();
+    return msg;
+  }
 
   class AdminApp {
     constructor() {
@@ -18,7 +48,7 @@
     }
 
     bindUI() {
-      // 전투
+      // 전투 컨트롤
       $('#btnCreateBattle')?.addEventListener('click', () => {
         const mode = $('#battleMode').value || '1v1';
         this.socket?.emit('createBattle', { mode });
@@ -111,11 +141,6 @@
         }
         this.copyList([{ label: '관전자 링크', value: res.spectatorUrl }]);
       });
-
-      // 플레이어 삭제 결과(옵션) - 서버가 보낸다면 UI 갱신
-      s.on('playerRemoved', () => {
-        // 최신 상태는 battle:update로 동기화된다고 가정
-      });
     }
 
     // 참가자 추가
@@ -143,20 +168,18 @@
       if (file) {
         try {
           const fd = new FormData();
-          fd.append('avatar', file); // 서버 /api/upload/avatar에서 field명 'avatar' 기대
-          const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
+          fd.append('avatar', file);
+          const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd });
           const data = await res.json();
           if (data?.ok && data?.avatarUrl) avatarUrl = data.avatarUrl;
-        } catch (e) {
-          console.warn('이미지 업로드 실패', e);
-        }
+        } catch (e) { console.warn('이미지 업로드 실패', e); }
       }
 
       const playerData = { name, team, hp, stats, items, avatar: avatarUrl };
       this.socket.emit('addPlayer', { battleId: this.battleId, playerData });
     }
 
-    // 인원 목록 렌더 (아바타 + 한글 스탯, 팀 A/B 뱃지 + 삭제 버튼)
+    // 인원 목록 렌더 (아바타 + 한글 스탯, 팀 A/B 뱃지)
     renderRoster() {
       const a = $('#rosterPhoenix'); const b = $('#rosterEaters');
       if (a) a.innerHTML = ''; if (b) b.innerHTML = '';
@@ -165,13 +188,12 @@
         const box = document.createElement('div');
         box.className = 'player';
 
-        // avatar (p.avatar 또는 p.avatarUrl 모두 처리)
+        // avatar
         const av = document.createElement('div');
         av.className = 'avatar';
-        const avatarSrc = p.avatar || p.avatarUrl || '';
-        if (avatarSrc) {
+        if (p.avatar) {
           const img = document.createElement('img');
-          img.src = avatarSrc;
+          img.src = p.avatar;
           img.alt = p.name || 'avatar';
           img.onerror = () => { av.textContent = (p.name||'U').charAt(0).toUpperCase(); };
           av.appendChild(img);
@@ -179,16 +201,17 @@
           av.textContent = (p.name||'U').charAt(0).toUpperCase();
         }
 
-        const infoWrap = document.createElement('div');
-        const nameLine = document.createElement('div');
-        nameLine.style.fontWeight = '800';
-        nameLine.textContent = p.name || '이름없음';
+        const info = document.createElement('div');
+
+        const name = document.createElement('div');
+        name.style.fontWeight = '800';
+        name.textContent = p.name || '이름없음';
 
         const tag = document.createElement('span');
         tag.className = 'badge';
         tag.style.marginLeft = '6px';
         tag.textContent = `팀 ${TEAM_SHORT(p.team)}`;
-        nameLine.appendChild(tag);
+        name.appendChild(tag);
 
         const hp = document.createElement('div');
         hp.className = 'mono';
@@ -200,34 +223,15 @@
         const s = p.stats || {};
         st.textContent = `공격 ${s.attack ?? 0} | 방어 ${s.defense ?? 0} | 민첩 ${s.agility ?? 0} | 행운 ${s.luck ?? 0}`;
 
-        // 버튼들 (삭제)
-        const btnRow = document.createElement('div');
-        btnRow.className = 'row-buttons';
-        const delBtn = document.createElement('button');
-        delBtn.className = 'btn danger';
-        delBtn.textContent = '삭제';
-        delBtn.addEventListener('click', () => this.removePlayer(p));
-        btnRow.appendChild(delBtn);
-
-        infoWrap.appendChild(nameLine);
-        infoWrap.appendChild(hp);
-        infoWrap.appendChild(st);
-        infoWrap.appendChild(btnRow);
+        info.appendChild(name);
+        info.appendChild(hp);
+        info.appendChild(st);
 
         box.appendChild(av);
-        box.appendChild(infoWrap);
+        box.appendChild(info);
 
-        (p.team === 'eaters' ? b : a).appendChild(box);
+        (String(p.team).toLowerCase() === 'eaters' ? b : a).appendChild(box);
       });
-    }
-
-    async removePlayer(player) {
-      if (!this.battleId || !player?.name) return;
-      const ok = confirm(`정말로 ${player.name} 을(를) 삭제하시겠어요?`);
-      if (!ok) return;
-      // 서버 구현체에 맞춰 이벤트명/페이로드 사용
-      this.socket.emit('removePlayer', { battleId: this.battleId, name: player.name });
-      // 즉시 UI 반영은 서버의 battle:update를 기다림
     }
 
     renderLogs(list) {
@@ -237,20 +241,15 @@
       (list || []).slice(-200).forEach((e) => this.log(e, true));
     }
 
-    // 로그에서 " (phoenix팀)" / " (eaters팀)" 숨김
-    cleanLogMessage(msg) {
-      return String(msg || '').replace(/\s*\((phoenix|eaters)팀\)/gi, '').trim();
-    }
-
     log(entry, appendOnly = false) {
       const box = $('#battleLog');
       if (!box) return;
       const div = document.createElement('div');
       const ts = new Date(entry?.ts || entry?.timestamp || Date.now()).toLocaleTimeString();
-      div.textContent = `[${ts}] ${this.cleanLogMessage(entry?.message || '')}`;
+      div.textContent = `[${ts}] ${cleanLogMessage(entry?.message || '')}`;
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
-      if (!appendOnly && entry?.type) { /* hook */ }
+      if (!appendOnly && entry?.type) { /* hook for future */ }
     }
 
     addChat(name, message) {
@@ -296,7 +295,6 @@
 
     issuePlayerLinks() {
       if (!this.battleId) return this.copyList([{ label: '오류', value: '전투 ID 없음' }]);
-      // 서버 쪽에서 개별 링크를 바로 만들지 않았으면, 프론트에서 구성
       const base = location.origin + '/player?battle=' + this.battleId;
       const items = (this.players || []).map(p => ({
         label: `플레이어 ${p.name}`,
