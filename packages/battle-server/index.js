@@ -1,16 +1,4 @@
-function addPlayerToBattle(battleId, playerData) {
-  const battle = ensureBattle(battleId);
-  
-  // 중복 확인 (대소문자 구분 없이)
-  const existing = battle.players.find(p => 
-    p.name.toLowerCase().trim() === (playerData.name || '').toLowerCase().trim()
-  );
-  if (existing) {
-    throw new Error(`이미 등록된 이름입니다: ${playerData.name}`);
-  }
-  
-  // 이름 검증
-  const// ESM Entry for PYXIS Battle Server
+// ESM Entry for PYXIS Battle Server
 // - Loads .env
 // - Serves static files
 // - Adds /admin /player /spectator routes
@@ -152,7 +140,6 @@ function serializeBattle(battle) {
     status: battle.status,
     players: battle.players.map(p => ({
       ...p,
-      // 민감한 정보 제거 또는 변환
     })),
     log: battle.log.slice(-100), // 최근 100개만
     turn: battle.turn,
@@ -221,19 +208,13 @@ function addPlayerToBattle(battleId, playerData) {
     throw new Error(`${playerData.team} 팀이 이미 가득 찼습니다 (${maxPlayersPerTeam}명)`);
   }
   
-  // 스탯 총합 검증 (총 12포인트)
+  // 스탯 기본값 및 개별 클램프 (총합 제한 없음)
   const stats = {
-    attack: parseInt(playerData.stats?.attack || 3),
-    defense: parseInt(playerData.stats?.defense || 3),
-    agility: parseInt(playerData.stats?.agility || 3),
-    luck: parseInt(playerData.stats?.luck || 3)
+    attack: clampStat(playerData.stats?.attack ?? 3),
+    defense: clampStat(playerData.stats?.defense ?? 3),
+    agility: clampStat(playerData.stats?.agility ?? 3),
+    luck: clampStat(playerData.stats?.luck ?? 3)
   };
-  
-  const totalStats = stats.attack + stats.defense + stats.agility + stats.luck;
-  
-  if (totalStats !== 12) {
-    throw new Error(`스탯 총합은 12포인트여야 합니다 (현재: ${totalStats})`);
-  }
   
   const player = {
     id: `player_${Math.random().toString(36).slice(2, 10)}`,
@@ -241,12 +222,7 @@ function addPlayerToBattle(battleId, playerData) {
     team: playerData.team || 'phoenix',
     hp: parseInt(playerData.hp || 100),
     maxHp: parseInt(playerData.hp || 100),
-    stats: {
-      attack: clampStat(stats.attack, 10),
-      defense: clampStat(stats.defense, 10),
-      agility: clampStat(stats.agility, 10),
-      luck: clampStat(stats.luck, 10)
-    },
+    stats,
     items: {
       dittany: parseInt(playerData.items?.dittany || 1),
       attack_booster: parseInt(playerData.items?.attack_booster || 1),
@@ -255,7 +231,7 @@ function addPlayerToBattle(battleId, playerData) {
     avatar: playerData.avatar || null,
     isReady: false,
     isAlive: true,
-    effects: [], // 개별 효과
+    effects: [],
     lastAction: null,
     actionHistory: []
   };
@@ -457,21 +433,18 @@ function handlePlayerAction(battleId, playerId, action) {
 }
 
 function processAction(battle, actor, action) {
-  const logs = [];
-  const updates = { hp: {}, effects: [] };
-  
   try {
     switch (action.type) {
       case 'attack':
-        return handleAttack(battle, actor, action, logs, updates);
+        return handleAttack(battle, actor, action);
       case 'defend':
-        return handleDefend(battle, actor, action, logs, updates);
+        return handleDefend(battle, actor, action);
       case 'dodge':
-        return handleDodge(battle, actor, action, logs, updates);
+        return handleDodge(battle, actor, action);
       case 'item':
-        return handleItem(battle, actor, action, logs, updates);
+        return handleItem(battle, actor, action);
       case 'pass':
-        return handlePass(battle, actor, action, logs, updates);
+        return handlePass(battle, actor, action);
       default:
         return { success: false, error: '알 수 없는 액션' };
     }
@@ -535,8 +508,7 @@ function handleAttack(battle, actor, action) {
   return { success: true };
 }
 
-function handleDefend(battle, actor, action) {
-  // 방어 태세 - 다음 피격시 방어력 1.5배, 성공시 반격
+function handleDefend(battle, actor) {
   actor.effects = actor.effects || [];
   actor.effects.push({
     type: 'defend',
@@ -548,8 +520,7 @@ function handleDefend(battle, actor, action) {
   return { success: true };
 }
 
-function handleDodge(battle, actor, action) {
-  // 회피 준비 - 다음 공격에 대한 회피율 +5 보너스
+function handleDodge(battle, actor) {
   actor.effects = actor.effects || [];
   actor.effects.push({
     type: 'dodge',
@@ -574,9 +545,9 @@ function handleItem(battle, actor, action) {
     case 'dittany':
       return handleDittany(battle, actor, action);
     case 'attack_booster':
-      return handleAttackBooster(battle, actor, action);
+      return handleAttackBooster(battle, actor);
     case 'defense_booster':
-      return handleDefenseBooster(battle, actor, action);
+      return handleDefenseBooster(battle, actor);
     default:
       return { success: false, error: '알 수 없는 아이템' };
   }
@@ -597,7 +568,7 @@ function handleDittany(battle, actor, action) {
   return { success: true };
 }
 
-function handleAttackBooster(battle, actor, action) {
+function handleAttackBooster(battle, actor) {
   const success = chance(0.1); // 10% 성공률
   
   if (success) {
@@ -615,7 +586,7 @@ function handleAttackBooster(battle, actor, action) {
   return { success: true };
 }
 
-function handleDefenseBooster(battle, actor, action) {
+function handleDefenseBooster(battle, actor) {
   const success = chance(0.1); // 10% 성공률
   
   if (success) {
@@ -633,7 +604,7 @@ function handleDefenseBooster(battle, actor, action) {
   return { success: true };
 }
 
-function handlePass(battle, actor, action) {
+function handlePass(battle, actor) {
   pushLog(battle, 'battle', `${actor.name}이 턴을 넘김`);
   return { success: true };
 }
@@ -1034,16 +1005,13 @@ io.on('connection', (socket) => {
       Object.keys(updates).forEach(key => {
         if (allowedFields.includes(key)) {
           if (key === 'stats' && updates[key]) {
-            // 스탯 총합 검증
-            const totalStats = Object.values(updates[key]).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-            if (totalStats === 12) {
-              player[key] = {
-                attack: clampStat(updates[key].attack),
-                defense: clampStat(updates[key].defense),
-                agility: clampStat(updates[key].agility),
-                luck: clampStat(updates[key].luck)
-              };
-            }
+            // 각 스탯 개별 클램프 (총합 제한 없음)
+            player[key] = {
+              attack: clampStat(updates[key].attack ?? player.stats.attack),
+              defense: clampStat(updates[key].defense ?? player.stats.defense),
+              agility: clampStat(updates[key].agility ?? player.stats.agility),
+              luck: clampStat(updates[key].luck ?? player.stats.luck)
+            };
           } else {
             player[key] = updates[key];
           }
@@ -1217,7 +1185,6 @@ io.on('connection', (socket) => {
   socket.on('chat:send', ({ battleId, name, message, team, role }) => {
     if (!battleId || !message || message.trim().length === 0) return;
     
-    // 메시지 길이 제한
     const trimmedMessage = message.trim().slice(0, 200);
     
     const chatData = { 
@@ -1228,15 +1195,12 @@ io.on('connection', (socket) => {
       timestamp: new Date().toISOString()
     };
     
-    // 모든 클라이언트에게 채팅 메시지 전송
     io.to(battleId).emit('battle:chat', chatData);
     
-    // 전투 로그에도 채팅 기록
     const battle = ensureBattle(battleId);
     pushLog(battle, 'chat', `[채팅] ${chatData.name}: ${trimmedMessage}`);
     
-    // 로그 업데이트 전송
-    io.to(battleId).emit('battle:log', {
+    io.to(battle.id).emit('battle:log', {
       type: 'chat',
       message: `[채팅] ${chatData.name}: ${trimmedMessage}`,
       timestamp: new Date().toISOString()
@@ -1264,7 +1228,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     console.log(`[SOCKET] 연결 해제: ${socket.id} (이유: ${reason})`);
     
-    // 관전자 카운트 정리
     for (const battle of battles.values()) {
       if (battle.spectators.delete(socket.id)) {
         io.to(battle.id).emit('spectator:count', { count: battle.spectators.size });
@@ -1302,7 +1265,6 @@ server.listen(PORT, HOST, () => {
 function gracefulShutdown(signal) {
   console.log(`[PYXIS] ${signal} 수신, 서버 종료 중...`);
   
-  // 모든 전투의 타이머 정리
   for (const battle of battles.values()) {
     if (battle.gameTimer) clearTimeout(battle.gameTimer);
     if (battle.turnTimer) clearTimeout(battle.turnTimer);
@@ -1318,7 +1280,6 @@ function gracefulShutdown(signal) {
     });
   });
   
-  // 강제 종료 방지 (최대 10초 대기)
   setTimeout(() => {
     console.error('[PYXIS] 강제 종료 실행');
     process.exit(1);
@@ -1328,7 +1289,6 @@ function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// 처리되지 않은 예외 캐치
 process.on('uncaughtException', (error) => {
   console.error('[PYXIS] 처리되지 않은 예외:', error);
   gracefulShutdown('UNCAUGHT_EXCEPTION');
