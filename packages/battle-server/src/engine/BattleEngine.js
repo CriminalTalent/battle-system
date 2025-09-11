@@ -1,254 +1,244 @@
 "use strict";
 
-/**
- * 고급 전투 엔진
- * - 업로드된 엔진과 동일한 턴/라운드 전환 규칙을 따름
- * - resolve(action) 호출 시 현재 페이즈 팀 외 행동 무시
- * - 라운드 종료 시 직전 후공이 선공이 되도록 교대
- * - 룰 계산(명중/치명/피해/아이템)은 기존 rules.js를 그대로 사용한다는 가정
- */
+/* ========= 의존 ========= */
+const { Server } = require("socket.io");
 
+// 경량 전투 유틸(시작/라운드 스왑/로그 등): 규정 준수
 const {
-  ITEMS,
-  normalizeItemKey,
-  computeHit,
-  computeDamage,
-  computeAttackScore,
-  consumeAttackMultiplier,
-  consumeDefenseMultiplierOnHit,
-  applyItemEffect
-} = require("./rules.js"); // 기존 규칙 모듈 사용
+  startBattle,
+  endBattle,
+  nextTurn,
+  validateBattleState,
+  cleanupBattle,
+  pushLog,
+  isBattleOver,
+  winnerByHpSum,
+} = require("../engine/BattleLite"); // ← 파일명/경로는 프로젝트에 맞춰 조정 (예시)
 
-class BattleEngine {
-  constructor(battle) {
-    this.battle = battle;
-    this._ensureTurnState();
-  }
+/* 고급 전투 엔진: resolve(action)로 1행동 처리 + 라운드/페이즈 자동 전환 */
+const { BattleEngine } = require("../engine/BattleEngine");
 
-  _ensureTurnState() {
-    const b = this.battle;
-    if (!b.effects) b.effects = [];
-    if (!b.turn) {
-      const lead = (b.leadingTeam === "A" || b.leadingTeam === "B") ? b.leadingTeam : "A";
-      const lag  = (lead === "A") ? "B" : "A";
-      b.turn = {
-        round: (typeof b.round === "number" && b.round > 0) ? b.round : 1,
-        order: [lead, lag],
-        phaseIndex: 0,
-        acted: { A: new Set(), B: new Set() },
-      };
-    } else {
-      const t = b.turn;
-      if (!Array.isArray(t.order) || t.order.length !== 2) {
-        const lead = (b.leadingTeam === "A" || b.leadingTeam === "B") ? b.leadingTeam : "A";
-        t.order = [lead, lead === "A" ? "B" : "A"];
-      }
-      if (typeof t.phaseIndex !== "number") t.phaseIndex = 0;
-      if (!t.acted) t.acted = { A: new Set(), B: new Set() };
-      if (!(t.acted.A instanceof Set)) t.acted.A = new Set(Array.from(t.acted.A || []));
-      if (!(t.acted.B instanceof Set)) t.acted.B = new Set(Array.from(t.acted.B || []));
-      if (typeof t.round !== "number" || t.round <= 0) t.round = 1;
-    }
-  }
+/* ========= 인메모리 저장소(예시) ========= */
+const battles = new Map(); // battleId -> battle object
 
-  _currentPhaseTeam() {
-    const { order, phaseIndex } = this.battle.turn;
-    return order[phaseIndex]; // "A" | "B"
-  }
-  _otherTeam(t) { return t === "A" ? "B" : "A"; }
-  _aliveTeamPlayerIds(team) {
-    const players = this.battle.players || [];
-    return players.filter(p => p && p.team === team && p.hp > 0).map(p => p.id);
-  }
-  _markActed(playerId) {
-    const team = this._currentPhaseTeam();
-    const set = this.battle.turn.acted[team];
-    set.add(playerId);
-  }
-  _isPhaseDone() {
-    const team = this._currentPhaseTeam();
-    const aliveIds = this._aliveTeamPlayerIds(team);
-    const actedSet = this.battle.turn.acted[team];
-    for (const id of aliveIds) { if (!actedSet.has(id)) return false; }
-    return true;
-  }
-
-  _advancePhaseIfNeeded() {
-    const logs = [];
-    let changed = false;
-    let roundCompleted = false;
-
-    if (!this._isPhaseDone()) return { logs, changed, roundCompleted };
-
-    const t = this.battle.turn;
-    if (t.phaseIndex === 0) {
-      t.phaseIndex = 1; // 후공으로 전환
-      t.acted[this._currentPhaseTeam()] = new Set();
-      changed = true;
-      logs.push({ type: "system", message: "후공 페이즈로 전환" });
-    } else {
-      // 라운드 종료 → 선공 교대
-      const lead = t.order[0];
-      const lag  = t.order[1];
-      t.order = [lag, lead];
-      t.round += 1;
-      t.phaseIndex = 0;
-      t.acted.A = new Set();
-      t.acted.B = new Set();
-      this.battle.leadingTeam = t.order[0];
-      roundCompleted = true;
-      logs.push({ type: "system", message: `라운드 종료 → ${t.round}턴 시작 준비 (선공 교대)` });
-    }
-
-    return { logs, changed, roundCompleted };
-  }
-
-  ensureEffects() { if (!this.battle.effects) this.battle.effects = []; }
-  applyDefenseBoostFactor(defender) {
-    let mul = 1;
-    const effects = this.battle.effects || [];
-    for (const fx of effects) {
-      if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-      if (fx.type === "defenseBoost") { mul *= fx.factor || 1; fx.charges -= 1; }
-    }
-    return mul;
-  }
-  hasDodgePrep(defender) {
-    const effects = this.battle.effects || [];
-    return effects.some(fx => fx && fx.ownerId === defender.id && fx.type === "dodgePrep" && fx.charges > 0);
-  }
-  consumeDodge(defender) {
-    const effects = this.battle.effects || [];
-    for (const fx of effects) {
-      if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-      if (fx.type === "dodgePrep") { fx.charges -= 1; return; }
-    }
-  }
-  findAny(id) { const ps = this.battle.players || []; return ps.find(p => p && p.id === id) || null; }
-  findAlive(id) { const p = this.findAny(id); return p && p.hp > 0 ? p : null; }
-  opponentsOf(actor) { const ps = this.battle.players || []; return ps.filter(p => p && p.team !== actor.team && p.hp > 0); }
-  findAliveOpponent(actor) { return this.opponentsOf(actor)[0] || null; }
-
-  resolve(action) {
-    this._ensureTurnState();
-
-    const { actorId, type } = action || {};
-    const logs = [];
-    const updates = { hp: {} };
-
-    const actor = this.findAlive(actorId);
-    if (!actor) {
-      logs.push({ type: "system", message: "행동 주체가 유효하지 않음" });
-      return { logs, updates, turnEnded: false, teamPhaseCompleted: false, roundCompleted: false, turn: this._turnReport() };
-    }
-
-    // 현재 페이즈 팀만 행동 가능
-    const phaseTeam = this._currentPhaseTeam();
-    if (actor.team !== phaseTeam) {
-      logs.push({ type: "system", message: `${actor.name}는 지금 턴이 아님` });
-      return { logs, updates, turnEnded: false, teamPhaseCompleted: false, roundCompleted: false, turn: this._turnReport() };
-    }
-
-    const kind = String(type || "").toLowerCase();
-
-    if (kind === "pass") {
-      logs.push({ type: "system", message: `${actor.name} 턴을 넘김` });
-      this._markActed(actor.id);
-      const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-      return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-    }
-
-    if (kind === "defend") {
-      this.ensureEffects();
-      this.battle.effects.push({ ownerId: actor.id, type: "defenseBoost", factor: 1.25, charges: 1, source: "action:defend" });
-      logs.push({ type: "system", message: `${actor.name} 방어 태세` });
-      this._markActed(actor.id);
-      const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-      return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-    }
-
-    if (kind === "dodge") {
-      this.ensureEffects();
-      this.battle.effects.push({ ownerId: actor.id, type: "dodgePrep", add: 4, charges: 1, source: "action:dodge" });
-      logs.push({ type: "system", message: `${actor.name} 회피 준비` });
-      this._markActed(actor.id);
-      const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-      return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-    }
-
-    if (kind === "item") {
-      const key = normalizeItemKey(action.itemType);
-      const target = action.targetId ? this.findAny(action.targetId) : actor;
-      if (!target) {
-        logs.push({ type: "system", message: "대상이 유효하지 않음" });
-        this._markActed(actor.id);
-        const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-        return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-      }
-      if (key === "dittany" && (target.hp || 0) <= 0) {
-        logs.push({ type: "system", message: "사망자에게는 회복 불가" });
-        this._markActed(actor.id);
-        const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-        return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-      }
-
-      const itemResult = applyItemEffect(this.battle, { actor, target, itemType: key });
-      const { logs: l2, updates: up } = itemResult || {};
-      if (Array.isArray(l2)) l2.forEach(x => logs.push(x));
-      if (up?.hp) Object.assign(updates.hp, up.hp);
-
-      this._markActed(actor.id);
-      const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-      return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-    }
-
-    if (kind === "attack") {
-      let target = null;
-      if (action.targetId) {
-        const cand = this.findAny(action.targetId);
-        target = (cand && cand.hp > 0 && cand.team !== actor.team) ? cand : null;
-      }
-      if (!target) target = this.findAliveOpponent(actor);
-      if (!target) {
-        logs.push({ type: "system", message: "공격 대상이 없음" });
-        this._markActed(actor.id);
-        const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-        return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-      }
-
-      const attackScore = computeAttackScore(actor, this.battle);
-      let evasionBonus = 0;
-      if (this.hasDodgePrep(target)) { evasionBonus = 4; this.consumeDodge(target); }
-
-      const isHit = computeHit({ attacker: actor, defender: target, evasionBonus });
-      if (!isHit) {
-        logs.push({ type: "battle", message: `${actor.name}의 공격이 빗나감` });
-        this._markActed(actor.id);
-        const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-        return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-      }
-
-      const defMul = this.applyDefenseBoostFactor(target);
-      const { dmg, crit } = computeDamage({ attacker: actor, defender: target, attackScore, defenseMultiplier: defMul });
-      updates.hp[target.id] = Math.max(0, (target.hp || 0) - dmg);
-      logs.push({ type: "battle", message: crit ? `${actor.name}의 치명타 적중! ${target.name}에게 ${dmg} 피해` : `${actor.name}가 ${target.name}에게 ${dmg} 피해` });
-
-      consumeAttackMultiplier(this.battle, actor);
-      consumeDefenseMultiplierOnHit(this.battle, target);
-
-      this._markActed(actor.id);
-      const step = this._advancePhaseIfNeeded(); logs.push(...step.logs);
-      return { logs, updates, turnEnded: true, teamPhaseCompleted: step.changed && !step.roundCompleted, roundCompleted: step.roundCompleted, turn: this._turnReport() };
-    }
-
-    logs.push({ type: "system", message: "알 수 없는 행동" });
-    return { logs, updates, turnEnded: false, teamPhaseCompleted: false, roundCompleted: false, turn: this._turnReport() };
-  }
-
-  _turnReport() {
-    const t = this.battle.turn;
-    return { round: t.round, order: [...t.order], phase: (t.phaseIndex === 0 ? "lead" : "lag"), phaseTeam: this._currentPhaseTeam() };
+/* ========= 도우미 ========= */
+function applyHpUpdates(battle, updates) {
+  if (!updates || !updates.hp) return;
+  const byId = new Map((battle.players || []).map(p => [p.id, p]));
+  for (const [pid, hp] of Object.entries(updates.hp)) {
+    const p = byId.get(pid);
+    if (p) p.hp = Math.max(0, Math.min(100, Number(hp) || 0));
   }
 }
 
-module.exports = { BattleEngine };
+function broadcastBattle(io, battle, extra = {}) {
+  const payload = { ...battle, ...extra };
+  io.emit("battleUpdate", payload);
+  io.emit("battle:update", payload);
+}
+
+function emitLog(io, entry) {
+  io.emit("battleLog", entry);
+  io.emit("battle:log", entry);
+}
+
+/* ========= 메인: 소켓 바인딩 ========= */
+function initBattleSockets(httpServer) {
+  const io = new Server(httpServer, {
+    cors: { origin: true, credentials: true },
+    transports: ["websocket", "polling"],
+  });
+
+  io.on("connection", (socket) => {
+    // ---------- 인증 (관리자/플레이어/관전자) ----------
+    socket.on("admin:auth", ({ battleId, token }, ack) => {
+      const b = battles.get(battleId);
+      if (!b || (b.adminToken && b.adminToken !== token)) {
+        ack && ack({ ok: false });
+        socket.emit("auth:error", { message: "관리자 인증 실패" });
+        return;
+      }
+      socket.join(battleId);
+      ack && ack({ ok: true, battle: b });
+      socket.emit("auth:success", { battle: b });
+    });
+    socket.on("adminAuth", (p) => socket.emit("authError", { message: "신규 이벤트 사용 요망" }));
+
+    socket.on("playerAuth", ({ battleId, token, name, team }, ack) => {
+      const b = battles.get(battleId);
+      if (!b) return socket.emit("authError", { message: "전투 없음" });
+      // 토큰 검증은 프로젝트 정책에 맞게 (여기선 생략/예시)
+      const player = (b.players || []).find(p => p.name === name);
+      if (!player) {
+        socket.emit("authError", { message: "플레이어 없음" });
+        return;
+      }
+      socket.join(battleId);
+      ack && ack({ ok: true, playerId: player.id, battle: b });
+      socket.emit("authSuccess", { playerId: player.id, battle: b });
+      broadcastBattle(io, b);
+    });
+
+    socket.on("spectator:auth", ({ battleId, name, token }, ack) => {
+      const b = battles.get(battleId);
+      if (!b) return socket.emit("auth:error", { message: "전투 없음" });
+      // 토큰 검증 로직은 프로젝트 정책에 맞게
+      socket.join(battleId);
+      ack && ack({ ok: true, spectator: { name }, battle: b });
+      socket.emit("auth:success", { spectator: { name }, battle: b });
+    });
+    socket.on("spectatorAuth", (p) => socket.emit("authError", { message: "신규 이벤트 사용 요망" }));
+
+    // ---------- 준비 완료 ----------
+    socket.on("playerReady", ({ battleId, playerId, ready }) => {
+      const b = battles.get(battleId); if (!b) return;
+      const p = (b.players || []).find(x => x.id === playerId);
+      if (p) p.ready = !!ready;
+      pushLog(b, { type: "system", message: `${p?.name || "플레이어"} 준비 ${ready ? "완료" : "해제"}` });
+      broadcastBattle(io, b);
+    });
+
+    // ---------- 전투 컨트롤 ----------
+    socket.on("admin:start", ({ battleId }, ack) => {
+      const b = battles.get(battleId); if (!b) return;
+      validateBattleState(b);
+      startBattle(b); // 선공 결정 + 1턴 시작
+      pushLog(b, { type: "system", message: "전투 시작" });
+      ack && ack({ ok: true });
+      broadcastBattle(io, b);
+    });
+    socket.on("startBattle", ({ battleId }) => socket.emit("battle:started"));
+
+    socket.on("admin:pause", ({ battleId }, ack) => {
+      const b = battles.get(battleId); if (!b) return;
+      b.status = "paused";
+      pushLog(b, { type: "system", message: "일시정지" });
+      ack && ack({ ok: true });
+      broadcastBattle(io, b);
+    });
+    socket.on("admin:resume", ({ battleId }, ack) => {
+      const b = battles.get(battleId); if (!b) return;
+      b.status = "active";
+      pushLog(b, { type: "system", message: "재개" });
+      ack && ack({ ok: true });
+      broadcastBattle(io, b);
+    });
+    socket.on("admin:end", ({ battleId }, ack) => {
+      const b = battles.get(battleId); if (!b) return;
+      endBattle(b);
+      const winner = winnerByHpSum(b);
+      pushLog(b, { type: "system", message: `전투 종료 (${winner ? (winner === "phoenix" ? "A팀" : "B팀") : "무승부"})` });
+      ack && ack({ ok: true });
+      io.to(battleId).emit("battle:ended", { winner });
+      broadcastBattle(io, b);
+    });
+
+    // ---------- 액션 처리(핵심) ----------
+    socket.on("playerAction", ({ battleId, actorId, type, targetId, itemType }) => {
+      const b = battles.get(battleId); if (!b) return;
+      if (b.status !== "active") return;
+
+      // 1행동 해석
+      const engine = new BattleEngine(b);
+      const result = engine.resolve({ actorId, type, targetId, itemType });
+
+      // HP 반영
+      applyHpUpdates(b, result.updates);
+
+      // 로그 반영/전송
+      (result.logs || []).forEach(entry => {
+        pushLog(b, entry);
+        emitLog(io, entry);
+      });
+
+      // 종료 체크
+      if (isBattleOver(b)) {
+        b.status = "ended";
+        const winner = winnerByHpSum(b);
+        pushLog(b, { type: "system", message: `전투 종료 (${winner ? (winner === "phoenix" ? "A팀" : "B팀") : "무승부"})` });
+        io.to(battleId).emit("battle:ended", { winner });
+      }
+
+      // 상태 정리
+      cleanupBattle(b);
+
+      // 상태 브로드캐스트(+턴 리포트 동봉)
+      broadcastBattle(io, b, { turn: result.turn });
+    });
+
+    // ---------- 채팅/응원 ----------
+    socket.on("chatMessage", ({ battleId, message, name }) => {
+      if (!battleId || !message) return;
+      io.to(battleId).emit("chatMessage", { senderName: name || "익명", message });
+    });
+    socket.on("spectator:cheer", ({ message }, ack) => {
+      if (!message) { ack && ack({ ok: false }); return; }
+      io.emit("cheerMessage", { name: "관전자", message });
+      ack && ack({ ok: true });
+    });
+
+  });
+
+  return io;
+}
+
+/* ========= REST 예시(필요 시 index.js에 배선) ========= */
+async function createBattle(req, res) {
+  try {
+    const { id, mode = "4v4", adminToken, spectatorOtp } = req.body || {};
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const battle = {
+      id,
+      mode,
+      adminToken,
+      spectatorOtp,
+      status: "waiting",
+      players: [],
+      log: [],
+      effects: [],
+      turn: { round: 0, order: ["A","B"], phaseIndex: 0, acted: { A:new Set(), B:new Set() } },
+    };
+    validateBattleState(battle);
+    battles.set(id, battle);
+    return res.json(battle);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function addPlayer(req, res) {
+  const { id } = req.params;
+  const b = battles.get(id);
+  if (!b) return res.status(404).json({ error: "not found" });
+
+  const body = req.body || {};
+  const player = {
+    id: `p_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    name: body.name,
+    team: body.team, // "phoenix" | "eaters"
+    stats: {
+      attack: Number(body?.stats?.attack || 3),
+      defense:Number(body?.stats?.defense|| 3),
+      luck:   Number(body?.stats?.luck   || 2),
+      agility:Number(body?.stats?.agility|| 3),
+    },
+    hp: Number(body.hp || 100),
+    ready:false,
+    avatar: body.avatar || "",
+    items: {
+      dittany: Number(body?.items?.dittany || 0),
+      attack_boost: Number(body?.items?.attack_boost || 0),
+      defense_boost: Number(body?.items?.defense_boost || 0),
+    }
+  };
+  b.players.push(player);
+  pushLog(b, { type: "system", message: `${player.name} 입장` });
+  return res.json(player);
+}
+
+module.exports = {
+  initBattleSockets,
+  createBattle,
+  addPlayer,
+};
