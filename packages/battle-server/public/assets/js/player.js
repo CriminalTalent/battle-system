@@ -1,10 +1,12 @@
 // public/assets/js/player.js
-// 개선점:
+// 요구사항 반영:
 // - 로그 팀 표기 A/B로 정규화
-// - 채팅 낙관 반영 + Enter 전송 (지연 체감 제거)
+// - 채팅 낙관 반영 + Enter 전송
 // - 내 액션 송신 직후 버튼 비활성화
-// - actionSuccess 수신 시 커밋 큐에서 다음 선택자로 하이라이트/메인 이미지 이동
-// - 커밋 페이즈/팀 변경 시 커밋 상태 초기화
+// - actionSuccess 시 큐/메인 이미지 다음 선택자로 이동
+// - 페이즈 전환 배너(커밋 시작/라운드 해석), 선공/사망/승리 배너
+// - 팀 타이머 5분만 표시, 좌상단 본인 아바타 4:3, 준비 완료 버튼 1회 비활성
+
 const $  = (q,root=document)=>root.querySelector(q);
 const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
 
@@ -66,7 +68,7 @@ let lastSnap = null;
 let teamTimerHandle = null;
 
 // 커밋 상태(클라이언트 로컬 안내용)
-let committedSet = new Set();   // 현재 페이즈/팀에서 커밋 완료한 playerId
+let committedSet = new Set();
 let iCommittedThisPhase = false;
 let prevPhase = '';
 let prevTeam  = '';
@@ -94,6 +96,17 @@ socket.on('authError', ({error})=>{
 
 // ── 전투 업데이트/로그/채팅
 socket.on('battle:update', (snap)=>{
+  // 페이즈 전환 배너
+  if(prevPhase && (prevPhase!==snap.phase || prevTeam!==snap.currentTeam)){
+    if(prevPhase.startsWith('commit') && snap.phase==='resolve'){
+      window.PyxisEffects?.bannerResolve();
+    }
+    if(prevPhase==='resolve' && (snap.phase==='commitA' || snap.phase==='commitB')){
+      const t = snap.currentTeam==='phoenix' ? 'A' : 'B';
+      window.PyxisEffects?.bannerCommit(t);
+    }
+  }
+
   lastSnap = snap;
 
   // 페이즈/팀 변경 시 로컬 커밋 상태 리셋
@@ -107,8 +120,14 @@ socket.on('battle:update', (snap)=>{
   const newerMe = (snap.players||[]).find(p=>p.id===me?.id);
   if(newerMe){ me = newerMe; renderMe(me); }
   renderAll(snap);
+
+  // 승리 배너
+  if(snap.status==='ended'){
+    const winTeam = (snap.winnerTeam==='eaters' ? 'B' : 'A');
+    window.PyxisEffects?.bannerWin(winTeam);
+  }
 });
-socket.on('battle:log', (m)=> appendLog(m.message));
+socket.on('battle:log', (m)=> appendLogRich(m.message));
 
 // 채팅: 낙관 반영 + Enter
 btnSend?.addEventListener('click', sendChat);
@@ -150,24 +169,23 @@ btnItem  ?.addEventListener('click', ()=>{
   if((items.dittany|0)>0){ openTargetPicker('dittany'); return; }
   if((items.attack_booster|0)>0){ doCommitAndLock({ type:'item', itemType:'attack_booster' }); return; }
   if((items.defense_booster|0)>0){ doCommitAndLock({ type:'item', itemType:'defense_booster' }); return; }
-  appendLog('사용 가능한 아이템이 없습니다.');
+  appendLogPlain('사용 가능한 아이템이 없습니다.');
 });
 btnPass  ?.addEventListener('click', ()=>{ if(canAct()) doCommitAndLock({ type:'pass' }); });
 
 // 액션 성공/실패 반영(다음 선택자 이미지 변경)
-socket.on('actionSuccess', ({ battleId:bid, playerId })=>{
+socket.on('actionSuccess', ({ battleId:bid, playerId, message })=>{
   if(!lastSnap || !me || bid!==lastSnap.id) return;
   committedSet.add(playerId);
-  // 내 커밋이 서버에서 확인되었으면 유지(이미 버튼 락 상태)
   advanceQueueHighlight();
+  if(message) appendLogRich(message);
 });
 socket.on('actionError', ({ battleId:bid, playerId, error })=>{
   if(!lastSnap || !me || bid!==lastSnap.id) return;
-  // 내 액션 실패면 버튼 다시 활성
   if(playerId===me.id){
     iCommittedThisPhase = false;
     updateActionButtons();
-    appendLog(`액션 오류: ${error||'오류'}`);
+    appendLogPlain(`액션 오류: ${error||'오류'}`);
   }
 });
 
@@ -242,7 +260,7 @@ function renderAll(snap){
     teamList.appendChild(d);
   });
 
-  // 현재 팀 표기
+  // 현재 팀 표기 + 버튼 활성
   const isCommit = (snap.phase==='commitA' || snap.phase==='commitB') && snap.status==='active';
   const myTurn = myTeam===snap.currentTeam && isCommit && (me?.hp||0)>0 && !iCommittedThisPhase;
   [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=> b.disabled = !myTurn);
@@ -257,7 +275,7 @@ function renderAll(snap){
   // 팀 5분 타이머
   setupTeamTimer(snap.turnStartTime);
 
-  // 준비 버튼(대기 상태에서만)
+  // 대기 상태에서만 준비 버튼
   if(btnReady){ btnReady.disabled = (snap.status!=='waiting') || (me?.ready===true); }
 }
 
@@ -266,26 +284,16 @@ function renderQueue(snap){
   const curTeam = snap.currentTeam;
   const alive = (snap.players||[]).filter(p=> p.hp>0 && teamKey(p.team)===curTeam);
 
-  // 커밋 완료자 표시 기반: committedSet
   alive.forEach((p)=>{
     const q = document.createElement('div');
-    const done = committedSet.has(p.id);
-    q.className = 'qitem' + (done ? '' : ' active'); // 아직 안한 첫 명이 active가 되도록 뒤에서 조정
+    q.className = 'qitem';
     q.dataset.pid = p.id;
     q.innerHTML = `<img src="${p.avatar||''}" alt=""><div class="name">${p.name}</div>`;
     queueEl.appendChild(q);
   });
 
-  // 첫 번째 미커밋 대상만 active, 나머지는 해제
-  const items = $$('.qitem', queueEl);
-  let firstActive = true;
-  items.forEach((el)=>{
-    const pid = el.dataset.pid;
-    const done = committedSet.has(pid);
-    if(done){ el.classList.remove('active'); return; }
-    if(firstActive){ el.classList.add('active'); firstActive=false; }
-    else{ el.classList.remove('active'); }
-  });
+  // 첫 번째 미커밋 대상만 active
+  advanceQueueHighlight();
 }
 
 function updateMainImageByQueue(){
@@ -295,8 +303,15 @@ function updateMainImageByQueue(){
 }
 
 function advanceQueueHighlight(){
-  // 이미 커밋된 사람들 이후의 첫 미커밋을 active로
-  renderQueue(lastSnap);
+  const items = $$('.qitem', queueEl);
+  let firstActiveSet = false;
+  items.forEach((el)=>{
+    const pid = el.dataset.pid;
+    const done = committedSet.has(pid);
+    if(done){ el.classList.remove('active'); return; }
+    if(!firstActiveSet){ el.classList.add('active'); firstActiveSet = true; }
+    else{ el.classList.remove('active'); }
+  });
   updateMainImageByQueue();
 }
 
@@ -318,7 +333,7 @@ function doCommitAndLock(action){
   iCommittedThisPhase = true;
   updateActionButtons();
   emitAction(action);
-  // 낙관적으로 본인도 커밋 목록에 추가하여 다음 선택자 안내
+  // 낙관적으로 본인 커밋 처리 → 다음 선택자 안내
   if(me?.id){ committedSet.add(me.id); advanceQueueHighlight(); }
 }
 function updateActionButtons(){
@@ -327,10 +342,50 @@ function updateActionButtons(){
   const myTurn = lastSnap && myTeam===lastSnap.currentTeam && isCommit && (me?.hp||0)>0 && !iCommittedThisPhase;
   [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=> b.disabled = !myTurn);
 }
-
 function emitAction(a){
   if(!battleId || !me) return;
   socket.emit('player:action', { battleId, playerId: me.id, action: sanitizeAction(a) });
+}
+
+// ── 로그 처리(강조/배너)
+function appendLogPlain(text){
+  const d=document.createElement('div'); d.textContent = normalizeLog(text);
+  d.classList.add('log-item');
+  logBox.appendChild(d); logBox.scrollTop=logBox.scrollHeight;
+}
+function appendLogRich(msg){
+  const info = classifyLog(msg);
+  const d = document.createElement('div');
+  d.textContent = normalizeLog(info.text);
+  window.PyxisEffects?.tagLog(d, info.klass);
+  logBox.appendChild(d); logBox.scrollTop = logBox.scrollHeight;
+  if(info.banner){ window.PyxisEffects?.showResultBanner(info.banner.text, info.banner.type); }
+}
+function classifyLog(raw){
+  let s = String(raw||'');
+  const out = { text:s, klass:'', banner:null };
+
+  if(/선공/i.test(s)){
+    const teamAB = /eaters/i.test(s) ? 'B' : /phoenix/i.test(s) ? 'A' : (/\bB팀\b/.test(s)?'B':'A');
+    out.klass='log-first';
+    out.banner={ text:`선공: ${teamAB}팀`, type:'first' };
+    return out;
+  }
+  if(/사망|죽었|HP\s*0/i.test(s)){
+    const nm = (s.match(/([^:\s]+)\s*(사망|죽었)/) || [,''])[1] || '플레이어';
+    out.klass='log-kill';
+    out.banner={ text:`${nm} 사망`, type:'kill' };
+    return out;
+  }
+  if(/승리|우승|패배/i.test(s)){
+    const teamAB = /eaters|B팀/i.test(s) ? 'B' : 'A';
+    out.klass='log-win';
+    out.banner={ text:`${teamAB}팀 승리`, type:'win' };
+    return out;
+  }
+
+  if(/치명타|회피|방어/i.test(s)) out.klass='log-info';
+  return out;
 }
 
 // ── 유틸
@@ -343,7 +398,6 @@ function normalizeLog(msg){
   s = s.replace(/선공:\s*([A-Z]+)?\s*eaters팀/gi, '선공: B팀').replace(/선공:\s*([A-Z]+)?\s*phoenix팀/gi, '선공: A팀');
   return s;
 }
-function appendLog(t){ const d=document.createElement('div'); d.textContent=normalizeLog(t); logBox.appendChild(d); logBox.scrollTop=logBox.scrollHeight; }
 function sanitizeAction(a){
   const type = String(a?.type||'').toLowerCase();
   if(type==='attack') return { type, targetId: String(a?.targetId||'') };
