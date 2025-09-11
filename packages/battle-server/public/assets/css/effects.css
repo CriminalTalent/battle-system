@@ -1,60 +1,51 @@
-/* PYXIS Effects – 시각 효과 모음 (CSS 전용)
-   - twinkle: 헤더 별 반짝임
-   - shine: 버튼 반사광 주기
-   - spin: 헤더 그라디언트 미묘한 회전
-   - shimmer: 버튼 표면 빛 흐름
-   - tl-flash: 타임라인 신규 항목 깜빡임
-*/
-
-/* 공통 키프레임 */
-@keyframes twinkle {
-  0%,100% { opacity: .25; transform: scale(.85); }
-  50%     { opacity: 1;    transform: scale(1); }
-}
-@keyframes shine {
-  from { background-position: -200% 0; }
-  to   { background-position: 200% 0; }
-}
-@keyframes spin {
-  to { transform: rotate(1turn); }
-}
-@keyframes flashLine {
-  0%   { background-color: rgba(212,186,141,.35); }
-  100% { background-color: transparent; }
+:root{
+  --gold-1:#DCC7A2; --gold-2:#D4BA8D;
+  --bg-0:#0f1216; --bg-1:#141922; --bg-2:#1b2230;
+  --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
+  --ink:#0b0d10;
 }
 
-/* 헤더 회전 그라디언트(미묘한 배경 회전) */
-.pyxis-header { position: relative; overflow: hidden; }
-.pyxis-header::before {
-  content: "";
-  position: absolute; inset: -200px; z-index: 0;
-  background: conic-gradient(from 0deg, #1a1b1f, #0f1013, #1a1b1f);
-  animation: spin 28s linear infinite;
-  filter: blur(80px);
-  opacity: .35;
+/* -------- 공통 미묘한 효과 -------- */
+.lift{ transform: translateY(-2px); box-shadow:0 10px 24px rgba(0,0,0,.25) !important; }
+.shimmer{ position:relative; overflow:hidden; }
+.shimmer::after{
+  content:""; position:absolute; inset:0; transform:translateX(-120%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  animation: shimmer-slide 1.3s ease;
+}
+@keyframes shimmer-slide{ to{ transform:translateX(120%);} }
+
+/* -------- 타임라인 플래시 -------- */
+.tl-flash{
+  animation: tlFlash 0.9s ease;
+}
+@keyframes tlFlash{
+  0%{ background:var(--gold-1); color:var(--ink); }
+  100%{ background:transparent; color:inherit; }
 }
 
-/* 헤더 반짝이는 별 장식 */
-.stars { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.stars::before, .stars::after {
-  content: "";
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    radial-gradient(2px 2px at 20% 30%, rgba(220,199,162,.9) 50%, transparent 52%),
-    radial-gradient(2px 2px at 60% 10%, rgba(220,199,162,.9) 50%, transparent 52%),
-    radial-gradient(2px 2px at 80% 40%, rgba(220,199,162,.9) 50%, transparent 52%),
-    radial-gradient(2px 2px at 35% 70%, rgba(220,199,162,.9) 50%, transparent 52%),
-    radial-gradient(2px 2px at 75% 85%, rgba(220,199,162,.9) 50%, transparent 52%);
-  animation: twinkle 2.8s ease-in-out infinite;
-  opacity: .6;
+/* -------- 로그 강조 스타일 -------- */
+.log-item{
+  padding:6px 8px; margin:4px 0; border-radius:10px; border:1px solid var(--border);
 }
+.log-first{ background:var(--gold-1); color:var(--ink); border-color:#b79e76; font-weight:700; }
+.log-kill { background:var(--gold-1); color:var(--ink); border-color:#b79e76; font-weight:700; }
+.log-win  { background:var(--gold-1); color:var(--ink); border-color:#b79e76; font-weight:800; }
+.log-info { background:rgba(212,186,141,.12); border-color:#a28f6d; }
 
-/* 버튼의 빛 흐름 효과 (JS에서 .shimmer 토글 가능) */
-.btn.shimmer {
-  background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent);
-  background-size: 200% 100%;
-  animation: shine 2.5s linear infinite;
+/* -------- 상단 결과 배너 -------- */
+.pyxis-banner{
+  position:fixed; left:50%; top:16px; transform:translateX(-50%);
+  z-index:1000; padding:10px 16px; border-radius:12px;
+  border:1px solid #b79e76; background:var(--gold-1); color:var(--ink);
+  box-shadow:0 14px 28px rgba(0,0,0,.35);
+  font-weight:800; letter-spacing:.3px;
+  display:none;
 }
+.pyxis-banner.show{ display:block; animation: dropIn .28s ease, hold .9s linear 0.28s, liftOut .22s ease 1.18s; }
+@keyframes dropIn{ from{ transform:translate(-50%,-12px); opacity:0 } to{ transform:translate(-50%,0); opacity:1 } }
+@keyframes hold{ from{ opacity:1 } to{ opacity:1 } }
+@keyframes liftOut{ from{ transform:translate(-50%,0); opacity:1 } to{ transform:translate(-50%,-10px); opacity:0 } }
 
-/* 타임라인 신규 항목 하이라이트 */
-.tl-flash { animation: flashLine 1.2s ease-out; }
+/* -------- 카드/패널 글래스 -------- */
+.backdrop-blur{ backdrop-filter: blur(8px); background: rgba(20,20,30,.55); }
