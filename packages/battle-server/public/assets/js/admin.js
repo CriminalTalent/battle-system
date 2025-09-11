@@ -38,12 +38,14 @@ const logBox = $('#log'), chatBox = $('#chat'), chatMsg = $('#chatMsg'), btnSend
 const battleMeta = $('#battleMeta');
 
 // 링크 생성 섹션
-const playerLinksWrap = $('#playerLinks');
-const btnGenSpectator = $('#btnGenSpectator');
-const spectatorUrlInput= $('#spectatorUrl');
-const btnCopySpectator = $('#btnCopySpectator');
+const playerLinksWrap   = $('#playerLinks');
+const btnGenPlayer      = $('#btnGenPlayer');       // ← 추가된 버튼
+const btnGenSpectator   = $('#btnGenSpectator');
+const spectatorUrlInput = $('#spectatorUrl');
+const btnCopySpectator  = $('#btnCopySpectator');
 
 let tmpAvatarUrl = "";
+let lastSnap = null; // 마지막 battle:update 스냅샷 저장
 
 // 버튼 이벤트
 btnCreate.addEventListener('click', ()=> connected && socket.emit('createBattle', { mode: currentMode }));
@@ -51,6 +53,22 @@ btnStart .addEventListener('click', ()=> currentBattleId && socket.emit('startBa
 btnPause .addEventListener('click', ()=> currentBattleId && socket.emit('pauseBattle',  { battleId: currentBattleId }));
 btnResume.addEventListener('click', ()=> currentBattleId && socket.emit('resumeBattle', { battleId: currentBattleId }));
 btnEnd   .addEventListener('click', ()=> currentBattleId && socket.emit('endBattle',    { battleId: currentBattleId }));
+
+// 플레이어 링크 생성 버튼
+btnGenPlayer.addEventListener('click', async ()=>{
+  if(!currentBattleId){ appendLog('전투 생성 후 사용하세요.'); return; }
+  if(lastSnap){ renderPlayerLinks(lastSnap); return; }
+  // 스냅샷이 없으면 API로 가져와서 생성
+  try{
+    const r = await fetch(`/api/battles/${currentBattleId}`);
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error||'조회 실패');
+    lastSnap = j.battle;
+    renderPlayerLinks(lastSnap);
+  }catch(e){
+    appendLog('플레이어 링크 생성 실패: '+(e?.message||e));
+  }
+});
 
 // 참가자 추가
 btnAdd.addEventListener('click', ()=>{
@@ -117,17 +135,12 @@ socket.on('battleCreated', ({success,battleId,mode,error})=>{
 });
 
 socket.on('battle:update', (snap)=>{
+  lastSnap = snap;
   renderLists(snap);
-  renderPlayerLinks(snap); // 플레이어 링크 갱신
   battleMeta.textContent = `ID: ${snap.id} · 모드: ${snap.mode} · 상태: ${snap.status} · 턴: ${snap.turn}`;
 });
 
 socket.on('battle:log', (m)=> appendLog(m.message));
-
-socket.on('battle:chat', ({name,message})=>{
-  const p = document.createElement('div'); p.textContent = `${name}: ${message}`;
-  chatBox.appendChild(p); chatBox.scrollTop = chatBox.scrollHeight;
-});
 
 // 관전자 OTP 생성
 btnGenSpectator.addEventListener('click', ()=>{
@@ -170,16 +183,15 @@ function renderPlayerLinks(snap){
       <input class="input" value="${url}" readonly>
       <button class="btn" data-link="${url}">복사</button>
     `;
-    const btn = row.querySelector('button');
-    btn.addEventListener('click', ()=> copyToClipboard(url));
+    row.querySelector('button').addEventListener('click', ()=> copyToClipboard(url));
     playerLinksWrap.appendChild(row);
   });
+  appendLog('플레이어 링크 생성 완료');
 }
 
 function copyToClipboard(text){
   if(!text) return;
   navigator.clipboard?.writeText(text).then(()=> appendLog('복사 완료')).catch(()=>{
-    // 구형 브라우저 대응
     const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
     ta.select(); try{ document.execCommand('copy'); appendLog('복사 완료'); }catch(e){ appendLog('복사 실패'); }
     ta.remove();
