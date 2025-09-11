@@ -1,7 +1,8 @@
 // public/assets/js/player.js
-// - 중앙 순서 큐 표시
-// - 개인 안내 3분(subTimer) 도입(안내용, 서버 룰 변경 없음)
-// - 버튼 스타일/기능 유지, 타깃 선택 오버레이 유지
+// - 팀 타이머(5분)만 표시
+// - 좌측 상단 본인 아바타 표시(4:3, 둥근 사각형, contain)
+// - 팀원 목록 하단 '준비 완료' 버튼: 1회 누르면 비활성화, 서버에 player:ready emit
+// - 타깃 선택 오버레이 유지, 버튼 스타일 유지(금색 테두리/글자 + 검은 배경)
 
 const $  = (q,root=document)=>root.querySelector(q);
 const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
@@ -21,6 +22,7 @@ const socket = io(window.location.origin, {
 // 오버레이/뷰
 const authOverlay = $('#authOverlay');
 
+const meAvatar = $('#meAvatar');
 const meName = $('#meName');
 const meTeam = $('#meTeam');
 const meHp   = $('#meHp');
@@ -32,11 +34,11 @@ const statLuk = $('#sLuk');
 const statAgi = $('#sAgi');
 
 const teamList = $('#teamList');
+const btnReady = $('#btnReady');
 
 const turnTeam = $('#turnTeam');
 const turnImg  = $('#turnImg');
 const turnTimer= $('#turnTimer');
-const subTimer = $('#subTimer');
 
 const queueEl  = $('#queue');
 
@@ -61,7 +63,6 @@ const btnCancelTarget = $('#btnCancelTarget');
 let me = null;               // 내 플레이어
 let lastSnap = null;         // 최신 스냅샷
 let teamTimerHandle = null;  // 팀 5분 타이머 인터벌
-let guideTimerHandle = null; // 개인 3분 안내 인터벌
 
 // ── 연결 및 인증
 socket.on('connect', ()=>{
@@ -103,6 +104,13 @@ btnSend?.addEventListener('click', ()=>{
   chatMsg.value='';
 });
 
+// ── 준비 완료
+btnReady?.addEventListener('click', ()=>{
+  if(!battleId || !me || btnReady.disabled) return;
+  socket.emit('player:ready', { battleId, playerId: me.id });
+  btnReady.disabled = true;
+});
+
 // ── 액션 버튼
 btnAttack?.addEventListener('click', ()=>{
   if(!canAct()) return;
@@ -119,7 +127,6 @@ btnDodge?.addEventListener('click', ()=>{
 btnItem?.addEventListener('click', ()=>{
   if(!canAct()) return;
   const items = me?.items || {};
-  // 디터니가 있으면 타깃 선택, 아니면 보정기 우선 사용
   if((items.dittany|0)>0){ openTargetPicker('dittany'); return; }
   if((items.attack_booster|0)>0){ emitAction({ type:'item', itemType:'attack_booster' }); return; }
   if((items.defense_booster|0)>0){ emitAction({ type:'item', itemType:'defense_booster' }); return; }
@@ -180,6 +187,7 @@ function hideTargetPicker(){
 
 // ── 렌더
 function renderMe(p){
+  meAvatar.src = p.avatar || '';
   meName.textContent = p.name || '-';
   meTeam.textContent = teamKey(p.team)==='phoenix' ? 'A' : 'B';
   meHp.textContent   = `${p.hp}/${p.maxHp}`;
@@ -188,10 +196,16 @@ function renderMe(p){
   statDef.textContent = p.stats?.defense ?? '-';
   statLuk.textContent = p.stats?.luck ?? '-';
   statAgi.textContent = p.stats?.agility ?? '-';
+
+  // 준비 버튼 상태
+  if(btnReady){
+    if(p.ready){ btnReady.disabled = true; btnReady.textContent = '준비 완료됨'; }
+    else { btnReady.disabled = false; btnReady.textContent = '준비 완료'; }
+  }
 }
 
 function renderAll(snap){
-  // 팀 목록
+  // 팀원 목록
   teamList.innerHTML='';
   const myTeam = teamKey(me?.team);
   (snap.players||[])
@@ -203,36 +217,41 @@ function renderAll(snap){
       teamList.appendChild(d);
     });
 
-  // 턴/버튼 활성화
+  // 현재 팀 표기
   const isCommit = (snap.phase==='commitA' || snap.phase==='commitB') && snap.status==='active';
   const myTurn = myTeam===snap.currentTeam && isCommit && (me?.hp||0)>0;
   [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=> b.disabled = !myTurn);
 
-  // 현재 팀 표기
   const isATeam = snap.currentTeam==='phoenix';
   turnTeam.textContent = `현재 커밋팀: ${isATeam?'A':'B'}`;
 
-  // 순서 큐 및 메인 이미지
-  renderQueueAndGuide(snap);
+  // 순서 큐(생존자 나열) 및 메인 이미지(첫 번째)
+  renderQueueAndMain(snap);
 
-  // 타이머 세팅
+  // 팀 5분 타이머
   setupTeamTimer(snap.turnStartTime);
-  setupGuideTimer(snap); // 개인 3분 안내
+
+  // 준비 버튼은 전투 대기 상태에서만 활성화
+  if(btnReady){
+    if(snap.status !== 'waiting'){ btnReady.disabled = true; }
+    else if(me && !me.ready){ btnReady.disabled = false; }
+  }
 }
 
-// 순서 큐 및 안내 이미지
-function renderQueueAndGuide(snap){
+function renderQueueAndMain(snap){
   queueEl.innerHTML = '';
   const curTeam = snap.currentTeam;
   const alive = (snap.players||[]).filter(p=> p.hp>0 && teamKey(p.team)===curTeam);
-  // 추가된 순서(배열 순서) 그대로 사용
+
   alive.forEach((p,i)=>{
     const q = document.createElement('div');
-    q.className = 'qitem';
+    q.className = 'qitem' + (i===0 ? ' active' : '');
     q.innerHTML = `<img src="${p.avatar||''}" alt=""><div class="name">${p.name}</div>`;
     queueEl.appendChild(q);
   });
-  // 현재 안내 대상 하이라이트는 setupGuideTimer에서 처리
+
+  const first = alive[0];
+  turnImg.src = first?.avatar || '';
 }
 
 // 팀 5분 카운트다운
@@ -247,50 +266,6 @@ function setupTeamTimer(turnStartTime){
   };
   tick();
   teamTimerHandle = setInterval(tick, 500);
-}
-
-// 개인 안내 3분(안내용)
-function setupGuideTimer(snap){
-  if(guideTimerHandle) clearInterval(guideTimerHandle);
-  const slotMs = 3*60*1000; // 3분
-  const curTeam = snap.currentTeam;
-  const turnStart = snap.turnStartTime||0;
-
-  const tick = ()=>{
-    const alive = (lastSnap?.players||snap.players||[]).filter(p=> p.hp>0 && teamKey(p.team)===curTeam);
-    const imgs = $$('.qitem', queueEl);
-
-    // 인원 0이면 초기화
-    if(alive.length===0){
-      subTimer.textContent = '-';
-      turnImg.src = '';
-      imgs.forEach(el=> el.classList.remove('active'));
-      return;
-    }
-
-    const elapsed = Math.max(0, Date.now() - turnStart);
-    let idx = Math.floor(elapsed / slotMs);
-    if(idx >= alive.length) idx = alive.length - 1; // 마지막 사람에 머묾
-
-    // 남은 개인 시간 계산
-    let remainMs;
-    if(elapsed < alive.length*slotMs){
-      remainMs = slotMs - (elapsed % slotMs);
-    }else{
-      remainMs = 0;
-    }
-    const m = Math.floor(remainMs/60000);
-    const s = Math.floor((remainMs%60000)/1000);
-    subTimer.textContent = `개인 안내 시간 ${String(m).padStart(1,'0')}:${String(s).padStart(2,'0')}`;
-
-    // 이미지/하이라이트
-    const cur = alive[idx];
-    turnImg.src = cur?.avatar || '';
-    imgs.forEach((el,i)=> el.classList.toggle('active', i===idx));
-  };
-
-  tick();
-  guideTimerHandle = setInterval(tick, 500);
 }
 
 // 액션 송신
