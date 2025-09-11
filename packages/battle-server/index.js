@@ -1,5 +1,5 @@
 // packages/battle-server/index.js
-// ESM 서버 (package.json "type":"module")
+// ESM (package.json "type":"module")
 
 import express from 'express';
 import http from 'http';
@@ -29,12 +29,12 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.static(PUBLIC_DIR));
 
-// 라우팅: 페이지
+// 페이지 라우팅
 app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'pages', 'admin.html')));
 app.get('/player', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'player.html')));
 app.get('/spectator', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'spectator.html')));
 
-// 헬스체크
+// 헬스
 app.get('/api/health', (req, res) => res.json({ ok: true, name: 'battle-server' }));
 
 // 업로드
@@ -46,7 +46,6 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
-
 app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
   if (!req.file) return res.status(400).json({ ok: false, error: '파일 누락' });
   res.json({ ok: true, avatarUrl: `/uploads/${req.file.filename}` });
@@ -87,7 +86,8 @@ function sanitizeBattle(b){
     commitFirstTeam: b.commitFirstTeam,
     turnStartTime: b.turnStartTime,
     winnerTeam: b.winnerTeam || null,
-    spectatorOtp: b.spectatorOtp || `spectator-${b.id}`
+    spectatorOtp: b.spectatorOtp || `spectator-${b.id}`,
+    turn: b.turn || 1
   };
 }
 
@@ -104,7 +104,8 @@ function createBattle(mode='4v4'){
     readyCount: 0,
     winnerTeam: null,
     commitBox: { phoenix: {}, eaters: {} },
-    spectatorOtp: `spectator-${id}`
+    spectatorOtp: `spectator-${id}`,
+    turn: 1
   };
   battles.set(id, battle);
   return battle;
@@ -121,7 +122,10 @@ function teamCounts(battle){
 }
 
 function addPlayerToBattle(battle, payload){
-  const { name, team, hp=100, stats={}, items={}, avatar='' } = payload;
+  // admin.js는 payload.playerData로 보냄. 둘 다 허용.
+  const data = payload.playerData ? payload.playerData : payload;
+
+  const { name, team, hp=100, stats={}, items={}, avatar='' } = data;
   if (!name) throw new Error('이름은 필수입니다.');
   const exists = findBattlePlayerByName(battle, name);
   if (exists) throw new Error(`이미 등록된 이름입니다: ${name}`);
@@ -207,28 +211,16 @@ function resolveRound(battle){
     }
   }
 
-  const getFinalAttack = (p)=>{
-    const mul = (turnBuff.get(p.id)?.atkMul||1);
-    return Math.floor((p.stats.attack * mul)) + d20();
-  };
-  const getFinalDefense = (p)=>{
-    const mul = (turnBuff.get(p.id)?.defMul||1);
-    return Math.floor((p.stats.defense * mul));
-  };
-  const isCrit = (p)=> {
-    const r = d20();
-    const need = 20 - (p.stats.luck/2);
-    return r >= need;
-  };
+  // 파생 값
+  const getFinalAttack = (p)=> Math.floor((p.stats.attack * (turnBuff.get(p.id)?.atkMul||1))) + d20();
+  const getFinalDefense = (p)=> Math.floor((p.stats.defense * (turnBuff.get(p.id)?.defMul||1)));
+  const isCrit = (p)=> { const r=d20(); const need=20 - (p.stats.luck/2); return r>=need; };
 
   const boxes = [battle.commitBox.phoenix, battle.commitBox.eaters];
   const state = new Map(); // pid -> { defend, dodge }
   for (const box of boxes){
     for (const [pid, action] of Object.entries(box)){
-      state.set(pid, {
-        defend: action?.type==='defend',
-        dodge : action?.type==='dodge'
-      });
+      state.set(pid, { defend: action?.type==='defend', dodge: action?.type==='dodge' });
     }
   }
 
@@ -242,8 +234,9 @@ function resolveRound(battle){
       const atkPower = getFinalAttack(atk);
       const crit = isCrit(atk);
       let damage = 0;
-      let logHead = `${atk.name}의 공격`;
+      let head = `${atk.name}의 공격`;
 
+      // 회피
       if (state.get(tgt.id)?.dodge){
         const ev = tgt.stats.agility + d20();
         if (ev >= atkPower){
@@ -251,15 +244,16 @@ function resolveRound(battle){
           continue;
         } else {
           damage = (crit ? atkPower*2 : atkPower);
-          logHead += ' (회피 실패)';
+          head += ' (회피 실패)';
           const before = tgt.hp;
           tgt.hp = Math.max(0, tgt.hp - damage);
-          io.to(battle.id).emit('battle:log', { message: `${logHead} → ${tgt.name} HP ${before}→${tgt.hp} (-${before-tgt.hp})` });
+          io.to(battle.id).emit('battle:log', { message: `${head} → ${tgt.name} HP ${before}→${tgt.hp} (-${before-tgt.hp})` });
           if (tgt.hp<=0) io.to(battle.id).emit('battle:log', { message: `${tgt.name} 사망` });
           continue;
         }
       }
 
+      // 방어
       if (state.get(tgt.id)?.defend){
         const defVal = getFinalDefense(tgt);
         damage = Math.max(1, (crit ? atkPower*2 : atkPower) - defVal);
@@ -268,12 +262,14 @@ function resolveRound(battle){
         io.to(battle.id).emit('battle:log', { message: `${atk.name}의 공격 명중(방어 중) → ${tgt.name} HP ${before}→${tgt.hp} (-${before-tgt.hp})` });
         if (tgt.hp<=0){ io.to(battle.id).emit('battle:log', { message: `${tgt.name} 사망` }); continue; }
 
+        // 역공격(방어 불가)
         const counter = atk.stats.attack + d20();
         const b2 = atk.hp;
         atk.hp = Math.max(0, atk.hp - counter);
         io.to(battle.id).emit('battle:log', { message: `${tgt.name} 역공격 → ${atk.name} HP ${b2}→${atk.hp} (-${b2-atk.hp})` });
         if (atk.hp<=0) io.to(battle.id).emit('battle:log', { message: `${atk.name} 사망` });
       } else {
+        // 일반 피격
         damage = (crit ? atkPower*2 : atkPower);
         const before = tgt.hp;
         tgt.hp = Math.max(0, tgt.hp - damage);
@@ -283,6 +279,7 @@ function resolveRound(battle){
     }
   }
 
+  // 승패
   const aAlive = battle.players.some(p=>p.team==='phoenix' && p.hp>0);
   const bAlive = battle.players.some(p=>p.team==='eaters'  && p.hp>0);
   if (!aAlive || !bAlive){
@@ -295,20 +292,19 @@ function resolveRound(battle){
     }
   }
 
+  // 턴 증가 및 초기화
+  battle.turn = (battle.turn||1) + 1;
   battle.commitBox = { phoenix:{}, eaters:{} };
 }
 
-// 페이즈 전환
+// 브로드캐스트
 function broadcastUpdate(battle){ io.to(battle.id).emit('battle:update', sanitizeBattle(battle)); }
 
-// ===== REST 구현 (하드가드 명세) =====
-
-// 전투 생성
+// ===== REST =====
 app.post('/api/battles', (req, res) => {
   try{
     const mode = String(req.body?.mode || '4v4');
     const battle = createBattle(mode);
-    // 생성자(관리자)가 소켓으로 방에 들어와 있지 않아도 REST만으로 생성 가능
     return res.json({ ok: true, battle: sanitizeBattle(battle) });
   }catch(e){
     console.error('[REST] POST /api/battles', e);
@@ -316,7 +312,6 @@ app.post('/api/battles', (req, res) => {
   }
 });
 
-// 전투 조회
 app.get('/api/battles/:id', (req, res) => {
   try{
     const battle = battles.get(req.params.id);
@@ -328,7 +323,6 @@ app.get('/api/battles/:id', (req, res) => {
   }
 });
 
-// 전투 시작
 app.post('/api/battles/:id/start', (req, res) => {
   try{
     const b = battles.get(req.params.id);
@@ -350,20 +344,30 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', (reason)=> console.log('[SOCKET] 연결 해제:', socket.id, '(이유:', reason, ')'));
 
-  socket.on('join', (battleId)=>{ socket.join(battleId); });
+  // join: 문자열/객체 모두 허용
+  socket.on('join', (payload)=>{
+    const battleId = (typeof payload === 'string') ? payload : payload?.battleId;
+    if(battleId){ socket.join(battleId); console.log('[SOCKET] join:', battleId); }
+  });
 
-  // 소켓으로 전투 생성 (기존 관리자 UI 호환)
+  // 전투 생성: admin.js가 기대하는 응답으로 송신
   socket.on('createBattle', ({ mode })=>{
-    const battle = createBattle(mode||'4v4');
-    socket.join(battle.id);
-    socket.emit('battle:created', { battle: sanitizeBattle(battle) }); // 직접 응답
-    broadcastUpdate(battle);
+    try{
+      const battle = createBattle(mode||'4v4');
+      socket.join(battle.id);
+      socket.emit('battleCreated', { success:true, battleId:battle.id, mode:battle.mode });
+      broadcastUpdate(battle);
+      console.log('[SOCKET] createBattle:', battle.mode, '→', battle.id);
+    }catch(e){
+      socket.emit('battleCreated', { success:false, error:String(e.message||e) });
+    }
   });
 
   // 참가자 추가
   socket.on('addPlayer', (payload)=>{
     try{
-      const battle = battles.get(payload.battleId);
+      const battleId = payload.battleId || payload?.playerData?.battleId; // 혹시라도 들어올 수 있으니
+      const battle = battles.get(battleId);
       if (!battle) throw new Error('전투를 찾을 수 없습니다.');
       const p = addPlayerToBattle(battle, payload);
       io.to(battle.id).emit('battle:update', sanitizeBattle(battle));
@@ -409,21 +413,15 @@ io.on('connection', (socket) => {
     broadcastUpdate(b);
   });
 
-  // 링크 생성
-  socket.on('generatePlayerLinks', ({ battleId })=>{
-    const b = battles.get(battleId); if (!b) return;
-    const origin = process.env.PUBLIC_ORIGIN || '';
-    const links = b.players.map(p=>{
-      const t = `player-${encodeURIComponent(p.name)}-${b.id}`;
-      return { name: p.name, url: `${origin}/player?battle=${b.id}&token=${t}&name=${encodeURIComponent(p.name)}` };
-    });
-    socket.emit('playerLinks', { links });
-  });
-
+  // 관전자 비밀번호 발급(관리자 기대 이벤트명에 맞춤)
   socket.on('generateSpectatorOtp', ({ battleId })=>{
-    const b = battles.get(battleId); if (!b) return;
+    const b = battles.get(battleId);
+    if(!b){ socket.emit('spectatorOtpGenerated', { success:false, error:'전투를 찾을 수 없습니다.' }); return; }
     b.spectatorOtp = `spectator-${b.id}`;
-    socket.emit('spectatorOtp', { otp: b.spectatorOtp });
+    const origin = process.env.PUBLIC_ORIGIN || '';
+    const urlRel = `/spectator?battle=${b.id}&otp=${encodeURIComponent(b.spectatorOtp)}`;
+    const spectatorUrl = origin ? `${origin}${urlRel}` : urlRel;
+    socket.emit('spectatorOtpGenerated', { success:true, spectatorUrl, otp:b.spectatorOtp });
   });
 
   // 채팅
