@@ -1,33 +1,32 @@
 // packages/battle-server/index.js
-// PYXIS Battle Server - Express + Socket.IO (단일 파일 서버)
+// PYXIS Battle Server (ESM)
 // - 한글화 / 이모지 금지
-// - 팀 내부키: phoenix/eaters, 화면 표기: A/B팀(프런트에서 치환)
+// - 팀 내부키: phoenix/eaters (프런트에서 A/B로 표기)
 // - 스탯 각 1~5, 총합 제한 없음, HP 최대 100
-// - 방어 시 최소 1 보장 제거(방어 피해는 max(0, ...))
-// - 턴 구조: 선공 전원 커밋 → 후공 전원 커밋 → 일괄 해석, 이후 선/후공 교대
+// - 방어 시 최소 1 보장 제거(방어 실패 피해: max(0, 공격-방어))
+// - 턴: 선커밋 → 후커밋 → resolve, 이후 선/후공 교대
 
-"use strict";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import http from "http";
+import express from "express";
+import cors from "cors";
+import multer from "multer";
+import { randomUUID } from "crypto";
+import { Server as IOServer } from "socket.io";
 
-const path = require("path");
-const fs = require("fs");
-const http = require("http");
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const { randomUUID } = require("crypto"); // 외부 패키지 불필요
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// ───────────────────────────────────────────────────────────────
-// 기본 설정
 // ───────────────────────────────────────────────────────────────
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const ROOT = path.resolve(__dirname);
 const PUBLIC_DIR = path.join(ROOT, "public");
 const UPLOAD_DIR = path.join(ROOT, "uploads");
 
-// 디렉터리 보장
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// 업로드 설정
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOAD_DIR),
   filename: (_, file, cb) => {
@@ -38,20 +37,16 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 유틸
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const d20 = () => Math.floor(Math.random() * 20) + 1;
 const now = () => Date.now();
 
-// 내부 팀 키 표준화
 function normTeam(t) {
   const k = String(t || "").toLowerCase();
   if (k === "phoenix" || k === "a") return "phoenix";
   if (k === "eaters" || k === "death" || k === "b") return "eaters";
   return "phoenix";
 }
-
-// 스탯 읽기(각 1~5 clamp)
 function readStats(p) {
   const s = p?.stats || {};
   return {
@@ -61,15 +56,11 @@ function readStats(p) {
     luck: clamp(Number(s.luck ?? 3), 1, 5),
   };
 }
-
-// 치명타 판정
 function isCritical(luck) {
   const th = 20 - luck / 2;
   const r = d20();
   return { crit: r >= th, roll: r, threshold: th };
 }
-
-// 아이템 효과
 const ITEM = {
   DITTANY: "dittany",
   ATK_BOOST: "attack_booster",
@@ -78,47 +69,23 @@ const ITEM = {
 const ATK_MULT = 1.5;
 const DEF_MULT = 1.5;
 const BOOST_SUCCESS = 0.10;
-function tryBooster() {
-  return Math.random() < BOOST_SUCCESS;
-}
+const tryBooster = () => Math.random() < BOOST_SUCCESS;
 
-// ───────────────────────────────────────────────────────────────
-// 인메모리 데이터
-// ───────────────────────────────────────────────────────────────
-/**
- * battles[battleId] = {
- *   id, mode, status: 'waiting'|'active'|'paused'|'ended',
- *   players: [{ id, name, team, hp, maxHp:100, stats, items, avatar, ready }],
- *   log: [{ ts, type, message }],
- *   chat: [],
- *   commitFirstTeam, currentTeam, phase, turn, turnStartTime,
- *   pendingActions: { phoenix: Map<playerId, action>, eaters: Map<playerId, action> },
- * }
- */
+// 인메모리 상태
 const battles = Object.create(null);
 
 // ───────────────────────────────────────────────────────────────
-// 서버/소켓
-// ───────────────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
-let io; // 선언 먼저(try/catch 내 require 실패 시 에러 잡기)
-
-try {
-  io = require("socket.io")(server, {
-    cors: { origin: true, credentials: true },
-    transports: ["websocket", "polling"],
-  });
-} catch (e) {
-  console.error("[FATAL] socket.io 로드 실패:", e);
-  process.exit(1);
-}
+const io = new IOServer(server, {
+  cors: { origin: true, credentials: true },
+  transports: ["websocket", "polling"],
+});
 
 app.set("trust proxy", true);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// 정적 경로 사전 검사
 if (!fs.existsSync(PUBLIC_DIR)) {
   console.warn("[WARN] public 디렉터리가 없습니다:", PUBLIC_DIR);
 }
@@ -137,7 +104,7 @@ app.post("/api/upload/avatar", upload.single("avatar"), (req, res) => {
     return res.json({ ok: true, avatarUrl: url });
   } catch (e) {
     console.error("[ERR] /api/upload/avatar:", e);
-    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
@@ -148,7 +115,7 @@ app.post("/api/battles", (req, res) => {
     return res.json({ ok: true, id: battleId });
   } catch (e) {
     console.error("[ERR] /api/battles:", e);
-    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
@@ -162,11 +129,11 @@ app.post("/api/battles/:id/start", (req, res) => {
     return res.json({ ok: true });
   } catch (e) {
     console.error("[ERR] /api/battles/:id/start:", e);
-    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-// 전투 상태 조회
+// 전투 조회
 app.get("/api/battles/:id", (req, res) => {
   try {
     const b = battles[String(req.params.id || "")];
@@ -174,18 +141,18 @@ app.get("/api/battles/:id", (req, res) => {
     return res.json({ ok: true, battle: publicBattle(b) });
   } catch (e) {
     console.error("[ERR] /api/battles/:id:", e);
-    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
-// 공통 에러 핸들러(Express)
+// 공통 에러 핸들러
 app.use((err, _req, res, _next) => {
   console.error("[UNCAUGHT] Express:", err);
   res.status(500).json({ ok: false, error: "서버 오류" });
 });
 
 // ───────────────────────────────────────────────────────────────
-// 소켓 이벤트
+// Socket.IO
 // ───────────────────────────────────────────────────────────────
 io.on("connection", (socket) => {
   socket.on("join", ({ battleId }) => {
@@ -202,7 +169,7 @@ io.on("connection", (socket) => {
       emitBattleUpdate(battles[id]);
     } catch (e) {
       console.error("[ERR] createBattle:", e);
-      socket.emit("battleCreated", { success: false, error: String(e && e.message || e) });
+      socket.emit("battleCreated", { success: false, error: String(e?.message || e) });
     }
   });
 
@@ -215,7 +182,7 @@ io.on("connection", (socket) => {
       emitBattleUpdate(b);
     } catch (e) {
       console.error("[ERR] addPlayer:", e);
-      log(b, "system", "참가자 추가 실패: " + (e && e.message || e));
+      log(b, "system", "참가자 추가 실패: " + (e?.message || e));
       emitBattleUpdate(b);
     }
   });
@@ -223,8 +190,7 @@ io.on("connection", (socket) => {
   socket.on("generateSpectatorOtp", ({ battleId }) => {
     const b = battles[battleId];
     if (!b) return socket.emit("spectatorOtpGenerated", { success: false, error: "전투 없음" });
-    const url = spectatorUrl(battleId);
-    socket.emit("spectatorOtpGenerated", { success: true, spectatorUrl: url });
+    socket.emit("spectatorOtpGenerated", { success: true, spectatorUrl: spectatorUrl(battleId) });
   });
 
   socket.on("startBattle", ({ battleId }) => {
@@ -299,7 +265,6 @@ io.on("connection", (socket) => {
   socket.on("player:action", ({ battleId, playerId, action }) => {
     const b = battles[battleId];
     if (!b) return;
-
     if (b.status !== "active") return;
     if (b.phase !== "commitA" && b.phase !== "commitB") return;
 
@@ -408,7 +373,6 @@ function resolveTurn(b) {
 
   const first = b.commitFirstTeam;
   const second = otherTeam(first);
-
   const turnLog = [];
 
   const actA = b.pendingActions[first];
@@ -545,7 +509,7 @@ function applyAction(b, actor, action, turnLog) {
         }
         let raw = atkScore - defStat;
         if (crit) raw *= 2;
-        const dmg = Math.max(0, raw); // 방어에 한해 최소1 제거
+        const dmg = Math.max(0, raw); // 방어에 한해 최소 1 제거
         if (dmg > 0) {
           applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중(방어 실패)`);
           const cRoll = d20();
@@ -668,7 +632,7 @@ function publicBattle(b) {
 }
 
 function spectatorUrl(battleId) {
-  const origin = (process.env.PUBLIC_ORIGIN || "").replace(/\/+$/,"");
+  const origin = (process.env.PUBLIC_ORIGIN || "").replace(/\/+$/, "");
   const base = origin || "";
   return `${base}/spectator?battle=${battleId}&otp=spectator-${battleId}`;
 }
@@ -692,19 +656,11 @@ function nano() {
   return randomUUID().replace(/-/g, "").slice(0, 12);
 }
 
-// ───────────────────────────────────────────────────────────────
-// 프로세스 전역 에러 로깅(원인 추적용)
-// ───────────────────────────────────────────────────────────────
-process.on("unhandledRejection", (e) => {
-  console.error("[UNHANDLED REJECTION]", e);
-});
-process.on("uncaughtException", (e) => {
-  console.error("[UNCAUGHT EXCEPTION]", e);
-});
+// 전역 에러 로깅
+process.on("unhandledRejection", (e) => console.error("[UNHANDLED REJECTION]", e));
+process.on("uncaughtException", (e) => console.error("[UNCAUGHT EXCEPTION]", e));
 
-// ───────────────────────────────────────────────────────────────
 // 시작
-// ───────────────────────────────────────────────────────────────
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFO] PYXIS server started on 0.0.0.0:${PORT} (${process.env.NODE_ENV || "development"})`);
 });
