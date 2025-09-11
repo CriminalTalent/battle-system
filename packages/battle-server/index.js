@@ -1,11 +1,12 @@
 // packages/battle-server/index.js
-// ESM (package.json "type":"module")
+// ESM (package.json "type":"module"), 이모지 금지
 
 import express from 'express';
 import http from 'http';
 import { Server as IOServer } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 
@@ -29,18 +30,40 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.static(PUBLIC_DIR));
 
-// 페이지 라우팅
-app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'pages', 'admin.html')));
-app.get('/player', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'player.html')));
-app.get('/spectator', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'spectator.html')));
+// 존재하는 첫 파일을 찾아서 서빙
+function sendFirstExisting(res, relPaths) {
+  for (const rel of relPaths) {
+    const full = path.join(PUBLIC_DIR, rel);
+    if (fs.existsSync(full)) return res.sendFile(full);
+  }
+  return res.status(404).send(`페이지를 찾을 수 없습니다: ${relPaths.join(', ')}`);
+}
+
+// 페이지 라우팅 (ENOENT 방지: 다중 경로 지원)
+app.get('/admin', (_req, res) => sendFirstExisting(res, [
+  'pages/admin.html',
+  'admin.html'
+]));
+app.get('/player', (_req, res) => sendFirstExisting(res, [
+  'player.html',
+  'pages/player.html',
+  'play.html',
+  'pages/play.html'
+]));
+app.get('/spectator', (_req, res) => sendFirstExisting(res, [
+  'spectator.html',
+  'pages/spectator.html',
+  'watch.html',
+  'pages/watch.html'
+]));
 
 // 헬스
-app.get('/api/health', (req, res) => res.json({ ok: true, name: 'battle-server' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'battle-server' }));
 
 // 업로드
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     cb(null, `${Date.now()}-${Math.round(Math.random()*1e9)}${ext}`);
   }
@@ -52,13 +75,14 @@ app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
 });
 
 // ===== 인메모리 상태 =====
-const battles = new Map();
+const battles = new Map();       // battleId -> battle
+const spectatorCounts = new Map(); // battleId -> number
 
 // 유틸
 const d20 = () => Math.floor(Math.random() * 20) + 1;
 const now = () => Date.now();
 const uid = (p='id') => `${p}_${Math.random().toString(36).slice(2,10)}`;
-const teamAB = (t) => (t==='phoenix' ? 'A팀' : 'B팀');
+const teamAB = (t) => (String(t).toLowerCase()==='phoenix' ? 'A팀' : 'B팀');
 const clamp = (n,min,max)=> Math.max(min, Math.min(max, n));
 
 function maxTeamSizeByMode(mode){
@@ -108,6 +132,7 @@ function createBattle(mode='4v4'){
     turn: 1
   };
   battles.set(id, battle);
+  spectatorCounts.set(id, 0);
   return battle;
 }
 
@@ -122,7 +147,7 @@ function teamCounts(battle){
 }
 
 function addPlayerToBattle(battle, payload){
-  // admin.js는 payload.playerData로 보냄. 둘 다 허용.
+  // admin.js는 payload.playerData 형태를 보냄. 둘 다 허용.
   const data = payload.playerData ? payload.playerData : payload;
 
   const { name, team, hp=100, stats={}, items={}, avatar='' } = data;
@@ -138,7 +163,7 @@ function addPlayerToBattle(battle, payload){
   const p = {
     id: uid('player'),
     name,
-    team: (team==='eaters'?'eaters':'phoenix'),
+    team: (String(team).toLowerCase()==='eaters'?'eaters':'phoenix'),
     maxHp: 100,
     hp: clamp(+hp||100, 1, 100),
     stats: {
@@ -178,7 +203,7 @@ function decideFirstTeam(battle){
   io.to(battle.id).emit('battle:log', { message: `선공: ${teamAB(battle.currentTeam)}` });
 }
 
-// 라운드 해석(룰 변경 없음)
+// 라운드 해석(하드가드 준수: 룰 변경 없음)
 function resolveRound(battle){
   const alive = (p)=> p.hp>0;
   const playersById = Object.fromEntries(battle.players.map(p=>[p.id,p]));
@@ -234,7 +259,6 @@ function resolveRound(battle){
       const atkPower = getFinalAttack(atk);
       const crit = isCrit(atk);
       let damage = 0;
-      let head = `${atk.name}의 공격`;
 
       // 회피
       if (state.get(tgt.id)?.dodge){
@@ -244,10 +268,9 @@ function resolveRound(battle){
           continue;
         } else {
           damage = (crit ? atkPower*2 : atkPower);
-          head += ' (회피 실패)';
           const before = tgt.hp;
           tgt.hp = Math.max(0, tgt.hp - damage);
-          io.to(battle.id).emit('battle:log', { message: `${head} → ${tgt.name} HP ${before}→${tgt.hp} (-${before-tgt.hp})` });
+          io.to(battle.id).emit('battle:log', { message: `${atk.name}의 공격 명중(회피 실패) → ${tgt.name} HP ${before}→${tgt.hp} (-${before-tgt.hp})` });
           if (tgt.hp<=0) io.to(battle.id).emit('battle:log', { message: `${tgt.name} 사망` });
           continue;
         }
@@ -311,7 +334,6 @@ app.post('/api/battles', (req, res) => {
     return res.status(500).json({ ok:false, error:'서버 오류' });
   }
 });
-
 app.get('/api/battles/:id', (req, res) => {
   try{
     const battle = battles.get(req.params.id);
@@ -322,7 +344,6 @@ app.get('/api/battles/:id', (req, res) => {
     return res.status(500).json({ ok:false, error:'서버 오류' });
   }
 });
-
 app.post('/api/battles/:id/start', (req, res) => {
   try{
     const b = battles.get(req.params.id);
@@ -340,24 +361,19 @@ app.post('/api/battles/:id/start', (req, res) => {
 
 // ===== 소켓 =====
 io.on('connection', (socket) => {
-  console.log('[SOCKET] 새 연결:', socket.id);
-
-  socket.on('disconnect', (reason)=> console.log('[SOCKET] 연결 해제:', socket.id, '(이유:', reason, ')'));
-
   // join: 문자열/객체 모두 허용
   socket.on('join', (payload)=>{
     const battleId = (typeof payload === 'string') ? payload : payload?.battleId;
-    if(battleId){ socket.join(battleId); console.log('[SOCKET] join:', battleId); }
+    if(battleId){ socket.join(battleId); }
   });
 
-  // 전투 생성: admin.js가 기대하는 응답으로 송신
+  // 전투 생성: admin.js가 기대하는 응답 이벤트명
   socket.on('createBattle', ({ mode })=>{
     try{
       const battle = createBattle(mode||'4v4');
       socket.join(battle.id);
       socket.emit('battleCreated', { success:true, battleId:battle.id, mode:battle.mode });
       broadcastUpdate(battle);
-      console.log('[SOCKET] createBattle:', battle.mode, '→', battle.id);
     }catch(e){
       socket.emit('battleCreated', { success:false, error:String(e.message||e) });
     }
@@ -366,14 +382,12 @@ io.on('connection', (socket) => {
   // 참가자 추가
   socket.on('addPlayer', (payload)=>{
     try{
-      const battleId = payload.battleId || payload?.playerData?.battleId; // 혹시라도 들어올 수 있으니
+      const battleId = payload.battleId || payload?.playerData?.battleId;
       const battle = battles.get(battleId);
       if (!battle) throw new Error('전투를 찾을 수 없습니다.');
       const p = addPlayerToBattle(battle, payload);
       io.to(battle.id).emit('battle:update', sanitizeBattle(battle));
-      console.log('[SOCKET] 전투 참가자 추가:', p.name);
     }catch(e){
-      console.error('[SOCKET] addPlayer 오류:', e);
       socket.emit('battle:log', { message: String(e.message||e) });
     }
   });
@@ -413,7 +427,62 @@ io.on('connection', (socket) => {
     broadcastUpdate(b);
   });
 
-  // 관전자 비밀번호 발급(관리자 기대 이벤트명에 맞춤)
+  // ===== 관전자 인증/응원 =====
+  // spectatorAuth(v1) / spectator:auth(v2) 모두 허용
+  const handleSpectatorAuth = ({ battleId, otp, token, name, spectatorName })=>{
+    const b = battles.get(battleId);
+    if(!b){ socket.emit('authError', { error: '전투를 찾을 수 없습니다.' }); return; }
+    const pass = token || otp || '';
+    const expected = `spectator-${battleId}`;
+    if(pass !== expected){
+      socket.emit('authError', { error: '비밀번호가 일치하지 않습니다.' });
+      return;
+    }
+    // 인증 성공
+    socket.join(battleId);
+    // 관전자 수 갱신
+    const c = (spectatorCounts.get(battleId)||0) + 1;
+    spectatorCounts.set(battleId, c);
+    io.to(battleId).emit('spectator:count', { count: c });
+    io.to(battleId).emit('spectator:count_update', { count: c });
+
+    socket.emit('auth:success', {
+      type: 'spectator',
+      role: 'spectator',
+      spectatorName: spectatorName || name || '',
+      battleId,
+      battle: sanitizeBattle(b)
+    });
+  };
+  socket.on('spectatorAuth', handleSpectatorAuth);
+  socket.on('spectator:auth', handleSpectatorAuth);
+
+  // 관전자 연결 해제 시 카운트 감소
+  socket.on('disconnect', ()=>{
+    // 소켓이 속한 방들 중 battle_*만 카운트 조정
+    const rooms = [...socket.rooms].filter(r => r.startsWith('battle_'));
+    rooms.forEach((bid)=>{
+      const cur = spectatorCounts.get(bid);
+      if(typeof cur === 'number' && cur>0){
+        spectatorCounts.set(bid, cur-1);
+        io.to(bid).emit('spectator:count', { count: cur-1 });
+        io.to(bid).emit('spectator:count_update', { count: cur-1 });
+      }
+    });
+  });
+
+  // 관전자 응원/채팅 → 공통 채팅으로 브로드캐스트
+  socket.on('spectator:cheer', ({ message })=>{
+    const rooms = [...socket.rooms].filter(r => r.startsWith('battle_'));
+    const bid = rooms[0]; if(!bid) return;
+    io.to(bid).emit('battle:chat', { name: '관전자', message: String(message||''), role:'spectator' });
+  });
+  socket.on('cheer:send', ({ battleId, cheer })=>{
+    if(!battleId) return;
+    io.to(battleId).emit('battle:chat', { name: '관전자', message: String(cheer||''), role:'spectator' });
+  });
+
+  // 관전자 OTP 생성(관리자 요청 호환)
   socket.on('generateSpectatorOtp', ({ battleId })=>{
     const b = battles.get(battleId);
     if(!b){ socket.emit('spectatorOtpGenerated', { success:false, error:'전투를 찾을 수 없습니다.' }); return; }
@@ -424,7 +493,7 @@ io.on('connection', (socket) => {
     socket.emit('spectatorOtpGenerated', { success:true, spectatorUrl, otp:b.spectatorOtp });
   });
 
-  // 채팅
+  // 일반 채팅
   socket.on('chat:send', ({ battleId, name, message, role })=>{
     const b = battles.get(battleId); if (!b) return;
     io.to(b.id).emit('battle:chat', { name, message, role: role||'player' });
@@ -453,9 +522,7 @@ io.on('connection', (socket) => {
       socket.join(battleId);
       socket.emit('auth:success', { battle: sanitizeBattle(b), player: sanitizePlayer(p) });
       broadcastUpdate(b);
-      console.log('[SOCKET] 전투 참가자 인증 성공:', name, `(${p.id}) ->`, battleId);
     }catch(e){
-      console.error('[SOCKET] 전투 참가자 인증 오류:', e);
       socket.emit('authError', { error: '서버 오류' });
     }
   });
