@@ -4,15 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>PYXIS 관리자</title>
+
+  <!-- 타이틀 서체 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
   <style>
     :root{
       --gold-1:#DCC7A2; --gold-2:#D4BA8D;
       --bg-0:#0f1216; --bg-1:#141922; --bg-2:#1b2230;
       --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
       --btn-bg:#0b0d10; --btn-border:#D4BA8D; --btn-text:#DCC7A2;
+      --ok:#1f8b4c; --warn:#c99a2b; --danger:#b54747;
     }
     html,body{height:100%}
     body{
@@ -21,15 +25,26 @@
                   var(--bg-0);
       color:var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     }
     .wrap{max-width:1280px; margin:24px auto; padding:0 16px;}
-    .brand{font-family:'Playfair Display',serif; font-weight:700; letter-spacing:.6px; font-size:24px; margin-bottom:12px;}
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-family:'Playfair Display',serif; font-weight:700; letter-spacing:.6px; font-size:24px; margin-bottom:12px;
+    }
     .brand .accent{background:linear-gradient(90deg,var(--gold-1),#f5e6c9); -webkit-background-clip:text; background-clip:text; color:transparent;}
+    .conn{width:10px; height:10px; border-radius:50%; background:#566172; border:1px solid #3a414d}
+    .conn.ok{background:#2ea043; border-color:#1c6c2d}
+
     .cols3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;}
     @media (max-width: 1100px){ .cols3{grid-template-columns: 1fr 1fr;} }
     @media (max-width: 780px){ .cols3{grid-template-columns: 1fr;} }
-    .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
-      border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);}
+
+    .card{
+      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+      border:1px solid var(--border); border-radius:14px; padding:16px;
+      box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);
+    }
     .section-title{font-weight:700; color:var(--gold-1); margin-bottom:10px;}
     .row{display:flex; gap:10px; flex-wrap:wrap;}
     .grid{display:grid; gap:10px;}
@@ -37,33 +52,41 @@
     .g-4{grid-template-columns: repeat(4, 1fr);}
     .g-2{grid-template-columns: repeat(2, 1fr);}
     .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+
     .input,.select{
       width:100%; height:38px; padding:0 12px; border-radius:10px;
       border:1px solid var(--border); background:var(--bg-2); color:var(--text);
       outline:none; transition:border-color .12s ease, box-shadow .12s ease;
     }
     .input:focus,.select:focus{border-color:var(--gold-2); box-shadow:0 0 0 3px rgba(212,186,141,.15);}
+
     .btn{
       display:inline-flex; align-items:center; justify-content:center;
       height:38px; padding:0 14px; border-radius:10px; font-weight:600; letter-spacing:.2px;
       border:1px solid var(--border); background:var(--bg-2); color:var(--text); cursor:pointer;
       transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+      user-select:none;
     }
     .btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.25);}
     .btn:disabled{opacity:.55; cursor:not-allowed;}
     .btn-gold{background:var(--btn-bg); border-color:var(--btn-border); color:var(--btn-text);}
     .btn-gold:hover{box-shadow:0 12px 24px rgba(220,199,162,.1);}
+
     .mini{font-size:12px; color:var(--muted);}
+    .hr{height:1px;background:linear-gradient(90deg,transparent, rgba(212,186,141,.35), transparent); margin:12px 0;}
+
     .preview{width:120px; height:90px; border:1px dashed var(--border); border-radius:10px;
              display:flex; align-items:center; justify-content:center; color:var(--muted); background:var(--bg-1); overflow:hidden;}
+
     table{width:100%; border-collapse:separate; border-spacing:0;}
     th,td{border-bottom:1px solid var(--border); padding:10px 8px;}
     th{color:var(--muted); text-align:left; font-weight:600;}
+
     .log{height:180px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:10px;}
     .chat{height:120px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:10px;}
     .chatbox{display:flex; gap:8px; margin-top:8px;}
     .chatbox input{flex:1;}
-    .hr{height:1px;background:linear-gradient(90deg,transparent, rgba(212,186,141,.35), transparent); margin:12px 0;}
+
     .link-row{display:grid; grid-template-columns: 100px 1fr 70px; gap:8px; align-items:center;}
     .linkbox{display:flex; gap:8px; align-items:center;}
     .linkbox input{flex:1}
@@ -71,10 +94,13 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="brand"><span class="accent">PYXIS</span> 관리자</div>
+    <div class="brand">
+      <div class="conn" id="connDot" title="연결 상태"></div>
+      <div><span class="accent">PYXIS</span> 관리자</div>
+    </div>
 
     <div class="cols3">
-      <!-- 1열: 전투 컨트롤 -->
+      <!-- 1열: 전투 컨트롤 + 링크 생성 -->
       <div>
         <div class="card">
           <div class="section-title">전투 컨트롤</div>
@@ -97,11 +123,11 @@
           <div class="mini" id="battleMeta">대기 중</div>
         </div>
 
-        <!-- 전투 컨트롤 바로 아래: 링크 생성 -->
+        <!-- 링크 생성 -->
         <div class="card" id="linkCard" style="margin-top:16px">
           <div class="section-title">링크 생성</div>
 
-          <!-- 플레이어 링크(자동 비밀번호 포함) -->
+          <!-- 플레이어(전투 참가자) 링크 -->
           <div class="row" style="gap:8px; margin-bottom:8px">
             <button id="btnGenPlayer" type="button" class="btn btn-gold">플레이어 링크 생성</button>
           </div>
@@ -110,20 +136,31 @@
 
           <div class="hr"></div>
 
-          <!-- 관전자 링크(OTP 별도 생성) -->
+          <!-- 관전자 링크 + 비밀번호(OTP) -->
           <div class="grid" style="gap:8px">
+            <div class="row" style="gap:8px">
+              <button id="btnBuildSpectator" type="button" class="btn">관전자 링크 생성</button>
+              <button id="btnGenSpectator"   type="button" class="btn btn-gold">관전자 비밀번호 발급</button>
+            </div>
+
             <div class="label">관전자 링크</div>
             <div class="linkbox">
-              <input id="spectatorUrl" class="input" placeholder="비밀번호 생성 후 표시" readonly>
-              <button id="btnGenSpectator" type="button" class="btn btn-gold">비밀번호 생성</button>
+              <input id="spectatorUrl" class="input" placeholder="생성 시 표시" readonly>
               <button id="btnCopySpectator" type="button" class="btn">복사</button>
             </div>
-            <div class="mini">관전자 비밀번호는 30분 동안 유효합니다.</div>
+
+            <div class="label">관전자 비밀번호</div>
+            <div class="linkbox">
+              <input id="spectatorOtp" class="input" placeholder="발급 시 표시" readonly>
+              <button id="btnCopyOtp" type="button" class="btn">복사</button>
+            </div>
+
+            <div class="mini">관전자 비밀번호는 30분 유효(서버 정책 기준).</div>
           </div>
         </div>
       </div>
 
-      <!-- 2열: 참가자 입력 -->
+      <!-- 2열: 전투 참가자 입력 -->
       <div class="card">
         <div class="section-title">전투 참가자 입력</div>
 
@@ -195,9 +232,10 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </div> <!-- /cols3 -->
+  </div> <!-- /wrap -->
 
+  <!-- Socket.IO & Admin JS -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/assets/js/admin.js" type="module"></script>
 </body>
