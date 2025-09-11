@@ -1,171 +1,217 @@
-// PYXIS Combat Rules (ESM)
-// - 공격: 공격력 + d20 - 상대 방어력
-// - 명중: 행운 + d20 → 명중율 (기본 임계 12)
-// - 회피: 수비측 (민첩 + d20) ≥ (공격측 공격수치) → 완전 회피
-// - 치명: d20 ≥ (20 - 행운/2) → 2배
-// - 방어/회피 액션: 서버 측 상태 플래그로 다음 피격 1회에 영향
-// - 아이템: 1회성. 공격/방어 보정기 성공확률 10% (실패해도 소모), 디터니 +10 즉시회복
+// PYXIS Combat Resolver (ESM)
+// - 하나의 플레이어 행동을 받아 서버 전투 상태를 갱신합니다.
+// - 지원 액션: attack, defend, dodge, item, pass
+// - 로그는 서버 상위(index.js)에서 pushLog로 합쳐 브로드캐스트합니다.
+// - 이 파일은 순수 로직만 담당합니다(소켓 송신/권한 검사는 상위 계층).
 
-import { roll, chance } from "./dice.js";
+import { roll } from "./dice.js";
+import {
+  ITEMS,
+  normalizeItemKey,
+  applyItemEffect,
+  consumeAttackMultiplier,
+  consumeDefenseMultiplierOnHit,
+  computeAttackScoreFromActor,
+  computeHitFromActors,
+  computeDamageFromActors
+} from "./rules.js";
 
-/** 기본 상수 */
-export const MAX_STAT = 5;
-
-export const HIT_THRESHOLD = 12;              // 명중 기준: luck + d20 >= 12
-export const CRIT_FORMULA = (luk, d20) => d20 >= (20 - (luk / 2));
-
-export const EVASION_CHECK = (attackerAtkScore, defenderAgi, evdRoll) =>
-  (defenderAgi + evdRoll) >= attackerAtkScore; // 회피 조건
-
-/** 아이템 사전 (서버 키 기준) */
-export const ITEMS = {
-  attackBoost: { key: "attackBoost", label: "공격 보정기", factor: 1.5, success: 0.10 },
-  defenseBoost:{ key: "defenseBoost", label: "방어 보정기", factor: 1.5, success: 0.10 },
-  dittany:     { key: "dittany",     label: "디터니",      heal: 10 }
-};
-
-// 클라이언트 키 → 서버 키 매핑 (양쪽 모두 허용)
-export function normalizeItemKey(k = "") {
-  const key = String(k || "").trim();
-  if (key === "atkBoost") return "attackBoost";
-  if (key === "defBoost") return "defenseBoost";
-  if (key === "heal10")   return "dittany";
-  return key;
+/** effects 보장 */
+function ensureEffects(battle) {
+  if (!Array.isArray(battle.effects)) battle.effects = [];
 }
 
-/** 유틸: 스탯 안전화(0..5) */
-export function clampStat(n) {
-  n = Math.round(Number(n) || 0);
-  return Math.max(0, Math.min(MAX_STAT, n));
+/** 유틸: 탐색 */
+function findAny(battle, id) {
+  return (battle.players || []).find(p => p.id === id) || null;
+}
+function findAlive(battle, id) {
+  const p = findAny(battle, id);
+  return p && p.hp > 0 ? p : null;
+}
+function opponentsOf(battle, actor) {
+  return (battle.players || []).filter(p => p.team !== actor.team && p.hp > 0);
+}
+function findAliveOpponent(battle, actor) {
+  return opponentsOf(battle, actor)[0] || null;
 }
 
-/** 명중/치명 판정 */
-export function computeHit({ luk, hitRoll }) {
-  const hit = (Number(luk || 0) + Number(hitRoll || 0)) >= HIT_THRESHOLD;
-  const crit = CRIT_FORMULA(Number(luk || 0), Number(hitRoll || 0));
-  return { hit, crit };
+/** HP 업데이트 병합 */
+function mergeHpUpdates(dest, src) {
+  Object.keys(src || {}).forEach(k => { dest[k] = src[k]; });
 }
 
-/** 공격력 쪽 공격 수치 (회피/방어 계산에 사용) */
-export function computeAttackScore({ atk, atkRoll, atkMul = 1 }) {
-  const A = clampStat(atk);
-  const r = Number(atkRoll || 0);
-  return (A * atkMul) + r;
-}
-
-/** 수비 측 방어 수치 (데미지 감소 계산에 사용) */
-export function computeDefenseScore({ def, defMul = 1 }) {
-  const D = clampStat(def);
-  return D * defMul;
-}
-
-/** 기본 데미지 공식 (치명 시 2배) */
-export function computeDamage({ atk, def, atkRoll, crit, atkMul = 1, defMul = 1 }) {
-  const atkScore = computeAttackScore({ atk, atkRoll, atkMul }); // 공격측 기여
-  const defScore = computeDefenseScore({ def, defMul });         // 방어측 기여
-  let dmg = Math.max(0, Math.floor(atkScore - defScore));
-  if (crit) dmg = Math.floor(dmg * 2);
-  return { dmg, atkScore };
-}
-
-/** 아이템 적용 (상태/effects 반영 + 로그/업데이트 반환) */
-export function applyItemEffect(battle, { actor, target, itemType }) {
+/**
+ * 액션 해석기
+ * @param {Object} battle - 서버 배틀 상태
+ * @param {Object} action - { actorId, type, ... }
+ * @returns {Object} - { logs:[], updates:{hp:{}}, turnEnded:boolean }
+ */
+export function resolveAction(battle, action) {
+  const { actorId, type } = action || {};
   const logs = [];
-  const updates = { hp: {}, effects: [] };
+  const updates = { hp: {} };
 
-  const key = normalizeItemKey(itemType);
-  const spec = ITEMS[key];
-  if (!spec) {
-    logs.push({ type: "system", message: `알 수 없는 아이템` });
-    return { ok: false, logs, updates };
+  const actor = findAlive(battle, actorId);
+  if (!actor) {
+    logs.push({ type: "system", message: "행동 주체가 유효하지 않음" });
+    return { logs, updates, turnEnded: false };
   }
 
-  // 인벤토리에서 1개 소모
-  const idx = (actor.items || []).findIndex(k => normalizeItemKey(k) === key);
-  if (idx === -1) {
-    logs.push({ type: "system", message: `${spec.label} 사용 실패: 보유 중이 아님` });
-    return { ok: false, logs, updates };
-  }
-  actor.items.splice(idx, 1);
+  const kind = String(type || "").toLowerCase();
 
-  if (key === "dittany") {
-    // 즉시 회복 +10
-    const maxHp = Number(target.maxHp || 100) || 100;
-    const nowHp = Math.max(0, Number(target.hp || 0));
-    const healed = Math.min(spec.heal, Math.max(0, maxHp - nowHp));
-    const newHp = Math.min(maxHp, nowHp + spec.heal);
-    target.hp = newHp; // 서버 상태 갱신
-    updates.hp[target.id] = newHp;
-    logs.push({ type: "system", message: `${actor.name} → ${target.name} 디터니 사용, ${healed} 회복` });
-    return { ok: true, logs, updates };
+  // 1) 패스
+  if (kind === "pass") {
+    logs.push({ type: "system", message: `${actor.name} 턴을 넘김` });
+    return { logs, updates, turnEnded: true };
   }
 
-  if (key === "attackBoost") {
-    const success = chance(spec.success);
-    // 효과는 "다음 자신의 행동 1회"에 적용되도록 버프를 걸어 둠
-    const eff = {
-      ownerId: actor.id,
-      type: "attackBoost",
-      factor: spec.factor,
-      charges: 1,                 // 1회 사용 후 소멸
-    };
-    ensureEffectsArray(battle);
-    battle.effects.push(eff);
-    logs.push({ type: "system", message: `${actor.name} 공격 보정기 사용 ${success ? "성공" : "실패"} (성공 시 공격력 ×${spec.factor})` });
-    // 성공/실패 여부는 실제 데미지 계산 시에도 확인해야 하지만,
-    // 실패해도 "아이템은 소모"가 규칙. 여기서는 버프를 걸되, 성공 플래그를 함께 저장.
-    eff.success = success;
-    return { ok: true, logs, updates };
-  }
-
-  if (key === "defenseBoost") {
-    const success = chance(spec.success);
-    const eff = {
+  // 2) 방어
+  if (kind === "defend") {
+    ensureEffects(battle);
+    battle.effects.push({
       ownerId: actor.id,
       type: "defenseBoost",
-      factor: spec.factor,
-      charges: 1, // 다음 피격 1회
-    };
-    ensureEffectsArray(battle);
-    battle.effects.push(eff);
-    logs.push({ type: "system", message: `${actor.name} 방어 보정기 사용 ${success ? "성공" : "실패"} (성공 시 방어력 ×${spec.factor})` });
-    eff.success = success;
-    return { ok: true, logs, updates };
+      factor: 1.25,
+      charges: 1,
+      success: true,
+      source: "action:defend"
+    });
+    logs.push({ type: "system", message: `${actor.name} 방어 태세` });
+    return { logs, updates, turnEnded: true };
   }
 
-  return { ok: false, logs, updates };
-}
+  // 3) 회피
+  if (kind === "dodge") {
+    ensureEffects(battle);
+    battle.effects.push({
+      ownerId: actor.id,
+      type: "dodgePrep",
+      add: 4,
+      charges: 1,
+      success: true,
+      source: "action:dodge"
+    });
+    logs.push({ type: "system", message: `${actor.name} 회피 준비` });
+    return { logs, updates, turnEnded: true };
+  }
 
-/** 현재 공격에 적용할 일시 버프(Mul) 계산 + 차감 */
-export function consumeAttackMultiplier(battle, actorId) {
-  let mul = 1;
-  if (!Array.isArray(battle.effects)) return { mul, note: null };
-  for (const eff of battle.effects) {
-    if (eff?.ownerId === actorId && eff.type === "attackBoost" && eff.charges > 0) {
-      // 성공한 경우만 배율 적용
-      if (eff.success) mul *= Number(eff.factor || 1);
-      eff.charges -= 1;
+  // 4) 아이템
+  if (kind === "item") {
+    const key = normalizeItemKey(action.itemType);
+    const target = action.targetId ? findAny(battle, action.targetId) : actor;
+
+    if (!target) {
+      logs.push({ type: "system", message: "대상이 유효하지 않음" });
+      return { logs, updates, turnEnded: true };
     }
-  }
-  // 쓰고 난 빈 charges 는 컬렉션 정리
-  battle.effects = battle.effects.filter(e => (e.charges || 0) > 0);
-  return { mul, note: mul > 1 ? `공격 보정 ×${mul}` : null };
-}
-
-/** 이번 피격에 적용할 일시 방어 배율 + 차감 */
-export function consumeDefenseMultiplierOnHit(battle, defenderId) {
-  let mul = 1;
-  if (!Array.isArray(battle.effects)) return { mul, note: null };
-  for (const eff of battle.effects) {
-    if (eff?.ownerId === defenderId && eff.type === "defenseBoost" && eff.charges > 0) {
-      if (eff.success) mul *= Number(eff.factor || 1);
-      eff.charges -= 1;
+    if (key === "dittany" && target.hp <= 0) {
+      logs.push({ type: "system", message: "사망자에게는 회복 불가" });
+      return { logs, updates, turnEnded: true };
     }
+
+    const { logs: l2, updates: up } = applyItemEffect(battle, { actor, target, itemType: key });
+    (l2 || []).forEach(x => logs.push(x));
+    mergeHpUpdates(updates.hp, up?.hp || {});
+    return { logs, updates, turnEnded: true };
   }
-  battle.effects = battle.effects.filter(e => (e.charges || 0) > 0);
-  return { mul, note: mul > 1 ? `방어 보정 ×${mul}` : null };
+
+  // 5) 공격
+  if (kind === "attack") {
+    const target =
+      action.targetId
+        ? (() => {
+            const cand = findAny(battle, action.targetId);
+            return (cand && cand.hp > 0 && cand.team !== actor.team) ? cand : null;
+          })()
+        : findAliveOpponent(battle, actor);
+
+    if (!target) {
+      logs.push({ type: "system", message: "공격 대상이 없음" });
+      return { logs, updates, turnEnded: false };
+    }
+
+    // 회피 판정용 기본 공격수치 (atkMul 미적용)
+    const { score: baseAtkScore, atk, atkRoll } = computeAttackScoreFromActor(attackerFrom(actor));
+
+    // 회피 보너스(+4) 소비 여부
+    let evasionBonus = 0;
+    const hadDodge = hasDodgePrep(battle, target);
+    if (hadDodge) evasionBonus = 4;
+
+    // 히트/치명 + (선택)회피 판정
+    const { hit, crit } = computeHitFromActors({
+      attacker: attackerFrom(actor),
+      defender: defenderFrom(target),
+      evasionBonus,
+      attackScore: baseAtkScore
+    });
+
+    if (!hit) {
+      // 회피 버프는 판정시 사용되며, 사용했다면 charges 소모
+      if (hadDodge) consumeDodge(battle, target);
+      logs.push({ type: "battle", message: `${actor.name}의 공격이 빗나감` });
+      return { logs, updates, turnEnded: true };
+    }
+
+    // 여기서 dodge 소모 (명중 시에만 소모하도록 바꾸려면 위에서 소모를 빼고 여기서 조건부 소모)
+    if (hadDodge) consumeDodge(battle, target);
+
+    // 배율 계산(히트 후에만 소모)
+    const { mul: atkMul } = consumeAttackMultiplier(battle, actor.id);
+    const { mul: defMul } = consumeDefenseMultiplierOnHit(battle, target.id);
+
+    // 피해 계산
+    const { dmg } = computeDamageFromActors({
+      attacker: attackerFrom(actor),
+      defender: defenderFrom(target),
+      atk,        // 위에서 사용한 동일한 atk 값
+      atkRoll,    // 위에서 사용한 동일한 d20
+      crit,
+      atkMul,
+      defMul
+    });
+
+    updates.hp[target.id] = Math.max(0, (target.hp || 0) - dmg);
+
+    logs.push({
+      type: "battle",
+      message: crit
+        ? `${actor.name}의 치명타 적중! ${target.name}에게 ${dmg} 피해`
+        : `${actor.name}가 ${target.name}에게 ${dmg} 피해`
+    });
+
+    return { logs, updates, turnEnded: true };
+  }
+
+  // 알 수 없는 액션
+  logs.push({ type: "system", message: "알 수 없는 행동" });
+  return { logs, updates, turnEnded: false };
 }
 
-function ensureEffectsArray(battle) {
-  if (!Array.isArray(battle.effects)) battle.effects = [];
+/* ─────────────────────────────────────────────
+ * 내부 보조 (actor/defender shape 정규화)
+ * ────────────────────────────────────────────*/
+function attackerFrom(a) {
+  return a;
+}
+function defenderFrom(d) {
+  return d;
+}
+
+/* ─────────────────────────────────────────────
+ * 회피 준비/소모 (combat 전용 보조)
+ * ────────────────────────────────────────────*/
+function hasDodgePrep(battle, defender) {
+  for (const fx of battle.effects || []) {
+    if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
+    if (fx.type === "dodgePrep") return true;
+  }
+  return false;
+}
+function consumeDodge(battle, defender) {
+  for (const fx of battle.effects || []) {
+    if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
+    if (fx.type === "dodgePrep") { fx.charges -= 1; return; }
+  }
 }
