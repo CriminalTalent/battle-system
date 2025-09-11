@@ -2,9 +2,18 @@
 const $  = (q,root=document)=>root.querySelector(q);
 const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
 
-const socket = io({ transports:['websocket','polling'] });
+const socket = io(window.location.origin, {
+  path: '/socket.io',
+  transports: ['websocket','polling'],
+  withCredentials: true,
+  timeout: 20000,
+});
 
-// 연결 상태에 따라 버튼 활성/비활성
+let connected = false;
+socket.on('connect', ()=>{ connected=true; setBtns(); appendLog('서버 연결 성공'); });
+socket.on('disconnect', (r)=>{ connected=false; setBtns(); appendLog('서버 연결 해제: '+r); });
+socket.on('connect_error', (e)=> appendLog('서버 연결 실패: '+(e?.message||e)));
+
 const btnCreate = $('#btnCreate');
 const btnStart  = $('#btnStart');
 const btnPause  = $('#btnPause');
@@ -12,17 +21,11 @@ const btnResume = $('#btnResume');
 const btnEnd    = $('#btnEnd');
 const modeSel   = $('#mode');
 
-let connected = false;
-socket.on('connect', ()=>{ connected = true; setBtns(); });
-socket.on('disconnect', ()=>{ connected = false; setBtns(); });
-
-function setBtns(){
-  const off = !connected;
-  [btnCreate,btnStart,btnPause,btnResume,btnEnd].forEach(b=> b.disabled = off);
-}
+function setBtns(){ const off=!connected; [btnCreate,btnStart,btnPause,btnResume,btnEnd].forEach(b=> b.disabled=off); }
 
 let currentBattleId = null;
 let currentMode = modeSel?.value || '1v1';
+modeSel.addEventListener('change', e=> currentMode = e.target.value);
 
 // 입력 refs
 const elName = $('#pName'), elTeam = $('#pTeam'), elHp = $('#pHp');
@@ -34,21 +37,22 @@ const listA = $('#listA tbody'), listB = $('#listB tbody');
 const logBox = $('#log'), chatBox = $('#chat'), chatMsg = $('#chatMsg'), btnSend = $('#btnSend');
 const battleMeta = $('#battleMeta');
 
+// 링크 생성 섹션
+const playerLinksWrap = $('#playerLinks');
+const btnGenSpectator = $('#btnGenSpectator');
+const spectatorUrlInput= $('#spectatorUrl');
+const btnCopySpectator = $('#btnCopySpectator');
+
 let tmpAvatarUrl = "";
 
-// 이벤트 바인딩
-modeSel.addEventListener('change', e => currentMode = e.target.value);
+// 버튼 이벤트
+btnCreate.addEventListener('click', ()=> connected && socket.emit('createBattle', { mode: currentMode }));
+btnStart .addEventListener('click', ()=> currentBattleId && socket.emit('startBattle',  { battleId: currentBattleId }));
+btnPause .addEventListener('click', ()=> currentBattleId && socket.emit('pauseBattle',  { battleId: currentBattleId }));
+btnResume.addEventListener('click', ()=> currentBattleId && socket.emit('resumeBattle', { battleId: currentBattleId }));
+btnEnd   .addEventListener('click', ()=> currentBattleId && socket.emit('endBattle',    { battleId: currentBattleId }));
 
-btnCreate.addEventListener('click', ()=>{
-  if(!connected) { appendLog('서버 연결 대기 중'); return; }
-  socket.emit('createBattle', { mode: currentMode });
-});
-
-btnStart.addEventListener('click', ()=> currentBattleId && socket.emit('startBattle', { battleId: currentBattleId }));
-btnPause.addEventListener('click', ()=> currentBattleId && socket.emit('pauseBattle', { battleId: currentBattleId }));
-btnResume.addEventListener('click',()=> currentBattleId && socket.emit('resumeBattle',{ battleId: currentBattleId }));
-btnEnd.addEventListener('click',   ()=> currentBattleId && socket.emit('endBattle',   { battleId: currentBattleId }));
-
+// 참가자 추가
 btnAdd.addEventListener('click', ()=>{
   if(!currentBattleId){ appendLog('전투 생성부터 진행하세요.'); return; }
   const name = (elName.value||'').trim(); if(!name){ elName.focus(); return; }
@@ -95,6 +99,14 @@ elAvatar.addEventListener('change', async ()=>{
   }
 });
 
+// 채팅
+btnSend.addEventListener('click', ()=>{
+  if(!currentBattleId) return;
+  const msg = chatMsg.value.trim(); if(!msg) return;
+  socket.emit('chat:send', { battleId: currentBattleId, name:'관리자', message:msg, role:'admin' });
+  chatMsg.value='';
+});
+
 // 소켓 수신
 socket.on('battleCreated', ({success,battleId,mode,error})=>{
   if(!success){ appendLog(`전투 생성 실패: ${error || '오류'}`); return; }
@@ -103,21 +115,32 @@ socket.on('battleCreated', ({success,battleId,mode,error})=>{
   battleMeta.textContent = `ID: ${battleId} · 모드: ${mode}`;
   socket.emit('join', { battleId });
 });
+
 socket.on('battle:update', (snap)=>{
   renderLists(snap);
+  renderPlayerLinks(snap); // 플레이어 링크 갱신
   battleMeta.textContent = `ID: ${snap.id} · 모드: ${snap.mode} · 상태: ${snap.status} · 턴: ${snap.turn}`;
 });
+
 socket.on('battle:log', (m)=> appendLog(m.message));
+
 socket.on('battle:chat', ({name,message})=>{
   const p = document.createElement('div'); p.textContent = `${name}: ${message}`;
   chatBox.appendChild(p); chatBox.scrollTop = chatBox.scrollHeight;
 });
-btnSend.addEventListener('click', ()=>{
-  if(!currentBattleId) return;
-  const msg = chatMsg.value.trim(); if(!msg) return;
-  socket.emit('chat:send', { battleId: currentBattleId, name:'관리자', message:msg, role:'admin' });
-  chatMsg.value='';
+
+// 관전자 OTP 생성
+btnGenSpectator.addEventListener('click', ()=>{
+  if(!currentBattleId){ appendLog('전투 생성 후 사용하세요.'); return; }
+  socket.emit('generateSpectatorOtp', { battleId: currentBattleId });
 });
+socket.on('spectatorOtpGenerated', ({success, spectatorUrl, error})=>{
+  if(!success){ appendLog('관전자 비밀번호 생성 실패: ' + (error||'오류')); return; }
+  const url = makeAbsolute(spectatorUrl);
+  spectatorUrlInput.value = url;
+  appendLog('관전자 링크 생성 완료');
+});
+btnCopySpectator.addEventListener('click', ()=> copyToClipboard(spectatorUrlInput.value));
 
 // 렌더/유틸
 function renderLists(snap){
@@ -130,5 +153,44 @@ function renderLists(snap){
     (p.team==='phoenix'?listA:listB).appendChild(tr);
   });
 }
+
+// 플레이어 자동 로그인 링크 생성
+function renderPlayerLinks(snap){
+  playerLinksWrap.innerHTML = '';
+  if(!snap?.id) return;
+  const base = window.location.origin;
+  (snap.players||[]).forEach(p=>{
+    const token = `player-${encodeURIComponent(p.name)}-${snap.id}`;
+    const url   = `${base}/player?battle=${snap.id}&token=${token}&name=${encodeURIComponent(p.name)}`;
+
+    const row = document.createElement('div');
+    row.className = 'link-row';
+    row.innerHTML = `
+      <div class="label">참가자</div>
+      <input class="input" value="${url}" readonly>
+      <button class="btn" data-link="${url}">복사</button>
+    `;
+    const btn = row.querySelector('button');
+    btn.addEventListener('click', ()=> copyToClipboard(url));
+    playerLinksWrap.appendChild(row);
+  });
+}
+
+function copyToClipboard(text){
+  if(!text) return;
+  navigator.clipboard?.writeText(text).then(()=> appendLog('복사 완료')).catch(()=>{
+    // 구형 브라우저 대응
+    const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+    ta.select(); try{ document.execCommand('copy'); appendLog('복사 완료'); }catch(e){ appendLog('복사 실패'); }
+    ta.remove();
+  });
+}
+
+function makeAbsolute(url){
+  if(!url) return '';
+  if(/^https?:\/\//i.test(url)) return url;
+  return window.location.origin + url;
+}
+
 function appendLog(t){ const d=document.createElement('div'); d.textContent=t; logBox.appendChild(d); logBox.scrollTop=logBox.scrollHeight; }
 function clampNum(v,min,max){ return Math.max(min, Math.min(max, parseInt(v,10)||0)); }
