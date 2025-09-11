@@ -12,10 +12,11 @@
       --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
       --btn-bg:#0b0d10; --btn-border:#D4BA8D; --btn-text:#DCC7A2;
     }
+    *{box-sizing:border-box}
     body{margin:0; background:var(--bg-0); color:var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;}
     .wrap{max-width:1200px; margin:20px auto; padding:0 12px;}
-    .cols{display:grid; grid-template-columns: 280px 1fr 320px; gap:14px;}
+    .cols{display:grid; grid-template-columns: 280px 1fr 340px; gap:14px;}
     @media (max-width: 980px){ .cols{grid-template-columns: 1fr;} }
 
     .card{
@@ -69,9 +70,12 @@
       display:flex; align-items:center; justify-content:center; overflow:hidden;}
     .imgbox img{width:100%; height:100%; object-fit:contain;}
 
-    .log{height:160px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
-    .chat{height:220px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
-    .chatbox{display:flex; gap:6px; margin-top:6px;}
+    /* 우측 패널: 로그(위) + 채팅(아래) 세로 분할 */
+    .side-split{display:flex; flex-direction:column; gap:12px;}
+    .hr{height:1px; background:var(--border); margin:4px 0;}
+    .log{height:42vh; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chat{height:34vh; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chatbox{display:flex; gap:6px;}
     .chatbox input{flex:1; height:38px; border-radius:10px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); padding:0 10px;}
 
     /* 오버레이(자동 로그인/타깃 선택) */
@@ -122,12 +126,13 @@
         </div>
       </div>
 
-      <!-- 중앙: 턴 정보/순서 큐/이미지/액션 -->
+      <!-- 중앙: 순서/이미지/액션 -->
       <div class="card">
         <div class="turnbox" style="width:100%">
           <div id="turnTeam" style="font-weight:700;">-</div>
 
-          <div class="queue-title">커밋 &gt; 순서</div>
+          <!-- 큐 제목: "순서" -->
+          <div class="queue-title">순서</div>
           <div id="queue" class="queue"></div>
 
           <div class="imgbox"><img id="turnImg" alt=""></div>
@@ -145,17 +150,23 @@
         </div>
       </div>
 
-      <!-- 우: 채팅/로그 분리 -->
-      <div class="card">
-        <div class="label">채팅</div>
-        <div id="chat" class="chat"></div>
-        <div class="chatbox">
-          <input id="chatMsg" placeholder="메시지 입력"/>
-          <button id="btnSend" class="btn">보내기</button>
+      <!-- 우: 전투 로그(위) + 채팅(아래) 세로 분할 -->
+      <div class="card side-split">
+        <div>
+          <div class="label">전투 로그</div>
+          <div id="log" class="log"></div>
         </div>
 
-        <div class="label" style="margin-top:12px">전투 로그</div>
-        <div id="log" class="log"></div>
+        <div class="hr"></div>
+
+        <div>
+          <div class="label">채팅</div>
+          <div id="chat" class="chat"></div>
+          <div class="row chatbox" style="margin-top:6px">
+            <input id="chatMsg" placeholder="메시지 입력"/>
+            <button id="btnSend" class="btn">보내기</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
