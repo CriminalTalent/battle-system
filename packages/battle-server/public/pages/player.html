@@ -1,182 +1,130 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS Battle System - 전투 참가자</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>PYXIS 전투 참가자</title>
   <style>
     :root{
-      --bg:#0b1117; --panel:#121a23; --panel-2:#0f1620; --fg:#e9e4d7;
-      --muted:#cdbfa5; --line:rgba(220,199,162,.22);
-      --gold:#c9a86a; --gold2:#e8d3a0; --gold3:#ffefc1;
-      --ok:#2d5a27; --accent:#d4b77e;
-      --radius:14px; --rsm:10px;
+      --gold-1:#DCC7A2; --gold-2:#D4BA8D;
+      --bg-0:#0f1216; --bg-1:#141922; --bg-2:#1b2230;
+      --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
+      --btn-bg:#0b0d10; --btn-border:#D4BA8D; --btn-text:#DCC7A2;
     }
-    *{box-sizing:border-box}
-    html,body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui}
-    .container{max-width:1400px;margin:0 auto;padding:18px}
+    body{margin:0; background:var(--bg-0); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;}
+    .wrap{max-width:1200px; margin:20px auto; padding:0 12px;}
+    .cols{display:grid; grid-template-columns: 280px 1fr 320px; gap:14px;}
+    @media (max-width: 980px){ .cols{grid-template-columns: 1fr;} }
 
-    header.top{display:flex;justify-content:center;padding:12px 0;border-bottom:1px solid var(--line);
-      background:#0c1118cc;backdrop-filter:blur(6px);position:sticky;top:0;z-index:10}
-    .brand{font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--gold),var(--gold2));
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+      border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);}
 
-    .grid{display:grid;grid-template-columns:320px 1fr 360px;gap:16px}
-    @media(max-width:1200px){.grid{grid-template-columns:1fr}}
+    .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+    .row{display:flex; gap:8px; flex-wrap:wrap;}
+    .grid{display:grid; gap:8px;}
+    .g-2{grid-template-columns: repeat(2, 1fr);}
 
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-    .card-h{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:800;color:var(--gold2)}
-    .card-b{padding:14px}
+    .hpbar{height:12px; border-radius:6px; background:#3b2f1a; overflow:hidden; border:1px solid #6b5a3a}
+    .hpbar > i{display:block; height:100%; width:0%;
+      background: linear-gradient(90deg, #8c6b2e, #DCC7A2);}
 
-    /* 내 정보 */
-    .avatar{width:120px;height:120px;border-radius:50%;border:3px solid var(--gold2);object-fit:cover;background:#0d131a;display:block;margin:0 auto}
-    .me-name{font-weight:800;text-align:center;margin:10px 0 2px}
-    .badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);font-size:12px}
-    .badge-wrap{text-align:center}
-    .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
-    .stat{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
-    .stat .k{font-size:12px;color:var(--muted)}
-    .stat .v{font-weight:800;margin-top:4px}
+    .btn{display:inline-flex; align-items:center; justify-content:center; height:38px; padding:0 12px;
+      border-radius:10px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-weight:600; cursor:pointer;}
+    .btn:disabled{opacity:.5; cursor:not-allowed;}
+    .btn-gold{background:var(--btn-bg); border-color:var(--btn-border); color:var(--btn-text);}
 
-    /* HP 바: 금색 그라데이션 */
-    .hpbox{margin:12px 0}
-    .hpbg{height:20px;border-radius:10px;border:1px solid var(--line);background:#0e1520;position:relative;overflow:hidden}
-    .hpbar{height:100%;background:linear-gradient(90deg,#b89453,#e7d08f,#ffefc1);box-shadow:inset 0 2px 4px rgba(255,255,255,.12)}
-    .hptext{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-weight:800;color:#1a1206}
+    .turnbox{display:flex; flex-direction:column; align-items:center; gap:10px;}
+    .imgbox{width:100%; max-width:620px; aspect-ratio:4/3; background:#0c0f14; border:1px solid var(--border); border-radius:16px;
+      display:flex; align-items:center; justify-content:center; overflow:hidden;}
+    .imgbox img{width:100%; height:100%; object-fit:contain;}
 
-    /* 중앙: 현재 턴 / 로그 — 비율 유지(자르지 않음) */
-    .turn-wrap{text-align:center}
-    .turn-frame{
-      width:min(66%, 920px);
-      aspect-ratio: 4 / 3;
-      margin:10px auto;
-      border-radius:22px;
-      border:3px solid var(--gold2);
-      background:#0d131a;
-      box-shadow:0 8px 30px rgba(0,0,0,.35);
-      overflow:hidden;
-    }
-    .turn-frame > img{
-      width:100%; height:100%; object-fit:contain; display:block;
-    }
-    .turn-name{font-weight:800;color:var(--gold2);margin-top:8px}
-    .turn-timer{color:var(--muted);margin-top:4px}
+    .log{height:160px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chat{height:220px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chatbox{display:flex; gap:6px; margin-top:6px;}
+    .chatbox input{flex:1; height:38px; border-radius:10px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); padding:0 10px;}
 
-    .log{height:320px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);
-      border-radius:10px;padding:10px;margin-top:14px}
-    .log .entry{padding:4px 6px;border-left:3px solid rgba(201,168,106,.4);margin:2px 0}
-    .log .chat{border-left-color:#2d5a27;color:#cce8cc}
-    .mono{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:12px;color:var(--muted)}
-
-    /* 오른쪽: 액션/채팅 */
-    .act-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .btn{background:linear-gradient(135deg,#c9a86a,#e8d3a0);color:#1b1408;border:none;border-radius:10px;padding:11px 12px;font-weight:800;cursor:pointer}
-    .btn:hover{filter:brightness(1.04)}
-    .btn:disabled{background:#0e1520;color:#6b6559;border:1px solid var(--line);cursor:not-allowed}
-    .btn.ready{background:linear-gradient(135deg,#2d5a27,#3e7a3a);color:#fff}
-
-    .chat-panel{margin-top:14px}
-    .chat-box{height:240px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px}
-    .chat-row{display:flex;gap:8px;margin-top:8px}
-    .chat-inp{flex:1;background:#0e1520;border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--fg)}
-
-    /* 자동 로그인 오버레이 */
-    .overlay{position:fixed;inset:0;background:rgba(10,15,26,.9);display:none;align-items:center;justify-content:center;z-index:1000}
-    .overlay.show{display:flex}
-    .spinner{width:44px;height:44px;border:4px solid #1d2530;border-top:4px solid var(--gold2);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
-    @keyframes spin{to{transform:rotate(360deg)}}
+    /* 오버레이(자동 로그인/타깃 선택) */
+    .overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:50;}
+    .sheet{background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:16px; width:min(92vw, 520px);}
+    .list{display:grid; gap:8px; margin-top:8px;}
+    .target{display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .hidden{display:none !important;}
   </style>
 </head>
 <body>
-  <header class="top"><div class="brand">PYXIS 전투 시스템</div></header>
+  <div id="authOverlay" class="overlay">
+    <div class="sheet">
+      <div>자동 로그인 준비 중…</div>
+      <div style="color:#9aa4b2; font-size:12px; margin-top:6px">연결 완료 후 본 화면으로 전환됩니다.</div>
+    </div>
+  </div>
 
-  <!-- 인증 -->
-  <section id="authView" class="container">
-    <div class="card" style="max-width:540px;margin:20px auto">
-      <div class="card-h">전투 참가자 인증</div>
-      <div class="card-b" style="display:grid;gap:10px">
-        <label class="mono">전투 ID <input id="battleId" class="chat-inp" type="text" placeholder="전투 ID" /></label>
-        <label class="mono">이름 <input id="playerName" class="chat-inp" type="text" placeholder="전투 참가자 이름" /></label>
-        <label class="mono">비밀번호 <input id="authToken" class="chat-inp" type="password" placeholder="player-이름-BID" /></label>
-        <button id="btnAuth" class="btn">접속</button>
-        <div class="mono">URL 파라미터(battle, name, token)로 자동 인증</div>
+  <div class="wrap">
+    <div class="cols">
+      <!-- 좌: 내 카드 + 팀 목록 -->
+      <div class="card">
+        <div class="label">내 정보</div>
+        <div id="meName" style="font-weight:700; margin-bottom:6px;">-</div>
+        <div class="grid g-2">
+          <div><div class="label">팀</div><div id="meTeam">-</div></div>
+          <div><div class="label">HP</div><div id="meHp">-</div></div>
+        </div>
+        <div class="hpbar" style="margin-top:6px"><i id="meHpBar"></i></div>
+        <div class="grid g-2" style="margin-top:10px">
+          <div><div class="label">공격</div><div id="sAtk">-</div></div>
+          <div><div class="label">방어</div><div id="sDef">-</div></div>
+          <div><div class="label">행운</div><div id="sLuk">-</div></div>
+          <div><div class="label">민첩</div><div id="sAgi">-</div></div>
+        </div>
+
+        <div class="label" style="margin-top:12px">팀원</div>
+        <div id="teamList" class="list"></div>
+      </div>
+
+      <!-- 중앙: 턴 정보/이미지/액션 -->
+      <div class="card">
+        <div class="turnbox">
+          <div id="turnTeam" style="font-weight:700;">-</div>
+          <div class="imgbox"><img id="turnImg" alt=""></div>
+          <div id="turnTimer" class="label">-</div>
+
+          <div class="row">
+            <button id="btnAttack" class="btn btn-gold" disabled>공격</button>
+            <button id="btnDefend" class="btn" disabled>방어</button>
+            <button id="btnDodge"  class="btn" disabled>회피</button>
+            <button id="btnItem"   class="btn" disabled>아이템</button>
+            <button id="btnPass"   class="btn" disabled>패스</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 우: 채팅/로그 분리 -->
+      <div class="card">
+        <div class="label">채팅</div>
+        <div id="chat" class="chat"></div>
+        <div class="chatbox">
+          <input id="chatMsg" placeholder="메시지 입력"/>
+          <button id="btnSend" class="btn">보내기</button>
+        </div>
+
+        <div class="label" style="margin-top:12px">전투 로그</div>
+        <div id="log" class="log"></div>
       </div>
     </div>
-  </section>
+  </div>
 
-  <!-- 메인 -->
-  <main id="mainView" class="container" style="display:none">
-    <div class="grid">
-      <!-- 좌: 내 정보 -->
-      <section class="card">
-        <div class="card-h">내 정보</div>
-        <div class="card-b">
-          <img id="myAvatar" class="avatar" src="/assets/images/default-avatar.png" alt="내 아바타" />
-          <div id="myName" class="me-name">전투 참가자</div>
-          <div class="badge-wrap"><span id="myTeam" class="badge">A팀</span></div>
-
-          <div class="stats">
-            <div class="stat"><div class="k">공격</div><div id="statATK" class="v">3</div></div>
-            <div class="stat"><div class="k">방어</div><div id="statDEF" class="v">3</div></div>
-            <div class="stat"><div class="k">민첩</div><div id="statAGI" class="v">3</div></div>
-            <div class="stat"><div class="k">행운</div><div id="statLUK" class="v">3</div></div>
-          </div>
-
-          <div class="hpbox">
-            <div class="mono" style="text-align:center">체력</div>
-            <div class="hpbg"><div id="myHpBar" class="hpbar" style="width:100%"></div><div id="myHpText" class="hptext">100 / 100</div></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 중앙 -->
-      <section class="card">
-        <div class="card-h">현재 턴</div>
-        <div class="card-b turn-wrap">
-          <div class="turn-frame">
-            <img id="turnAvatar" src="/assets/images/default-avatar.png" alt="현재 턴">
-          </div>
-          <div id="turnName" class="turn-name">대기 중</div>
-          <div id="turnTimer" class="turn-timer">턴 시간: --</div>
-
-          <div class="log" id="battleLog"><div class="entry mono">전투 시작을 기다리는 중…</div></div>
-        </div>
-      </section>
-
-      <!-- 우: 액션/채팅 -->
-      <section class="card">
-        <div class="card-h">액션</div>
-        <div class="card-b">
-          <button id="btnReady" class="btn ready" style="width:100%;margin-bottom:8px">준비하기</button>
-          <div class="act-grid">
-            <button id="btnAttack" class="btn" disabled>공격</button>
-            <button id="btnDefend" class="btn" disabled>방어</button>
-            <button id="btnDodge" class="btn" disabled>회피</button>
-            <button id="btnPass" class="btn" disabled>패스</button>
-            <button id="btnItemDittany" class="btn" disabled>디터니</button>
-            <button id="btnItemAttack" class="btn" disabled>공격 보정기</button>
-            <button id="btnItemDefense" class="btn" disabled>방어 보정기</button>
-          </div>
-
-          <div class="chat-panel">
-            <div id="chatMessages" class="chat-box"><div class="mono">채팅을 시작하세요.</div></div>
-            <div class="chat-row">
-              <input id="chatInput" class="chat-inp" type="text" placeholder="메시지 입력…" />
-              <button id="btnChat" class="btn">전송</button>
-            </div>
-          </div>
-        </div>
-      </section>
+  <!-- 타깃 선택 오버레이 -->
+  <div id="targetOverlay" class="overlay hidden">
+    <div class="sheet">
+      <div id="targetTitle" style="font-weight:700">대상 선택</div>
+      <div id="targetList" class="list"></div>
+      <div class="row" style="margin-top:10px; justify-content:flex-end">
+        <button id="btnCancelTarget" class="btn">취소</button>
+      </div>
     </div>
-  </main>
-
-  <!-- 자동 로그인 오버레이 -->
-  <div id="loadingOverlay" class="overlay"><div>
-    <div class="spinner"></div>
-    <div class="mono" style="text-align:center">자동 로그인 중…</div>
-  </div></div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/assets/js/player.js"></script>
+  <script src="/assets/js/player.js" type="module"></script>
 </body>
 </html>
