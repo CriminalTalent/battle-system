@@ -1,231 +1,256 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>PYXIS 관리자</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-
+  <link rel="stylesheet" href="/assets/css/effects.css">
   <style>
     :root{
       --gold-1:#DCC7A2; --gold-2:#D4BA8D;
       --bg-0:#0f1216; --bg-1:#141922; --bg-2:#1b2230;
       --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
       --btn-bg:#0b0d10; --btn-border:#D4BA8D; --btn-text:#DCC7A2;
+      --input-bg:#11161f;
     }
-    html,body{height:100%}
-    body{
-      background: radial-gradient(1000px 1000px at 10% -20%, rgba(212,186,141,.08), transparent 60%),
-                  radial-gradient(800px 800px at 110% 10%, rgba(220,199,162,.06), transparent 55%),
-                  var(--bg-0);
-      color:var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;
-    }
-    .wrap{max-width:1280px; margin:24px auto; padding:0 16px;}
-    .brand{display:flex; align-items:center; gap:10px; font-family:'Playfair Display',serif; font-weight:700; letter-spacing:.6px; font-size:24px; margin-bottom:12px;}
-    .brand .accent{background:linear-gradient(90deg,var(--gold-1),#f5e6c9); -webkit-background-clip:text; background-clip:text; color:transparent;}
-    .conn{width:10px;height:10px;border-radius:50%;background:#566172;border:1px solid #3a414d}
-    .conn.ok{background:#2ea043;border-color:#1c6c2d}
+    *{box-sizing:border-box}
+    body{margin:0; background:var(--bg-0); color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;}
+    .wrap{max-width:1280px; margin:20px auto; padding:0 12px;}
+    header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+    .brand{display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.2px;}
+    .conn{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted);}
+    .dot{width:10px; height:10px; border-radius:50%; background:#7a2b2b; border:1px solid #4a1a1a;}
+    .dot.ok{background:#1f7a3b; border-color:#0e4c23;}
 
-    .cols3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;}
-    @media (max-width: 1100px){ .cols3{grid-template-columns: 1fr 1fr;} }
-    @media (max-width: 780px){ .cols3{grid-template-columns: 1fr;} }
+    .cols{display:grid; grid-template-columns: 360px 1fr 420px; gap:14px;}
+    @media (max-width: 1024px){ .cols{grid-template-columns: 1fr;} }
 
     .card{
       background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
-      border:1px solid var(--border); border-radius:14px; padding:16px;
+      border:1px solid var(--border); border-radius:14px; padding:14px;
       box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);
     }
-    .section-title{font-weight:700; color:var(--gold-1); margin-bottom:10px;}
-    .row{display:flex; gap:10px; flex-wrap:wrap;}
-    .grid{display:grid; gap:10px;}
+    .card + .card{margin-top:14px;}
+    .title{font-weight:800; margin-bottom:8px;}
+    .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+    .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+    .grid{display:grid; gap:8px;}
+    .g-2{grid-template-columns: repeat(2, 1fr);}
     .g-3{grid-template-columns: repeat(3, 1fr);}
     .g-4{grid-template-columns: repeat(4, 1fr);}
-    .g-2{grid-template-columns: repeat(2, 1fr);}
-    .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
 
-    /* 버튼: 전부 금색 테두리/글자 + 검은 배경 */
     .btn{
-      display:inline-flex; align-items:center; justify-content:center;
-      height:38px; padding:0 14px; border-radius:10px; font-weight:600; letter-spacing:.2px;
-      border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--btn-text); cursor:pointer;
-      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+      display:inline-flex; align-items:center; justify-content:center; height:38px; padding:0 12px;
+      border-radius:10px; border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--btn-text);
+      font-weight:700; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;
       user-select:none;
     }
     .btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(220,199,162,.12);}
-    .btn:disabled{opacity:.55; cursor:not-allowed;}
-    .btn-gold{ /* 호환용 별칭 */ background:var(--btn-bg); border-color:var(--btn-border); color:var(--btn-text); }
+    .btn:disabled{opacity:.5; cursor:not-allowed;}
 
-    .input,.select{
-      width:100%; height:38px; padding:0 12px; border-radius:10px;
-      border:1px solid var(--border); background:var(--bg-2); color:var(--text);
-      outline:none; transition:border-color .12s ease, box-shadow .12s ease;
+    select, input[type="text"], input[type="number"], input[type="file"]{
+      width:100%; height:38px; border-radius:10px; border:1px solid var(--border);
+      background:var(--input-bg); color:var(--text); padding:0 10px;
     }
-    .input:focus,.select:focus{border-color:var(--gold-2); box-shadow:0 0 0 3px rgba(212,186,141,.15);}
+    input[readonly]{opacity:.9}
 
-    .mini{font-size:12px; color:var(--muted);}
-    .hr{height:1px;background:linear-gradient(90deg,transparent, rgba(212,186,141,.35), transparent); margin:12px 0;}
+    .hr{height:1px; background:var(--border); margin:12px 0;}
 
-    .preview{width:120px; height:90px; border:1px dashed var(--border); border-radius:10px;
-             display:flex; align-items:center; justify-content:center; color:var(--muted); background:var(--bg-1); overflow:hidden;}
+    /* 미리보기 */
+    .preview{
+      width:100%; aspect-ratio:4/3; border:1px solid var(--border); border-radius:12px;
+      display:flex; align-items:center; justify-content:center; background:#0c0f14; color:#748094;
+      background-position:center; background-repeat:no-repeat; background-size:contain;
+    }
 
-    table{width:100%; border-collapse:separate; border-spacing:0;}
-    th,td{border-bottom:1px solid var(--border); padding:10px 8px;}
-    th{color:var(--muted); text-align:left; font-weight:600;}
+    /* 리스트/로그/채팅 */
+    table{width:100%; border-collapse:collapse; font-size:14px;}
+    th, td{border-bottom:1px solid var(--border); padding:6px 8px; text-align:left;}
+    th{color:var(--muted); font-weight:600;}
 
-    .log{height:180px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:10px;}
-    .chat{height:120px; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:10px;}
-    .chatbox{display:flex; gap:8px; margin-top:8px;}
+    .log{height:50vh; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chat{height:36vh; overflow:auto; background:var(--bg-1); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .chatbox{display:flex; gap:6px; margin-top:6px;}
     .chatbox input{flex:1;}
 
-    .link-row{display:grid; grid-template-columns: 100px 1fr 70px; gap:8px; align-items:center;}
-    .linkbox{display:flex; gap:8px; align-items:center;}
-    .linkbox input{flex:1}
+    /* 링크 행 */
+    .link-row{display:grid; grid-template-columns: 64px 1fr auto; gap:8px; align-items:center;}
+    .link-row .label{margin:0; text-align:center;}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="brand">
-      <div class="conn" id="connDot" title="연결 상태"></div>
-      <div><span class="accent">PYXIS</span> 관리자</div>
-    </div>
+  <!-- 상단 결과 배너 (effects.js가 제어) -->
+  <div id="pyxis-result-banner" class="pyxis-banner" style="display:none"></div>
 
-    <div class="cols3">
-      <!-- 1열: 전투 컨트롤 -->
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div style="font-size:20px; font-weight:900; background:linear-gradient(90deg,#DCC7A2,#f5e6c9,#DCC7A2); -webkit-background-clip:text; background-clip:text; color:transparent; background-size:200% 100%; animation: shimmer 3s linear infinite;">
+          PYXIS 관리자
+        </div>
+        <div id="battleMeta" class="label">대기 중</div>
+      </div>
+      <div class="conn"><div id="connDot" class="dot"></div><span>서버 연결</span></div>
+    </header>
+
+    <div class="cols">
+      <!-- 좌: 전투 컨트롤 + 링크 생성 -->
       <div>
         <div class="card">
-          <div class="section-title">전투 컨트롤</div>
-          <div class="row" style="gap:8px; margin-bottom:10px">
-            <div style="flex:1 1 160px">
+          <div class="title">전투 컨트롤</div>
+          <div class="grid g-2">
+            <div>
               <div class="label">모드</div>
-              <select id="mode" class="select">
-                <option>1v1</option><option>2v2</option><option>3v3</option><option>4v4</option>
+              <select id="mode">
+                <option value="1v1">1v1</option>
+                <option value="2v2">2v2</option>
+                <option value="3v3">3v3</option>
+                <option value="4v4" selected>4v4</option>
               </select>
             </div>
+            <div class="row" style="align-self:end; justify-content:flex-end">
+              <button id="btnCreate" class="btn">전투 생성</button>
+            </div>
           </div>
-          <div class="row" style="gap:8px; flex-wrap:wrap">
-            <button id="btnCreate" type="button" class="btn">전투 생성</button>
-            <button id="btnStart"  type="button" class="btn">시작</button>
-            <button id="btnPause"  type="button" class="btn">일시정지</button>
-            <button id="btnResume" type="button" class="btn">재개</button>
-            <button id="btnEnd"    type="button" class="btn">종료</button>
-          </div>
+
           <div class="hr"></div>
-          <div class="mini" id="battleMeta">대기 중</div>
+
+          <div class="row" style="flex-wrap:wrap; gap:8px">
+            <button id="btnStart"  class="btn">시작</button>
+            <button id="btnPause"  class="btn">일시정지</button>
+            <button id="btnResume" class="btn">재개</button>
+            <button id="btnEnd"    class="btn">종료</button>
+          </div>
         </div>
 
-        <!-- 링크 생성 -->
-        <div class="card" id="linkCard" style="margin-top:16px">
-          <div class="section-title">링크 생성</div>
+        <div class="card">
+          <div class="title">링크 생성</div>
 
-          <!-- 플레이어(전투 참가자) 링크 -->
-          <div class="row" style="gap:8px; margin-bottom:8px">
-            <button id="btnGenPlayer" type="button" class="btn">플레이어 링크 생성</button>
+          <!-- 전투 참여자 링크 -->
+          <div class="label">전투 참여자 링크 (비밀번호 자동 포함)</div>
+          <div class="row" style="margin-bottom:8px">
+            <button id="btnGenPlayer" class="btn">참여자 링크 생성</button>
           </div>
-          <div class="mini" style="margin-bottom:6px">전투 참가자 링크는 자동 로그인 파라미터가 포함됩니다.</div>
           <div id="playerLinks" class="grid" style="gap:8px"></div>
 
           <div class="hr"></div>
 
-          <!-- 관전자 링크 + 비밀번호(OTP) -->
-          <div class="grid" style="gap:8px">
-            <div class="row" style="gap:8px">
-              <button id="btnBuildSpectator" type="button" class="btn">관전자 링크 생성</button>
-              <button id="btnGenSpectator"   type="button" class="btn">관전자 비밀번호 발급</button>
+          <!-- 관전자 링크/비밀번호 -->
+          <div class="label">관전자 링크 / 비밀번호</div>
+          <div class="grid g-2">
+            <div>
+              <div class="label">관전자 비밀번호</div>
+              <div class="row">
+                <input id="spectatorOtp" type="text" placeholder="예: spectator-<battleId>"/>
+                <button id="btnGenSpectator" class="btn">비밀번호 발급</button>
+              </div>
             </div>
-
-            <div class="label">관전자 링크</div>
-            <div class="linkbox">
-              <input id="spectatorUrl" class="input" placeholder="생성 시 표시" readonly>
-              <button id="btnCopySpectator" type="button" class="btn">복사</button>
-            </div>
-
-            <div class="label">관전자 비밀번호</div>
-            <div class="linkbox">
-              <input id="spectatorOtp" class="input" placeholder="발급 시 표시" readonly>
-              <button id="btnCopyOtp" type="button" class="btn">복사</button>
-            </div>
-
-            <div class="mini">관전자 비밀번호는 30분 유효(서버 정책 기준).</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 2열: 전투 참가자 입력 -->
-      <div class="card">
-        <div class="section-title">전투 참가자 입력</div>
-
-        <div class="grid g-3">
-          <div><div class="label">이름</div><input id="pName" class="input" placeholder="전투 참가자 이름"></div>
-          <div><div class="label">팀</div>
-            <select id="pTeam" class="select">
-              <option value="phoenix">A</option>
-              <option value="eaters">B</option>
-            </select>
-          </div>
-          <div><div class="label">체력</div><input id="pHp" type="number" class="input" value="100" min="1" max="100"></div>
-        </div>
-
-        <div class="grid g-4" style="margin-top:10px">
-          <div><div class="label">공격</div><input id="sAtk" type="number" class="input" value="3" min="1" max="5"></div>
-          <div><div class="label">방어</div><input id="sDef" type="number" class="input" value="3" min="1" max="5"></div>
-          <div><div class="label">행운</div><input id="sLuk" type="number" class="input" value="3" min="1" max="5"></div>
-          <div><div class="label">민첩</div><input id="sAgi" type="number" class="input" value="3" min="1" max="5"></div>
-        </div>
-
-        <div class="grid g-3" style="margin-top:10px">
-          <div><div class="label">디터니</div><input id="iDit" type="number" class="input" value="1" min="0"></div>
-          <div><div class="label">공격 보정기</div><input id="iAtkB" type="number" class="input" value="1" min="0"></div>
-          <div><div class="label">방어 보정기</div><input id="iDefB" type="number" class="input" value="1" min="0"></div>
-        </div>
-
-        <div class="row" style="margin-top:10px; align-items:flex-end">
-          <div style="flex:1 1 220px">
-            <div class="label">이미지</div>
-            <input id="pAvatar" type="file" accept="image/*" class="input">
-            <div class="mini">4:3 비율 권장</div>
-          </div>
-          <div class="preview" id="preview">미리보기</div>
-          <button id="btnAdd" type="button" class="btn">참가자 추가</button>
-        </div>
-      </div>
-
-      <!-- 3열: 인원 목록 + 로그/채팅 -->
-      <div class="card">
-        <div class="section-title">인원 목록</div>
-        <div class="grid g-2">
-          <div>
-            <div class="label" style="color:var(--gold-2);font-weight:700">팀 A</div>
-            <table id="listA"><thead><tr><th>이름</th><th>HP</th><th>스탯</th><th>아이템</th></tr></thead><tbody></tbody></table>
-          </div>
-          <div>
-            <div class="label" style="color:var(--gold-2);font-weight:700">팀 B</div>
-            <table id="listB"><thead><tr><th>이름</th><th>HP</th><th>스탯</th><th>아이템</th></tr></thead><tbody></tbody></table>
-          </div>
-        </div>
-        <div class="hr"></div>
-        <div class="grid g-2">
-          <div>
-            <div class="section-title">실시간 로그</div>
-            <div id="log" class="log"></div>
-          </div>
-          <div>
-            <div class="section-title">채팅</div>
-            <div id="chat" class="chat"></div>
-            <div class="chatbox">
-              <input id="chatMsg" class="input" placeholder="메시지 입력">
-              <button id="btnSend" type="button" class="btn">보내기</button>
+            <div>
+              <div class="label">관전자 URL</div>
+              <div class="row">
+                <input id="spectatorUrl" type="text" readonly/>
+                <button id="btnBuildSpectator" class="btn">링크 생성</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div> <!-- /cols3 -->
-  </div> <!-- /wrap -->
+
+      <!-- 중: 참가자 관리 -->
+      <div>
+        <div class="card">
+          <div class="title">전투 참가자 추가</div>
+
+          <div class="grid g-3">
+            <div>
+              <div class="label">이름</div>
+              <input id="pName" type="text" placeholder="이름"/>
+            </div>
+            <div>
+              <div class="label">팀</div>
+              <select id="pTeam">
+                <option value="phoenix">A팀</option>
+                <option value="eaters">B팀</option>
+              </select>
+            </div>
+            <div>
+              <div class="label">체력</div>
+              <input id="pHp" type="number" min="1" max="100" value="100"/>
+            </div>
+          </div>
+
+          <div class="grid g-4" style="margin-top:8px">
+            <div><div class="label">공격</div><input id="sAtk" type="number" min="1" max="5" value="3"/></div>
+            <div><div class="label">방어</div><input id="sDef" type="number" min="1" max="5" value="3"/></div>
+            <div><div class="label">행운</div><input id="sLuk" type="number" min="1" max="5" value="2"/></div>
+            <div><div class="label">민첩</div><input id="sAgi" type="number" min="1" max="5" value="3"/></div>
+          </div>
+
+          <div class="grid g-3" style="margin-top:8px">
+            <div><div class="label">디터니</div><input id="iDit" type="number" min="0" value="0"/></div>
+            <div><div class="label">공격 보정기</div><input id="iAtkB" type="number" min="0" value="0"/></div>
+            <div><div class="label">방어 보정기</div><input id="iDefB" type="number" min="0" value="0"/></div>
+          </div>
+
+          <div class="grid g-2" style="margin-top:8px">
+            <div>
+              <div class="label">이미지 선택</div>
+              <input id="pAvatar" type="file" accept="image/*"/>
+            </div>
+            <div>
+              <div class="label">미리보기</div>
+              <div id="preview" class="preview">미리보기</div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:10px; justify-content:flex-end">
+            <button id="btnAdd" class="btn">참가자 추가</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="title">팀 로스터</div>
+          <div class="grid g-2">
+            <div>
+              <div class="label">A팀</div>
+              <table id="listA">
+                <thead><tr><th>이름</th><th>HP</th><th>스탯</th><th>아이템</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div>
+              <div class="label">B팀</div>
+              <table id="listB">
+                <thead><tr><th>이름</th><th>HP</th><th>스탯</th><th>아이템</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 우: 로그(위) + 채팅(아래) 세로 분할 -->
+      <div>
+        <div class="card">
+          <div class="title">전투 로그</div>
+          <div id="log" class="log"></div>
+        </div>
+
+        <div class="card">
+          <div class="title">채팅</div>
+          <div id="chat" class="chat"></div>
+          <div class="chatbox">
+            <input id="chatMsg" type="text" placeholder="메시지 입력"/>
+            <button id="btnSend" class="btn">보내기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/effects.js"></script>
   <script src="/assets/js/admin.js" type="module"></script>
 </body>
 </html>
