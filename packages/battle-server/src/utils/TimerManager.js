@@ -1,10 +1,11 @@
 // packages/battle-server/src/utils/TimerManager.js
 // PYXIS Timer Manager - Enhanced Design Version
 // 정밀한 시간 관리, 이벤트 시스템, 상태 추적, 자동 백업(옵션), pause/resume 정확도 개선
+// 팀 턴(5분) 규정 지원: 팀 페이즈 타이머 + 미행동 자동 패스
 
-'use strict';
+"use strict";
 
-const EventEmitter = require('events');
+const EventEmitter = require("events");
 
 class TimerManager extends EventEmitter {
   /**
@@ -20,44 +21,61 @@ class TimerManager extends EventEmitter {
     // 콜백(필요한 것만 넣어도 됨)
     this.callbacks = {
       onBattleEnd: callbacks.onBattleEnd || (() => {}),
-      onPlayerTimeout: callbacks.onPlayerTimeout || (() => {}),
-      onTurnWarning: callbacks.onTurnWarning || (() => {}),
-      onBattleWarning: callbacks.onBattleWarning || (() => {}),
-      onAutoSave: callbacks.onAutoSave || null, // (state) => {}
+      onPlayerTimeout: callbacks.onPlayerTimeout || (() => {}),      // 미행동 플레이어 자동 패스 등
+      onTurnWarning: callbacks.onTurnWarning || (() => {}),          // 개별 플레이어 경고
+      onBattleWarning: callbacks.onBattleWarning || (() => {}),      // 전투 시간 경고
+      onTeamPhaseTimeout: callbacks.onTeamPhaseTimeout || (() => {}),// 팀 턴 전체 만료
+      onAutoPass: callbacks.onAutoPass || (() => {}),                // 개별 자동 패스 트리거(선택)
+      onAutoSave: callbacks.onAutoSave || null,                      // (state) => {}
       ...callbacks,
     };
 
     // 설정
     this.config = {
-      battleDuration: 60 * 60 * 1000,   // 1시간
-      playerTurnTimeout: 5 * 60 * 1000, // 5분
+      battleDuration: 60 * 60 * 1000,   // 전투 총 시간(필요 시)
+      playerTurnTimeout: 5 * 60 * 1000, // 규정: 팀 턴 제한 5분. 팀 페이즈 기본값으로도 사용
       warningThreshold: 0.8,            // 80% 경과 시 1회 경고
       warningPercents: [],              // 추가 경고 지점(예: [0.5, 0.9])
       tickInterval: 1000,               // 1초마다 tick
       enableWarnings: true,
       enableAutoSave: true,
       autoSaveIntervalMs: 30 * 1000,    // 30초마다 자동 백업 이벤트
-      precision: 'millisecond',         // 'second' | 'millisecond'
+      precision: "millisecond",         // 'second' | 'millisecond'
       unrefTimers: true,                // 타임아웃/인터벌이 종료를 막지 않도록
       ...options,
     };
 
-    // ── Battle 타이머 상태 (deadline 기반으로 일관 계산)
+    // ── Battle 타이머 상태 (deadline 기반)
     this._battle = {
-      startAt: null,           // number | null
-      endAt: null,             // number | null (종료 시점)
-      deadlineAt: null,        // number | null (종료 예정 시각)
+      startAt: null,
+      endAt: null,
+      deadlineAt: null,
       paused: false,
-      pauseStartedAt: null,    // number | null
+      pauseStartedAt: null,
       remainingAtPauseMs: 0,
-      totalPlannedMs: null,    // 시작 시 duration 스냅샷(연장 시 가산)
-      warnedPercents: new Set()
+      totalPlannedMs: null,
+      warnedPercents: new Set(),
+      timer: null,
     };
 
-    // ── Player 타이머 상태 (playerId -> timerInfo)
-    // timerInfo: { startAt, deadlineAt, totalMs, warned, timer, paused?, pauseStartedAt?, remainingAtPauseMs? }
+    // ── Team Phase(팀 턴) 타이머 상태
+    // 규정: 팀 단위 턴 5분, 초과 시 미행동 플레이어 자동 패스
+    this._teamPhase = {
+      active: false,
+      teamKey: null,           // "phoenix"|"eaters" 또는 "A"|"B" 등 호출측 규칙에 맞게 사용
+      startAt: null,
+      deadlineAt: null,
+      totalMs: 0,
+      timer: null,
+      pendingPlayers: new Set(), // 아직 행동하지 않은 playerId 집합
+      warned: false,
+    };
+
+    // ── Player 개별 타이머 상태 (선택 사용)
+    // timerInfo: { startAt, deadlineAt, totalMs, warned, timer }
     this.playerTimers = new Map();
-    // 별도 호환용(기존 코드에서 사용): pause된 타이머 목록
+
+    // 호환용: pause된 타이머 저장
     // pausedTimers: playerId -> { remaining, duration, warned }
     this.pausedTimers = new Map();
 
@@ -65,9 +83,10 @@ class TimerManager extends EventEmitter {
     this.stats = {
       battleTimeouts: 0,
       playerTimeouts: 0,
+      teamPhaseTimeouts: 0,
       warningsIssued: 0,
       pauseCount: 0,
-      totalPausedTime: 0
+      totalPausedTime: 0,
     };
 
     // 틱/오토세이브 인터벌
@@ -76,20 +95,20 @@ class TimerManager extends EventEmitter {
     if (this.config.tickInterval > 0) this._startTicker();
     if (this.config.enableAutoSave && this.callbacks.onAutoSave) this._startAutoSave();
 
-    this.log('TimerManager 초기화 완료', 'INFO', { battleId, config: this.config });
+    this.log("TimerManager 초기화 완료", "INFO", { battleId, config: this.config });
   }
 
   // ─────────────────────────────────────────────
   // 로깅/유틸
   // ─────────────────────────────────────────────
 
-  log(message, level = 'INFO', data = null) {
+  log(message, level = "INFO", data = null) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}][TimerManager][${this.battleId}][${level}] ${message}`;
-    if (level === 'ERROR') console.error(line, data || '');
-    else if (level === 'WARN') console.warn(line, data || '');
-    else console.log(line, data || '');
-    this.emit('log', { message, level, data, timestamp, battleId: this.battleId });
+    if (level === "ERROR") console.error(line, data || "");
+    else if (level === "WARN") console.warn(line, data || "");
+    else console.log(line, data || "");
+    this.emit("log", { message, level, data, timestamp, battleId: this.battleId });
   }
 
   _now() {
@@ -97,7 +116,7 @@ class TimerManager extends EventEmitter {
   }
 
   _applyPrecision(ms) {
-    if (this.config.precision === 'second') {
+    if (this.config.precision === "second") {
       return Math.max(0, Math.round(ms / 1000) * 1000);
     }
     return Math.max(0, ms);
@@ -137,9 +156,9 @@ class TimerManager extends EventEmitter {
       try {
         const state = this.exportState();
         this.callbacks.onAutoSave(state);
-        this.emit('autosave', { battleId: this.battleId, state });
+        this.emit("autosave", { battleId: this.battleId, state });
       } catch (err) {
-        this.log('자동 백업(onAutoSave) 오류', 'ERROR', err);
+        this.log("자동 백업(onAutoSave) 오류", "ERROR", err);
       }
     }, this.config.autoSaveIntervalMs);
   }
@@ -160,12 +179,10 @@ class TimerManager extends EventEmitter {
       const elapsed = this.getBattleElapsedTime();
       const total = this._battle.totalPlannedMs || this.config.battleDuration;
 
-      // 경고 체크(한 번만 발화) — warningThreshold + 추가 퍼센트
       if (this.config.enableWarnings && total > 0 && remaining > 0) {
-        const progress = elapsed / total; // 0~1
+        const progress = elapsed / total;
         const marks = [this.config.warningThreshold, ...(this.config.warningPercents || [])]
-          .filter((x) => typeof x === 'number' && x > 0 && x < 1);
-
+          .filter((x) => typeof x === "number" && x > 0 && x < 1);
         for (const p of marks) {
           if (progress >= p && !this._battle.warnedPercents.has(p)) {
             this._battle.warnedPercents.add(p);
@@ -174,11 +191,38 @@ class TimerManager extends EventEmitter {
         }
       }
 
-      this.emit('tick', {
-        type: 'battle',
+      this.emit("tick", {
+        type: "battle",
         elapsed: this._applyPrecision(elapsed),
         remaining: this._applyPrecision(remaining),
-        progress: total ? Math.min(1, elapsed / total) : 0
+        progress: total ? Math.min(1, elapsed / total) : 0,
+      });
+    }
+
+    // 팀 페이즈 틱
+    if (this._teamPhase.active) {
+      const remaining = Math.max(0, (this._teamPhase.deadlineAt || now) - now);
+      const elapsed = Math.max(0, (this._teamPhase.totalMs || 0) - remaining);
+      const total = this._teamPhase.totalMs || 0;
+
+      if (this.config.enableWarnings && !this._teamPhase.warned && total > 0) {
+        const progress = elapsed / total;
+        if (progress >= this.config.warningThreshold) {
+          this._teamPhase.warned = true;
+          this.emit("teamPhase:warning", {
+            teamKey: this._teamPhase.teamKey,
+            remaining: this._applyPrecision(remaining),
+          });
+        }
+      }
+
+      this.emit("tick", {
+        type: "team",
+        teamKey: this._teamPhase.teamKey,
+        elapsed: this._applyPrecision(elapsed),
+        remaining: this._applyPrecision(remaining),
+        progress: total ? Math.min(1, elapsed / total) : 0,
+        pendingCount: this._teamPhase.pendingPlayers.size,
       });
     }
 
@@ -196,12 +240,12 @@ class TimerManager extends EventEmitter {
         }
       }
 
-      this.emit('tick', {
-        type: 'player',
+      this.emit("tick", {
+        type: "player",
         playerId,
         elapsed: this._applyPrecision(elapsed),
         remaining: this._applyPrecision(Math.max(0, remaining)),
-        progress
+        progress,
       });
     }
   }
@@ -211,8 +255,8 @@ class TimerManager extends EventEmitter {
   // ─────────────────────────────────────────────
 
   startBattleTimer(duration = null) {
-    const d = typeof duration === 'number' && duration > 0 ? duration : this.config.battleDuration;
-    this._clearBattleTimeout(); // 기존 타임아웃만 제거(상태는 새로 세팅)
+    const d = typeof duration === "number" && duration > 0 ? duration : this.config.battleDuration;
+    this._clearBattleTimeout();
 
     const now = this._now();
     this._battle.startAt = now;
@@ -226,15 +270,15 @@ class TimerManager extends EventEmitter {
 
     this._battle.timer = this._setTimeout(() => this._handleBattleTimeout(), d);
 
-    this.log('전투 타이머 시작', 'INFO', {
+    this.log("전투 타이머 시작", "INFO", {
       duration: d,
-      endsAt: new Date(this._battle.deadlineAt).toISOString()
+      endsAt: new Date(this._battle.deadlineAt).toISOString(),
     });
 
-    this.emit('battleTimer:started', {
+    this.emit("battleTimer:started", {
       duration: d,
       startTime: this._battle.startAt,
-      endsAt: this._battle.deadlineAt
+      endsAt: this._battle.deadlineAt,
     });
 
     return this._battle.startAt;
@@ -248,31 +292,29 @@ class TimerManager extends EventEmitter {
   }
 
   clearBattleTimer() {
-    // 완전 정리(종료) — 외부에서 명시적으로 호출할 때 사용
     this._clearBattleTimeout();
     if (this._battle.startAt && !this._battle.endAt) {
       this._battle.endAt = this._now();
     }
-    this.log('전투 타이머 정리', 'INFO');
+    this.log("전투 타이머 정리", "INFO");
   }
 
   pauseBattleTimer() {
     if (!this.isBattleActive() || this.isBattlePaused()) return false;
 
     const now = this._now();
-    const remaining = this.getBattleRemainingTime(); // deadlineAt - now
+    const remaining = this.getBattleRemainingTime();
 
     this._battle.paused = true;
     this._battle.pauseStartedAt = now;
     this._battle.remainingAtPauseMs = remaining;
 
-    // 타임아웃만 제거 (endAt은 건드리지 않는다!)
     this._clearBattleTimeout();
 
     this.stats.pauseCount++;
 
-    this.log('전투 타이머 일시정지', 'INFO', { remaining });
-    this.emit('battleTimer:paused', { pausedAt: now, remaining });
+    this.log("전투 타이머 일시정지", "INFO", { remaining });
+    this.emit("battleTimer:paused", { pausedAt: now, remaining });
 
     return true;
   }
@@ -284,29 +326,28 @@ class TimerManager extends EventEmitter {
     const pausedDuration = now - (this._battle.pauseStartedAt || now);
     this.stats.totalPausedTime += pausedDuration;
 
-    // 남은 시간 기준으로 deadline 재설정
     const remaining = Math.max(0, this._battle.remainingAtPauseMs || 0);
     this._battle.deadlineAt = now + remaining;
 
     this._battle.paused = false;
     this._battle.pauseStartedAt = null;
     this._battle.remainingAtPauseMs = 0;
-    this._battle.endAt = null; // 재가동 시 종료타임 리셋
+    this._battle.endAt = null;
 
     if (remaining > 0) {
       this._battle.timer = this._setTimeout(() => this._handleBattleTimeout(), remaining);
     }
 
-    this.log('전투 타이머 재개', 'INFO', {
+    this.log("전투 타이머 재개", "INFO", {
       pausedDuration,
       remaining,
-      totalPausedTime: this.stats.totalPausedTime
+      totalPausedTime: this.stats.totalPausedTime,
     });
 
-    this.emit('battleTimer:resumed', {
+    this.emit("battleTimer:resumed", {
       pausedDuration,
       remaining,
-      totalPausedTime: this.stats.totalPausedTime
+      totalPausedTime: this.stats.totalPausedTime,
     });
 
     return true;
@@ -316,45 +357,160 @@ class TimerManager extends EventEmitter {
     this._battle.endAt = this._now();
     this.stats.battleTimeouts++;
 
-    this.log('전투 시간 만료', 'WARN', {
-      duration: this.getBattleElapsedTime()
+    this.log("전투 시간 만료", "WARN", {
+      duration: this.getBattleElapsedTime(),
     });
 
-    this.emit('battleTimer:timeout', {
+    this.emit("battleTimer:timeout", {
       battleId: this.battleId,
-      duration: this.getBattleElapsedTime()
+      duration: this.getBattleElapsedTime(),
     });
 
     try {
-      this.callbacks.onBattleEnd(this.battleId, 'timeout');
+      this.callbacks.onBattleEnd(this.battleId, "timeout");
     } catch (err) {
-      this.log('전투 종료 콜백 오류', 'ERROR', err);
+      this.log("전투 종료 콜백 오류", "ERROR", err);
     }
   }
 
   _issueBattleWarning(remaining, atPercent) {
     this.stats.warningsIssued++;
-    this.log('전투 시간 경고', 'WARN', { remaining, atPercent });
+    this.log("전투 시간 경고", "WARN", { remaining, atPercent });
 
-    this.emit('battleTimer:warning', {
+    this.emit("battleTimer:warning", {
       battleId: this.battleId,
       remaining,
-      percentage: atPercent * 100
+      percentage: atPercent * 100,
     });
 
     try {
       this.callbacks.onBattleWarning(this.battleId, remaining);
     } catch (err) {
-      this.log('전투 경고 콜백 오류', 'ERROR', err);
+      this.log("전투 경고 콜백 오류", "ERROR", err);
     }
   }
 
   // ─────────────────────────────────────────────
-  // 플레이어 타이머
+  // 팀 페이즈(팀 턴) 타이머 — 규정 대응
+  // ─────────────────────────────────────────────
+
+  /**
+   * 팀 페이즈 시작
+   * @param {string} teamKey  "phoenix"|"eaters" 등
+   * @param {string[]} pendingPlayerIds  이 페이즈에서 아직 행동하지 않은 플레이어 id 목록
+   * @param {number|null} durationMs     기본값: config.playerTurnTimeout(5분)
+   */
+  startTeamPhase(teamKey, pendingPlayerIds = [], durationMs = null) {
+    const total = typeof durationMs === "number" && durationMs > 0
+      ? durationMs
+      : this.config.playerTurnTimeout;
+
+    this.clearTeamPhase(); // 기존 팀 페이즈 정리
+
+    const now = this._now();
+    this._teamPhase.active = true;
+    this._teamPhase.teamKey = teamKey || null;
+    this._teamPhase.startAt = now;
+    this._teamPhase.totalMs = total;
+    this._teamPhase.deadlineAt = now + total;
+    this._teamPhase.pendingPlayers = new Set(Array.isArray(pendingPlayerIds) ? pendingPlayerIds : []);
+    this._teamPhase.warned = false;
+
+    this._teamPhase.timer = this._setTimeout(() => this._handleTeamPhaseTimeout(), total);
+
+    this.log("팀 페이즈 타이머 시작", "INFO", {
+      teamKey: this._teamPhase.teamKey,
+      pending: this._teamPhase.pendingPlayers.size,
+      duration: total,
+      endsAt: new Date(this._teamPhase.deadlineAt).toISOString(),
+    });
+
+    this.emit("teamPhase:started", {
+      teamKey: this._teamPhase.teamKey,
+      pendingPlayers: Array.from(this._teamPhase.pendingPlayers),
+      duration: total,
+      endsAt: this._teamPhase.deadlineAt,
+    });
+  }
+
+  /** 팀 페이즈에서 플레이어가 행동 완료했을 때 호출 */
+  markPlayerActed(playerId) {
+    if (!this._teamPhase.active) return;
+    if (this._teamPhase.pendingPlayers.has(playerId)) {
+      this._teamPhase.pendingPlayers.delete(playerId);
+      this.emit("teamPhase:acted", {
+        teamKey: this._teamPhase.teamKey,
+        playerId,
+        remainingPending: this._teamPhase.pendingPlayers.size,
+      });
+    }
+  }
+
+  /** 팀 페이즈 종료/정리 */
+  clearTeamPhase() {
+    if (this._teamPhase.timer) {
+      clearTimeout(this._teamPhase.timer);
+    }
+    const wasActive = this._teamPhase.active;
+    this._teamPhase = {
+      active: false,
+      teamKey: null,
+      startAt: null,
+      deadlineAt: null,
+      totalMs: 0,
+      timer: null,
+      pendingPlayers: new Set(),
+      warned: false,
+    };
+    if (wasActive) {
+      this.emit("teamPhase:cleared", { battleId: this.battleId });
+    }
+  }
+
+  /** 팀 페이즈 만료: 남은 모든 pending 플레이어 자동 패스 */
+  _handleTeamPhaseTimeout() {
+    this.stats.teamPhaseTimeouts++;
+
+    const teamKey = this._teamPhase.teamKey;
+    const pending = Array.from(this._teamPhase.pendingPlayers);
+    this.log("팀 페이즈 시간 만료", "WARN", {
+      teamKey,
+      pendingCount: pending.length,
+    });
+
+    // 미행동 플레이어 각각에 대해 onPlayerTimeout/onAutoPass 콜백 호출
+    for (const playerId of pending) {
+      try {
+        // 선택: 두 콜백 모두 제공된 경우 둘 다 호출
+        if (this.callbacks.onAutoPass) {
+          this.callbacks.onAutoPass(playerId, { teamKey, reason: "teamPhaseTimeout" });
+        }
+        this.callbacks.onPlayerTimeout(playerId, { teamKey, reason: "teamPhaseTimeout" });
+      } catch (err) {
+        this.log("팀 페이즈 만료 처리 오류", "ERROR", { playerId, err });
+      }
+    }
+
+    // 상위 알림
+    try {
+      this.callbacks.onTeamPhaseTimeout(this.battleId, teamKey, pending);
+    } catch (err) {
+      this.log("onTeamPhaseTimeout 콜백 오류", "ERROR", err);
+    }
+
+    this.emit("teamPhase:timeout", { teamKey, pendingPlayers: pending });
+
+    // 팀 페이즈 종료
+    this.clearTeamPhase();
+  }
+
+  // ─────────────────────────────────────────────
+  // 플레이어 타이머(선택 사용, 팀 페이즈와 별개)
   // ─────────────────────────────────────────────
 
   startPlayerTimer(playerId, timeout = null) {
-    const total = typeof timeout === 'number' && timeout > 0 ? timeout : this.config.playerTurnTimeout;
+    const total =
+      typeof timeout === "number" && timeout > 0 ? timeout : this.config.playerTurnTimeout;
 
     this.clearPlayerTimer(playerId);
 
@@ -367,20 +523,20 @@ class TimerManager extends EventEmitter {
       deadlineAt,
       totalMs: total,
       warned: false,
-      timer
+      timer,
     });
 
-    this.log('플레이어 타이머 시작', 'INFO', {
+    this.log("플레이어 타이머 시작", "INFO", {
       playerId,
       duration: total,
-      endsAt: new Date(deadlineAt).toISOString()
+      endsAt: new Date(deadlineAt).toISOString(),
     });
 
-    this.emit('playerTimer:started', {
+    this.emit("playerTimer:started", {
       playerId,
       duration: total,
       startTime: now,
-      endsAt: deadlineAt
+      endsAt: deadlineAt,
     });
 
     return now;
@@ -391,9 +547,9 @@ class TimerManager extends EventEmitter {
     if (info?.timer) clearTimeout(info.timer);
 
     this.playerTimers.delete(playerId);
-    this.pausedTimers.delete(playerId); // 호환 맵도 같이 정리
+    this.pausedTimers.delete(playerId);
 
-    this.emit('playerTimer:cleared', { playerId });
+    this.emit("playerTimer:cleared", { playerId });
   }
 
   pausePlayerTimer(playerId) {
@@ -405,24 +561,18 @@ class TimerManager extends EventEmitter {
 
     if (info.timer) clearTimeout(info.timer);
 
-    // 내부 상태에 paused 반영
-    info.paused = true;
-    info.pauseStartedAt = now;
-    info.remainingAtPauseMs = remaining;
-    info.timer = null;
-
     // 호환용 맵 갱신
     this.pausedTimers.set(playerId, {
       remaining,
       duration: info.totalMs,
-      warned: info.warned
+      warned: info.warned,
     });
 
-    // 활성 맵에서는 제거(기존 동작과 동일)
+    // 활성 맵에서는 제거
     this.playerTimers.delete(playerId);
 
-    this.log('플레이어 타이머 일시정지', 'INFO', { playerId, remaining });
-    this.emit('playerTimer:paused', { playerId, remaining });
+    this.log("플레이어 타이머 일시정지", "INFO", { playerId, remaining });
+    this.emit("playerTimer:paused", { playerId, remaining });
 
     return true;
   }
@@ -437,17 +587,17 @@ class TimerManager extends EventEmitter {
     const timer = this._setTimeout(() => this._handlePlayerTimeout(playerId), remaining);
 
     this.playerTimers.set(playerId, {
-      startAt: now - (pausedInfo.duration - remaining), // 총 진행률 유지
+      startAt: now - (pausedInfo.duration - remaining),
       deadlineAt,
       totalMs: pausedInfo.duration,
       warned: pausedInfo.warned,
-      timer
+      timer,
     });
 
     this.pausedTimers.delete(playerId);
 
-    this.log('플레이어 타이머 재개', 'INFO', { playerId, remaining });
-    this.emit('playerTimer:resumed', { playerId, remaining, startTime: now });
+    this.log("플레이어 타이머 재개", "INFO", { playerId, remaining });
+    this.emit("playerTimer:resumed", { playerId, remaining, startTime: now });
 
     return true;
   }
@@ -467,13 +617,13 @@ class TimerManager extends EventEmitter {
       const newRemaining = Math.max(0, info.deadlineAt - now);
       info.timer = this._setTimeout(() => this._handlePlayerTimeout(playerId), newRemaining);
 
-      this.log('플레이어 타이머 연장', 'INFO', {
+      this.log("플레이어 타이머 연장", "INFO", {
         playerId,
         additionalTime: add,
-        newRemaining
+        newRemaining,
       });
 
-      this.emit('playerTimer:extended', { playerId, additionalTime: add, newRemaining });
+      this.emit("playerTimer:extended", { playerId, additionalTime: add, newRemaining });
       return true;
     }
 
@@ -483,44 +633,48 @@ class TimerManager extends EventEmitter {
       p.remaining += add;
       p.duration += add;
 
-      this.log('일시정지된 플레이어 타이머 연장', 'INFO', {
+      this.log("일시정지된 플레이어 타이머 연장", "INFO", {
         playerId,
         additionalTime: add,
-        newRemaining: p.remaining
+        newRemaining: p.remaining,
       });
 
-      this.emit('playerTimer:extended', { playerId, additionalTime: add, newRemaining: p.remaining });
+      this.emit("playerTimer:extended", {
+        playerId,
+        additionalTime: add,
+        newRemaining: p.remaining,
+      });
       return true;
     }
 
     return false;
-    }
+  }
 
   _handlePlayerTimeout(playerId) {
     this.clearPlayerTimer(playerId);
     this.stats.playerTimeouts++;
 
-    this.log('플레이어 시간 만료', 'WARN', { playerId });
+    this.log("플레이어 시간 만료", "WARN", { playerId });
 
-    this.emit('playerTimer:timeout', { playerId });
+    this.emit("playerTimer:timeout", { playerId });
 
     try {
       this.callbacks.onPlayerTimeout(playerId);
     } catch (err) {
-      this.log('플레이어 타임아웃 콜백 오류', 'ERROR', err);
+      this.log("플레이어 타임아웃 콜백 오류", "ERROR", err);
     }
   }
 
   _issuePlayerWarning(playerId, remaining) {
     this.stats.warningsIssued++;
-    this.log('플레이어 시간 경고', 'WARN', { playerId, remaining });
+    this.log("플레이어 시간 경고", "WARN", { playerId, remaining });
 
-    this.emit('playerTimer:warning', { playerId, remaining });
+    this.emit("playerTimer:warning", { playerId, remaining });
 
     try {
       this.callbacks.onTurnWarning(playerId, remaining);
     } catch (err) {
-      this.log('플레이어 경고 콜백 오류', 'ERROR', err);
+      this.log("플레이어 경고 콜백 오류", "ERROR", err);
     }
   }
 
@@ -532,8 +686,8 @@ class TimerManager extends EventEmitter {
     this.playerTimers.clear();
     this.pausedTimers.clear();
 
-    this.log('모든 플레이어 타이머 정리', 'INFO', { clearedCount });
-    this.emit('playerTimers:cleared', { clearedPlayers: clearedCount });
+    this.log("모든 플레이어 타이머 정리", "INFO", { clearedCount });
+    this.emit("playerTimers:cleared", { clearedPlayers: clearedCount });
   }
 
   // ─────────────────────────────────────────────
@@ -550,7 +704,8 @@ class TimerManager extends EventEmitter {
 
   getBattleRemainingTime() {
     if (!this.isBattleActive()) return 0;
-    if (this.isBattlePaused()) return Math.max(0, this._battle.remainingAtPauseMs || 0);
+    if (this.isBattlePaused())
+      return Math.max(0, this._battle.remainingAtPauseMs || 0);
     return Math.max(0, (this._battle.deadlineAt || 0) - this._now());
   }
 
@@ -560,6 +715,19 @@ class TimerManager extends EventEmitter {
     const remaining = this.getBattleRemainingTime();
     const elapsed = Math.max(0, total - remaining);
     return elapsed;
+  }
+
+  isTeamPhaseActive() {
+    return !!this._teamPhase.active;
+  }
+
+  getTeamPhaseRemainingTime() {
+    if (!this._teamPhase.active) return 0;
+    return Math.max(0, (this._teamPhase.deadlineAt || 0) - this._now());
+  }
+
+  getTeamPhasePendingCount() {
+    return this._teamPhase.pendingPlayers.size;
   }
 
   isPlayerTimerActive(playerId) {
@@ -609,14 +777,20 @@ class TimerManager extends EventEmitter {
         remaining: this.getBattleRemainingTime(),
         startTime: this._battle.startAt,
         endTime: this._battle.endAt,
-        plannedDuration: this._battle.totalPlannedMs || this.config.battleDuration
+        plannedDuration: this._battle.totalPlannedMs || this.config.battleDuration,
+      },
+      teamPhase: {
+        isActive: this.isTeamPhaseActive(),
+        teamKey: this._teamPhase.teamKey,
+        pending: this.getTeamPhasePendingCount(),
+        remaining: this.getTeamPhaseRemainingTime(),
       },
       players: {
         active: this.playerTimers.size,
         paused: this.pausedTimers.size,
         activeList: this.getActivePlayerTimers(),
-        pausedList: this.getPausedPlayerTimers()
-      }
+        pausedList: this.getPausedPlayerTimers(),
+      },
     };
   }
 
@@ -638,13 +812,22 @@ class TimerManager extends EventEmitter {
               remaining,
               isPaused: this.isBattlePaused(),
               progress: total ? elapsed / total : 0,
-              endsAt: this.isBattlePaused()
-                ? null
-                : (this._battle.deadlineAt || null)
+              endsAt: this.isBattlePaused() ? null : this._battle.deadlineAt || null,
             }
           : null,
-        players: []
-      }
+        teamPhase: this.isTeamPhaseActive()
+          ? {
+              teamKey: this._teamPhase.teamKey,
+              startTime: this._teamPhase.startAt,
+              duration: this._teamPhase.totalMs,
+              elapsed: Math.max(0, this._teamPhase.totalMs - this.getTeamPhaseRemainingTime()),
+              remaining: this.getTeamPhaseRemainingTime(),
+              pendingPlayers: Array.from(this._teamPhase.pendingPlayers),
+              endsAt: this._teamPhase.deadlineAt,
+            }
+          : null,
+        players: [],
+      },
     };
 
     for (const [playerId, info] of this.playerTimers.entries()) {
@@ -659,7 +842,7 @@ class TimerManager extends EventEmitter {
         warned: info.warned,
         isPaused: false,
         progress: info.totalMs ? el / info.totalMs : 0,
-        endsAt: info.deadlineAt
+        endsAt: info.deadlineAt,
       });
     }
 
@@ -670,8 +853,10 @@ class TimerManager extends EventEmitter {
         remaining: paused.remaining,
         warned: paused.warned,
         isPaused: true,
-        progress: paused.duration ? (paused.duration - paused.remaining) / paused.duration : 0,
-        endsAt: null
+        progress: paused.duration
+          ? (paused.duration - paused.remaining) / paused.duration
+          : 0,
+        endsAt: null,
       });
     }
 
@@ -687,16 +872,17 @@ class TimerManager extends EventEmitter {
     this._stopAutoSave();
 
     this.clearBattleTimer();
+    this.clearTeamPhase();
     this.clearAllPlayerTimers();
 
-    this.log('모든 타이머 정리 완료', 'INFO');
-    this.emit('timers:cleared', { battleId: this.battleId });
+    this.log("모든 타이머 정리 완료", "INFO");
+    this.emit("timers:cleared", { battleId: this.battleId });
   }
 
   destroy() {
     this.clearAll();
     this.removeAllListeners();
-    this.log('TimerManager 종료', 'INFO');
+    this.log("TimerManager 종료", "INFO");
   }
 
   // ─────────────────────────────────────────────
@@ -714,34 +900,44 @@ class TimerManager extends EventEmitter {
         paused: this._battle.paused,
         remainingAtPauseMs: this._battle.remainingAtPauseMs,
         totalPlannedMs: this._battle.totalPlannedMs,
-        warnedPercents: Array.from(this._battle.warnedPercents || [])
+        warnedPercents: Array.from(this._battle.warnedPercents || []),
       },
+      teamPhase: this.isTeamPhaseActive()
+        ? {
+            teamKey: this._teamPhase.teamKey,
+            startAt: this._teamPhase.startAt,
+            deadlineAt: this._teamPhase.deadlineAt,
+            totalMs: this._teamPhase.totalMs,
+            pendingPlayers: Array.from(this._teamPhase.pendingPlayers),
+            warned: this._teamPhase.warned,
+          }
+        : null,
       stats: this.stats,
       activeTimers: Array.from(this.playerTimers.entries()).map(([playerId, i]) => ({
         playerId,
         startAt: i.startAt,
         deadlineAt: i.deadlineAt,
         totalMs: i.totalMs,
-        warned: i.warned
+        warned: i.warned,
       })),
       pausedTimers: Array.from(this.pausedTimers.entries()).map(([playerId, p]) => ({
         playerId,
         remaining: p.remaining,
         duration: p.duration,
-        warned: p.warned
-      }))
+        warned: p.warned,
+      })),
     };
   }
 
   importState(state) {
     if (!state || state.battleId !== this.battleId) {
-      throw new Error('배틀 ID가 일치하지 않습니다');
+      throw new Error("배틀 ID가 일치하지 않습니다");
     }
 
     // 기존 정리
     this.clearAll();
 
-    // 설정/통계 복원(필요 시 일부만)
+    // 통계 복원(필요 시 일부만)
     this.stats = { ...this.stats, ...(state.stats || {}) };
 
     // 배틀 복원
@@ -762,9 +958,33 @@ class TimerManager extends EventEmitter {
         } else {
           const remaining = this.getBattleRemainingTime();
           if (remaining > 0) {
-            this._battle.timer = this._setTimeout(() => this._handleBattleTimeout(), remaining);
+            this._battle.timer = this._setTimeout(
+              () => this._handleBattleTimeout(),
+              remaining
+            );
           }
         }
+      }
+    }
+
+    // 팀 페이즈 복원
+    if (state.teamPhase) {
+      const tp = state.teamPhase;
+      this._teamPhase.active = true;
+      this._teamPhase.teamKey = tp.teamKey || null;
+      this._teamPhase.startAt = tp.startAt || null;
+      this._teamPhase.totalMs = tp.totalMs || this.config.playerTurnTimeout;
+      this._teamPhase.deadlineAt = tp.deadlineAt || null;
+      this._teamPhase.pendingPlayers = new Set(tp.pendingPlayers || []);
+      this._teamPhase.warned = !!tp.warned;
+
+      const now = this._now();
+      const remaining = Math.max(0, (this._teamPhase.deadlineAt || now) - now);
+      if (remaining > 0) {
+        this._teamPhase.timer = this._setTimeout(
+          () => this._handleTeamPhaseTimeout(),
+          remaining
+        );
       }
     }
 
@@ -774,13 +994,16 @@ class TimerManager extends EventEmitter {
         const now = this._now();
         const remaining = Math.max(0, (t.deadlineAt || now) - now);
         if (remaining > 0) {
-          const timer = this._setTimeout(() => this._handlePlayerTimeout(t.playerId), remaining);
+          const timer = this._setTimeout(
+            () => this._handlePlayerTimeout(t.playerId),
+            remaining
+          );
           this.playerTimers.set(t.playerId, {
-            startAt: t.startAt || (now - ((t.totalMs || 0) - remaining)),
-            deadlineAt: t.deadlineAt || (now + remaining),
+            startAt: t.startAt || now - ((t.totalMs || 0) - remaining),
+            deadlineAt: t.deadlineAt || now + remaining,
             totalMs: t.totalMs || remaining,
             warned: !!t.warned,
-            timer
+            timer,
           });
         }
       }
@@ -791,7 +1014,7 @@ class TimerManager extends EventEmitter {
         this.pausedTimers.set(p.playerId, {
           remaining: p.remaining,
           duration: p.duration,
-          warned: !!p.warned
+          warned: !!p.warned,
         });
       }
     }
@@ -800,9 +1023,10 @@ class TimerManager extends EventEmitter {
     if (this.config.tickInterval > 0) this._startTicker();
     if (this.config.enableAutoSave && this.callbacks.onAutoSave) this._startAutoSave();
 
-    this.log('상태 복원 완료', 'INFO', {
+    this.log("상태 복원 완료", "INFO", {
       activeTimers: this.playerTimers.size,
-      pausedTimers: this.pausedTimers.size
+      pausedTimers: this.pausedTimers.size,
+      teamPhaseActive: this._teamPhase.active,
     });
   }
 }
