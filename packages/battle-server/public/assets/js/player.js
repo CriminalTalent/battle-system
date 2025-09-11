@@ -1,11 +1,10 @@
 // public/assets/js/player.js
-// 요구사항 반영:
-// - 로그 팀 표기 A/B로 정규화
-// - 채팅 낙관 반영 + Enter 전송
-// - 내 액션 송신 직후 버튼 비활성화
-// - actionSuccess 시 큐/메인 이미지 다음 선택자로 이동
-// - 페이즈 전환 배너(커밋 시작/라운드 해석), 선공/사망/승리 배너
-// - 팀 타이머 5분만 표시, 좌상단 본인 아바타 4:3, 준비 완료 버튼 1회 비활성
+// - token/password 폴백
+// - A/B 팀 표기 정규화
+// - 채팅 Enter 전송, 낙관 반영
+// - 액션 커밋 후 버튼 잠금/다음 선택자 강조
+// - "현재 순서팀" 표기/배너 유지
+// - 팀 타이머 5분
 
 const $  = (q,root=document)=>root.querySelector(q);
 const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
@@ -13,7 +12,8 @@ const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
 const params = new URLSearchParams(location.search);
 const battleId = params.get('battle') || '';
 const name     = params.get('name')   || '';
-const token    = params.get('token')  || '';
+// token 우선, 없으면 password 폴백 (관리자 UI에서 "비밀번호"로 보낼 때 대비)
+const token    = params.get('token') || params.get('password') || '';
 
 const socket = io(window.location.origin, {
   path: '/socket.io',
@@ -67,7 +67,7 @@ let me = null;
 let lastSnap = null;
 let teamTimerHandle = null;
 
-// 커밋 상태(클라이언트 로컬 안내용)
+// 커밋(서버 개념) 로컬 안내 상태
 let committedSet = new Set();
 let iCommittedThisPhase = false;
 let prevPhase = '';
@@ -99,11 +99,11 @@ socket.on('battle:update', (snap)=>{
   // 페이즈 전환 배너
   if(prevPhase && (prevPhase!==snap.phase || prevTeam!==snap.currentTeam)){
     if(prevPhase.startsWith('commit') && snap.phase==='resolve'){
-      window.PyxisEffects?.bannerResolve();
+      window.PyxisEffects?.showResultBanner('라운드 해석', 'resolve');
     }
     if(prevPhase==='resolve' && (snap.phase==='commitA' || snap.phase==='commitB')){
       const t = snap.currentTeam==='phoenix' ? 'A' : 'B';
-      window.PyxisEffects?.bannerCommit(t);
+      window.PyxisEffects?.showResultBanner(`순서 시작: ${t}팀`, 'commit');
     }
   }
 
@@ -124,7 +124,7 @@ socket.on('battle:update', (snap)=>{
   // 승리 배너
   if(snap.status==='ended'){
     const winTeam = (snap.winnerTeam==='eaters' ? 'B' : 'A');
-    window.PyxisEffects?.bannerWin(winTeam);
+    window.PyxisEffects?.showResultBanner(`${winTeam}팀 승리`, 'win', 2000);
   }
 });
 socket.on('battle:log', (m)=> appendLogRich(m.message));
@@ -260,13 +260,13 @@ function renderAll(snap){
     teamList.appendChild(d);
   });
 
-  // 현재 팀 표기 + 버튼 활성
+  // 현재 팀 표기 + 버튼 활성(표기 문구: "현재 순서팀")
   const isCommit = (snap.phase==='commitA' || snap.phase==='commitB') && snap.status==='active';
   const myTurn = myTeam===snap.currentTeam && isCommit && (me?.hp||0)>0 && !iCommittedThisPhase;
   [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=> b.disabled = !myTurn);
 
   const isATeam = snap.currentTeam==='phoenix';
-  turnTeam.textContent = `현재 커밋팀: ${isATeam?'A':'B'}`;
+  turnTeam.textContent = `현재 순서팀: ${isATeam?'A':'B'}`;
 
   // 큐와 메인 이미지
   renderQueue(snap);
@@ -377,14 +377,14 @@ function classifyLog(raw){
     out.banner={ text:`${nm} 사망`, type:'kill' };
     return out;
   }
-  if(/승리|우승|패배/i.test(s)){
+  if(/전투 종료|승리|우승|패배/i.test(s)){
     const teamAB = /eaters|B팀/i.test(s) ? 'B' : 'A';
     out.klass='log-win';
     out.banner={ text:`${teamAB}팀 승리`, type:'win' };
     return out;
   }
 
-  if(/치명타|회피|방어/i.test(s)) out.klass='log-info';
+  if(/치명타|회피|방어|반격/i.test(s)) out.klass='log-info';
   return out;
 }
 
