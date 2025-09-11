@@ -1,279 +1,292 @@
-// BroadcastManager: 브로드캐스트 계층을 캡슐화 (선택 사용)
-// - init(io) 로 초기화 후 instance 메서드로 송신
-// - broadcast.js 의 함수형 API와 동일 동작
+// BroadcastManager: 브로드캐스트 계층 캡슐화
+// - init(io)로 초기화 후 인스턴스 메서드로 송신
+// - 공개 스냅샷 정제 및 이벤트 명칭 통일
+"use strict";
 
 class BroadcastManager {
   /** @param {import('socket.io').Server} io */
   constructor(io) {
-    this.io = io;
+    this.io = io || null;
     this.isInitialized = false;
-  }
-
-  init(io, options = {}) {
-    if (io) {
-      this.io = io;
-    }
-    
-    if (!this.io) {
-      throw new Error('Socket.IO instance is required');
-    }
-
     this.options = {
       verbose: false,
       enableMetrics: false,
       batchEnabled: false,
-      ...options
     };
-
     this.metrics = {
       messagesSent: 0,
       errors: 0,
-      lastActivity: Date.now()
+      lastActivity: Date.now(),
     };
+  }
 
+  init(io, options = {}) {
+    if (io) this.io = io;
+    if (!this.io) throw new Error("Socket.IO instance is required");
+
+    this.options = { ...this.options, ...options };
     this.isInitialized = true;
-
     if (this.options.verbose) {
-      console.log('[BroadcastManager] Initialized with options:', this.options);
+      console.log("[BroadcastManager] Initialized", this.options);
     }
   }
 
-  room(battleId) { 
-    return String(battleId || ""); 
+  /* ========== 룸 규칙 ========== */
+  room(battleId) {
+    const id = String(battleId || "").trim();
+    return `battle:${id}`;
+  }
+  teamRoom(battleId, teamAB) {
+    return `${this.room(battleId)}:${teamAB}`; // teamAB: "A" | "B"
+  }
+  roleRoom(battleId, role) {
+    return `${this.room(battleId)}:${role}`; // role: "admin" | "player" | "spectator"
   }
 
   _ensureInitialized() {
     if (!this.isInitialized || !this.io) {
-      throw new Error('BroadcastManager not initialized. Call init() first.');
+      throw new Error("BroadcastManager not initialized. Call init() first.");
     }
   }
 
-  _incrementMetrics(type = 'message') {
-    if (this.options.enableMetrics) {
-      if (type === 'error') {
-        this.metrics.errors++;
-      } else {
-        this.metrics.messagesSent++;
-      }
-      this.metrics.lastActivity = Date.now();
-    }
+  _incrementMetrics(type = "message") {
+    if (!this.options.enableMetrics) return;
+    if (type === "error") this.metrics.errors += 1;
+    else this.metrics.messagesSent += 1;
+    this.metrics.lastActivity = Date.now();
   }
 
   _safeEmit(roomId, event, data) {
     try {
       this._ensureInitialized();
       this.io.to(roomId).emit(event, data);
-      this._incrementMetrics('message');
+      this._incrementMetrics("message");
       return true;
-    } catch (error) {
-      console.error('[BroadcastManager] Emit error:', error);
-      this._incrementMetrics('error');
+    } catch (err) {
+      console.error("[BroadcastManager] Emit error:", err);
+      this._incrementMetrics("error");
       return false;
     }
   }
 
-  // 전체 전투방에 브로드캐스트
+  /* ========== 공개 스냅샷 정제 ========== */
+  _pickPlayerPublic(p) {
+    if (!p) return null;
+    return {
+      id: p.id,
+      name: p.name,
+      team: p.team, // "phoenix" | "eaters"
+      stats: {
+        atk: p?.stats?.atk,
+        def: p?.stats?.def,
+        agi: p?.stats?.agi,
+        luk: p?.stats?.luk,
+      },
+      hp: p.hp,
+      ready: !!p.ready,
+      avatarUrl: p.avatarUrl || null,
+    };
+  }
+
+  _pickBattlePublic(battle) {
+    if (!battle) return null;
+    return {
+      id: battle.id,
+      mode: battle.mode,
+      status: battle.status, // waiting | active | paused | ended
+      startedAt: battle.startedAt || null,
+      endedAt: battle.endedAt || null,
+
+      // 라운드/페이즈 구조 그대로 전달 (엔진에서 채워둔 객체)
+      turn: battle.turn || null, // { round, order:["A","B"], phaseIndex, acted:{A:Set,B:Set} 등 직렬화 주의
+      current: battle.current || null, // 레거시 호환(현재 페이즈 팀키 "phoenix"|"eaters")
+
+      players: Array.isArray(battle.players)
+        ? battle.players.map(this._pickPlayerPublic).filter(Boolean)
+        : [],
+
+      // 최근 로그 일부만
+      log: Array.isArray(battle.log) ? battle.log.slice(-100) : [],
+    };
+  }
+
+  /* ========== 기본 브로드캐스트 ========== */
   toAll(battleId, event, data) {
     if (!battleId || !event) return false;
     return this._safeEmit(this.room(battleId), event, data);
   }
-
-  // 특정 팀에 브로드캐스트  
-  toTeam(battleId, teamKey, event, data) {
-    if (!battleId || !teamKey || !event) return false;
-    const teamRoom = `battle:${battleId}:${teamKey}`;
-    return this._safeEmit(teamRoom, event, data);
+  toTeam(battleId, teamAB, event, data) {
+    if (!battleId || !teamAB || !event) return false;
+    return this._safeEmit(this.teamRoom(battleId, teamAB), event, data);
   }
-
-  // 특정 역할에 브로드캐스트
   toRole(battleId, role, event, data) {
     if (!battleId || !role || !event) return false;
-    const roleRoom = `battle:${battleId}:${role}`;
-    return this._safeEmit(roleRoom, event, data);
+    return this._safeEmit(this.roleRoom(battleId, role), event, data);
   }
 
-  // 소켓을 룸에 조인
-  joinSocketToRooms(socket, battleId, role, teamAB, options = {}) {
+  /* ========== 소켓 룸 입퇴장 ========== */
+  joinSocketToRooms(socket, battleId, { role, teamAB, withRoleRooms = true } = {}) {
     if (!socket || !battleId) return false;
-
     try {
       this._ensureInitialized();
-      
-      // 기본 배틀 룸
       socket.join(this.room(battleId));
-      
-      // 역할별 룸 (옵션)
-      if (options.withRoleRooms && role) {
-        socket.join(`battle:${battleId}:${role}`);
-      }
-      
-      // 팀별 룸
-      if (teamAB) {
-        socket.join(`battle:${battleId}:${teamAB}`);
-      }
-
+      if (withRoleRooms && role) socket.join(this.roleRoom(battleId, role));
+      if (teamAB) socket.join(this.teamRoom(battleId, teamAB));
       return true;
-    } catch (error) {
-      console.error('[BroadcastManager] joinSocketToRooms error:', error);
+    } catch (err) {
+      console.error("[BroadcastManager] joinSocketToRooms error:", err);
       return false;
     }
   }
-
-  // 소켓을 룸에서 제거
-  leaveSocketFromRooms(socket, battleId, role, teamAB) {
+  leaveSocketFromRooms(socket, battleId, { role, teamAB } = {}) {
     if (!socket || !battleId) return false;
-
     try {
       this._ensureInitialized();
-      
       socket.leave(this.room(battleId));
-      
-      if (role) {
-        socket.leave(`battle:${battleId}:${role}`);
-      }
-      
-      if (teamAB) {
-        socket.leave(`battle:${battleId}:${teamAB}`);
-      }
-
+      if (role) socket.leave(this.roleRoom(battleId, role));
+      if (teamAB) socket.leave(this.teamRoom(battleId, teamAB));
       return true;
-    } catch (error) {
-      console.error('[BroadcastManager] leaveSocketFromRooms error:', error);
+    } catch (err) {
+      console.error("[BroadcastManager] leaveSocketFromRooms error:", err);
       return false;
     }
   }
 
-  // 전투 상태 브로드캐스트
-  state(battle) {
+  /* ========== 도메인 이벤트(명칭 통일) ========== */
+  emitBattleUpdate(battle) {
     if (!battle?.id) return false;
-
     try {
-      const players = Array.isArray(battle.players) ? battle.players : [];
-      const logs = Array.isArray(battle.log) ? battle.log : [];
-      
-      const payload = {
-        id: battle.id,
-        status: battle.status || 'waiting',
-        turn: battle.turn || 0,
-        current: battle.current || null,
-        startedAt: battle.startedAt || null,
-        endedAt: battle.endedAt || null,
-        turnEndsAt: battle.turnEndsAt || null,
-        players: players.map(p => ({
-          id: p?.id || '',
-          name: p?.name || '',
-          team: p?.team || '',
-          hp: p?.hp || 0,
-          ready: !!p?.ready,
-          avatarUrl: p?.avatarUrl || '',
-          stats: p?.stats || {}
-        })).filter(p => p.id),
-        log: logs.slice(-200)
-      };
+      const payload = this._pickBattlePublic(battle);
 
-      return this.toAll(battle.id, "battle:update", payload);
-    } catch (error) {
-      console.error('[BroadcastManager] state error:', error);
+      // turn.acted가 Set이면 직렬화 보정
+      if (payload?.turn?.acted) {
+        const acted = payload.turn.acted;
+        payload.turn.acted = {
+          A: Array.isArray(acted.A) ? acted.A : Array.from(acted.A || []),
+          B: Array.isArray(acted.B) ? acted.B : Array.from(acted.B || []),
+        };
+      }
+      return this.toAll(battle.id, "battleUpdate", payload);
+    } catch (err) {
+      console.error("[BroadcastManager] emitBattleUpdate error:", err);
       return false;
     }
   }
 
-  // 새로운 통합 메서드들
-  broadcastChat(battleId, msg) {
-    if (!battleId || !msg) return false;
-    
-    const sanitizedMsg = {
-      name: String(msg.name || '').substring(0, 50),
-      message: String(msg.message || '').substring(0, 500),
-      timestamp: msg.timestamp || Date.now(),
-      ...msg
-    };
-    
-    return this.toAll(battleId, "chat:new", sanitizedMsg);
-  }
-
-  broadcastLog(battleId, log) {
-    if (!battleId || !log) return false;
-    
-    const sanitizedLog = {
-      type: log.type || 'system',
-      message: String(log.message || '').substring(0, 500),
-      timestamp: log.timestamp || Date.now(),
-      ...log
-    };
-    
-    return this.toAll(battleId, "log:new", sanitizedLog);
-  }
-
-  broadcastTurnEvent(battleId, type, payload) {
-    if (!battleId || !type) return false;
-    return this.toAll(battleId, `turn:${type}`, payload || {});
-  }
-
-  broadcastBattleEvent(battleId, type, payload) {
-    if (!battleId || !type) return false;
-    return this.toAll(battleId, `battle:${type}`, payload || {});
-  }
-
-  broadcastBattleState(battleId, snapshot) {
-    if (!battleId || !snapshot) return false;
-    return this.toAll(battleId, "state:snapshot", snapshot);
-  }
-
-  // 기존 호환 메서드들
-  log(battleId, { type = "system", message = "" }) {
-    return this.broadcastLog(battleId, { type, message });
-  }
-
-  chat(battleId, { name = "", message = "" }) {
-    return this.broadcastChat(battleId, { name, message });
-  }
-
-  spectators(battleId, count) {
-    if (!battleId) return false;
-    const sanitizedCount = Math.max(0, Number(count) || 0);
-    return this.toAll(battleId, "spectator:count", { 
-      count: sanitizedCount,
-      timestamp: Date.now()
+  emitSystem(battleId, payload) {
+    return this.toAll(battleId, "systemMessage", {
+      ts: Date.now(),
+      ...(payload || {}),
     });
   }
 
-  // 시스템 통계
-  getSystemStats() {
-    if (!this.options.enableMetrics) {
-      return { metricsDisabled: true };
+  pushLogAndBroadcast(battle, entry) {
+    if (!battle?.id) return false;
+    const log = {
+      type: entry?.type || "system",
+      message: String(entry?.message || "").slice(0, 500),
+      ts: entry?.ts || Date.now(),
+      ...entry,
+    };
+    try {
+      battle.log = battle.log || [];
+      battle.log.push(log);
+      if (battle.log.length > 500) {
+        battle.log.splice(0, battle.log.length - 500);
+      }
+    } catch (e) {
+      // 로컬 로그 실패해도 브로드캐스트는 시도
     }
+    return this.toAll(battle.id, "logMessage", log);
+  }
 
+  emitChat(battleId, msg) {
+    if (!battleId || !msg) return false;
+    const sanitized = {
+      senderRole: String(msg.senderRole || "").slice(0, 16), // admin|player|spectator
+      senderName: String(msg.senderName || "").slice(0, 50),
+      text: String(msg.text || "").slice(0, 500),
+      ts: msg.ts || Date.now(),
+    };
+    return this.toAll(battleId, "chatMessage", sanitized);
+  }
+
+  emitCheer(battleId, payload) {
+    if (!battleId || !payload) return false;
+    const sanitized = {
+      spectatorName: String(payload.spectatorName || "").slice(0, 50),
+      cheerText: String(payload.cheerText || "").slice(0, 200),
+      ts: payload.ts || Date.now(),
+    };
+    return this.toAll(battleId, "cheerMessage", sanitized);
+  }
+
+  emitRoundResult(battle, summary) {
+    if (!battle?.id || !summary) return false;
+    const payload = {
+      round: summary.round,
+      damageMatrix: summary.damageMatrix || null,
+      koList: Array.isArray(summary.koList) ? summary.koList : [],
+      notes: String(summary.notes || ""),
+      ts: Date.now(),
+    };
+    return this.toAll(battle.id, "roundResult", payload);
+  }
+
+  emitError(battleId, error) {
+    return this.toAll(battleId, "errorMessage", {
+      ts: Date.now(),
+      message: (error && error.message) ? String(error.message) : String(error || ""),
+    });
+  }
+
+  /* ========== 호환 메서드(기존 호출 보전) ========== */
+  // 기존 코드에서 사용 중일 수 있는 별칭들
+  toAllEvent(battleId, event, data) { return this.toAll(battleId, event, data); }
+  broadcastBattleEvent(battleId, type, payload) {
+    return this.toAll(battleId, `battle:${type}`, payload || {});
+  }
+  broadcastTurnEvent(battleId, type, payload) {
+    return this.toAll(battleId, `turn:${type}`, payload || {});
+  }
+  broadcastBattleState(battleId, snapshot) {
+    return this.toAll(battleId, "state:snapshot", snapshot);
+  }
+  log(battleId, { type = "system", message = "" }) {
+    return this.pushLogAndBroadcast({ id: battleId, log: [] }, { type, message });
+  }
+  chat(battleId, { name = "", message = "" }) {
+    return this.emitChat(battleId, { senderName: name, text: message });
+  }
+  spectators(battleId, count) {
+    const c = Math.max(0, Number(count) || 0);
+    return this.toAll(battleId, "spectator:count", { count: c, ts: Date.now() });
+  }
+
+  /* ========== 시스템 상태 ========== */
+  getSystemStats() {
+    if (!this.options.enableMetrics) return { metricsDisabled: true };
     return {
       ...this.metrics,
       isInitialized: this.isInitialized,
       options: this.options,
-      uptime: Date.now() - (this.metrics.lastActivity || Date.now())
+      uptime: Date.now() - (this.metrics.lastActivity || Date.now()),
     };
   }
 
-  // 정리
   destroy() {
     this.io = null;
     this.isInitialized = false;
-    this.metrics = {
-      messagesSent: 0,
-      errors: 0,
-      lastActivity: Date.now()
-    };
-    
-    if (this.options?.verbose) {
-      console.log('[BroadcastManager] Destroyed');
-    }
+    this.metrics = { messagesSent: 0, errors: 0, lastActivity: Date.now() };
+    if (this.options.verbose) console.log("[BroadcastManager] Destroyed");
   }
 }
 
 module.exports = {
   BroadcastManager,
-  // 팩토리 함수
   init: (io, options) => {
     const manager = new BroadcastManager();
     manager.init(io, options);
     return manager;
-  }
+  },
 };
