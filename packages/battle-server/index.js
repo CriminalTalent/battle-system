@@ -20,13 +20,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ───────────────────────────────────────────────────────────────
+// 기본 경로/포트
+// ───────────────────────────────────────────────────────────────
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const ROOT = path.resolve(__dirname);
 const PUBLIC_DIR = path.join(ROOT, "public");
 const UPLOAD_DIR = path.join(ROOT, "uploads");
 
+// 디렉터리 보장
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// 업로드 설정
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOAD_DIR),
   filename: (_, file, cb) => {
@@ -37,6 +41,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// 유틸
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const d20 = () => Math.floor(Math.random() * 20) + 1;
 const now = () => Date.now();
@@ -47,6 +52,7 @@ function normTeam(t) {
   if (k === "eaters" || k === "death" || k === "b") return "eaters";
   return "phoenix";
 }
+
 function readStats(p) {
   const s = p?.stats || {};
   return {
@@ -56,11 +62,13 @@ function readStats(p) {
     luck: clamp(Number(s.luck ?? 3), 1, 5),
   };
 }
+
 function isCritical(luck) {
   const th = 20 - luck / 2;
   const r = d20();
   return { crit: r >= th, roll: r, threshold: th };
 }
+
 const ITEM = {
   DITTANY: "dittany",
   ATK_BOOST: "attack_booster",
@@ -72,8 +80,20 @@ const BOOST_SUCCESS = 0.10;
 const tryBooster = () => Math.random() < BOOST_SUCCESS;
 
 // 인메모리 상태
+/**
+ * battles[battleId] = {
+ *   id, mode, status: 'waiting'|'active'|'paused'|'ended',
+ *   players: [{ id, name, team:'phoenix'|'eaters', hp, maxHp:100, stats, items, avatar, ready }],
+ *   log: [{ ts, type, message }],
+ *   chat: [],
+ *   commitFirstTeam, currentTeam, phase:'commitA'|'commitB'|'resolve', turn, turnStartTime,
+ *   pendingActions: { phoenix: Map<playerId, action>, eaters: Map<playerId, action> },
+ * }
+ */
 const battles = Object.create(null);
 
+// ───────────────────────────────────────────────────────────────
+// 서버/소켓
 // ───────────────────────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
@@ -86,12 +106,23 @@ app.set("trust proxy", true);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+// 정적
 if (!fs.existsSync(PUBLIC_DIR)) {
   console.warn("[WARN] public 디렉터리가 없습니다:", PUBLIC_DIR);
 }
-
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", immutable: true }));
 app.use("/", express.static(PUBLIC_DIR, { maxAge: "1h" }));
+
+// 페이지 라우트
+app.get(["/admin", "/admin/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "pages", "admin.html"));
+});
+app.get(["/player", "/player/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "player.html"));
+});
+app.get(["/spectator", "/spectator/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "spectator.html"));
+});
 
 // 헬스체크
 app.get("/api/health", (_, res) => res.json({ ok: true, ts: Date.now() }));
@@ -360,9 +391,12 @@ function startBattle(b) {
   b.status = "active";
   b.turn = 1;
   b.phase = "commitA";
+
+  // 선커밋 팀 결정: 양 팀 민첩 합 + d20 의 합 비교, 동점이면 재굴림
   const init = teamInitiative(b);
   b.commitFirstTeam = init.winner;
   b.currentTeam = b.commitFirstTeam;
+
   b.turnStartTime = now();
   b.pendingActions = { phoenix: new Map(), eaters: new Map() };
   log(b, "system", `선공: ${b.commitFirstTeam}팀`);
@@ -375,10 +409,12 @@ function resolveTurn(b) {
   const second = otherTeam(first);
   const turnLog = [];
 
+  // 액션 대기열 복사 후 초기화
   const actA = b.pendingActions[first];
   const actB = b.pendingActions[second];
   b.pendingActions = { phoenix: new Map(), eaters: new Map() };
 
+  // 해석 순서: 선커밋 팀 → 후커밋 팀
   for (const team of [first, second]) {
     const acts = team === first ? actA : actB;
     for (const [pid, action] of acts.entries()) {
@@ -389,8 +425,10 @@ function resolveTurn(b) {
     }
   }
 
+  // 로그 출력
   turnLog.forEach((m) => log(b, m.type, m.message));
 
+  // 승패 판단
   const aliveA = b.players.some((p) => normTeam(p.team) === "phoenix" && p.hp > 0);
   const aliveB = b.players.some((p) => normTeam(p.team) === "eaters" && p.hp > 0);
   if (!aliveA || !aliveB) {
@@ -402,6 +440,7 @@ function resolveTurn(b) {
     return;
   }
 
+  // 다음 턴(선/후공 교대)
   b.turn += 1;
   b.commitFirstTeam = otherTeam(b.commitFirstTeam);
   b.currentTeam = b.commitFirstTeam;
@@ -433,7 +472,7 @@ function applyAction(b, actor, action, turnLog) {
       }
       if (a.itemType === ITEM.ATK_BOOST) {
         if (consumeItem(actor, ITEM.ATK_BOOST)) {
-          actor._buffAtk = true;
+          actor._buffAtk = true; // 이번 턴 공격에만 적용
           turnLog.push({ type: "system", message: `${actor.name} 공격 보정기 사용` });
         } else {
           turnLog.push({ type: "system", message: `${actor.name} 공격 보정기 없음` });
@@ -442,7 +481,7 @@ function applyAction(b, actor, action, turnLog) {
       }
       if (a.itemType === ITEM.DEF_BOOST) {
         if (consumeItem(actor, ITEM.DEF_BOOST)) {
-          actor._buffDef = true;
+          actor._buffDef = true; // 이번 턴 방어에만 적용
           turnLog.push({ type: "system", message: `${actor.name} 방어 보정기 사용` });
         } else {
           turnLog.push({ type: "system", message: `${actor.name} 방어 보정기 없음` });
@@ -470,6 +509,7 @@ function applyAction(b, actor, action, turnLog) {
         return;
       }
 
+      // 공격력 + d20 (+공격 보정 시 공격 스탯 ×1.5)
       let atkStat = A.attack;
       if (actor._buffAtk === true) {
         if (tryBooster()) atkStat = Math.floor(atkStat * ATK_MULT);
@@ -477,8 +517,10 @@ function applyAction(b, actor, action, turnLog) {
       const atkRoll = d20();
       const atkScore = atkStat + atkRoll;
 
+      // 치명타
       const crit = isCritical(A.luck).crit;
 
+      // 타깃이 회피 선택?
       if (target._dodging) {
         const T = readStats(target);
         const dodgeRoll = d20();
@@ -487,31 +529,38 @@ function applyAction(b, actor, action, turnLog) {
           turnLog.push({ type: "dodge", message: `${target.name} 회피 성공` });
           return;
         } else {
+          // 회피 실패 시 정면 피격(방어력 차감 없음), 하한 1 유지
           let raw = atkScore;
           if (crit) raw *= 2;
-          const dmg = Math.max(1, raw); // 회피 실패는 방어력 차감 없음, 하한 1 유지
+          const dmg = Math.max(1, raw);
           applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중(회피 실패)`);
           return;
         }
       }
 
+      // 타깃이 방어 선택?
       if (target._defending) {
         const T = readStats(target);
+
+        // 방어 성공 판정: (민첩 + d20) ≥ 공격수치 → 0 대미지
         const defendRoll = d20();
         const defendScore = T.agility + defendRoll;
         if (defendScore >= atkScore) {
           turnLog.push({ type: "defense", message: `${target.name} 방어 성공` });
           return;
         }
+
+        // 방어 실패 → 방어치 감산 (최소 1 보장 제거)
         let defStat = T.defense;
         if (target._buffDef === true) {
           if (tryBooster()) defStat = Math.floor(defStat * DEF_MULT);
         }
         let raw = atkScore - defStat;
         if (crit) raw *= 2;
-        const dmg = Math.max(0, raw); // 방어에 한해 최소 1 제거
+        const dmg = Math.max(0, raw); // 방어에 한해 하한 0
         if (dmg > 0) {
           applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중(방어 실패)`);
+          // 역공격: 피해 받은 경우만, 방어 불가 고정타
           const cRoll = d20();
           const counter = readStats(target).attack + cRoll;
           applyDamageTo(b, actor, counter, turnLog, `${target.name} 역공격`);
@@ -521,7 +570,7 @@ function applyAction(b, actor, action, turnLog) {
         return;
       }
 
-      // 일반 명중
+      // 일반 명중(방어/회피 안 했을 때)
       let raw = atkScore;
       if (crit) raw *= 2;
       const dmg = Math.max(1, raw); // 기본 하한 1 유지
@@ -538,7 +587,10 @@ function applyAction(b, actor, action, turnLog) {
 function applyDamageTo(b, target, dmg, logBuf, label) {
   const before = target.hp;
   target.hp = clamp(before - Math.max(0, dmg | 0), 0, 100);
-  logBuf.push({ type: "attack", message: `${label} → ${target.name} HP ${before}→${target.hp} (-${Math.max(0, dmg | 0)})` });
+  logBuf.push({
+    type: "attack",
+    message: `${label} → ${target.name} HP ${before}→${target.hp} (-${Math.max(0, dmg | 0)})`,
+  });
 }
 
 function clearTurnFlags(b) {
