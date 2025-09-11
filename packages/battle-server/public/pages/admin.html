@@ -1,329 +1,176 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>PYXIS Admin</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root{
-      --bg:#0b1117; --panel:#121a23; --panel-2:#0f1620; --fg:#e9e4d7;
-      --muted:#cdbfa5; --brand:#dcc7a2; --line:rgba(220,199,162,.22);
-      --accent:#2f81f7; --danger:#c73e1d; --ok:#2d5a27;
-    }
-    html,body{background:var(--bg);color:var(--fg);margin:0;font-family:ui-sans-serif,system-ui,AppleSDGothicNeo,Segoe UI,Roboto,Helvetica,Arial,'Apple Color Emoji','Segoe UI Emoji';}
-    a{color:var(--brand)}
-    .wrap{max-width:1100px;margin:0 auto;padding:20px}
-    header.top{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
-    .brand{font-weight:800;letter-spacing:.3px}
-    .conn{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
-    .dot{width:10px;height:10px;border-radius:50%;background:#666}
-    .dot.ok{background:var(--ok)}
-    .dot.bad{background:var(--danger)}
+// packages/battle-server/index.js
+// PYXIS Battle Server (ESM)
+// - 한글화 / 이모지 금지
+// - 팀 내부키: phoenix/eaters (프런트에서 A/B로 표기)
+// - 스탯 각 1~5, 총합 제한 없음, HP 최대 100
+// - 방어 시 최소 1 보장 제거(방어 실패 피해: max(0, 공격-방어))
+// - 턴: 선커밋 → 후커밋 → resolve, 이후 선/후공 교대
 
-    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
-    @media (max-width:980px){.grid{grid-template-columns:1fr}}
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import http from "http";
+import express from "express";
+import cors from "cors";
+import multer from "multer";
+import { randomUUID } from "crypto";
+import { Server as IOServer } from "socket.io";
 
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    .card-header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
-    .card-body{padding:14px}
-    .card-footer{padding:10px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .col{display:flex;flex-direction:column;gap:6px}
-    .field{display:flex;flex-direction:column;gap:6px;min-width:120px}
-    .field label{font-size:12px;color:var(--muted)}
-    input[type=text], input[type=number], select{
-      background:var(--panel-2); border:1px solid var(--line); color:var(--fg);
-      border-radius:8px; padding:8px 10px; outline:none; min-width:0;
-    }
-    input[type=file]{color:var(--muted)}
-    .btn{
-      background:transparent;border:1px solid var(--line);color:var(--fg);
-      border-radius:10px;padding:8px 12px;font-weight:600;cursor:pointer
-    }
-    .btn:hover{border-color:var(--brand)}
-    .btn.primary{background:var(--accent);border-color:transparent;color:#fff}
-    .btn.danger{border-color:rgba(199,62,29,.5);color:#fff;background:var(--danger)}
-    .btn.ghost{background:transparent}
-    .muted{color:var(--muted)}
-    .badge{border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);font-size:12px}
+// ───────────────────────────────────────────────────────────────
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
+const ROOT = path.resolve(__dirname);
+const PUBLIC_DIR = path.join(ROOT, "public");
+const UPLOAD_DIR = path.join(ROOT, "uploads");
 
-    .flex{display:flex;gap:10px;align-items:center}
-    .stack{display:flex;flex-direction:column;gap:10px}
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-    /* 인원 목록 */
-    .teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media (max-width:900px){.teams{grid-template-columns:1fr}}
-    .team-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-    .list{display:flex;flex-direction:column;gap:8px}
-    .player{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel-2);display:grid;grid-template-columns:auto 1fr;gap:10px}
-    .row-buttons{display:flex;gap:8px;margin-top:8px}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;font-size:12px;color:var(--muted)}
+const storage = multer.diskStorage({
+  destination: (_, __, cb) => cb(null, UPLOAD_DIR),
+  filename: (_, file, cb) => {
+    const id = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    cb(null, "avatar-" + id + ext);
+  },
+});
+const upload = multer({ storage });
 
-    /* 아바타/미리보기 */
-    .avatar{width:46px;height:46px;border-radius:8px;background:#0d131a;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--brand);overflow:hidden}
-    .avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:8px}
-    .img-preview{width:64px;height:64px;border:1px solid var(--line);border-radius:8px;object-fit:cover;background:#0d131a}
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const d20 = () => Math.floor(Math.random() * 20) + 1;
+const now = () => Date.now();
 
-    /* 로그 & 채팅 */
-    .log{height:180px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px}
-    .chat{height:130px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px}
-    .log div, .chat div{padding:2px 0}
+function normTeam(t) {
+  const k = String(t || "").toLowerCase();
+  if (k === "phoenix" || k === "a") return "phoenix";
+  if (k === "eaters" || k === "death" || k === "b") return "eaters";
+  return "phoenix";
+}
+function readStats(p) {
+  const s = p?.stats || {};
+  return {
+    attack: clamp(Number(s.attack ?? 3), 1, 5),
+    defense: clamp(Number(s.defense ?? 3), 1, 5),
+    agility: clamp(Number(s.agility ?? 3), 1, 5),
+    luck: clamp(Number(s.luck ?? 3), 1, 5),
+  };
+}
+function isCritical(luck) {
+  const th = 20 - luck / 2;
+  const r = d20();
+  return { crit: r >= th, roll: r, threshold: th };
+}
+const ITEM = {
+  DITTANY: "dittany",
+  ATK_BOOST: "attack_booster",
+  DEF_BOOST: "defense_booster",
+};
+const ATK_MULT = 1.5;
+const DEF_MULT = 1.5;
+const BOOST_SUCCESS = 0.10;
+const tryBooster = () => Math.random() < BOOST_SUCCESS;
 
-    /* 발급 결과 개별 복사 리스트 */
-    .copy-list{display:flex;flex-direction:column;gap:8px}
-    .copy-row{display:flex;justify-content:space-between;gap:10px;border:1px dashed var(--line);border-radius:10px;padding:8px}
-    .copy-label{color:var(--muted);font-size:12px}
-    .copy-value{background:#0d131a;border:1px solid var(--line);border-radius:8px;padding:3px 8px}
+// 인메모리 상태
+const battles = Object.create(null);
 
-    /* 관전자 OTP */
-    .badge-pill{border:1px solid var(--line);padding:3px 8px;border-radius:999px;color:var(--muted);font-size:12px}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <header class="top">
-      <div class="brand">PYXIS Battle Admin</div>
-      <div class="conn">
-        <span id="connText">연결 상태</span>
-        <span id="connDot" class="dot"></span>
-      </div>
-    </header>
+// ───────────────────────────────────────────────────────────────
+const app = express();
+const server = http.createServer(app);
+const io = new IOServer(server, {
+  cors: { origin: true, credentials: true },
+  transports: ["websocket", "polling"],
+});
 
-    <!-- 상단 상태 -->
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-body row" style="justify-content:space-between">
-        <div class="row" style="gap:14px">
-          <div class="badge">전투 ID: <strong id="currentBattleId" class="mono">-</strong></div>
-          <div class="badge">모드: <strong id="currentMode" class="mono">-</strong></div>
-        </div>
-        <div class="muted">팀 표기: 화면엔 <strong>A/B</strong>로만 표시됩니다</div>
-      </div>
-    </div>
+app.set("trust proxy", true);
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
 
-    <div class="grid">
-      <!-- 좌측: 컨트롤 + 인원 목록 -->
-      <div class="stack">
+if (!fs.existsSync(PUBLIC_DIR)) {
+  console.warn("[WARN] public 디렉터리가 없습니다:", PUBLIC_DIR);
+}
 
-        <!-- 전투 컨트롤 -->
-        <section class="card">
-          <header class="card-header">
-            <h3 style="margin:0">전투 컨트롤</h3>
-            <span class="muted" id="turnInfo"></span>
-          </header>
-          <div class="card-body stack">
-            <div class="row">
-              <div class="field">
-                <label for="battleMode">모드</label>
-                <select id="battleMode">
-                  <option value="1v1">1v1</option>
-                  <option value="2v2">2v2</option>
-                  <option value="3v3">3v3</option>
-                  <option value="4v4">4v4</option>
-                </select>
-              </div>
-              <button id="btnCreateBattle" class="btn primary">전투 생성</button>
-              <button id="btnStartBattle" class="btn">시작</button>
-              <button id="btnPauseBattle" class="btn ghost">일시정지</button>
-              <button id="btnResumeBattle" class="btn ghost">재개</button>
-              <button id="btnEndBattle" class="btn danger">종료</button>
-            </div>
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", immutable: true }));
+app.use("/", express.static(PUBLIC_DIR, { maxAge: "1h" }));
 
-            <div class="row">
-              <!-- 참가자 추가 -->
-              <div class="field" style="min-width:200px">
-                <label for="pName">이름</label>
-                <input id="pName" type="text" placeholder="전투 참가자 이름" />
-              </div>
-              <div class="field">
-                <label for="pTeam">팀</label>
-                <!-- 내부 값: phoenix|eaters / 화면 레이블: A/B -->
-                <select id="pTeam">
-                  <option value="phoenix">A</option>
-                  <option value="eaters">B</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="pHP">HP</label>
-                <input id="pHP" type="number" min="1" max="9999" value="100" />
-              </div>
-              <div class="field">
-                <label for="sATK">공격</label>
-                <input id="sATK" type="number" min="1" max="10" value="3" />
-              </div>
-              <div class="field">
-                <label for="sDEF">방어</label>
-                <input id="sDEF" type="number" min="1" max="10" value="3" />
-              </div>
-              <div class="field">
-                <label for="sDEX">민첩</label>
-                <input id="sDEX" type="number" min="1" max="10" value="3" />
-              </div>
-              <div class="field">
-                <label for="sLUK">행운</label>
-                <input id="sLUK" type="number" min="1" max="10" value="3" />
-              </div>
+// === 라우트 추가 ===
+app.get(["/admin", "/admin/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "pages", "admin.html"));
+});
+app.get(["/player", "/player/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "player.html"));
+});
+app.get(["/spectator", "/spectator/"], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "spectator.html"));
+});
 
-              <div class="field">
-                <label for="itemDittany">디터니</label>
-                <input id="itemDittany" type="number" min="0" max="99" value="1" />
-              </div>
-              <div class="field">
-                <label for="itemAtkBoost">공격 보정기</label>
-                <input id="itemAtkBoost" type="number" min="0" max="99" value="1" />
-              </div>
-              <div class="field">
-                <label for="itemDefBoost">방어 보정기</label>
-                <input id="itemDefBoost" type="number" min="0" max="99" value="1" />
-              </div>
+// 헬스체크
+app.get("/api/health", (_, res) => res.json({ ok: true, ts: Date.now() }));
 
-              <div class="field">
-                <label for="pImage">이미지</label>
-                <input id="pImage" type="file" accept="image/*" />
-              </div>
-              <div class="field">
-                <label>미리보기</label>
-                <div class="avatar"><img id="pImagePreview" alt="미리보기" /></div>
-              </div>
+// 아바타 업로드
+app.post("/api/upload/avatar", upload.single("avatar"), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: "파일 없음" });
+    const url = "/uploads/" + req.file.filename;
+    return res.json({ ok: true, avatarUrl: url });
+  } catch (e) {
+    console.error("[ERR] /api/upload/avatar:", e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
-              <button id="btnAddPlayer" class="btn">참가자 추가</button>
-            </div>
-          </div>
-        </section>
+// 전투 생성
+app.post("/api/battles", (req, res) => {
+  try {
+    const battleId = createBattle(String(req.body?.mode || "1v1"));
+    return res.json({ ok: true, id: battleId });
+  } catch (e) {
+    console.error("[ERR] /api/battles:", e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
-        <!-- 인원 목록 -->
-        <section class="card">
-          <header class="card-header">
-            <h3 style="margin:0">인원 목록</h3>
-          </header>
-          <div class="card-body">
-            <div class="teams">
-              <div>
-                <div class="team-head"><strong>팀 A</strong></div>
-                <div id="rosterPhoenix" class="list"></div>
-              </div>
-              <div>
-                <div class="team-head"><strong>팀 B</strong></div>
-                <div id="rosterEaters" class="list"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+// 전투 시작
+app.post("/api/battles/:id/start", (req, res) => {
+  const id = String(req.params.id || "");
+  const b = battles[id];
+  if (!b) return res.status(404).json({ ok: false, error: "전투 없음" });
+  try {
+    startBattle(b);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[ERR] /api/battles/:id/start:", e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
-      <!-- 우측: 로그/채팅/발급 -->
-      <div class="stack">
-        <!-- 로그 -->
-        <section class="card">
-          <header class="card-header">
-            <h3 style="margin:0">로그</h3>
-          </header>
-          <div class="card-body">
-            <div id="battleLog" class="log"></div>
-          </div>
-        </section>
+// 전투 조회
+app.get("/api/battles/:id", (req, res) => {
+  try {
+    const b = battles[String(req.params.id || "")];
+    if (!b) return res.status(404).json({ ok: false, error: "전투 없음" });
+    return res.json({ ok: true, battle: publicBattle(b) });
+  } catch (e) {
+    console.error("[ERR] /api/battles/:id:", e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
-        <!-- 채팅 -->
-        <section class="card">
-          <header class="card-header">
-            <h3 style="margin:0">채팅</h3>
-          </header>
-          <div class="card-body stack">
-            <div id="chatView" class="chat"></div>
-            <div class="row" style="align-items:stretch">
-              <input id="chatText" type="text" placeholder="메시지 입력" style="flex:1" />
-              <button id="btnChatSend" class="btn">전송</button>
-            </div>
-          </div>
-        </section>
+// 공통 에러 핸들러
+app.use((err, _req, res, _next) => {
+  console.error("[UNCAUGHT] Express:", err);
+  res.status(500).json({ ok: false, error: "서버 오류" });
+});
 
-        <!-- 관전자 비밀번호(OTP) 발급: 채팅 밑으로 이동 -->
-        <section id="spectatorIssue" class="card">
-          <header class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <h3 style="margin:0;">관전자 비밀번호(OTP) 발급</h3>
-            <span id="spectatorIssueStatus" class="badge-pill" style="display:none;">대기</span>
-          </header>
+// ───────────────────────────────────────────────────────────────
+// Socket.IO
+// (중략: 전투 생성, addPlayer, playerAuth, player:action 등 기존 로직 동일)
+// applyAction에서 방어는 Math.max(0, raw) 처리로 최소1 보장 제거
+// ───────────────────────────────────────────────────────────────
 
-          <div class="card-body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button id="btnGenSpect" class="btn">관전자 링크 발급</button>
+// ... (위에서 드린 전체 전투 로직 그대로 붙여넣으시면 됩니다) ...
 
-            <div id="spectatorResult" class="row" style="display:none;flex:1;min-width:280px;">
-              <input id="spectUrl" type="text" readonly
-                     style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);border-radius:8px;">
-              <button id="btnCopySpect" class="btn">복사</button>
-            </div>
-          </div>
-
-          <div class="card-footer">
-            발급된 링크의 <code>otp=...</code> 값이 관전자 비밀번호입니다.
-            관전자는 링크로 접속하거나, 전투 ID와 비밀번호를 직접 입력해 접속할 수 있습니다.
-          </div>
-        </section>
-
-        <!-- 비밀번호/링크 발급 결과(공용 리스트) -->
-        <section class="card">
-          <header class="card-header">
-            <h3 style="margin:0">발급 도구</h3>
-          </header>
-          <div class="card-body stack">
-            <div class="row">
-              <button id="btnIssuePlayerPw" class="btn">참가자 비밀번호</button>
-              <button id="btnIssueSpectatorPw" class="btn">관전자 비밀번호</button>
-            </div>
-            <div class="row">
-              <button id="btnIssuePlayerLinks" class="btn">참가자 링크 발급</button>
-              <button id="btnIssueSpectatorLink" class="btn">관전자 링크 발급</button>
-            </div>
-            <div class="copy-list" id="issueList"></div>
-          </div>
-        </section>
-      </div>
-    </div>
-  </div>
-
-  <!-- Socket.IO -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- Admin JS -->
-  <script src="/assets/js/admin.js"></script>
-
-  <!-- 관전자 OTP 전용 바인딩 (admin.js와 함께 동작) -->
-  <script>
-  (function(){
-    const btnGen = document.getElementById("btnGenSpect");
-    const resWrap = document.getElementById("spectatorResult");
-    const inputUrl = document.getElementById("spectUrl");
-    const btnCopy = document.getElementById("btnCopySpect");
-    const pill = document.getElementById("spectatorIssueStatus");
-    function setStatus(txt, show=true){ if(!pill) return; pill.textContent=txt||"대기"; pill.style.display= show? "":"none"; }
-    function toast(msg){ try{ UIHelpers?.toast?.(msg); }catch(e){ console.log(msg);} }
-    function getSocket(){ return (window.PyxisAdmin && window.PyxisAdmin.socket) || window.socket || null; }
-    function getBattleId(){
-      if (window.PyxisAdmin?.battleId) return window.PyxisAdmin.battleId;
-      const s = document.getElementById("currentBattleId")?.textContent?.trim(); if (s) return s;
-      const p = new URLSearchParams(location.search); return p.get("battle");
-    }
-    btnGen?.addEventListener("click", ()=>{
-      const sock = getSocket(); const battleId = getBattleId();
-      if (!sock){ alert("서버 연결을 찾지 못했습니다."); return; }
-      if (!battleId){ toast("전투 ID가 없습니다."); return; }
-      setStatus("발급 요청 중...");
-      resWrap.style.display="none"; inputUrl.value="";
-      sock.emit("generateSpectatorOtp",{ battleId });
-    });
-    btnCopy?.addEventListener("click", ()=>{
-      const v = inputUrl.value||""; if(!v) return;
-      navigator.clipboard.writeText(v).then(()=>toast("관전자 링크 복사됨"));
-    });
-    const s = getSocket();
-    if (s && !s.__bindSpectOtp){
-      s.__bindSpectOtp = true;
-      s.on("spectatorOtpGenerated", (res)=>{
-        if(!res || res.success===false){ setStatus("실패"); toast("관전자 링크 발급 실패"); return; }
-        inputUrl.value = res.spectatorUrl||"";
-        resWrap.style.display=""; setStatus("발급 완료");
-      });
-    }
-  })();
-  </script>
-</body>
-</html>
+// 시작
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`[INFO] PYXIS server started on 0.0.0.0:${PORT} (${process.env.NODE_ENV || "development"})`);
+});
