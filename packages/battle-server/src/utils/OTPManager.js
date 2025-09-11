@@ -1,6 +1,8 @@
 // packages/battle-server/src/utils/OTPManager.js
+"use strict";
+
 // PYXIS OTP Manager - Enhanced Design Version
-// 보안 강화, 역할별 관리, 자동 정리, 상세 로깅 + 사용량 제한(oneTime/maxUses) 지원
+// 역할별 TTL/사용한도 + 배틀/사용자 인덱싱 + 만료·폐기·일괄정리 지원
 
 const crypto = require("crypto");
 const EventEmitter = require("events");
@@ -9,7 +11,6 @@ class OTPManager extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    // 설정 옵션
     this.config = {
       maxSpectators: options.maxSpectators || 30,
       maxPlayers: options.maxPlayers || 8,
@@ -18,12 +19,9 @@ class OTPManager extends EventEmitter {
       cleanupInterval: options.cleanupInterval || 5 * 60 * 1000, // 5분
       defaultTTL: {
         spectator: 30 * 60 * 1000, // 30분
-        player: 30 * 60 * 1000, // 30분
-        admin: 60 * 60 * 1000, // 60분
+        player: 30 * 60 * 1000,    // 30분
+        admin: 60 * 60 * 1000,     // 60분
       },
-      // 역할별 기본 사용 제한
-      // - 관리자: 만료 전까지 재사용 가능 (사실상 무제한)
-      // - 플레이어/관전자: 만료되면 재발급 가능, 사용 횟수 제한 없음
       defaultMaxUses: {
         spectator: Number.MAX_SAFE_INTEGER,
         player: Number.MAX_SAFE_INTEGER,
@@ -31,16 +29,16 @@ class OTPManager extends EventEmitter {
       },
       rateLimiting: {
         maxAttemptsPerIP: 10,
-        windowMs: 15 * 60 * 1000, // 15분
+        windowMs: 15 * 60 * 1000,
       },
       ...options,
     };
 
     // 저장소
-    this.otpStore = new Map(); // otp -> { type, data, expiresAt, createdAt, usage, limits }
+    this.otpStore = new Map();   // otp -> { type, data, expiresAt, createdAt, usage, limits }
     this.ipAttempts = new Map(); // ip -> { attempts, resetAt }
     this.battleOTPs = new Map(); // battleId -> Set<otp>
-    this.userOTPs = new Map(); // userId -> Set<otp>
+    this.userOTPs = new Map();   // userId -> Set<otp>
 
     // 통계
     this.stats = {
@@ -52,18 +50,18 @@ class OTPManager extends EventEmitter {
       revoked: 0,
     };
 
-    // 자동 정리 타이머
+    // 자동 만료 정리
     this.cleanupTimer = setInterval(() => {
-      this.clearExpired();
+      try { this.clearExpired(); } catch (_) {}
     }, this.config.cleanupInterval);
     if (this.cleanupTimer.unref) this.cleanupTimer.unref();
 
     this.log("OTPManager 초기화 완료", "INFO", this.config);
   }
 
-  // ─────────────────────────────────────────────
+  // ────────────────────────────
   // 로깅/유틸
-  // ─────────────────────────────────────────────
+  // ────────────────────────────
   mask(otp, left = 2) {
     if (!otp) return "";
     return otp.slice(0, left) + "****";
@@ -71,287 +69,275 @@ class OTPManager extends EventEmitter {
 
   log(message, level = "INFO", data = null) {
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}][OTPManager][${level}] ${message}`;
-
-    if (level === "ERROR") {
-      console.error(logMessage, data || "");
-    } else if (level === "WARN") {
-      console.warn(logMessage, data || "");
-    } else {
-      console.log(logMessage, data || "");
-    }
-
+    const s = `[${timestamp}][OTPManager][${level}] ${message}`;
+    if (level === "ERROR") console.error(s, data || "");
+    else if (level === "WARN") console.warn(s, data || "");
+    else console.log(s, data || "");
     this.emit("log", { message, level, data, timestamp });
   }
 
-  now() {
-    return Date.now();
-  }
+  now() { return Date.now(); }
 
-  // ─────────────────────────────────────────────
-  // Rate Limiting
-  // ─────────────────────────────────────────────
+  // ────────────────────────────
+  // Rate Limiting(IP별)
+  // ────────────────────────────
   checkRateLimit(ip) {
     if (!ip) return true;
     const now = this.now();
     const windowMs = this.config.rateLimiting.windowMs;
     const maxAttempts = this.config.rateLimiting.maxAttemptsPerIP;
-    const attempt = this.ipAttempts.get(ip);
-
-    if (!attempt) {
-      this.ipAttempts.set(ip, { attempts: 1, resetAt: now + windowMs });
-      return true;
-    }
-
-    if (now > attempt.resetAt) {
-      attempt.attempts = 1;
-      attempt.resetAt = now + windowMs;
-      return true;
-    }
-
-    if (attempt.attempts >= maxAttempts) {
-      this.log(`Rate limit 초과`, "WARN", { ip, attempts: attempt.attempts });
-      return false;
-    }
-
-    attempt.attempts++;
-    return true;
+    const rec = this.ipAttempts.get(ip);
+    if (!rec) { this.ipAttempts.set(ip, { attempts: 1, resetAt: now + windowMs }); return true; }
+    if (now > rec.resetAt) { rec.attempts = 1; rec.resetAt = now + windowMs; return true; }
+    if (rec.attempts >= maxAttempts) { this.log("Rate limit 초과", "WARN", { ip, attempts: rec.attempts }); return false; }
+    rec.attempts++; return true;
   }
 
-  // ─────────────────────────────────────────────
-  // OTP 생성
-  // ─────────────────────────────────────────────
+  // ────────────────────────────
+  // 생성
+  // ────────────────────────────
   generateOTP(type, data = {}, options = {}) {
     try {
       const currentCount = this.getCountByType(type);
       const maxCount = this.getMaxCountByType(type);
       if (currentCount >= maxCount) {
-        this.log(`OTP 생성 한도 초과`, "WARN", { type, currentCount, maxCount });
+        this.log("OTP 생성 한도 초과", "WARN", { type, currentCount, maxCount });
         return null;
       }
 
-      if (options.ip && !this.checkRateLimit(options.ip)) {
-        return null;
-      }
+      if (options.ip && !this.checkRateLimit(options.ip)) return null;
 
-      let otp;
-      let attempts = 0;
+      let otp; let tries = 0;
       do {
-        otp = this.generateSecureOTP();
-        attempts++;
-        if (attempts >= 10) {
-          this.log("OTP 생성 최대 시도 초과", "ERROR", { attempts });
-          return null;
-        }
+        otp = this._secureCode(this.config.otpLength);
+        if (++tries > 10) { this.log("OTP 생성 최대 시도 초과", "ERROR", { tries }); return null; }
       } while (this.otpStore.has(otp));
 
-      const ttl =
-        options.ttl ??
-        this.config.defaultTTL[type] ??
-        this.config.defaultTTL.spectator;
-
+      const ttl = options.ttl ?? this.config.defaultTTL[type] ?? this.config.defaultTTL.spectator;
       const maxUses = options.oneTime
         ? 1
-        : options.maxUses ??
-          this.config.defaultMaxUses[type] ??
-          this.config.defaultMaxUses.spectator;
+        : (options.maxUses ?? this.config.defaultMaxUses[type] ?? this.config.defaultMaxUses.spectator);
 
-      const expiresAt = this.now() + ttl;
-      const createdAt = this.now();
-
-      const otpData = {
+      const rec = {
         type,
         data: { ...(data || {}) },
-        expiresAt,
-        createdAt,
-        usage: {
-          attempts: 0,
-          uses: 0,
-          lastUsed: null,
-          ip: options.ip || null,
-        },
+        createdAt: this.now(),
+        expiresAt: this.now() + ttl,
+        usage: { attempts: 0, uses: 0, lastUsed: null, ip: options.ip || null },
         limits: { maxUses, oneTime: !!options.oneTime },
       };
 
-      this.otpStore.set(otp, otpData);
-      this.updateIndexes(otp, otpData);
-
+      this.otpStore.set(otp, rec);
+      this._indexAdd(otp, rec);
       this.stats.generated++;
-      this.log("OTP 생성 성공", "INFO", {
-        type,
-        otp: this.mask(otp),
-        expiresIn: ttl,
-        maxUses,
-        totalCount: this.otpStore.size,
-      });
-      this.emit("generated", { type, otp, data, expiresAt, maxUses });
-
+      this.log("OTP 생성 성공", "INFO", { type, otp: this.mask(otp), ttl, maxUses });
+      this.emit("generated", { otp, ...rec });
       return otp;
-    } catch (error) {
-      this.log("OTP 생성 실패", "ERROR", error);
+    } catch (e) {
+      this.log("OTP 생성 실패", "ERROR", e);
       return null;
     }
   }
 
-  generateSecureOTP() {
-    const length = this.config.otpLength;
+  _secureCode(length) {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let result = "";
     const bytes = crypto.randomBytes(length);
-    for (let i = 0; i < length; i++) {
-      result += chars[bytes[i] % chars.length];
-    }
-    return result;
+    let out = "";
+    for (let i = 0; i < length; i++) out += chars[bytes[i] % chars.length];
+    return out;
   }
 
   getMaxCountByType(type) {
-    switch (type) {
-      case "spectator":
-        return this.config.maxSpectators;
-      case "player":
-        return this.config.maxPlayers;
-      case "admin":
-        return this.config.maxAdmins;
-      default:
-        return 0;
-    }
+    if (type === "spectator") return this.config.maxSpectators;
+    if (type === "player") return this.config.maxPlayers;
+    if (type === "admin") return this.config.maxAdmins;
+    return 0;
   }
 
   getCountByType(type) {
     const now = this.now();
-    let count = 0;
-    for (const [, data] of this.otpStore.entries()) {
-      if (data.type === type && now <= data.expiresAt) count++;
+    let n = 0;
+    for (const [, rec] of this.otpStore) {
+      if (rec.type === type && now <= rec.expiresAt) n++;
     }
-    return count;
+    return n;
   }
 
-  // ─────────────────────────────────────────────
-  // OTP 검증
-  // ─────────────────────────────────────────────
+  // ────────────────────────────
+  // 검증
+  // ────────────────────────────
   validateOTP(otp, options = {}) {
     try {
       if (options.ip && !this.checkRateLimit(options.ip)) {
-        this.stats.failed++;
-        return { valid: false, reason: "rate_limit" };
+        this.stats.failed++; return { valid: false, reason: "rate_limit" };
       }
 
-      const otpData = this.otpStore.get(otp);
-      if (!otpData) {
-        this.log("존재하지 않는 OTP", "WARN", { otp: this.mask(otp) });
-        this.stats.failed++;
-        return { valid: false, reason: "not_found" };
-      }
+      const rec = this.otpStore.get(otp);
+      if (!rec) { this.stats.failed++; this.log("존재하지 않는 OTP", "WARN", { otp: this.mask(otp) }); return { valid: false, reason: "not_found" }; }
 
-      if (this.now() > otpData.expiresAt) {
+      if (this.now() > rec.expiresAt) {
+        this.otpStore.delete(otp); this._indexRemove(otp, rec); this.stats.expired++;
         this.log("만료된 OTP", "WARN", { otp: this.mask(otp) });
-        this.otpStore.delete(otp);
-        this.removeFromIndexes(otp, otpData);
-        this.stats.expired++;
         return { valid: false, reason: "expired" };
       }
 
-      if (otpData.usage.uses >= otpData.limits.maxUses) {
-        this.log("사용 한도 초과 OTP", "WARN", {
-          otp: this.mask(otp),
-          uses: otpData.usage.uses,
-          maxUses: otpData.limits.maxUses,
-        });
-        this.otpStore.delete(otp);
-        this.removeFromIndexes(otp, otpData);
+      if (rec.usage.uses >= rec.limits.maxUses) {
+        this.otpStore.delete(otp); this._indexRemove(otp, rec);
+        this.log("사용 한도 초과", "WARN", { otp: this.mask(otp) });
         return { valid: false, reason: "usage_limit_exceeded" };
       }
 
-      otpData.usage.attempts++;
-      otpData.usage.uses++;
-      otpData.usage.lastUsed = this.now();
-      if (options.ip) otpData.usage.ip = options.ip;
-      this.stats.validated++;
+      rec.usage.attempts++; rec.usage.uses++; rec.usage.lastUsed = this.now();
+      if (options.ip) rec.usage.ip = options.ip;
 
+      const reachedLimit = rec.usage.uses >= rec.limits.maxUses || rec.limits.oneTime;
+      this.stats.validated++;
       this.log("OTP 검증 성공", "INFO", {
-        type: otpData.type,
-        otp: this.mask(otp),
-        attempts: otpData.usage.attempts,
-        uses: otpData.usage.uses,
-        maxUses: otpData.limits.maxUses,
+        otp: this.mask(otp), type: rec.type, uses: rec.usage.uses, max: rec.limits.maxUses
       });
 
-      const reachedLimit = otpData.usage.uses >= otpData.limits.maxUses;
-      if (reachedLimit || otpData.limits.oneTime) {
-        this.otpStore.delete(otp);
-        this.removeFromIndexes(otp, otpData);
-        this.emit("revoked", {
-          otp,
-          type: otpData.type,
-          data: otpData.data,
-          by: "limit",
-        });
-      }
+      if (reachedLimit) { this.otpStore.delete(otp); this._indexRemove(otp, rec); this.stats.revoked++; this.emit("revoked", { otp, ...rec }); }
 
-      this.emit("validated", { otp, type: otpData.type, data: otpData.data });
+      this.emit("validated", { otp, ...rec });
       return {
         valid: true,
-        type: otpData.type,
-        data: otpData.data,
-        usage: { ...otpData.usage },
-        remainingUses: Math.max(
-          0,
-          otpData.limits.maxUses - otpData.usage.uses
-        ),
-        willRevoke: reachedLimit || otpData.limits.oneTime,
+        type: rec.type,
+        data: { ...rec.data },
+        usage: { ...rec.usage },
+        remainingUses: Math.max(0, rec.limits.maxUses - rec.usage.uses),
+        willRevoke: reachedLimit,
       };
-    } catch (error) {
-      this.log("OTP 검증 오류", "ERROR", error);
-      this.stats.failed++;
+    } catch (e) {
+      this.stats.failed++; this.log("OTP 검증 오류", "ERROR", e);
       return { valid: false, reason: "error" };
     }
   }
 
-  // ─────────────────────────────────────────────
-  // 인덱스 관리, 조회, 정리 메서드들
-  // (기존 코드 동일, 생략 없이 유지)
-  // ─────────────────────────────────────────────
-
-  updateIndexes(otp, otpData) {
-    const data = otpData?.data || {};
-    if (data.battleId) {
-      if (!this.battleOTPs.has(data.battleId)) {
-        this.battleOTPs.set(data.battleId, new Set());
-      }
-      this.battleOTPs.get(data.battleId).add(otp);
+  // ────────────────────────────
+  // 인덱스 관리
+  // ────────────────────────────
+  _indexAdd(otp, rec) {
+    const b = rec?.data?.battleId;
+    if (b) {
+      if (!this.battleOTPs.has(b)) this.battleOTPs.set(b, new Set());
+      this.battleOTPs.get(b).add(otp);
     }
-    const userId = data.userId || data.playerId || data.nickname;
-    if (userId) {
-      if (!this.userOTPs.has(userId)) {
-        this.userOTPs.set(userId, new Set());
-      }
-      this.userOTPs.get(userId).add(otp);
+    const u = rec?.data?.userId || rec?.data?.playerId || rec?.data?.nickname;
+    if (u) {
+      if (!this.userOTPs.has(u)) this.userOTPs.set(u, new Set());
+      this.userOTPs.get(u).add(otp);
     }
   }
 
-  removeFromIndexes(otp, otpData) {
-    const data = otpData?.data || {};
-    if (data.battleId) {
-      const set = this.battleOTPs.get(data.battleId);
-      if (set) {
-        set.delete(otp);
-        if (set.size === 0) this.battleOTPs.delete(data.battleId);
-      }
+  _indexRemove(otp, rec) {
+    const b = rec?.data?.battleId;
+    if (b && this.battleOTPs.has(b)) {
+      const set = this.battleOTPs.get(b); set.delete(otp); if (set.size === 0) this.battleOTPs.delete(b);
     }
-    const userId = data.userId || data.playerId || data.nickname;
-    if (userId) {
-      const set = this.userOTPs.get(userId);
-      if (set) {
-        set.delete(otp);
-        if (set.size === 0) this.userOTPs.delete(userId);
-      }
+    const u = rec?.data?.userId || rec?.data?.playerId || rec?.data?.nickname;
+    if (u && this.userOTPs.has(u)) {
+      const set = this.userOTPs.get(u); set.delete(otp); if (set.size === 0) this.userOTPs.delete(u);
     }
   }
 
-  // … getOTPsByBattle, getOTPsByUser, getOTPsByType,
-  // clearExpired, clearByBattle, clearByUser, clearAll, revokeOTP,
-  // getStats, getDetailedInfo, destroy
-  // (기존 구현 그대로 유지)
+  // ────────────────────────────
+  // 정리/폐기 API
+  // ────────────────────────────
+  clearExpired() {
+    const now = this.now();
+    let n = 0;
+    for (const [otp, rec] of this.otpStore.entries()) {
+      if (now > rec.expiresAt) {
+        this.otpStore.delete(otp);
+        this._indexRemove(otp, rec);
+        n++;
+      }
+    }
+    if (n) { this.stats.cleaned += n; this.log(`만료 OTP 정리: ${n}건`, "INFO"); }
+    return n;
+  }
+
+  clearByBattle(battleId) {
+    if (!battleId) return 0;
+    const set = this.battleOTPs.get(battleId);
+    if (!set || set.size === 0) return 0;
+
+    let n = 0;
+    for (const otp of Array.from(set)) {
+      const rec = this.otpStore.get(otp);
+      if (!rec) { set.delete(otp); continue; }
+      this.otpStore.delete(otp);
+      this._indexRemove(otp, rec);
+      n++;
+    }
+    if (n) { this.stats.cleaned += n; this.log(`배틀 OTP 일괄 폐기: ${battleId} (${n}건)`, "INFO"); }
+    return n;
+  }
+
+  clearByUser(userId) {
+    if (!userId) return 0;
+    const set = this.userOTPs.get(userId);
+    if (!set || set.size === 0) return 0;
+
+    let n = 0;
+    for (const otp of Array.from(set)) {
+      const rec = this.otpStore.get(otp);
+      if (!rec) { set.delete(otp); continue; }
+      this.otpStore.delete(otp);
+      this._indexRemove(otp, rec);
+      n++;
+    }
+    if (n) { this.stats.cleaned += n; this.log(`사용자 OTP 일괄 폐기: ${userId} (${n}건)`, "INFO"); }
+    return n;
+  }
+
+  clearAll() {
+    const n = this.otpStore.size;
+    this.otpStore.clear();
+    this.battleOTPs.clear();
+    this.userOTPs.clear();
+    if (n) { this.stats.cleaned += n; this.log(`전체 OTP 초기화: ${n}건`, "WARN"); }
+    return n;
+  }
+
+  revokeOTP(otp) {
+    const rec = this.otpStore.get(otp);
+    if (!rec) return false;
+    this.otpStore.delete(otp);
+    this._indexRemove(otp, rec);
+    this.stats.revoked++;
+    this.emit("revoked", { otp, ...rec, by: "manual" });
+    this.log(`OTP 수동 폐기: ${this.mask(otp)}`, "INFO");
+    return true;
+  }
+
+  getOTPsByBattle(battleId) {
+    const set = this.battleOTPs.get(battleId);
+    if (!set) return [];
+    return Array.from(set);
+  }
+
+  getOTPsByUser(userId) {
+    const set = this.userOTPs.get(userId);
+    if (!set) return [];
+    return Array.from(set);
+  }
+
+  getStats() {
+    return { ...this.stats, total: this.otpStore.size };
+  }
+
+  getDetailedInfo(battleId) {
+    const otps = this.getOTPsByBattle(battleId);
+    return otps.map((o) => ({ otp: o, ...this.otpStore.get(o) }));
+  }
+
+  destroy() {
+    try { clearInterval(this.cleanupTimer); } catch (_) {}
+    this.clearAll();
+    this.ipAttempts.clear();
+    this.log("OTPManager destroy", "WARN");
+  }
 }
 
 module.exports = OTPManager;
