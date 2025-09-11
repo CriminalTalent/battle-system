@@ -29,10 +29,12 @@
     .hpbar > i{display:block; height:100%; width:0%;
       background: linear-gradient(90deg, #8c6b2e, #DCC7A2);}
 
+    /* 모든 버튼: 금색 테두리/글자 + 검은 배경 */
     .btn{display:inline-flex; align-items:center; justify-content:center; height:38px; padding:0 12px;
-      border-radius:10px; border:1px solid var(--border); background:var(--bg-2); color:var(--text); font-weight:600; cursor:pointer;}
+      border-radius:10px; border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--btn-text); font-weight:600; cursor:pointer;
+      transition:transform .12s ease, box-shadow .12s ease;}
     .btn:disabled{opacity:.5; cursor:not-allowed;}
-    .btn-gold{background:var(--btn-bg); border-color:var(--btn-border); color:var(--btn-text);}
+    .btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(220,199,162,.12);}
 
     .turnbox{display:flex; flex-direction:column; align-items:center; gap:10px;}
 
@@ -104,12 +106,12 @@
           <!-- 현재 안내 대상 큰 이미지 -->
           <div class="imgbox"><img id="turnImg" alt=""></div>
 
-          <!-- 타이머: 팀 5분 + 안내용 서브 타이머 -->
+          <!-- 타이머: 팀 5분 + 개인 안내 3분 -->
           <div id="turnTimer" class="label">-</div>
           <div id="subTimer" class="subhint">-</div>
 
           <div class="row">
-            <button id="btnAttack" class="btn btn-gold" disabled>공격</button>
+            <button id="btnAttack" class="btn" disabled>공격</button>
             <button id="btnDefend" class="btn" disabled>방어</button>
             <button id="btnDodge"  class="btn" disabled>회피</button>
             <button id="btnItem"   class="btn" disabled>아이템</button>
@@ -120,4 +122,31 @@
 
       <!-- 우: 채팅/로그 분리 -->
       <div class="card">
-        <div class="label">채팅</
+        <div class="label">채팅</div>
+        <div id="chat" class="chat"></div>
+        <div class="chatbox">
+          <input id="chatMsg" placeholder="메시지 입력"/>
+          <button id="btnSend" class="btn">보내기</button>
+        </div>
+
+        <div class="label" style="margin-top:12px">전투 로그</div>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 타깃 선택 오버레이 -->
+  <div id="targetOverlay" class="overlay hidden">
+    <div class="sheet">
+      <div id="targetTitle" style="font-weight:700">대상 선택</div>
+      <div id="targetList" class="list"></div>
+      <div class="row" style="margin-top:10px; justify-content:flex-end">
+        <button id="btnCancelTarget" class="btn">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/assets/js/player.js" type="module"></script>
+</body>
+</html>
