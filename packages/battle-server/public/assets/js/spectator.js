@@ -1,403 +1,283 @@
-/* packages/battle-server/public/assets/js/spectator.js
-   PYXIS Spectator Client
-   - 상태키: waiting | active | paused | ended
-   - 고정 응원 버튼 6개, 단축키 없음
-   - 타임라인 최대 200라인 유지
-   - 인증 입력: 전투 ID + 비밀번호(내부 키는 otp)
-   - socket (양쪽 호환):
-     emit: spectatorAuth({ battleId, otp, name }) 또는 spectator:auth, join({ battleId })
-           spectator:chat 또는 chat:send, spectator:cheer 또는 cheer:send
-     on:   auth:success, authError 또는 auth:error, battle:update, battle:chat 또는 chat:message,
-           battle:log, spectator:count 또는 spectator:count_update
-   - 이모지 사용 금지
-*/
+// /public/assets/js/spectator.js
+// - 관전자 인증: spectatorAuth / spectator:auth (양쪽 호환) + join
+// - URL ?battle= & (otp|token)= 인식, 이름은 선택
+// - 좌우 A/B팀 로스터(HP바+스탯), 중앙 현재 순서 인물 이미지, 아래 응원 버튼/로그/채팅(보기 전용)
+// - 이모지 금지, 기존 표기/스타일 유지
 
-(function () {
+(function(){
   "use strict";
 
-  // -----------------------------
-  // DOM helpers
-  // -----------------------------
-  const $  = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const $  = (q,root=document)=>root.querySelector(q);
+  const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
 
-  // -----------------------------
-  // Elements (양쪽 ID 동시 지원)
-  // -----------------------------
+  // --- 요소(양쪽 ID 일부 호환)
   const el = {
-    // 인증
-    viewAuth: $("#authView"),
-    authBattle: $("#authBattle"),
-    authOtp: $("#authOtp") || $("#authToken"), // 내부 키는 otp, 페이지에선 token일 수 있음
-    authName: $("#authName"),
-    btnAuth: $("#btnAuth"),
+    authView: $('#authView'),
+    mainView: $('#mainView'),
 
-    // 메인
-    viewMain: $("#mainView"),
-    statusPill: $("#statusPill"),
-    spectatorCount: $("#spectatorCount"), // 없으면 무시
+    authBattle: $('#authBattle'),
+    authOtp: $('#authOtp') || $('#authToken'),
+    authName: $('#authName'),
+    btnAuth: $('#btnAuth'),
 
-    // 로스터
-    rosterPhoenix: $("#rosterPhoenix"),
-    rosterEaters: $("#rosterEaters"),
+    statusPill: $('#statusPill'),
+    turnTeam: $('#turnTeam'),
+    turnImg: $('#turnImg'),
+    queue: $('#queue'),
 
-    // 타임라인(둘 중 하나를 사용)
-    timeline: $("#timelineFeed") || $("#battleLog"),
+    rosterA: $('#rosterPhoenix') || $('#rosterA'),
+    rosterB: $('#rosterEaters') || $('#rosterB'),
 
-    // 채팅
-    chatMessages: $("#chatMessages"),
-    chatInput: $("#chatInput"),
-    btnChat: $("#btnChat"),
+    timeline: $('#timelineFeed') || $('#battleLog'),
+    chatMessages: $('#chatMessages'),
 
-    // 응원
-    cheerButtons: $$(".cheer-btn")
+    cheerButtons: $$('.cheer-btn'),
+    toast: $('#toast'),
   };
 
-  // 고정 응원 멘트
-  const CHEER_MENT = [
-    "멋지다!",
-    "이겨라!",
-    "살아서 돌아와!",
-    "화이팅!",
-    "죽으면 나한테 죽어!",
-    "힘내요!"
-  ];
-
-  // -----------------------------
-  // State
-  // -----------------------------
   const state = {
-    socket: null,
-    battleId: null,
-    status: "waiting",
-    roster: [],
-    log: [],
-    spectatorCount: 0
+    socket:null,
+    battleId:null,
+    otp:null,
+    name:'',
+    status:'waiting',
+    players:[],
+    currentTeam:'phoenix',
+    phase:'',
+    teamOrder:['A','B'],
+    phaseIndex:0
   };
 
-  // -----------------------------
-  // Init
-  // -----------------------------
-  window.addEventListener("DOMContentLoaded", () => {
-    setCheerButtonLabels();
-    connectSocket();
-    autoFillFromURL();
+  // --- 초기화
+  document.addEventListener('DOMContentLoaded', ()=>{
+    connect();
+    autofillFromURL();
     bindUI();
   });
 
-  function setCheerButtonLabels() {
-    el.cheerButtons.forEach((btn, idx) => {
-      const label = CHEER_MENT[idx] || "";
-      btn.textContent = label;
-      btn.setAttribute("data-cheer", label);
-    });
-  }
-
-  function connectSocket() {
-    const url = (window.PyxisSocket && window.PyxisSocket.url) || undefined;
-    const socket = window.io ? window.io(url, { transports: ["websocket"], withCredentials: true }) : null;
-    if (!socket) {
-      alert("Socket.IO가 로드되지 않았습니다.");
-      return;
-    }
+  function connect(){
+    const socket = window.io ? window.io(window.location.origin, {
+      path:'/socket.io',
+      transports:['websocket','polling'],
+      withCredentials:true,
+      timeout:20000,
+    }) : null;
+    if(!socket){ alert('Socket.IO 로드 실패'); return; }
     state.socket = socket;
-
-    // 알림 모듈(Optional)
-    if (window.PyxisNotify && typeof window.PyxisNotify.init === "function") {
-      window.PyxisNotify.init({ socket });
-    }
-
     bindSocket();
   }
 
-  // -----------------------------
-  // Socket events (양쪽 호환)
-  // -----------------------------
-  function bindSocket() {
-    const s = state.socket;
-    if (!s) return;
+  function bindUI(){
+    el.btnAuth?.addEventListener('click', onAuth);
 
-    s.on("connect", () => { /* noop */ });
-    s.on("disconnect", () => { /* noop */ });
-
-    // 인증 오류 호환
-    s.on("authError", (e) => {
-      alert("인증 실패: " + (e && (e.error || e.message) ? (e.error || e.message) : ""));
-    });
-    s.on("auth:error", (e) => {
-      alert("인증 실패: " + (e && (e.error || e.message) ? (e.error || e.message) : ""));
-    });
-
-    s.on("auth:success", (p) => {
-      // 서버에 따라 payload 다름: { type:'spectator', spectatorName, battle } 또는 { role:'spectator', battleId, ... }
-      // battleId는 인증 시점 입력값을 그대로 사용
-      if ((p.type || p.role) !== "spectator") return;
-      showMain();
-
-      // 최초 상태 동기화
-      if (p.battle) {
-        applyBattleSnapshot(p.battle);
-        renderAll();
-      }
-
-      // 상태 동기화를 위해 룸 합류
-      if (state.battleId) s.emit("join", { battleId: state.battleId });
-    });
-
-    s.on("battle:update", (b) => {
-      applyBattleSnapshot(b);
-      renderAll();
-    });
-
-    // 채팅 수신 호환
-    s.on("battle:chat", ({ name, message }) => {
-      appendChat(name, message);
-    });
-    s.on("chat:message", (payload) => {
-      // payload: { senderName, message, type, ... } 형태 가능
-      const name = payload && (payload.senderName || payload.name) ? (payload.senderName || payload.name) : "";
-      const message = payload && payload.message ? payload.message : "";
-      appendChat(name, message);
-    });
-
-    // 로그 수신
-    s.on("battle:log", ({ type, message, ts }) => {
-      appendLog(type, message, ts);
-    });
-
-    // 관전자 수 갱신 호환
-    s.on("spectator:count", ({ count }) => {
-      updateSpectatorCount(count);
-    });
-    s.on("spectator:count_update", ({ count }) => {
-      updateSpectatorCount(count);
-    });
-  }
-
-  function applyBattleSnapshot(b) {
-    if (!b) return;
-    state.status = b.status || "waiting";
-    state.roster = Array.isArray(b.players) ? b.players : [];
-    // 서버가 로그 배열을 안 줄 수도 있음
-    if (Array.isArray(b.logs)) {
-      state.log = b.logs;
-    }
-  }
-
-  function updateSpectatorCount(count) {
-    state.spectatorCount = Number(count) || 0;
-    if (el.spectatorCount) el.spectatorCount.textContent = String(state.spectatorCount);
-  }
-
-  // -----------------------------
-  // UI handlers
-  // -----------------------------
-  function bindUI() {
-    if (el.btnAuth) el.btnAuth.addEventListener("click", onAuth);
-
-    if (el.btnChat) el.btnChat.addEventListener("click", sendChat);
-    if (el.chatInput) el.chatInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendChat();
-    });
-
-    // 고정 6개 응원 버튼 (단축키 없음)
-    el.cheerButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const cheer = btn.getAttribute("data-cheer") || btn.textContent || "";
+    // 응원 버튼(6개 고정)
+    el.cheerButtons.forEach((b)=>{
+      b.addEventListener('click', ()=>{
+        const cheer = b.textContent.trim();
         sendCheer(cheer);
-        // 시각효과(effects.css/.js가 있으면 shimmer 클래스 적용)
-        try {
-          btn.classList.add("shimmer");
-          setTimeout(() => btn.classList.remove("shimmer"), 1200);
-        } catch (_) {}
+        try{ b.classList.add('shimmer'); setTimeout(()=>b.classList.remove('shimmer'), 1000); }catch(_){}
       });
     });
   }
 
-  function autoFillFromURL() {
-    const params = new URLSearchParams(location.search);
-    const battle = params.get("battle");
-    const otpParam = params.get("otp") || params.get("token"); // 내부 키는 otp, 링크는 token일 수 있음
-    const name = params.get("name");
+  function autofillFromURL(){
+    const p = new URLSearchParams(location.search);
+    const battle = p.get('battle');
+    const otp = p.get('otp') || p.get('token');
+    const name = p.get('name') || '';
 
-    if (battle) el.authBattle && (el.authBattle.value = battle);
-    if (otpParam) el.authOtp && (el.authOtp.value = otpParam);
-    if (name) el.authName && (el.authName.value = name);
+    if(battle) el.authBattle.value = battle;
+    if(otp) el.authOtp.value = otp;
+    if(name) el.authName.value = name;
 
-    if (battle && otpParam) {
-      // 이름은 선택 입력
-      state.battleId = battle;
+    if(battle && otp){
+      // 자동 인증
       onAuth();
     }
   }
 
-  function onAuth() {
-    const params = new URLSearchParams(location.search);
-    const battleId = (el.authBattle && el.authBattle.value || "").trim() || params.get("battle");
-    const otpInput = (el.authOtp && el.authOtp.value || "").trim() || params.get("otp") || params.get("token");
-    const name = (el.authName && el.authName.value || "").trim() || params.get("name") || "";
+  // --- 인증
+  function onAuth(){
+    const battleId = (el.authBattle.value||'').trim();
+    const otp = (el.authOtp.value||'').trim();
+    const name = (el.authName.value||'').trim();
+    if(!battleId || !otp){ showToast('전투 ID와 비밀번호를 입력하세요'); return; }
 
-    if (!battleId || !otpInput) {
-      alert("전투 ID와 비밀번호를 입력하세요.");
-      return;
-    }
+    state.battleId = battleId; state.otp = otp; state.name = name;
 
-    // 내부 상태에 battleId 저장
-    state.battleId = battleId;
+    const s = state.socket;
+    s.emit('spectatorAuth', { battleId, otp, name });
+    s.emit('spectator:auth', { battleId, otp, name });
 
-    // 서버 호환: spectatorAuth / spectator:auth 모두 전송
-    const payloadV1 = { battleId, otp: otpInput, name };
-    const payloadV2 = { battleId, token: otpInput, spectatorName: name };
-
-    state.socket.emit("spectatorAuth", payloadV1);
-    state.socket.emit("spectator:auth", payloadV2);
+    // 룸 합류(상태 동기화)
+    s.emit('join', { battleId });
   }
 
-  // -----------------------------
-  // Render
-  // -----------------------------
-  function renderAll() {
-    renderStatus();
+  function bindSocket(){
+    const s = state.socket;
+    s.on('auth:success', (payload)=>{
+      // 관전자 인증 성공 시 메인 뷰 표시
+      showMain();
+      if(payload?.battle) applySnapshot(payload.battle);
+      renderAll();
+      showToast('접속 완료');
+    });
+
+    s.on('authError', (e)=> showToast('인증 실패: ' + (e?.error||e?.message||'오류'), 'error'));
+    s.on('auth:error', (e)=> showToast('인증 실패: ' + (e?.error||e?.message||'오류'), 'error'));
+
+    s.on('battle:update', (snap)=>{
+      applySnapshot(snap);
+      renderAll();
+    });
+
+    // 채팅(보기 전용)
+    s.on('battle:chat', ({name,message})=> appendChat(name||'플레이어', message||''));
+    s.on('chat:message', (payload)=>{
+      const name = payload?.senderName || payload?.name || '플레이어';
+      const message = payload?.message || '';
+      appendChat(name, message);
+    });
+
+    // 로그/타임라인
+    s.on('battle:log', ({type,message,ts})=>{
+      appendLog(type||'info', message||'', ts||Date.now());
+    });
+
+    // 관전자 수(옵션)
+    s.on('spectator:count', ({count})=>{/* 필요 시 표시용 엘리먼트에 적용 */});
+    s.on('spectator:count_update', ({count})=>{/* 동일 */});
+  }
+
+  // --- 스냅샷 반영
+  function applySnapshot(b){
+    if(!b) return;
+    state.status = b.status || 'waiting';
+    state.players = Array.isArray(b.players) ? b.players : [];
+    state.currentTeam = b.currentTeam || 'phoenix';
+    state.phase = b.phase || '';
+    state.teamOrder = (b.turn && b.turn.order) ? b.turn.order : ['A','B'];
+    state.phaseIndex = (b.turn && typeof b.turn.phaseIndex==='number') ? b.turn.phaseIndex : 0;
+  }
+
+  // --- 렌더
+  function renderAll(){
+    // 상태표시
+    el.statusPill && (el.statusPill.textContent = {
+      waiting:'대기 중', active:'진행 중', paused:'일시정지', ended:'종료'
+    }[state.status] || '대기 중');
+
+    // 현재 순서팀
+    const phaseAB = (state.teamOrder[state.phaseIndex] || 'A');
+    el.turnTeam && (el.turnTeam.textContent = `현재 순서팀: ${phaseAB}`);
+
+    // 현재 선택자 프리뷰(대표 이미지)
+    updateMainImageByQueue();
+
+    // 좌/우 로스터
     renderRoster();
-    renderTimeline();
+
+    // 순서 큐
+    renderQueue();
   }
 
-  function renderStatus() {
-    if (!el.statusPill) return;
-    const s = state.status;
-    el.statusPill.textContent =
-      s === "active" ? "전투 진행 중" :
-      s === "ended" ? "전투 종료" :
-      s === "paused" ? "전투 일시정지" :
-      "전투 대기 중";
-    el.statusPill.className = `status-pill ${s}`;
+  function teamAB(team){
+    const s = String(team||'').toLowerCase();
+    if(s==='phoenix'||s==='a') return 'A';
+    if(s==='eaters'||s==='b') return 'B';
+    return '-';
+  }
+  function teamKey(team){ return teamAB(team)==='A' ? 'phoenix' : 'eaters'; }
+
+  function renderRoster(){
+    const listA = []; const listB = [];
+    (state.players||[]).forEach(p=>{
+      const ab = teamAB(p.team);
+      (ab==='A' ? listA : listB).push(p);
+    });
+
+    const build = (p)=>{
+      const maxHp = p.maxHp ?? 100;
+      const hpPct = Math.max(0, Math.min(100, ((p.hp||0)/maxHp)*100));
+      const atk = p.stats?.attack ?? p.stats?.공격 ?? '-';
+      const def = p.stats?.defense?? p.stats?.방어 ?? '-';
+      const agi = p.stats?.agility?? p.stats?.민첩 ?? '-';
+      const luk = p.stats?.luck   ?? p.stats?.행운 ?? '-';
+      const row = document.createElement('div');
+      row.className='member';
+      row.innerHTML = `
+        <div class="ava">${p.avatar?`<img src="${p.avatar}">`:''}</div>
+        <div class="body">
+          <div class="name">${escapeHtml(p.name||'-')} · 팀 ${teamAB(p.team)}</div>
+          <div class="sub">공 ${atk} · 방 ${def} · 민 ${agi} · 운 ${luk}</div>
+          <div class="hpbar" style="margin-top:6px"><i style="width:${hpPct}%"></i></div>
+          <div class="sub">HP ${p.hp}/${maxHp}</div>
+        </div>
+      `;
+      return row;
+    };
+
+    if(el.rosterA){ el.rosterA.innerHTML=''; listA.forEach(p=> el.rosterA.appendChild(build(p))); }
+    if(el.rosterB){ el.rosterB.innerHTML=''; listB.forEach(p=> el.rosterB.appendChild(build(p))); }
   }
 
-  function renderRoster() {
-    if (!el.rosterPhoenix || !el.rosterEaters) return;
-    el.rosterPhoenix.innerHTML = "";
-    el.rosterEaters.innerHTML = "";
-
-    const roster = Array.isArray(state.roster) ? state.roster : [];
-    for (const p of roster) {
-      const card = document.createElement("div");
-      card.className = "player-card";
-      card.innerHTML = [
-        `<div class="pc-name">${escapeHtml(p.name)}</div>`,
-        `<div class="pc-hp">HP ${Number(p.hp || 0)}</div>`
-      ].join("");
-      (p.team === "phoenix" ? el.rosterPhoenix : el.rosterEaters).appendChild(card);
-    }
+  function renderQueue(){
+    if(!el.queue) return;
+    el.queue.innerHTML='';
+    const phaseAB = (state.teamOrder[state.phaseIndex] || 'A');
+    const curKey = (phaseAB==='A') ? 'phoenix':'eaters';
+    const alive = (state.players||[]).filter(p=>(p.hp||0)>0 && teamKey(p.team)===curKey);
+    alive.forEach((p,i)=>{
+      const q = document.createElement('div');
+      q.className = 'qitem' + (i===0 ? ' active':'');
+      q.innerHTML = `<img src="${p.avatar||''}" alt=""><div class="name">${escapeHtml(p.name||'')}</div>`;
+      el.queue.appendChild(q);
+    });
   }
 
-  function renderTimeline() {
-    if (!el.timeline) return;
-
-    // 이미 수신해 둔 state.log가 있으면 사용하고, 없으면 그대로 유지
-    if (Array.isArray(state.log) && state.log.length) {
-      el.timeline.innerHTML = "";
-      const list = state.log.slice(-200);
-      for (const l of list) {
-        const line = document.createElement("div");
-        line.className = `tl-line tl-${l.type || "system"}`;
-        const ts = new Date(l.ts || Date.now());
-        line.textContent = `[${ts.toLocaleTimeString()}] ${l.message || ""}`;
-        el.timeline.appendChild(line);
-      }
-      el.timeline.scrollTop = el.timeline.scrollHeight;
-    }
+  function updateMainImageByQueue(){
+    if(!el.turnImg || !el.queue) return;
+    const first = el.queue.querySelector('.qitem img');
+    const src = first ? first.getAttribute('src') : '';
+    el.turnImg.src = src || '';
   }
 
-  // -----------------------------
-  // Chat & Cheer
-  // -----------------------------
-  function sendChat() {
-    if (!state.battleId) return;
-    const name = (el.authName && el.authName.value) || "";
-    const message = (el.chatInput && el.chatInput.value || "").trim();
-    if (!message) return;
-
-    // 관전자 전용 라우트 우선, 공용 채널도 호환 전송
-    state.socket.emit("spectator:chat", { message });
-    state.socket.emit("chat:send", { battleId: state.battleId, name, message });
-
-    el.chatInput.value = "";
+  // --- 응원/채팅(보기 전용)
+  function sendCheer(message){
+    if(!state.socket || !state.battleId) return;
+    // 관전자 응원 전용 경로(양쪽 호환)
+    state.socket.emit('spectator:cheer', { battleId: state.battleId, message });
+    state.socket.emit('cheer:send', { battleId: state.battleId, name: state.name || '관전자', message });
+    appendLog('cheer', `관전자 응원: ${message}`);
   }
 
-  function appendChat(name, message) {
-    if (!el.chatMessages) return;
-    const line = document.createElement("div");
-    line.className = "chat-line";
-    line.textContent = name ? `${name}: ${message}` : message;
-    el.chatMessages.appendChild(line);
-    capChildren(el.chatMessages, 200);
+  function appendChat(sender, text){
+    if(!el.chatMessages) return;
+    const d = document.createElement('div');
+    d.textContent = `${sender}: ${text}`;
+    el.chatMessages.appendChild(d);
     el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
   }
 
-  function sendCheer(cheer) {
-    if (!state.battleId) return;
-    const message = String(cheer || "").trim();
-    if (!message) return;
-
-    // 관전자 응원 라우트 우선, 호환 이벤트도 함께 전송
-    state.socket.emit("spectator:cheer", { message });
-    state.socket.emit("cheer:send", { battleId: state.battleId, cheer: message });
-  }
-
-  function appendLog(type, message, ts) {
-    if (!el.timeline) return;
-    const line = document.createElement("div");
-    line.className = `tl-line tl-${type || "system"}`;
-    const when = ts ? new Date(ts) : new Date();
-    line.textContent = `[${when.toLocaleTimeString()}] ${message || ""}`;
-    el.timeline.appendChild(line);
-    capChildren(el.timeline, 200);
+  function appendLog(type, message, ts){
+    if(!el.timeline) return;
+    const d = document.createElement('div');
+    d.textContent = message;
+    el.timeline.appendChild(d);
     el.timeline.scrollTop = el.timeline.scrollHeight;
-
-    // 시각효과: 새 줄 강조 (선택)
-    try {
-      line.classList.add("tl-flash");
-      setTimeout(() => line.classList.remove("tl-flash"), 1200);
-    } catch (_) {}
   }
 
-  function capChildren(container, max) {
-    const nodes = container ? container.children : null;
-    if (!nodes) return;
-    while (container.children.length > max) {
-      container.removeChild(container.firstElementChild);
-    }
+  // --- 화면 전환/유틸
+  function showMain(){
+    el.authView.style.display='none';
+    el.mainView.style.display='';
   }
-
-  // -----------------------------
-  // Utils
-  // -----------------------------
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m])); }
+  function showToast(msg, kind){
+    if(!el.toast) return;
+    el.toast.className = 'toast' + (kind?(' '+kind):'');
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    setTimeout(()=> el.toast.classList.remove('show'), 1600);
   }
-
-  // -----------------------------
-  // View switch
-  // -----------------------------
-  function showMain() {
-    if (el.viewAuth) el.viewAuth.classList.add("hidden");
-    if (el.viewMain) el.viewMain.classList.remove("hidden");
-  }
-
-  // 전투 룰 계산 함수는 common-battle-rules.js에서 import하여 사용하세요.
-  // <script src="/assets/js/common-battle-rules.js"></script> 를 spectator.html에 추가하면 전역에서 사용 가능합니다.
-  // calcAttack(player, target)
-  // calcHit(player)
-  // calcDodge(player)
-  // isCritical(player)
-  // calcDefense(player, attacker)
-  // calcDamage(attacker, defender)
-  // isDodgeSuccess(player, attacker)
-  // useAtkItem(player)
-  // useDefItem(player)
-  // useHealItem(player)
 })();
