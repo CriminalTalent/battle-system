@@ -1028,7 +1028,7 @@ class TimerManager extends EventEmitter {
       pausedTimers: this.pausedTimers.size,
       teamPhaseActive: this._teamPhase.active,
     });
-  }
+  } 
 }
 
 module.exports = TimerManager;
