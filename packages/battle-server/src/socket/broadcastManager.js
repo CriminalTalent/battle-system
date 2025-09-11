@@ -1,46 +1,43 @@
-// BroadcastManager: 브로드캐스트 계층 캡슐화
-// - init(io)로 초기화 후 인스턴스 메서드로 송신
-// - 공개 스냅샷 정제 및 이벤트 명칭 통일
+// BroadcastManager: 브로드캐스트 계층 캡슐화 (신/구 이벤트 동시 지원)
+// - init(io) 후 인스턴스 메서드 사용
+// - 상태/로그/채팅/턴/관전자 카운트 모두 신·구 이벤트명으로 송신
+
 "use strict";
 
+/** @typedef {import('socket.io').Server} IOServer */
+
 class BroadcastManager {
-  /** @param {import('socket.io').Server} io */
+  /** @param {IOServer} [io] */
   constructor(io) {
     this.io = io || null;
-    this.isInitialized = false;
+    this.isInitialized = !!io;
     this.options = {
       verbose: false,
       enableMetrics: false,
-      batchEnabled: false,
+      batchEnabled: false
     };
     this.metrics = {
       messagesSent: 0,
       errors: 0,
-      lastActivity: Date.now(),
+      lastActivity: Date.now()
     };
   }
 
+  /** @param {IOServer} io */
   init(io, options = {}) {
     if (io) this.io = io;
     if (!this.io) throw new Error("Socket.IO instance is required");
 
     this.options = { ...this.options, ...options };
     this.isInitialized = true;
+
     if (this.options.verbose) {
       console.log("[BroadcastManager] Initialized", this.options);
     }
   }
 
-  /* ========== 룸 규칙 ========== */
   room(battleId) {
-    const id = String(battleId || "").trim();
-    return `battle:${id}`;
-  }
-  teamRoom(battleId, teamAB) {
-    return `${this.room(battleId)}:${teamAB}`; // teamAB: "A" | "B"
-  }
-  roleRoom(battleId, role) {
-    return `${this.room(battleId)}:${role}`; // role: "admin" | "player" | "spectator"
+    return String(battleId || "");
   }
 
   _ensureInitialized() {
@@ -51,8 +48,8 @@ class BroadcastManager {
 
   _incrementMetrics(type = "message") {
     if (!this.options.enableMetrics) return;
-    if (type === "error") this.metrics.errors += 1;
-    else this.metrics.messagesSent += 1;
+    if (type === "error") this.metrics.errors++;
+    else this.metrics.messagesSent++;
     this.metrics.lastActivity = Date.now();
   }
 
@@ -69,208 +66,203 @@ class BroadcastManager {
     }
   }
 
-  /* ========== 공개 스냅샷 정제 ========== */
-  _pickPlayerPublic(p) {
-    if (!p) return null;
-    return {
-      id: p.id,
-      name: p.name,
-      team: p.team, // "phoenix" | "eaters"
-      stats: {
-        atk: p?.stats?.atk,
-        def: p?.stats?.def,
-        agi: p?.stats?.agi,
-        luk: p?.stats?.luk,
-      },
-      hp: p.hp,
-      ready: !!p.ready,
-      avatarUrl: p.avatarUrl || null,
-    };
-  }
-
-  _pickBattlePublic(battle) {
-    if (!battle) return null;
-    return {
-      id: battle.id,
-      mode: battle.mode,
-      status: battle.status, // waiting | active | paused | ended
-      startedAt: battle.startedAt || null,
-      endedAt: battle.endedAt || null,
-
-      // 라운드/페이즈 구조 그대로 전달 (엔진에서 채워둔 객체)
-      turn: battle.turn || null, // { round, order:["A","B"], phaseIndex, acted:{A:Set,B:Set} 등 직렬화 주의
-      current: battle.current || null, // 레거시 호환(현재 페이즈 팀키 "phoenix"|"eaters")
-
-      players: Array.isArray(battle.players)
-        ? battle.players.map(this._pickPlayerPublic).filter(Boolean)
-        : [],
-
-      // 최근 로그 일부만
-      log: Array.isArray(battle.log) ? battle.log.slice(-100) : [],
-    };
-  }
-
-  /* ========== 기본 브로드캐스트 ========== */
+  // =============== 공통 송신기 ===============
   toAll(battleId, event, data) {
     if (!battleId || !event) return false;
     return this._safeEmit(this.room(battleId), event, data);
   }
-  toTeam(battleId, teamAB, event, data) {
-    if (!battleId || !teamAB || !event) return false;
-    return this._safeEmit(this.teamRoom(battleId, teamAB), event, data);
+  toTeam(battleId, teamKey, event, data) {
+    if (!battleId || !teamKey || !event) return false;
+    return this._safeEmit(`battle:${battleId}:${teamKey}`, event, data);
   }
   toRole(battleId, role, event, data) {
     if (!battleId || !role || !event) return false;
-    return this._safeEmit(this.roleRoom(battleId, role), event, data);
+    return this._safeEmit(`battle:${battleId}:${role}`, event, data);
   }
 
-  /* ========== 소켓 룸 입퇴장 ========== */
-  joinSocketToRooms(socket, battleId, { role, teamAB, withRoleRooms = true } = {}) {
+  // =============== 룸 조인/이탈 ===============
+  joinSocketToRooms(socket, battleId, role, teamAB, options = {}) {
     if (!socket || !battleId) return false;
     try {
       this._ensureInitialized();
       socket.join(this.room(battleId));
-      if (withRoleRooms && role) socket.join(this.roleRoom(battleId, role));
-      if (teamAB) socket.join(this.teamRoom(battleId, teamAB));
+      if (options.withRoleRooms && role) socket.join(`battle:${battleId}:${role}`);
+      if (teamAB) socket.join(`battle:${battleId}:${teamAB}`);
       return true;
-    } catch (err) {
-      console.error("[BroadcastManager] joinSocketToRooms error:", err);
+    } catch (e) {
+      console.error("[BroadcastManager] joinSocketToRooms error:", e);
       return false;
     }
   }
-  leaveSocketFromRooms(socket, battleId, { role, teamAB } = {}) {
+  leaveSocketFromRooms(socket, battleId, role, teamAB) {
     if (!socket || !battleId) return false;
     try {
       this._ensureInitialized();
       socket.leave(this.room(battleId));
-      if (role) socket.leave(this.roleRoom(battleId, role));
-      if (teamAB) socket.leave(this.teamRoom(battleId, teamAB));
+      if (role) socket.leave(`battle:${battleId}:${role}`);
+      if (teamAB) socket.leave(`battle:${battleId}:${teamAB}`);
       return true;
-    } catch (err) {
-      console.error("[BroadcastManager] leaveSocketFromRooms error:", err);
-      return false;
-    }
-  }
-
-  /* ========== 도메인 이벤트(명칭 통일) ========== */
-  emitBattleUpdate(battle) {
-    if (!battle?.id) return false;
-    try {
-      const payload = this._pickBattlePublic(battle);
-
-      // turn.acted가 Set이면 직렬화 보정
-      if (payload?.turn?.acted) {
-        const acted = payload.turn.acted;
-        payload.turn.acted = {
-          A: Array.isArray(acted.A) ? acted.A : Array.from(acted.A || []),
-          B: Array.isArray(acted.B) ? acted.B : Array.from(acted.B || []),
-        };
-      }
-      return this.toAll(battle.id, "battleUpdate", payload);
-    } catch (err) {
-      console.error("[BroadcastManager] emitBattleUpdate error:", err);
-      return false;
-    }
-  }
-
-  emitSystem(battleId, payload) {
-    return this.toAll(battleId, "systemMessage", {
-      ts: Date.now(),
-      ...(payload || {}),
-    });
-  }
-
-  pushLogAndBroadcast(battle, entry) {
-    if (!battle?.id) return false;
-    const log = {
-      type: entry?.type || "system",
-      message: String(entry?.message || "").slice(0, 500),
-      ts: entry?.ts || Date.now(),
-      ...entry,
-    };
-    try {
-      battle.log = battle.log || [];
-      battle.log.push(log);
-      if (battle.log.length > 500) {
-        battle.log.splice(0, battle.log.length - 500);
-      }
     } catch (e) {
-      // 로컬 로그 실패해도 브로드캐스트는 시도
+      console.error("[BroadcastManager] leaveSocketFromRooms error:", e);
+      return false;
     }
-    return this.toAll(battle.id, "logMessage", log);
   }
 
-  emitChat(battleId, msg) {
-    if (!battleId || !msg) return false;
-    const sanitized = {
-      senderRole: String(msg.senderRole || "").slice(0, 16), // admin|player|spectator
-      senderName: String(msg.senderName || "").slice(0, 50),
-      text: String(msg.text || "").slice(0, 500),
-      ts: msg.ts || Date.now(),
-    };
-    return this.toAll(battleId, "chatMessage", sanitized);
-  }
+  // =============== 상태 스냅샷 ===============
+  /**
+   * 전투 상태 전체 브로드캐스트
+   * - 신: "battle:update"
+   * - 구: "battleUpdate"
+   */
+  state(battle, extra = {}) {
+    if (!battle?.id) return false;
 
-  emitCheer(battleId, payload) {
-    if (!battleId || !payload) return false;
-    const sanitized = {
-      spectatorName: String(payload.spectatorName || "").slice(0, 50),
-      cheerText: String(payload.cheerText || "").slice(0, 200),
-      ts: payload.ts || Date.now(),
-    };
-    return this.toAll(battleId, "cheerMessage", sanitized);
-  }
+    const players = Array.isArray(battle.players) ? battle.players : [];
+    const logs = Array.isArray(battle.log) ? battle.log : [];
 
-  emitRoundResult(battle, summary) {
-    if (!battle?.id || !summary) return false;
+    // 엔진(turn 객체)과 레거시(turn number/current) 모두 전송
     const payload = {
-      round: summary.round,
-      damageMatrix: summary.damageMatrix || null,
-      koList: Array.isArray(summary.koList) ? summary.koList : [],
-      notes: String(summary.notes || ""),
-      ts: Date.now(),
+      ...battle,
+      id: battle.id,
+      status: battle.status || "waiting",
+      // 엔진형 turn 동봉 (round/order/phase 등)
+      turn: battle.turn || battle.turn === 0 ? battle.turn : undefined,
+      // 레거시 호환 필드
+      current: battle.current ?? null,
+      startedAt: battle.startedAt ?? null,
+      endedAt: battle.endedAt ?? null,
+      turnEndsAt: battle.turnEndsAt ?? null,
+      players: players.map(p => ({
+        id: p?.id || "",
+        name: p?.name || "",
+        team: p?.team || "",
+        hp: Number(p?.hp || 0),
+        ready: !!p?.ready,
+        avatar: p?.avatar || p?.avatarUrl || "",
+        stats: p?.stats || {}
+      })).filter(p => p.id),
+      log: logs.slice(-200),
+      ...extra
     };
-    return this.toAll(battle.id, "roundResult", payload);
+
+    const roomId = this.room(battle.id);
+    return (
+      this._safeEmit(roomId, "battle:update", payload) &
+      this._safeEmit(roomId, "battleUpdate", payload)
+    );
   }
 
-  emitError(battleId, error) {
-    return this.toAll(battleId, "errorMessage", {
-      ts: Date.now(),
-      message: (error && error.message) ? String(error.message) : String(error || ""),
-    });
+  // 관리자 델타(meta) 전용
+  admin(battleId, data) {
+    if (!battleId) return false;
+    return this.toAll(battleId, "admin:update", data || {});
   }
 
-  /* ========== 호환 메서드(기존 호출 보전) ========== */
-  // 기존 코드에서 사용 중일 수 있는 별칭들
-  toAllEvent(battleId, event, data) { return this.toAll(battleId, event, data); }
-  broadcastBattleEvent(battleId, type, payload) {
-    return this.toAll(battleId, `battle:${type}`, payload || {});
+  // =============== 종료 알림 ===============
+  /**
+   * - 신: "battle:ended"
+   */
+  ended(battleId, result) {
+    if (!battleId) return false;
+    return this.toAll(battleId, "battle:ended", result || {});
   }
-  broadcastTurnEvent(battleId, type, payload) {
-    return this.toAll(battleId, `turn:${type}`, payload || {});
+
+  // =============== 로그 & 채팅 ===============
+  /**
+   * 전투 로그 1건
+   * - 신: "battle:log"
+   * - 구: "battleLog"
+   * - 추가 신식: "log:new" (선택)
+   */
+  log(battleId, { type = "system", message = "", ts, timestamp } = {}) {
+    if (!battleId) return false;
+    const entry = {
+      type,
+      message: String(message).substring(0, 500),
+      ts: ts || timestamp || Date.now()
+    };
+    const roomId = this.room(battleId);
+    const a = this._safeEmit(roomId, "battle:log", entry);
+    const b = this._safeEmit(roomId, "battleLog", entry);
+    const c = this._safeEmit(roomId, "log:new", { ...entry, timestamp: entry.ts });
+    return a && b && c;
   }
-  broadcastBattleState(battleId, snapshot) {
+
+  /**
+   * 채팅
+   * - 구: "chatMessage" { senderName, message }
+   * - 신: "chat:message" { senderName, message }
+   * - 추가 신식: "chat:new" { name, message, timestamp }
+   */
+  chat(battleId, { name = "", senderName, message = "", timestamp } = {}) {
+    if (!battleId) return false;
+    const sender = (senderName || name || "익명").toString().substring(0, 50);
+    const msg = message.toString().substring(0, 500);
+    const ts = timestamp || Date.now();
+    const roomId = this.room(battleId);
+
+    const payloadLegacy = { senderName: sender, message: msg };
+    const payloadNew = { senderName: sender, message: msg };
+    const payloadNewest = { name: sender, message: msg, timestamp: ts };
+
+    const a = this._safeEmit(roomId, "chatMessage", payloadLegacy);
+    const b = this._safeEmit(roomId, "chat:message", payloadNew);
+    const c = this._safeEmit(roomId, "chat:new", payloadNewest);
+    return a && b && c;
+  }
+
+  // =============== 관전자 카운트 ===============
+  /**
+   * - 신: "spectator:count_update" { count }
+   * - 구: "spectatorCountUpdate"   { count }
+   * - 추가 신식: "spectator:count" { count, timestamp }
+   */
+  spectators(battleId, count) {
+    if (!battleId) return false;
+    const c = Math.max(0, Number(count) || 0);
+    const roomId = this.room(battleId);
+
+    const a = this._safeEmit(roomId, "spectator:count_update", { count: c });
+    const b = this._safeEmit(roomId, "spectatorCountUpdate", { count: c });
+    const d = this._safeEmit(roomId, "spectator:count", { count: c, timestamp: Date.now() });
+    return a && b && d;
+  }
+
+  // =============== 턴/페이즈 이벤트 ===============
+  /**
+   * 턴 시작 힌트
+   * - 신: "turn:start"
+   * data 예: { playerId, phaseTeam: "A"|"B", round, order }
+   */
+  turnStart(battleId, data) {
+    if (!battleId) return false;
+    return this.toAll(battleId, "turn:start", data || {});
+  }
+
+  /**
+   * 턴 종료 힌트
+   * - 신: "turn:end"
+   * data 예: { teamPhaseCompleted, roundCompleted }
+   */
+  turnEnd(battleId, data) {
+    if (!battleId) return false;
+    return this.toAll(battleId, "turn:end", data || {});
+  }
+
+  // =============== 스냅샷(선택) ===============
+  snapshot(battleId, snapshot) {
+    if (!battleId || !snapshot) return false;
     return this.toAll(battleId, "state:snapshot", snapshot);
   }
-  log(battleId, { type = "system", message = "" }) {
-    return this.pushLogAndBroadcast({ id: battleId, log: [] }, { type, message });
-  }
-  chat(battleId, { name = "", message = "" }) {
-    return this.emitChat(battleId, { senderName: name, text: message });
-  }
-  spectators(battleId, count) {
-    const c = Math.max(0, Number(count) || 0);
-    return this.toAll(battleId, "spectator:count", { count: c, ts: Date.now() });
-  }
 
-  /* ========== 시스템 상태 ========== */
+  // =============== 시스템 통계/정리 ===============
   getSystemStats() {
     if (!this.options.enableMetrics) return { metricsDisabled: true };
     return {
       ...this.metrics,
       isInitialized: this.isInitialized,
       options: this.options,
-      uptime: Date.now() - (this.metrics.lastActivity || Date.now()),
+      uptime: Date.now() - (this.metrics.lastActivity || Date.now())
     };
   }
 
@@ -288,5 +280,5 @@ module.exports = {
     const manager = new BroadcastManager();
     manager.init(io, options);
     return manager;
-  },
+  }
 };
