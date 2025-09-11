@@ -1,5 +1,5 @@
 // public/assets/js/admin.js
-// 관리자: 관전자 링크 생성/비밀번호 발급, 채팅/로그 분리, 플레이어 링크 생성
+// 관리자: 링크 생성/비밀번호 발급, 채팅(낙관 반영+Enter), 로그 A/B 팀 표기, 플레이어 링크 복사
 const $  = (q,root=document)=>root.querySelector(q);
 const $$ = (q,root=document)=>[...root.querySelectorAll(q)];
 
@@ -51,6 +51,13 @@ let currentBattleId = null;
 let currentMode = modeSel?.value || '1v1';
 let tmpAvatarUrl = "";
 let lastSnap = null;
+
+// 송수신 중복 방지(낙관 반영 대비)
+const recentOutChats = new Set();
+function rememberOut(msgKey){
+  recentOutChats.add(msgKey);
+  setTimeout(()=>recentOutChats.delete(msgKey), 3000);
+}
 
 // ── 연결 상태
 socket.on('connect', ()=>{ connected=true; markConn(true); setCtrlEnabled(true); appendLog('서버 연결 성공'); });
@@ -172,28 +179,50 @@ btnGenSpectator?.addEventListener('click', ()=>{
 socket.on('spectatorOtpGenerated', ({success, spectatorUrl, otp, error})=>{
   if(!success){ appendLog('관전자 비밀번호 발급 실패: '+(error||'오류')); return; }
   spectatorOtpInput.value = otp || '';
-  // 발급과 동시에 링크도 최신화
   spectatorUrlInput.value = makeAbsolute(spectatorUrl) || '';
   appendLog('관전자 비밀번호 발급 완료');
 });
 
-btnCopySpectator?.addEventListener('click', ()=> copyToClipboard(spectatorUrlInput.value));
-btnCopyOtp?.addEventListener('click', ()=> copyToClipboard(spectatorOtpInput.value));
+// ── 채팅(낙관 반영 + Enter 전송)
+btnSend?.addEventListener('click', sendChat);
+chatMsg?.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){ e.preventDefault(); sendChat(); }
+});
 
-// ── 채팅(로그와 분리)
-btnSend?.addEventListener('click', ()=>{
+function sendChat(){
   if(!currentBattleId) return;
   const msg = chatMsg.value.trim(); if(!msg) return;
-  socket.emit('chat:send', { battleId: currentBattleId, name:'관리자', message:msg, role:'admin' });
+  const name = '관리자';
+  const key = `${name}|${msg}`;
+  optimisticChatAppend(name, msg);
+  rememberOut(key);
+  socket.emit('chat:send', { battleId: currentBattleId, name, message:msg, role:'admin' });
   chatMsg.value='';
-});
-
-socket.on('battle:chat', ({name,message})=>{
+}
+function optimisticChatAppend(name, message){
   const p = document.createElement('div'); p.textContent = `${name}: ${message}`;
   chatBox.appendChild(p); chatBox.scrollTop = chatBox.scrollHeight;
+}
+socket.on('battle:chat', ({name,message})=>{
+  const key = `${name}|${message}`;
+  if(recentOutChats.has(key)) return; // 낙관 반영 중복 방지
+  optimisticChatAppend(name, message);
 });
 
+// ── 로그: A/B 팀 표기 정규화
 socket.on('battle:log', (m)=> appendLog(m.message));
+
+function normalizeLog(msg){
+  if(!msg) return '';
+  let s = String(msg);
+  // 팀 키 치환
+  s = s.replace(/\bphoenix\b/gi, 'A팀').replace(/\beaters\b/gi, 'B팀');
+  s = s.replace(/phoenix팀/gi, 'A팀').replace(/eaters팀/gi, 'B팀');
+  // 흔한 패턴: "선공: eaters팀" 등
+  s = s.replace(/선공:\s*([A-Z]+)?\s*eaters팀/gi, '선공: B팀').replace(/선공:\s*([A-Z]+)?\s*phoenix팀/gi, '선공: A팀');
+  return s;
+}
+function appendLog(t){ const d=document.createElement('div'); d.textContent=normalizeLog(t); logBox.appendChild(d); logBox.scrollTop=logBox.scrollHeight; }
 
 // ── 소켓 수신: 전투 생성/업데이트
 socket.on('battleCreated', ({success,battleId,mode,error})=>{
@@ -222,7 +251,6 @@ function renderLists(snap){
   });
 }
 
-function appendLog(t){ const d=document.createElement('div'); d.textContent=t; logBox.appendChild(d); logBox.scrollTop=logBox.scrollHeight; }
 function clampNum(v,min,max){ return Math.max(min, Math.min(max, parseInt(v,10)||0)); }
 function copyToClipboard(text){
   if(!text) return;
