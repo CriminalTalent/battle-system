@@ -2,39 +2,132 @@
 // Socket 핸들러 모듈
 // - index.js 에서 import 후 useSocketHandlers(io, stores) 로 등록
 // - 상태키: waiting | active | paused | ended
-// - stores: {
-//     battles: Map<string, Battle>,
-//     startBattle(b), endBattle(b), nextTurn(b),
-//     isBattleOver(b), pushLog(b, entry),
-//     resolveAction(b, { actorId, ...action }) => { logs, updates:{hp:{}}, turnEnded, teamPhaseCompleted?, roundCompleted?, turn? }
-//   }
+// - stores: { battles: Map<string, Battle>, startBattle, endBattle, nextTurn, isBattleOver, pushLog, resolveAction }
 
-"use strict";
-
-const {
-  initBroadcast,
-  broadcastBattleState,
-  broadcastBattleLog,
-  broadcastChat,
-  broadcastSpectatorCount
+const { 
+  broadcastBattleState, 
+  broadcastBattleLog, 
+  broadcastChat, 
+  broadcastSpectatorCount, 
+  initBroadcast 
 } = require("./broadcast.js");
 
-/** 안전한 룸 카운팅 */
-function safeRoomCount(io, battleId) {
-  try {
-    const room = io.sockets.adapter.rooms.get(String(battleId));
-    return room ? room.size : 0;
-  } catch {
-    return 0;
-  }
+const { cleanupOTPsForBattle } = require("../utils/battleCleanup");
+
+/**
+ * 인증 유틸: OTPManager가 있으면 우선 사용하고, 없으면 battle 스냅샷 기반으로 비교.
+ */
+function makeAuthHelpers(io, battles) {
+  return {
+    /**
+     * 관리자 인증
+     * payload: { battleId, otp? }
+     */
+    adminAuth: (socket, payload) => {
+      const { battleId, otp } = payload || {};
+      if (!battleId) return { ok: false, reason: "invalid" };
+
+      const app = socket.request?.app;
+      const otpMgr = app?.get?.("otp");
+
+      // 1) OTPManager 우선
+      if (otpMgr && otp) {
+        const v = otpMgr.validateOTP(otp, { ip: socket.handshake?.address });
+        if (!v.valid || v.type !== "admin" || v.data?.battleId !== battleId) {
+          return { ok: false, reason: "unauthorized" };
+        }
+        return { ok: true, via: "otp", battleId };
+      }
+
+      // 2) Fallback: battle.adminToken/adminOtp 비교
+      const b = battles.get(battleId);
+      if (!b) return { ok: false, reason: "notfound" };
+      const snapshot = b.getSnapshot?.() || b.getBattleState?.() || {};
+      const adminToken = b.adminToken || snapshot.adminOtp || snapshot.adminToken;
+      if (!adminToken || adminToken !== otp) return { ok: false, reason: "unauthorized" };
+      return { ok: true, via: "fallback", battleId };
+    },
+
+    /**
+     * 관전자 인증
+     * payload: { battleId, token? , otp? }
+     */
+    spectatorAuth: (socket, payload) => {
+      const { battleId, token, otp } = payload || {};
+      if (!battleId) return { ok: false, reason: "invalid" };
+
+      const app = socket.request?.app;
+      const otpMgr = app?.get?.("otp");
+
+      // 1) OTPManager 우선 (token/otp 중 아무 키나 허용)
+      const candidate = token || otp;
+      if (otpMgr && candidate) {
+        const v = otpMgr.validateOTP(candidate, { ip: socket.handshake?.address });
+        if (!v.valid || v.type !== "spectator" || v.data?.battleId !== battleId) {
+          return { ok: false, reason: "unauthorized" };
+        }
+        return { ok: true, via: "otp", battleId };
+      }
+
+      // 2) Fallback: battle.spectatorOtp 비교
+      const b = battles.get(battleId);
+      if (!b) return { ok: false, reason: "notfound" };
+      const snapshot = b.getSnapshot?.() || b.getBattleState?.() || {};
+      const spectatorOtp = b.spectatorOtp || snapshot.spectatorOtp;
+      if (!spectatorOtp || spectatorOtp !== candidate) return { ok: false, reason: "unauthorized" };
+      return { ok: true, via: "fallback", battleId };
+    },
+
+    /**
+     * 플레이어 인증
+     * payload: { battleId, name?, token? }
+     * - OTPManager를 사용하면 token(=player OTP)만으로 인증하고, playerId는 data에서 가져옴
+     * - Fallback은 이름 매칭 후, 필요 시 player.token 확인
+     */
+    playerAuth: (socket, payload) => {
+      const { battleId, name, token } = payload || {};
+      if (!battleId) return { ok: false, reason: "invalid" };
+
+      const app = socket.request?.app;
+      const otpMgr = app?.get?.("otp");
+
+      // 1) OTPManager 우선
+      if (otpMgr && token) {
+        const v = otpMgr.validateOTP(token, { ip: socket.handshake?.address });
+        if (!v.valid || v.type !== "player" || v.data?.battleId !== battleId) {
+          return { ok: false, reason: "unauthorized" };
+        }
+        const playerId = v.data?.playerId;
+        if (!playerId) return { ok: false, reason: "unauthorized" };
+        return { ok: true, via: "otp", battleId, playerId };
+      }
+
+      // 2) Fallback: 이름 매칭(필수)
+      if (!name) return { ok: false, reason: "invalid" };
+      const b = battles.get(battleId);
+      if (!b) return { ok: false, reason: "notfound" };
+
+      const players = Array.isArray(b.players) ? b.players : [];
+      const playerName = String(name).trim();
+      const p = players.find(v => v && String(v.name || "").trim() === playerName);
+      if (!p) return { ok: false, reason: "player-notfound" };
+
+      // token이 있다면 추가 검증(선택)
+      if (token && p.token && p.token !== token) {
+        return { ok: false, reason: "unauthorized" };
+      }
+
+      return { ok: true, via: "fallback", battleId, playerId: p.id };
+    }
+  };
 }
 
 function useSocketHandlers(io, stores) {
-  if (!io) throw new Error("Socket.IO instance is required");
-  if (!stores) throw new Error("Stores object is required");
+  if (!io) throw new Error('Socket.IO instance is required');
+  if (!stores) throw new Error('Stores object is required');
 
   initBroadcast(io);
-
+  
   const {
     battles,
     startBattle,
@@ -42,105 +135,113 @@ function useSocketHandlers(io, stores) {
     nextTurn,
     isBattleOver,
     pushLog,
-    resolveAction
+    resolveAction // (battle, { actorId, ...action }) => { logs, updates:{hp:{}}, turnEnded }
   } = stores;
 
-  if (!battles || typeof battles.get !== "function") {
-    throw new Error("battles must be a Map instance");
+  if (!battles || typeof battles.get !== 'function') {
+    throw new Error('battles must be a Map instance');
   }
 
-  io.on("connection", (socket) => {
-    let alive = true;
-    const leaveAll = () => { alive = false; };
+  const auth = makeAuthHelpers(io, battles);
 
-    /* ========== 공용: 룸 합류 ========== */
+  io.on("connection", (socket) => {
+    let isConnected = true;
+
+    const cleanup = () => { isConnected = false; };
+
+    // 공용: 룸 합류
     socket.on("join", ({ battleId }) => {
-      if (!alive || !battleId) return;
-      if (battles.has(battleId)) {
-        socket.join(String(battleId));
+      if (!isConnected || !battleId) return;
+      try {
+        if (battles.has(battleId)) {
+          socket.join(String(battleId));
+        }
+      } catch (error) {
+        console.error('[SocketHandlers] join error:', error);
       }
     });
 
-    /* ========== 관리자 인증 (신/구) ========== */
-    const onAdminAuth = ({ battleId, token }) => {
-      if (!alive || !battleId || !token) return;
+    // 관리자 인증
+    socket.on("adminAuth", (payload = {}) => {
+      if (!isConnected) return;
       try {
-        const b = battles.get(battleId);
-        if (!b || token !== b.adminToken) {
-          socket.emit("authError", { error: "unauthorized" });
+        const r = auth.adminAuth(socket, payload);
+        if (!r.ok) {
+          socket.emit("authError", { error: r.reason || "unauthorized" });
           return;
         }
+        const { battleId } = r;
         socket.join(String(battleId));
         socket.emit("auth:success", { role: "admin", battleId });
-        broadcastBattleState(b);
-      } catch (err) {
-        console.error("[SocketHandlers] adminAuth error:", err);
+        const b = battles.get(battleId);
+        if (b) broadcastBattleState(b);
+      } catch (error) {
+        console.error('[SocketHandlers] adminAuth error:', error);
         socket.emit("authError", { error: "internal_error" });
       }
-    };
-    socket.on("admin:auth", onAdminAuth);
-    socket.on("adminAuth", onAdminAuth);
+    });
 
-    /* ========== 관전자 인증 (신/구) ========== */
-    const onSpectatorAuth = ({ battleId, otp, token, name }) => {
-      if (!alive || !battleId || !(otp || token)) return;
+    // 관전자 인증
+    socket.on("spectatorAuth", (payload = {}) => {
+      if (!isConnected) return;
       try {
-        const b = battles.get(battleId);
-        if (!b) {
-          socket.emit("authError", { error: "notfound" });
+        const r = auth.spectatorAuth(socket, payload);
+        if (!r.ok) {
+          socket.emit("authError", { error: r.reason || "unauthorized" });
           return;
         }
-        const pass = otp || token;
-        if (b.spectatorOtp && b.spectatorOtp !== pass) {
-          socket.emit("authError", { error: "unauthorized" });
-          return;
-        }
+        const { battleId } = r;
         socket.join(String(battleId));
-        socket.emit("auth:success", { role: "spectator", battleId, name: name || "" });
+        socket.emit("auth:success", { role: "spectator", battleId });
 
-        const count = safeRoomCount(io, battleId);
+        // 관전자 수 브로드캐스트
+        const roomInfo = io.sockets.adapter.rooms.get(String(battleId));
+        const count = roomInfo ? roomInfo.size : 1;
         broadcastSpectatorCount(battleId, count);
-        broadcastBattleState(b);
-      } catch (err) {
-        console.error("[SocketHandlers] spectatorAuth error:", err);
+
+        const b = battles.get(battleId);
+        if (b) broadcastBattleState(b);
+      } catch (error) {
+        console.error('[SocketHandlers] spectatorAuth error:', error);
         socket.emit("authError", { error: "internal_error" });
       }
-    };
-    socket.on("spectator:auth", onSpectatorAuth);
-    socket.on("spectatorAuth", onSpectatorAuth);
+    });
 
-    /* ========== 플레이어 인증 (신/구) ========== */
-    const onPlayerAuth = ({ battleId, name, token }) => {
-      if (!alive || !battleId || !name) return;
+    // 플레이어 인증
+    socket.on("playerAuth", (payload = {}) => {
+      if (!isConnected) return;
       try {
+        const r = auth.playerAuth(socket, payload);
+        if (!r.ok) {
+          socket.emit("authError", { error: r.reason || "unauthorized" });
+          return;
+        }
+        const { battleId, playerId } = r;
         const b = battles.get(battleId);
         if (!b) {
           socket.emit("authError", { error: "notfound" });
           return;
         }
-        // 토큰 검증이 필요하다면 여기에 추가 (정책에 맞춰 선택)
-        const playerName = String(name).trim();
-        const players = Array.isArray(b.players) ? b.players : [];
-        const p = players.find(v => v && String(v.name || "").trim() === playerName);
-        if (!p) {
-          socket.emit("authError", { error: "player-notfound" });
-          return;
-        }
-        p.socketId = socket.id;
+
+        // 소켓-배틀 룸 조인
         socket.join(String(battleId));
-        socket.emit("auth:success", { role: "player", battleId, playerId: p.id });
+
+        // 플레이어 소켓 ID 저장(선택)
+        const players = Array.isArray(b.players) ? b.players : [];
+        const p = players.find(x => x && x.id === playerId);
+        if (p) p.socketId = socket.id;
+
+        socket.emit("auth:success", { role: "player", battleId, playerId });
         broadcastBattleState(b);
-      } catch (err) {
-        console.error("[SocketHandlers] playerAuth error:", err);
+      } catch (error) {
+        console.error('[SocketHandlers] playerAuth error:', error);
         socket.emit("authError", { error: "internal_error" });
       }
-    };
-    socket.on("player:auth", onPlayerAuth);
-    socket.on("playerAuth", onPlayerAuth);
+    });
 
-    /* ========== 준비 완료 (신식 네임스페이스) ========== */
+    // 준비
     socket.on("player:ready", ({ battleId, playerId }) => {
-      if (!alive || !battleId || !playerId) return;
+      if (!isConnected || !battleId || !playerId) return;
       try {
         const b = battles.get(battleId);
         if (!b) return;
@@ -150,133 +251,132 @@ function useSocketHandlers(io, stores) {
         if (!p) return;
 
         p.ready = true;
-        if (typeof pushLog === "function") {
+
+        if (typeof pushLog === 'function') {
           pushLog(b, { type: "system", message: `${p.name} 준비 완료` });
         }
 
         const allReady = players.length > 0 && players.every(x => x && x.ready);
-        if (allReady && b.status !== "active" && typeof startBattle === "function") {
+        if (allReady && b.status !== "active" && typeof startBattle === 'function') {
           startBattle(b);
+        } else {
+          broadcastBattleState(b);
         }
-        broadcastBattleState(b);
-      } catch (err) {
-        console.error("[SocketHandlers] player:ready error:", err);
+      } catch (error) {
+        console.error('[SocketHandlers] player:ready error:', error);
       }
     });
 
-    /* ========== 플레이어 액션 (신식 네임스페이스) ========== */
+    // 행동
     socket.on("player:action", ({ battleId, playerId, action }) => {
-      if (!alive || !battleId || !playerId || !action) return;
+      if (!isConnected || !battleId || !playerId || !action) return;
       try {
         const b = battles.get(battleId);
         if (!b || b.status !== "active") return;
 
-        if (typeof resolveAction !== "function") {
-          console.warn("[SocketHandlers] resolveAction not available");
+        if (typeof resolveAction !== 'function') {
+          console.warn('[SocketHandlers] resolveAction not available');
           return;
         }
 
         const result = resolveAction(b, { actorId: playerId, ...action });
 
-        // 로그 적용/브로드캐스트
-        if (Array.isArray(result.logs) && typeof pushLog === "function") {
+        // 로그 반영
+        if (Array.isArray(result.logs) && typeof pushLog === 'function') {
           for (const l of result.logs) {
-            const entry = { type: l.type || "system", message: l.message || "" };
-            pushLog(b, entry);
-            broadcastBattleLog(battleId, entry);
+            pushLog(b, { type: l.type || "system", message: l.message || "" });
           }
         }
 
         // HP 반영
         if (result.updates?.hp && Array.isArray(b.players)) {
           const hpUpd = result.updates.hp;
-          b.players.forEach(pl => {
+          b.players.forEach(pl => { 
             if (pl && hpUpd[pl.id] != null) {
-              pl.hp = Math.max(0, Number(hpUpd[pl.id]) || 0);
+              pl.hp = Math.max(0, hpUpd[pl.id]); 
             }
           });
         }
 
-        // 턴 진행
-        if (result.turnEnded && typeof nextTurn === "function") {
+        if (result.turnEnded && typeof nextTurn === 'function') {
           nextTurn(b);
         }
 
-        // 전투 종료 판정
-        if (typeof isBattleOver === "function" && isBattleOver(b) && typeof endBattle === "function") {
-          endBattle(b);
+        // 종료 판정 → 종료 및 OTP 정리
+        if (typeof isBattleOver === 'function' && isBattleOver(b)) {
+          if (typeof endBattle === 'function') endBattle(b);
+
+          // 배틀 OTP 일괄 폐기
+          const r = cleanupOTPsForBattle(socket.request?.app, battleId);
+          console.log('[SocketHandlers] OTP cleanup on end:', { battleId, removed: r.removed, ok: r.ok });
+
+          // 필요 시 결과 로그
+          if (typeof pushLog === 'function') {
+            pushLog(b, { type: "system", message: `전투 종료. OTP ${r.removed || 0}건 폐기` });
+          }
         }
 
-        // 상태 브로드캐스트 (턴 리포트가 있으면 함께)
-        const extra = result.turn ? { turn: result.turn } : undefined;
-        broadcastBattleState(extra ? { ...b, turn: result.turn } : b);
-      } catch (err) {
-        console.error("[SocketHandlers] player:action error:", err);
+        broadcastBattleState(b);
+      } catch (error) {
+        console.error('[SocketHandlers] player:action error:', error);
       }
     });
 
-    /* ========== 채팅 (신/구 모두 수신) ========== */
-    const onChatSend = ({ battleId, name, senderName, message }) => {
-      if (!alive || !battleId || !message) return;
+    // 채팅
+    socket.on("chat:send", ({ battleId, name, message }) => {
+      if (!isConnected || !battleId || !message) return;
       try {
         if (!battles.has(battleId)) return;
-        const sanitizedName = String(senderName || name || "익명").substring(0, 50);
+        const sanitizedName = String(name || "익명").substring(0, 50);
         const sanitizedMessage = String(message || "").substring(0, 500);
         if (sanitizedMessage.trim()) {
-          broadcastChat(battleId, { name: sanitizedName, message: sanitizedMessage });
+          broadcastChat(battleId, { 
+            name: sanitizedName, 
+            message: sanitizedMessage 
+          });
         }
-      } catch (err) {
-        console.error("[SocketHandlers] chat send error:", err);
+      } catch (error) {
+        console.error('[SocketHandlers] chat:send error:', error);
       }
-    };
-    socket.on("chat:send", onChatSend);
-    socket.on("chatMessage", ({ battleId, message, name, senderName }) => {
-      onChatSend({ battleId, name, senderName, message });
     });
 
-    /* ========== 응원 (신/구 모두 수신) ========== */
-    const onCheer = ({ battleId, cheer, message }) => {
-      if (!alive || !battleId || !(cheer || message)) return;
+    // 응원
+    socket.on("cheer:send", ({ battleId, cheer }) => {
+      if (!isConnected || !battleId || !cheer) return;
       try {
         const b = battles.get(battleId);
         if (!b) return;
-        const text = String(cheer || message || "").substring(0, 200).trim();
-        if (!text) return;
-
-        if (typeof pushLog === "function") {
-          pushLog(b, { type: "cheer", message: text });
+        const sanitizedCheer = String(cheer || "").substring(0, 200);
+        if (sanitizedCheer.trim()) {
+          if (typeof pushLog === 'function') {
+            pushLog(b, { type: "cheer", message: sanitizedCheer });
+          }
+          broadcastBattleLog(battleId, { type: "cheer", message: sanitizedCheer });
         }
-        broadcastBattleLog(battleId, { type: "cheer", message: text });
-      } catch (err) {
-        console.error("[SocketHandlers] cheer error:", err);
+      } catch (error) {
+        console.error('[SocketHandlers] cheer:send error:', error);
       }
-    };
-    socket.on("cheer:send", onCheer);
-    socket.on("spectator:cheer", onCheer);
+    });
 
-    /* ========== 연결 해제 ========== */
+    // 연결 해제
     socket.on("disconnect", (reason) => {
-      leaveAll();
-      // 관전자 수 재집계 (방에 남은 인원 기준)
-      try {
-        // 소켓이 여러 전투 방에 들어갔을 가능성은 낮지만,
-        // 가장 흔한 케이스만 처리: 클라이언트가 마지막으로 합류한 방들만 감소
-        // 방 전체를 순회하는 비용을 피하려면 클라이언트에 battleId를 보관하게 하고
-        // 'leave' 이벤트로 내려주도록 추가할 수 있음.
-      } catch {}
+      cleanup();
       console.log(`[SocketHandlers] Socket ${socket.id} disconnected: ${reason}`);
     });
 
-    socket.on("error", (err) => {
-      console.error("[SocketHandlers] Socket error:", err);
+    // 에러 처리
+    socket.on("error", (error) => {
+      console.error('[SocketHandlers] Socket error:', error);
     });
   });
 
   return {
     cleanup: () => {
-      console.log("[SocketHandlers] Cleaning up socket handlers");
+      console.log('[SocketHandlers] Cleaning up socket handlers');
     }
   };
 }
 
-module.exports = { useSocketHandlers };
+module.exports = {
+  useSocketHandlers
+};
