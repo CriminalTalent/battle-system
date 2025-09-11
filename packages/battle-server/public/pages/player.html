@@ -10,16 +10,18 @@
       --bg-0:#0f1216; --bg-1:#141922; --bg-2:#1b2230;
       --text:#e5e7eb; --muted:#9aa4b2; --border:#262b36;
       --btn-bg:#0b0d10; --btn-border:#D4BA8D; --btn-text:#DCC7A2;
-      --hint:#b1b7c2;
     }
-    body{margin:0; background:var(--bg-0); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;}
+    body{margin:0; background:var(--bg-0); color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;}
     .wrap{max-width:1200px; margin:20px auto; padding:0 12px;}
     .cols{display:grid; grid-template-columns: 280px 1fr 320px; gap:14px;}
     @media (max-width: 980px){ .cols{grid-template-columns: 1fr;} }
 
-    .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
-      border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);}
-
+    .card{
+      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+      border:1px solid var(--border); border-radius:14px; padding:14px;
+      box-shadow:0 8px 20px rgba(0,0,0,.2); backdrop-filter: blur(6px);
+    }
     .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
     .row{display:flex; gap:8px; flex-wrap:wrap;}
     .grid{display:grid; gap:8px;}
@@ -29,12 +31,15 @@
     .hpbar > i{display:block; height:100%; width:0%;
       background: linear-gradient(90deg, #8c6b2e, #DCC7A2);}
 
-    /* 모든 버튼: 금색 테두리/글자 + 검은 배경 */
-    .btn{display:inline-flex; align-items:center; justify-content:center; height:38px; padding:0 12px;
-      border-radius:10px; border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--btn-text); font-weight:600; cursor:pointer;
-      transition:transform .12s ease, box-shadow .12s ease;}
-    .btn:disabled{opacity:.5; cursor:not-allowed;}
+    /* 버튼: 금색 테두리/글자 + 검은 배경 */
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; height:38px; padding:0 12px;
+      border-radius:10px; border:1px solid var(--btn-border); background:var(--btn-bg); color:var(--btn-text);
+      font-weight:600; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;
+      user-select:none;
+    }
     .btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(220,199,162,.12);}
+    .btn:disabled{opacity:.5; cursor:not-allowed;}
 
     .turnbox{display:flex; flex-direction:column; align-items:center; gap:10px;}
 
@@ -44,12 +49,20 @@
     .avatar img{width:100%; height:100%; object-fit:contain;}
 
     /* 순서 큐(썸네일 리스트) */
+    .queue-title{
+      text-align:center; font-weight:700;
+      background:linear-gradient(90deg,#DCC7A2,#f5e6c9,#DCC7A2);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      background-size:200% 100%; animation: shimmer 3s linear infinite;
+      margin-bottom:4px;
+    }
+    @keyframes shimmer { 0%{background-position:0% 0} 100%{background-position:200% 0} }
     .queue{display:flex; gap:10px; overflow:auto; padding:4px 2px; width:100%; justify-content:center; flex-wrap:wrap;}
     .qitem{width:56px; height:42px; border:1px solid var(--border); border-radius:8px; background:#0c0f14;
       display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;}
     .qitem img{width:100%; height:100%; object-fit:contain;}
     .qitem .name{position:absolute; inset:auto 2px 2px 2px; font-size:10px; color:#c9ced7; text-align:center; background:rgba(0,0,0,.35); border-radius:4px;}
-    .qitem.active{border-color:var(--gold-2); box-shadow:0 0 0 2px rgba(212,186,141,.25) inset;}
+    .qitem.active{border-color:#D4BA8D; box-shadow:0 0 0 2px rgba(212,186,141,.25) inset;}
 
     .imgbox{width:100%; max-width:620px; aspect-ratio:4/3; background:#0c0f14; border:1px solid var(--border); border-radius:16px;
       display:flex; align-items:center; justify-content:center; overflow:hidden;}
@@ -69,6 +82,7 @@
   </style>
 </head>
 <body>
+  <!-- 자동 로그인 오버레이 -->
   <div id="authOverlay" class="overlay">
     <div class="sheet">
       <div>자동 로그인 준비 중…</div>
@@ -109,13 +123,16 @@
         <div class="turnbox" style="width:100%">
           <div id="turnTeam" style="font-weight:700;">-</div>
 
+          <!-- 큐 제목 -->
+          <div class="queue-title">커밋 &gt; 순서</div>
+
           <!-- 순서 큐 -->
           <div id="queue" class="queue"></div>
 
           <!-- 현재 안내 대상 큰 이미지 -->
           <div class="imgbox"><img id="turnImg" alt=""></div>
 
-          <!-- 타이머: 팀 5분만 -->
+          <!-- 팀 타이머: 5분 -->
           <div id="turnTimer" class="label">-</div>
 
           <div class="row">
