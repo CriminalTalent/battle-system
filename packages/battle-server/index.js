@@ -1,10 +1,10 @@
 // packages/battle-server/index.js
 // PYXIS Battle Server (ESM)
 // - 한글화 / 이모지 금지
-// - 팀 내부키: phoenix/eaters (프런트에서 A/B로 표기)
+// - 팀 내부키: phoenix / eaters (프런트에서 A/B로 표기)
 // - 스탯 각 1~5, 총합 제한 없음, HP 최대 100
-// - 방어 시 최소 1 보장 제거(방어 실패 피해: max(0, 공격-방어))
-// - 턴: 선커밋 → 후커밋 → resolve, 이후 선/후공 교대
+// - 방어 선택 시 최소 1 보장 제거: 피해 = max(0, (공격 - 방어)) ; 피해가 발생한 경우에만 역공격
+// - 턴: 선커밋 → 후커밋 → resolve → 선/후공 교대
 
 import fs from "fs";
 import path from "path";
@@ -20,17 +20,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ───────────────────────────────────────────────────────────────
-// 기본 경로/포트
+// 기본 설정
 // ───────────────────────────────────────────────────────────────
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const ROOT = path.resolve(__dirname);
 const PUBLIC_DIR = path.join(ROOT, "public");
 const UPLOAD_DIR = path.join(ROOT, "uploads");
 
-// 디렉터리 보장
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// 업로드 설정
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOAD_DIR),
   filename: (_, file, cb) => {
@@ -41,7 +39,6 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 유틸
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const d20 = () => Math.floor(Math.random() * 20) + 1;
 const now = () => Date.now();
@@ -64,30 +61,25 @@ function readStats(p) {
 }
 
 function isCritical(luck) {
-  const th = 20 - luck / 2;
-  const r = d20();
-  return { crit: r >= th, roll: r, threshold: th };
+  const threshold = 20 - luck / 2;
+  const roll = d20();
+  return { crit: roll >= threshold, roll, threshold };
 }
 
 const ITEM = {
   DITTANY: "dittany",
-  ATK_BOOST: "attack_booster",
-  DEF_BOOST: "defense_booster",
+  ATK_BOOSTER: "attack_booster",
+  DEF_BOOSTER: "defense_booster",
 };
 const ATK_MULT = 1.5;
 const DEF_MULT = 1.5;
-const BOOST_SUCCESS = 0.10;
-const tryBooster = () => Math.random() < BOOST_SUCCESS;
 
 // 인메모리 상태
 /**
  * battles[battleId] = {
- *   id, mode, status: 'waiting'|'active'|'paused'|'ended',
- *   players: [{ id, name, team:'phoenix'|'eaters', hp, maxHp:100, stats, items, avatar, ready }],
- *   log: [{ ts, type, message }],
- *   chat: [],
- *   commitFirstTeam, currentTeam, phase:'commitA'|'commitB'|'resolve', turn, turnStartTime,
- *   pendingActions: { phoenix: Map<playerId, action>, eaters: Map<playerId, action> },
+ *   id, mode, status, players[], log[], chat[],
+ *   commitFirstTeam, currentTeam, phase, turn, turnStartTime,
+ *   pendingActions: { phoenix: Map<playerId, action>, eaters: Map<playerId, action> }
  * }
  */
 const battles = Object.create(null);
@@ -98,6 +90,7 @@ const battles = Object.create(null);
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, {
+  path: "/socket.io",
   cors: { origin: true, credentials: true },
   transports: ["websocket", "polling"],
 });
@@ -106,33 +99,49 @@ app.set("trust proxy", true);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// 정적
+// 정적 서빙
 if (!fs.existsSync(PUBLIC_DIR)) {
   console.warn("[WARN] public 디렉터리가 없습니다:", PUBLIC_DIR);
 }
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", immutable: true }));
 app.use("/", express.static(PUBLIC_DIR, { maxAge: "1h" }));
 
-// 페이지 라우트
+// 페이지 라우트(안전 서빙)
+function safeSendFile(res, filePath) {
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error("[PAGE SEND ERROR]", filePath, err?.message || err);
+      if (!res.headersSent) res.status(404).type("text/plain").send("Not Found");
+    }
+  });
+}
+const ADMIN_HTML = path.join(PUBLIC_DIR, "pages", "admin.html");
+const PLAYER_HTML = path.join(PUBLIC_DIR, "player.html");
+const SPECT_HTML = path.join(PUBLIC_DIR, "spectator.html");
+
 app.get(["/admin", "/admin/"], (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "pages", "admin.html"));
+  if (fs.existsSync(ADMIN_HTML)) return safeSendFile(res, ADMIN_HTML);
+  return safeSendFile(res, path.join(PUBLIC_DIR, "admin.html"));
 });
 app.get(["/player", "/player/"], (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "player.html"));
+  if (fs.existsSync(PLAYER_HTML)) return safeSendFile(res, PLAYER_HTML);
+  return safeSendFile(res, path.join(PUBLIC_DIR, "pages", "player.html"));
 });
 app.get(["/spectator", "/spectator/"], (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "spectator.html"));
+  if (fs.existsSync(SPECT_HTML)) return safeSendFile(res, SPECT_HTML);
+  return safeSendFile(res, path.join(PUBLIC_DIR, "pages", "spectator.html"));
 });
+app.get("/player.html", (_req, res) => safeSendFile(res, PLAYER_HTML));
+app.get("/spectator.html", (_req, res) => safeSendFile(res, SPECT_HTML));
 
 // 헬스체크
-app.get("/api/health", (_, res) => res.json({ ok: true, ts: Date.now() }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // 아바타 업로드
 app.post("/api/upload/avatar", upload.single("avatar"), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: "파일 없음" });
-    const url = "/uploads/" + req.file.filename;
-    return res.json({ ok: true, avatarUrl: url });
+    return res.json({ ok: true, avatarUrl: "/uploads/" + req.file.filename });
   } catch (e) {
     console.error("[ERR] /api/upload/avatar:", e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -176,7 +185,7 @@ app.get("/api/battles/:id", (req, res) => {
   }
 });
 
-// 공통 에러 핸들러
+// 공통 에러 핸들러(페이지 라우트는 safeSendFile로 처리하므로 여길 거의 안 탐)
 app.use((err, _req, res, _next) => {
   console.error("[UNCAUGHT] Express:", err);
   res.status(500).json({ ok: false, error: "서버 오류" });
@@ -218,10 +227,13 @@ io.on("connection", (socket) => {
     }
   });
 
+  // 관전자 OTP 발급(링크와 OTP 동시 반환)
   socket.on("generateSpectatorOtp", ({ battleId }) => {
     const b = battles[battleId];
     if (!b) return socket.emit("spectatorOtpGenerated", { success: false, error: "전투 없음" });
-    socket.emit("spectatorOtpGenerated", { success: true, spectatorUrl: spectatorUrl(battleId) });
+    const otp = `spectator-${b.id}`; // 30분 제한은 프런트 가이드, 서버는 토큰 포맷 고정
+    const spectatorUrl = buildSpectatorUrl(b.id, otp);
+    socket.emit("spectatorOtpGenerated", { success: true, spectatorUrl, otp });
   });
 
   socket.on("startBattle", ({ battleId }) => {
@@ -270,6 +282,7 @@ io.on("connection", (socket) => {
     });
   });
 
+  // 플레이어 인증(자동 링크 규격과 동일)
   socket.on("playerAuth", ({ battleId, name, token }) => {
     const b = battles[battleId];
     if (!b) return socket.emit("authError", { error: "전투 없음" });
@@ -353,12 +366,24 @@ function createBattle(mode = "1v1") {
   return id;
 }
 
+function maxTeamSizeByMode(mode) {
+  const m = String(mode || "").toLowerCase();
+  if (m === "4v4") return 4;
+  if (m === "3v3") return 3;
+  if (m === "2v2") return 2;
+  return 1; // 1v1
+}
+
 function addPlayer(b, data) {
   const name = String(data?.name || "").trim();
   if (!name) throw new Error("이름 필수");
   if (b.players.some((p) => p.name === name)) throw new Error("이름 중복");
 
   const team = normTeam(data?.team || "phoenix");
+  const perTeamMax = maxTeamSizeByMode(b.mode);
+  const teamCount = b.players.filter((p) => normTeam(p.team) === team).length;
+  if (teamCount >= perTeamMax) throw new Error(`${team} 팀이 이미 가득 찼습니다 (${perTeamMax}명)`);
+
   const stats = readStats({ stats: data?.stats || {} });
   const items = normalizeItems(data?.items);
 
@@ -380,9 +405,9 @@ function addPlayer(b, data) {
 function normalizeItems(it) {
   const toInt = (v) => (Number.isFinite(Number(v)) ? Math.max(0, parseInt(v, 10)) : 0);
   return {
-    [ITEM.DITTANY]: toInt(it?.dittany || it?.DITTANY || 0),
-    [ITEM.ATK_BOOST]: toInt(it?.attack_booster || it?.ATK || 0),
-    [ITEM.DEF_BOOST]: toInt(it?.defense_booster || it?.DEF || 0),
+    [ITEM.DITTANY]: toInt(it?.dittany || 0),
+    [ITEM.ATK_BOOSTER]: toInt(it?.attack_booster || 0),
+    [ITEM.DEF_BOOSTER]: toInt(it?.defense_booster || 0),
   };
 }
 
@@ -392,7 +417,7 @@ function startBattle(b) {
   b.turn = 1;
   b.phase = "commitA";
 
-  // 선커밋 팀 결정: 양 팀 민첩 합 + d20 의 합 비교, 동점이면 재굴림
+  // 선커밋 팀: 양 팀 민첩 합 + d20, 동점이면 재굴림
   const init = teamInitiative(b);
   b.commitFirstTeam = init.winner;
   b.currentTeam = b.commitFirstTeam;
@@ -409,12 +434,12 @@ function resolveTurn(b) {
   const second = otherTeam(first);
   const turnLog = [];
 
-  // 액션 대기열 복사 후 초기화
+  // 대기열 복사 후 초기화
   const actA = b.pendingActions[first];
   const actB = b.pendingActions[second];
   b.pendingActions = { phoenix: new Map(), eaters: new Map() };
 
-  // 해석 순서: 선커밋 팀 → 후커밋 팀
+  // 선커밋 → 후커밋 순서대로 해석
   for (const team of [first, second]) {
     const acts = team === first ? actA : actB;
     for (const [pid, action] of acts.entries()) {
@@ -425,10 +450,13 @@ function resolveTurn(b) {
     }
   }
 
-  // 로그 출력
+  // 턴 종료: 버프/자세 초기화
+  clearTurnFlags(b);
+
+  // 로그 반영
   turnLog.forEach((m) => log(b, m.type, m.message));
 
-  // 승패 판단
+  // 즉시 승패 판정
   const aliveA = b.players.some((p) => normTeam(p.team) === "phoenix" && p.hp > 0);
   const aliveB = b.players.some((p) => normTeam(p.team) === "eaters" && p.hp > 0);
   if (!aliveA || !aliveB) {
@@ -464,14 +492,14 @@ function applyAction(b, actor, action, turnLog) {
         const before = target.hp;
         target.hp = clamp(target.hp + 10, 0, 100);
         if (consumeItem(actor, ITEM.DITTANY)) {
-          turnLog.push({ type: "system", message: `${actor.name} 디터니 사용 → ${target.name} HP ${before}→${target.hp}` });
+          turnLog.push({ type: "system", message: `${actor.name} 디터니 → ${target.name} HP ${before}→${target.hp}` });
         } else {
-          turnLog.push({ type: "system", message: `${actor.name} 디터니 사용 실패(소지 없음)` });
+          turnLog.push({ type: "system", message: `${actor.name} 디터니 없음` });
         }
         return;
       }
-      if (a.itemType === ITEM.ATK_BOOST) {
-        if (consumeItem(actor, ITEM.ATK_BOOST)) {
+      if (a.itemType === ITEM.ATK_BOOSTER) {
+        if (consumeItem(actor, ITEM.ATK_BOOSTER)) {
           actor._buffAtk = true; // 이번 턴 공격에만 적용
           turnLog.push({ type: "system", message: `${actor.name} 공격 보정기 사용` });
         } else {
@@ -479,8 +507,8 @@ function applyAction(b, actor, action, turnLog) {
         }
         return;
       }
-      if (a.itemType === ITEM.DEF_BOOST) {
-        if (consumeItem(actor, ITEM.DEF_BOOST)) {
+      if (a.itemType === ITEM.DEF_BOOSTER) {
+        if (consumeItem(actor, ITEM.DEF_BOOSTER)) {
           actor._buffDef = true; // 이번 턴 방어에만 적용
           turnLog.push({ type: "system", message: `${actor.name} 방어 보정기 사용` });
         } else {
@@ -512,13 +540,13 @@ function applyAction(b, actor, action, turnLog) {
       // 공격력 + d20 (+공격 보정 시 공격 스탯 ×1.5)
       let atkStat = A.attack;
       if (actor._buffAtk === true) {
-        if (tryBooster()) atkStat = Math.floor(atkStat * ATK_MULT);
+        atkStat = Math.floor(atkStat * ATK_MULT);
       }
       const atkRoll = d20();
       const atkScore = atkStat + atkRoll;
 
       // 치명타
-      const crit = isCritical(A.luck).crit;
+      const { crit } = isCritical(A.luck);
 
       // 타깃이 회피 선택?
       if (target._dodging) {
@@ -529,7 +557,7 @@ function applyAction(b, actor, action, turnLog) {
           turnLog.push({ type: "dodge", message: `${target.name} 회피 성공` });
           return;
         } else {
-          // 회피 실패 시 정면 피격(방어력 차감 없음), 하한 1 유지
+          // 회피 실패 시 정면 피격(방어력 차감 없음), 하한 1
           let raw = atkScore;
           if (crit) raw *= 2;
           const dmg = Math.max(1, raw);
@@ -541,28 +569,17 @@ function applyAction(b, actor, action, turnLog) {
       // 타깃이 방어 선택?
       if (target._defending) {
         const T = readStats(target);
-
-        // 방어 성공 판정: (민첩 + d20) ≥ 공격수치 → 0 대미지
-        const defendRoll = d20();
-        const defendScore = T.agility + defendRoll;
-        if (defendScore >= atkScore) {
-          turnLog.push({ type: "defense", message: `${target.name} 방어 성공` });
-          return;
-        }
-
-        // 방어 실패 → 방어치 감산 (최소 1 보장 제거)
         let defStat = T.defense;
         if (target._buffDef === true) {
-          if (tryBooster()) defStat = Math.floor(defStat * DEF_MULT);
+          defStat = Math.floor(defStat * DEF_MULT);
         }
         let raw = atkScore - defStat;
-        if (crit) raw *= 2;
-        const dmg = Math.max(0, raw); // 방어에 한해 하한 0
+        if (crit) raw *= 2; // 차감 후 2배
+        const dmg = Math.max(0, raw); // 방어 선택 시 하한 0 (요청사항)
         if (dmg > 0) {
-          applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중(방어 실패)`);
-          // 역공격: 피해 받은 경우만, 방어 불가 고정타
-          const cRoll = d20();
-          const counter = readStats(target).attack + cRoll;
+          applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중(방어 중)`);
+          // 피해가 발생했을 때만 역공격(방어 불가, 고정타)
+          const counter = readStats(target).attack + d20();
           applyDamageTo(b, actor, counter, turnLog, `${target.name} 역공격`);
         } else {
           turnLog.push({ type: "defense", message: `${target.name} 방어로 피해 상쇄` });
@@ -570,10 +587,10 @@ function applyAction(b, actor, action, turnLog) {
         return;
       }
 
-      // 일반 명중(방어/회피 안 했을 때)
+      // 일반 명중(방어/회피 안 함): 방어력 차감 없음, 하한 1
       let raw = atkScore;
       if (crit) raw *= 2;
-      const dmg = Math.max(1, raw); // 기본 하한 1 유지
+      const dmg = Math.max(1, raw);
       applyDamageTo(b, target, dmg, turnLog, `${actor.name}의 공격 명중`);
       return;
     }
@@ -586,10 +603,11 @@ function applyAction(b, actor, action, turnLog) {
 
 function applyDamageTo(b, target, dmg, logBuf, label) {
   const before = target.hp;
-  target.hp = clamp(before - Math.max(0, dmg | 0), 0, 100);
+  const dealt = Math.max(0, dmg | 0);
+  target.hp = clamp(before - dealt, 0, 100);
   logBuf.push({
     type: "attack",
-    message: `${label} → ${target.name} HP ${before}→${target.hp} (-${Math.max(0, dmg | 0)})`,
+    message: `${label} → ${target.name} HP ${before}→${target.hp} (-${dealt})`,
   });
 }
 
@@ -652,9 +670,6 @@ function log(b, type, message) {
 }
 
 function emitBattleUpdate(b) {
-  if (b.phase === "resolve") {
-    clearTurnFlags(b);
-  }
   io.to(room(b.id)).emit("battle:update", publicBattle(b));
 }
 
@@ -683,10 +698,11 @@ function publicBattle(b) {
   };
 }
 
-function spectatorUrl(battleId) {
+function buildSpectatorUrl(battleId, otp) {
   const origin = (process.env.PUBLIC_ORIGIN || "").replace(/\/+$/, "");
   const base = origin || "";
-  return `${base}/spectator?battle=${battleId}&otp=spectator-${battleId}`;
+  const token = otp || `spectator-${battleId}`;
+  return `${base}/spectator?battle=${battleId}&otp=${token}`;
 }
 
 function sanitizeAction(a) {
@@ -698,7 +714,7 @@ function sanitizeAction(a) {
   if (type === "item") {
     const it = String(a?.itemType || "").toLowerCase();
     const itemType =
-      it === ITEM.DITTANY || it === ITEM.ATK_BOOST || it === ITEM.DEF_BOOST ? it : "";
+      it === ITEM.DITTANY || it === ITEM.ATK_BOOSTER || it === ITEM.DEF_BOOSTER ? it : "";
     return { type, itemType, targetId: a?.targetId ? String(a.targetId) : "" };
   }
   return { type: "pass" };
