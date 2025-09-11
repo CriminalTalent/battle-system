@@ -1,170 +1,152 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>PYXIS 관전자</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Cinzel:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root{
-      --deep-navy:#0a0f1a;
-      --navy-surface:#121820;
-      --fg:#e9e4d7;
-      --muted:#cdbfa5;
-      --gold:#d4ba8d; --gold-2:#c9a97a; --gold-3:#b89662;
-      --line:rgba(220,199,162,.22);
-      --radius:12px;
-      --shadow:0 8px 20px rgba(0,0,0,.35);
-    }
-    html,body{background:var(--deep-navy);color:var(--fg);margin:0;height:100%}
-    body{font-family:Inter,ui-sans-serif,system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,Helvetica,Arial;font-size:14px}
-    h1,h2,h3{font-family:'Playfair Display',serif;margin:0}
-
-    .wrap{max-width:1400px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px}
-
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      background:linear-gradient(180deg,rgba(212,186,141,.12),transparent);
-      border:1px solid var(--line); border-radius:var(--radius); padding:10px 12px;
-    }
-    .brand{display:flex;align-items:center;gap:10px}
-    .brand .mark{
-      width:22px;height:22px;border-radius:50%;
-      background:conic-gradient(from 0deg,var(--gold),var(--gold-2),var(--gold-3),var(--gold));
-      box-shadow:0 0 0 1px rgba(255,255,255,.08) inset, 0 0 14px rgba(212,186,141,.25);
-    }
-    .brand h1{font-size:18px}
-    .who{font-size:12px;color:var(--muted)}
-    .who strong{color:var(--fg);font-weight:600}
-
-    .board{display:grid;grid-template-columns: 1.2fr 1fr 1fr; gap:12px; min-height:70vh}
-    .col{background:var(--navy-surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0}
-    .col-header{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(212,186,141,.08),transparent)}
-    .col-header h2{font-size:14px}
-    .tag{font-size:11px;color:#0e1014;background:linear-gradient(180deg,var(--gold),var(--gold-2));padding:2px 6px;border-radius:999px}
-
-    .team-card{background:#0f1620;border:1px solid var(--line);border-radius:8px;padding:8px}
-    .team-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-    .team-name{font-family:'Cinzel',serif;font-size:13px}
-    .hpbar{height:6px;background:#2a3340;border-radius:999px;overflow:hidden}
-    .hpbar > i{display:block;height:100%;background:linear-gradient(90deg,#2d5a27,#3e7a39)}
-
-    .log{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-    .log-line{font-family:ui-monospace,monospace;font-size:12px;background:#0e1520;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
-
-    .chat-feed{flex:1;padding:10px;overflow:auto;display:flex;flex-direction:column;gap:8px}
-    .msg{background:#0e1520;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
-    .msg .meta{font-size:11px;color:var(--muted);margin-bottom:2px}
-    .msg .body{font-size:13px;color:var(--fg)}
-
-    .cheer{margin-top:auto;border-top:1px dashed var(--line);padding:8px 10px;background:rgba(212,186,141,.05);display:grid;grid-template-columns:1fr 1fr;gap:6px}
-    .btn{border:1px solid var(--line);background:#131b25;color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer;font-size:13px}
-    .btn:hover{border-color:var(--gold)}
-
-    .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)}
-    .card{width:min(480px,92vw);background:var(--navy-surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
-    .card-head{padding:12px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(212,186,141,.1),transparent)}
-    .card-body{padding:14px;display:flex;flex-direction:column;gap:10px}
-    .row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center}
-    .inp{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#0f1620;color:var(--fg);font-size:13px}
-    .actions{display:flex;justify-content:flex-end;margin-top:6px}
-  </style>
+<meta charset="utf-8" />
+<title>PYXIS 관전자</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Cinzel:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0f1a; --surface:#121820; --fg:#e9e4d7; --muted:#cdbfa5;
+  --gold:#d4ba8d; --gold2:#c9a97a; --line:rgba(220,199,162,.22);
+  --radius:12px; --shadow:0 8px 20px rgba(0,0,0,.35);
+}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg)}
+body{font-family:Inter,ui-sans-serif,system-ui}
+.wrap{max-width:1400px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;background:linear-gradient(180deg,rgba(212,186,141,.12),transparent)}
+h1{font-family:'Playfair Display',serif;font-size:18px;margin:0}
+.meta{font-size:12px;color:var(--muted)}
+.board{display:grid;grid-template-columns:1.2fr 1fr 1fr; gap:12px; min-height:70vh}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0}
+.col-header{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(212,186,141,.08),transparent)}
+.col-header h2{font-size:14px;margin:0}
+.section{padding:10px;display:flex;flex-direction:column;gap:10px}
+.team-card{background:#0f1620;border:1px solid var(--line);border-radius:8px;padding:8px}
+.team-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.team-name{font-family:'Cinzel',serif;font-size:13px}
+.hp{height:6px;background:#2a3340;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
+.hp>i{display:block;height:100%;background:linear-gradient(90deg,#2d5a27,#3e7a39)}
+.log{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.log .row{font-family:ui-monospace,monospace;font-size:12px;background:#0e1520;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.chat{display:flex;flex-direction:column;min-height:0}
+.feed{flex:1;padding:10px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.msg{background:#0e1520;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.msg .meta{font-size:11px;color:var(--muted);margin-bottom:2px}
+.msg .body{font-size:13px;color:var(--fg)}
+.cheer{margin-top:auto;border-top:1px dashed var(--line);padding:8px 10px;background:rgba(212,186,141,.05);display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.btn{border:1px solid var(--line);background:#131b25;color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer;font-size:13px}
+.btn:hover{border-color:var(--gold)}
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)}
+.card{width:min(480px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.card-head{padding:12px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(212,186,141,.1),transparent)}
+.card-body{padding:14px;display:flex;flex-direction:column;gap:10px}
+.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center}
+.inp{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#0f1620;color:var(--fg);font-size:13px}
+.hidden{display:none}
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand"><div class="mark"></div><h1>PYXIS 관전석</h1></div>
-      <div class="who">관전자: <strong id="viewerName">-</strong> · 전투 ID: <span id="battleId">-</span></div>
-    </div>
-
-    <div class="board">
-      <div class="col">
-        <div class="col-header"><h2>A팀</h2></div>
-        <div class="section" id="teamA"></div>
-        <div class="cheer">
-          <button class="btn" data-cheer="멋지다!">멋지다!</button>
-          <button class="btn" data-cheer="이겨라!">이겨라!</button>
-          <button class="btn" data-cheer="살아서 돌아와!">살아서 돌아와!</button>
-          <button class="btn" data-cheer="화이팅!">화이팅!</button>
-          <button class="btn" data-cheer="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
-          <button class="btn" data-cheer="힘내요!">힘내요!</button>
-        </div>
-      </div>
-
-      <div class="col">
-        <div class="col-header"><h2>전투 로그</h2></div>
-        <div class="log" id="logFeed"></div>
-      </div>
-
-      <div class="col">
-        <div class="col-header"><h2>B팀</h2></div>
-        <div class="section" id="teamB"></div>
-        <div class="col-header"><h2>채팅 (읽기 전용)</h2></div>
-        <div class="chat-feed" id="chatFeed"></div>
-      </div>
-    </div>
+<div class="wrap">
+  <div class="top">
+    <h1>PYXIS 관전석</h1>
+    <div class="meta">관전자 <b id="viewer">-</b> · 전투 <b id="bid">-</b></div>
   </div>
 
-  <div class="modal" id="loginModal">
-    <div class="card">
-      <div class="card-head"><h2>관전자 입장</h2></div>
-      <div class="card-body">
-        <div class="row">
-          <label for="name">관전자 이름</label>
-          <input id="name" class="inp" placeholder="관전자 이름">
-        </div>
-        <div class="row">
-          <label for="otp">관전자 OTP</label>
-          <input id="otp" class="inp" placeholder="관리자에게 받은 OTP">
-        </div>
-        <div class="row">
-          <label for="battle">전투 ID</label>
-          <input id="battle" class="inp" placeholder="관리자 화면의 전투 ID">
-        </div>
-        <div class="actions"><button id="enterBtn" class="btn">입장</button></div>
+  <div class="board">
+    <div class="col">
+      <div class="col-header"><h2>A팀</h2></div>
+      <div class="section" id="teamA"></div>
+      <div class="cheer">
+        <button class="btn" data-cheer="멋지다!">멋지다!</button>
+        <button class="btn" data-cheer="이겨라!">이겨라!</button>
+        <button class="btn" data-cheer="살아서 돌아와!">살아서 돌아와!</button>
+        <button class="btn" data-cheer="화이팅!">화이팅!</button>
+        <button class="btn" data-cheer="죽으면 나한테 죽어!">죽으면 나한테 죽어!</button>
+        <button class="btn" data-cheer="힘내요!">힘내요!</button>
       </div>
     </div>
+
+    <div class="col">
+      <div class="col-header"><h2>전투 로그</h2></div>
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="col chat">
+      <div class="col-header"><h2>B팀</h2></div>
+      <div class="section" id="teamB" style="border-bottom:1px dashed var(--line);padding-bottom:6px;margin-bottom:6px"></div>
+      <div class="col-header"><h2>채팅 (읽기 전용)</h2></div>
+      <div class="feed" id="feed"></div>
+    </div>
   </div>
+</div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    let socket=null, SPECTATOR_NAME='', BATTLE_ID='', OTP='';
-    const $=s=>document.querySelector(s), el=(t,c)=>{const n=document.createElement(t);if(c)n.className=c;return n;}
+<div class="modal" id="login">
+  <div class="card">
+    <div class="card-head"><h2>관전자 입장</h2></div>
+    <div class="card-body">
+      <div class="row"><label>관전자 이름</label><input id="name" class="inp" placeholder="관전자 이름"></div>
+      <div class="row"><label>관전자 OTP</label><input id="otp" class="inp" placeholder="관리자에게 받은 OTP"></div>
+      <div class="row"><label>전투 ID</label><input id="battle" class="inp" placeholder="관리자 화면의 전투 ID"></div>
+      <div style="display:flex;justify-content:flex-end"><button class="btn" id="enter">입장</button></div>
+    </div>
+  </div>
+</div>
 
-    function renderTeams(state){
-      const A=state?.teams?.A||{players:[]}, B=state?.teams?.B||{players:[]};
-      const teamA=$('#teamA'); teamA.innerHTML='';
-      const teamB=$('#teamB'); teamB.innerHTML='';
-      function card(p){
-        const c=el('div','team-card');
-        const h=el('div','team-head');
-        h.innerHTML=`<div class="team-name">${p.name||'플레이어'}</div><div class="meta">HP ${p.hp||100}/100</div>`;
-        const bar=el('div','hpbar');const fill=el('i');fill.style.width=(p.hp||100)+'%';bar.append(fill);
-        c.append(h,bar);return c;
-      }
-      A.players.forEach(p=>teamA.append(card(p)));
-      B.players.forEach(p=>teamB.append(card(p)));
-    }
-    function addLog(t){const r=el('div','log-line');r.textContent=t;$('#logFeed').append(r);}
-    function addChat(m){const r=el('div','msg');r.innerHTML=`<div class="meta">${m.role||''}·${m.name}</div><div class="body">${m.message}</div>`;$('#chatFeed').append(r);}
+<script src="/socket.io/socket.io.js"></script>
+<script>
+let ioSock=null, viewer='', battleId='';
+const $=s=>document.querySelector(s), el=(t,c)=>{const n=document.createElement(t); if(c) n.className=c; return n;}
 
-    function connect(){
-      socket=io({transports:['websocket']});
-      socket.on('connect',()=>socket.emit('spectatorAuth',{battleId:BATTLE_ID,token:OTP,name:SPECTATOR_NAME}));
-      socket.on('authSuccess',()=>{$('#viewerName').textContent=SPECTATOR_NAME;$('#battleId').textContent=BATTLE_ID;$('#loginModal').classList.add('hidden');});
-      socket.on('battleUpdate',s=>renderTeams(s));
-      socket.on('chatMessage',addChat);
-      socket.on('cheerMessage',m=>addLog(`[응원] ${m.name}: ${m.message}`));
-    }
-    $('#enterBtn').addEventListener('click',()=>{
-      const n=$('#name').value.trim(),o=$('#otp').value.trim(),b=$('#battle').value.trim();
-      if(!n||!o||!b)return alert('모두 입력하세요');
-      SPECTATOR_NAME=n;OTP=o;BATTLE_ID=b;connect();
-    });
-    document.querySelectorAll('.cheer .btn').forEach(btn=>btn.addEventListener('click',()=>{
-      if(socket)socket.emit('cheerMessage',{battleId:BATTLE_ID,name:SPECTATOR_NAME,message:btn.dataset.cheer});
-    }));
-  </script>
+function teamCard(p){
+  const c = el('div','team-card');
+  c.innerHTML = `<div class="team-head">
+    <div class="team-name">${p.name}</div>
+    <div class="meta">HP ${p.hp}/100</div>
+  </div>
+  <div class="hp"><i style="width:${(p.hp/100)*100}%"></i></div>`;
+  return c;
+}
+function render(state){
+  const A = state?.teams?.A?.players || [];
+  const B = state?.teams?.B?.players || [];
+  const tA = $('#teamA'), tB = $('#teamB'); tA.innerHTML=''; tB.innerHTML='';
+  A.forEach(p=> tA.append(teamCard(p)));
+  B.forEach(p=> tB.append(teamCard(p)));
+  if (state?.lastEvent) {
+    const row = el('div','row'); row.textContent = state.lastEvent; $('#log').append(row);
+    const L = $('#log'); L.scrollTop = L.scrollHeight;
+  }
+}
+
+function connect(){
+  ioSock = io({ transports:['websocket'] });
+  ioSock.on('connect', ()=>{
+    ioSock.emit('spectatorAuth', { battleId, token: $('#otp').value.trim(), name: viewer });
+  });
+  ioSock.on('authSuccess', ()=> { $('#login').classList.add('hidden'); $('#viewer').textContent = viewer; $('#bid').textContent = battleId; });
+  ioSock.on('authError', e=> alert(e?.message||'인증 실패'));
+
+  ioSock.on('battleUpdate', render);
+  ioSock.on('chatMessage', (m)=> {
+    const r = el('div','msg'); r.innerHTML = `<div class="meta">${m.role||'알림'} · ${m.name}</div><div class="body">${m.message}</div>`;
+    const f = $('#feed'); f.append(r); f.scrollTop = f.scrollHeight;
+  });
+  ioSock.on('cheerMessage', (m)=> {
+    const row = el('div','row'); row.textContent = `[응원] ${m.name}: ${m.message}`; $('#log').append(row);
+  });
+}
+
+$('#enter').addEventListener('click', ()=>{
+  viewer = $('#name').value.trim();
+  battleId = $('#battle').value.trim();
+  if(!viewer || !$('#otp').value.trim() || !battleId){ alert('모두 입력하세요'); return; }
+  connect();
+});
+
+document.querySelectorAll('.cheer .btn').forEach(btn=>btn.addEventListener('click', ()=>{
+  ioSock?.emit('cheerMessage', { battleId, message: btn.getAttribute('data-cheer') });
+}));
+</script>
 </body>
 </html>
