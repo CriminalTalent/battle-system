@@ -1,164 +1,155 @@
 "use strict";
 
 /**
- * broadcast.js
- * - 소켓 브로드캐스트 전용 유틸
- * - 전투 상태 계산/턴 로직은 엔진에서 처리하고, 이 모듈은 "보내기"만 담당
+ * 브로드캐스트 유틸 모음 (전투 로직 없음)
+ * - 소켓 이벤트만 내보냅니다.
+ * - 신/구 이벤트명을 모두 지원합니다.
  *
- * 사용 예:
- *   const { wireBroadcast } = require("./broadcast");
- *   const bc = wireBroadcast(io);
- *   bc.join(socket, battle.id);
- *   bc.emitBattleUpdate(battle);
- *   bc.emitChat(battle.id, { sender, message });
- *   bc.pushLogAndBroadcast(battle, { type:"system", message:"라운드 종료" });
+ * 사용 예)
+ *   const { broadcastBattle, broadcastLog, broadcastEnded } = require('./broadcast');
+ *   broadcastBattle(io, battle); // 상태 전체
+ *   broadcastLog(io, battle.id, { type:'system', message:'라운드 시작' });
+ *   broadcastEnded(io, battle.id, { winner:'phoenix' });
  */
 
-function roomId(battleId) {
-  return `battle:${battleId}`;
+/* =========================
+ *  공통: 방(배틀) 단위 송신
+ * ========================= */
+function room(io, battleId) {
+  return io.to(String(battleId));
 }
 
-/** 공개용으로 정제된 플레이어 필드만 노출 */
-function pickPlayerPublic(p) {
-  if (!p) return null;
-  return {
-    id: p.id,
-    name: p.name,
-    team: p.team,          // "phoenix" | "eaters"
-    stats: {
-      atk: p?.stats?.atk,
-      def: p?.stats?.def,
-      agi: p?.stats?.agi,
-      luk: p?.stats?.luk,
-    },
-    hp: p.hp,
-    ready: !!p.ready,
-    avatarUrl: p.avatarUrl || null,
-    // 필요 시 클라이언트에서만 쓰는 필드는 추가 금지 (토큰/OTP 등 민감정보 제외)
-  };
+/* =========================
+ *  상태/진행 브로드캐스트
+ * ========================= */
+
+/**
+ * battle 상태 전체를 브로드캐스트합니다.
+ * - 신: "battle:update"
+ * - 구: "battleUpdate"
+ * @param {Server} io
+ * @param {Object} battle  전체 배틀 객체(직렬화 가능한 형태)
+ * @param {Object} [extra] 추가로 붙여 보낼 메타(예: { turn })
+ */
+function broadcastBattle(io, battle, extra = {}) {
+  if (!io || !battle || !battle.id) return;
+  const payload = { ...battle, ...extra };
+  room(io, battle.id).emit("battle:update", payload);
+  room(io, battle.id).emit("battleUpdate",  payload);
 }
 
-/** 공개용 배틀 스냅샷 정제 */
-function pickBattlePublic(battle) {
-  if (!battle) return null;
-  return {
-    id: battle.id,
-    mode: battle.mode,
-    status: battle.status,            // waiting | active | paused | ended
-    startedAt: battle.startedAt || null,
-    endedAt: battle.endedAt || null,
-
-    // 라운드/페이즈 기반이라면 그대로 전달 (UI가 참고)
-    turn: battle.turn,
-    current: battle.current,          // 레거시 호환(현재 페이즈 팀용)
-
-    // 플레이어 목록은 공개 필드만
-    players: (battle.players || []).map(pickPlayerPublic),
-
-    // 최근 로그만 일부 전송(클라 부담 줄이기)
-    log: Array.isArray(battle.log)
-      ? battle.log.slice(-100)
-      : [],
-  };
+/**
+ * 관리자 패널에만 델타/메타를 쏠 때 사용합니다.
+ * - 신: "admin:update"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} data  { battle?, ... }
+ */
+function broadcastAdmin(io, battleId, data) {
+  if (!io || !battleId) return;
+  room(io, battleId).emit("admin:update", data);
 }
 
-/** 안전 로그 기록기 (엔진/핸들러에서 이미 pushLog가 있으면 그걸 쓰세요) */
-function pushLog(battle, entry) {
-  if (!battle || !entry) return;
-  const logEntry = {
-    type: entry.type || "system",
-    message: entry.message || "",
-    ts: Date.now(),
-    ...entry,
-  };
-  battle.log = battle.log || [];
-  battle.log.push(logEntry);
-  if (battle.log.length > 500) {
-    battle.log.splice(0, battle.log.length - 500);
-  }
-  return logEntry;
+/**
+ * 전투 종료 알림 (승자/무승부)
+ * - 신: "battle:ended"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} result  { winner: "phoenix" | "eaters" | null }
+ */
+function broadcastEnded(io, battleId, result) {
+  if (!io || !battleId) return;
+  room(io, battleId).emit("battle:ended", result || {});
 }
 
-/** 브로드캐스트 유틸 묶음 */
-function wireBroadcast(io) {
-  if (!io) throw new Error("io instance is required");
+/* =========================
+ *  로그/채팅/관전자 카운트
+ * ========================= */
 
-  return {
-    /** 소켓을 해당 배틀 룸에 참여시킴 */
-    join(socket, battleId) {
-      if (!socket || !battleId) return;
-      socket.join(roomId(battleId));
-    },
+/**
+ * 전투 로그 1건 브로드캐스트
+ * - 신: "battle:log"
+ * - 구: "battleLog"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} entry { type, message, ts }
+ */
+function broadcastLog(io, battleId, entry) {
+  if (!io || !battleId || !entry) return;
+  room(io, battleId).emit("battle:log", entry);
+  room(io, battleId).emit("battleLog",  entry);
+}
 
-    /** 소켓을 해당 배틀 룸에서 퇴장 */
-    leave(socket, battleId) {
-      if (!socket || !battleId) return;
-      socket.leave(roomId(battleId));
-    },
+/**
+ * 채팅 메시지 브로드캐스트
+ * - 구: "chatMessage"
+ *   (관찰된 클라이언트 호환을 위해 구 이벤트 유지)
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} msg { senderName, message }
+ */
+function broadcastChat(io, battleId, msg) {
+  if (!io || !battleId || !msg || !msg.message) return;
+  room(io, battleId).emit("chatMessage", {
+    senderName: msg.senderName || "익명",
+    message: msg.message
+  });
+}
 
-    /** 배틀 전체 상태 스냅샷 브로드캐스트 */
-    emitBattleUpdate(battle) {
-      if (!battle) return;
-      const pub = pickBattlePublic(battle);
-      io.to(roomId(battle.id)).emit("battleUpdate", pub);
-    },
+/**
+ * 관전자 수 갱신
+ * - 신: "spectator:count_update"
+ * - 구: "spectatorCountUpdate"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {number} count
+ */
+function broadcastSpectatorCount(io, battleId, count) {
+  if (!io || !battleId || typeof count !== "number") return;
+  const payload = { count };
+  room(io, battleId).emit("spectator:count_update", payload);
+  room(io, battleId).emit("spectatorCountUpdate",   payload);
+}
 
-    /** 특정 알림(시스템) */
-    emitSystem(battleId, payload) {
-      io.to(roomId(battleId)).emit("systemMessage", {
-        ts: Date.now(),
-        ...payload,
-      });
-    },
+/* =========================
+ *  턴/페이즈 힌트(선택)
+ * ========================= */
+/**
+ * 현재 턴(행동자/팀) 힌트
+ *  - 신: "turn:start"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} data { playerId?, phaseTeam?("A"|"B"), round?, order? }
+ */
+function broadcastTurnStart(io, battleId, data) {
+  if (!io || !battleId) return;
+  room(io, battleId).emit("turn:start", data || {});
+}
 
-    /** 전투 로그를 새로 추가하고 브로드캐스트 */
-    pushLogAndBroadcast(battle, entry) {
-      const saved = pushLog(battle, entry);
-      io.to(roomId(battle.id)).emit("logMessage", saved);
-    },
-
-    /** 채팅 메시지 브로드캐스트 (관리자/플레이어/관전자 공통) */
-    emitChat(battleId, message) {
-      // message: { senderRole:"admin|player|spectator", senderName, text }
-      io.to(roomId(battleId)).emit("chatMessage", {
-        ts: Date.now(),
-        ...message,
-      });
-    },
-
-    /** 응원 메시지(관전자 버튼 전용) */
-    emitCheer(battleId, payload) {
-      // payload: { spectatorName, cheerText }
-      io.to(roomId(battleId)).emit("cheerMessage", {
-        ts: Date.now(),
-        ...payload,
-      });
-    },
-
-    /** 라운드 결과/요약 브로드캐스트 */
-    emitRoundResult(battle, summary) {
-      // summary 예: { round: n, damageMatrix, koList, notes }
-      io.to(roomId(battle.id)).emit("roundResult", {
-        ts: Date.now(),
-        ...summary,
-      });
-    },
-
-    /** 에러/경고 */
-    emitError(battleId, error) {
-      io.to(roomId(battleId)).emit("errorMessage", {
-        ts: Date.now(),
-        message: (error && error.message) || String(error),
-      });
-    },
-  };
+/**
+ * 턴 종료 알림
+ *  - 신: "turn:end"
+ * @param {Server} io
+ * @param {string} battleId
+ * @param {Object} data { teamPhaseCompleted?, roundCompleted? }
+ */
+function broadcastTurnEnd(io, battleId, data) {
+  if (!io || !battleId) return;
+  room(io, battleId).emit("turn:end", data || {});
 }
 
 module.exports = {
-  wireBroadcast,
-  roomId,
-  pickBattlePublic,
-  pickPlayerPublic,
-  // pushLog는 엔진/핸들러에도 있을 수 있으므로 옵션으로 export
-  pushLog,
+  // 상태/진행
+  broadcastBattle,
+  broadcastAdmin,
+  broadcastEnded,
+
+  // 로그/채팅/관전자
+  broadcastLog,
+  broadcastChat,
+  broadcastSpectatorCount,
+
+  // 턴/페이즈(선택)
+  broadcastTurnStart,
+  broadcastTurnEnd,
 };
