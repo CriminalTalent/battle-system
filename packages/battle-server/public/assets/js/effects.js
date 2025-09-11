@@ -19,8 +19,6 @@
       this.applyBackdropBlur();
     },
 
-    /* ========== 기존 기능 ========== */
-
     bindCheerButtons() {
       const buttons = document.querySelectorAll(".cheer-btn");
       buttons.forEach((btn) => {
@@ -83,12 +81,8 @@
 
     applyBackdropBlur() {
       const panels = document.querySelectorAll('.glass, .battle-card, .info-card, .modal, .backdrop-blur');
-      panels.forEach((el) => {
-        el.classList.add('backdrop-blur');
-      });
+      panels.forEach((el) => el.classList.add('backdrop-blur'));
     },
-
-    /* ========== 확장: 결과 배너/로그 태깅 ========== */
 
     ensureBanner() {
       if (document.getElementById(BANNER_ID)) return;
@@ -103,11 +97,8 @@
       if (!el) return;
       el.textContent = text;
       el.className = 'pyxis-banner show';
-      // 자동 숨김
       clearTimeout(this._bannerTimer);
-      this._bannerTimer = setTimeout(() => {
-        el.className = 'pyxis-banner';
-      }, Math.max(holdMs, 1200));
+      this._bannerTimer = setTimeout(() => { el.className = 'pyxis-banner'; }, Math.max(holdMs, 1200));
     },
 
     tagLog(div, kind) {
@@ -116,7 +107,6 @@
       if (kind) div.classList.add(kind);
     },
 
-    // 편의 헬퍼
     bannerFirst(teamAB){ this.showResultBanner(`선공: ${teamAB}팀`, 'first'); },
     bannerKill(name){ this.showResultBanner(`${name} 사망`, 'kill'); },
     bannerWin(teamAB){ this.showResultBanner(`${teamAB}팀 승리`, 'win', 2000); },
