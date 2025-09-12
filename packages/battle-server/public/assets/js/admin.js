@@ -1,7 +1,7 @@
 // /public/assets/js/admin.js
 // 변경 요약:
-// - 업로드: /api/upload/avatar + field 'avatar' 고정, 다양한 응답 키 허용(url|imageUrl|avatarUrl|fileUrl|path|filename)
-// - 참가자 추가: REST 완전 제거(404 회피), 소켓 + ack 콜백으로 성공/실패 처리, 즉시 상태 재조회
+// - 전투 생성: 소켓 ack 처리 + REST 폴백 경로 확장(6종), 실패 본문 로그 출력
+// - 나머지 로직/디자인/표기 그대로 유지
 (function(){
   "use strict";
 
@@ -65,7 +65,6 @@
   const escapeHtml = (s)=> String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
   const toast = (msg)=>{ if(!els.toast) return; els.toast.textContent=msg; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'),1600); };
   const makeAbsolute = (p)=> new URL(p, window.location.origin).toString();
-  async function copyToClipboard(text){ try{ await navigator.clipboard.writeText(text); toast('복사 완료'); } catch{ toast('복사 실패'); } }
 
   function setConn(on){ els.connDot?.classList.toggle('ok', !!on); }
   function setCtrlEnabled(on){
@@ -117,7 +116,7 @@
       socket.on(ev, onBattleUpdate);
     });
 
-    // 로그 수신(여러 네임스페이스 호환)
+    // 로그 수신
     socket.on('battleLog', (m)=> appendLog(typeof m==='string'? m : (m?.message||JSON.stringify(m))));
     socket.on('battle:log', ({message})=> appendLog(message||''));
     socket.on('actionSuccess', (m)=> appendLog(formatActionLog('성공', m)));
@@ -127,7 +126,7 @@
     socket.on('playerAction',  (m)=> appendLog(formatActionLog('행동', m)));
     socket.on('player:action', (m)=> appendLog(formatActionLog('행동', m)));
 
-    // 채팅 수신(여러 네임스페이스 호환)
+    // 채팅 수신
     socket.on('chatMessage', (payload)=>{
       if(typeof payload==='string'){ appendChat('플레이어', payload); }
       else { appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''); }
@@ -165,38 +164,110 @@
   }
 
   // -------- 전투 생성/제어 --------
+  function modePayload(){
+    // 서버가 문자열/숫자 모두 기대할 수 있어, 둘 다 제공
+    const m = (els.mode.value || '4v4').trim();
+    const size = ({'1v1':1,'2v2':2,'3v3':3,'4v4':4}[m]) || 4;
+    return { mode: m, size };
+  }
+
   async function onCreateBattle(){
-    const mode = els.mode.value || '4v4';
+    const payload = modePayload();
 
-    // 1) 소켓 우선(신/구 이벤트 동시 발사)
+    // 1) 소켓 우선: 3 이벤트 + ack
     try{
-      socket.emit('createBattle', { mode });
-      socket.emit('battle:create', { mode });
-      appendLog(`전투 생성 요청(소켓): 모드 ${mode}`);
-      const ok = await waitForUpdate(1800);
+      appendLog(`전투 생성 요청(소켓): 모드 ${payload.mode}`);
+      const ok = await createViaSocket(payload);
       if(ok){ activateControls(); toast('전투가 생성되었습니다'); return; }
-    }catch(_){}
-
-    // 2) REST 폴백
-    try{
-      const headers = { 'Content-Type': 'application/json', 'Accept':'application/json' };
-      const payload = { mode };
-      const r2 = await fetch(`/api/battles`, { method:'POST', headers, body: JSON.stringify(payload), credentials:'include' });
-      if(r2.ok){
-        const battle = await r2.json();
-        battleId = battle?.id || battle?.battleId || battleId;
-        socket.emit('join', { battleId });
-        onBattleUpdate(battle);
-        activateControls(); toast('전투가 생성되었습니다');
-        return;
-      }else{
-        const t = await r2.text(); appendLog(`전투 생성 실패 /api/battles: ${r2.status} ${t}`);
-        alert('전투 생성 실패');
-      }
     }catch(e){
-      appendLog('전투 생성 실패: 소켓/REST 모두 실패');
-      alert('전투 생성 실패');
+      appendLog(`소켓 생성 예외: ${e.message||e}`);
     }
+
+    // 2) REST 폴백: 6 경로 순차 시도
+    try{
+      const ok = await createViaREST(payload);
+      if(ok){ activateControls(); toast('전투가 생성되었습니다'); return; }
+    }catch(e){
+      appendLog(`REST 생성 예외: ${e.message||e}`);
+    }
+
+    appendLog('전투 생성 실패: 소켓/REST 모두 실패');
+    alert('전투 생성 실패');
+  }
+
+  function createViaSocket(payload){
+    return new Promise((resolve)=>{
+      let settled=false;
+      const done=(ok)=>{ if(!settled){ settled=true; resolve(ok); }};
+
+      const ack = (res)=>{
+        try{
+          if(!res) return;
+          if(res.error || res.err){
+            appendLog(`전투 생성 오류(ack): ${res.error||res.err}`);
+            return;
+          }
+          const b = res.battle || res;
+          if(b && (b.id || b.battleId)){
+            battleId = b.id || b.battleId;
+            socket.emit('join', { battleId });
+            onBattleUpdate(b);
+            done(true);
+          }
+        }catch(_){}
+      };
+
+      // 신/구 이벤트 병행
+      try{ socket.emit('createBattle', payload, ack); }catch(_){}
+      try{ socket.emit('battle:create', payload, ack); }catch(_){}
+      try{ socket.emit('admin:createBattle', payload, ack); }catch(_){}
+
+      // 브로드캐스트를 기다렸다가 스냅샷 수신 시 성공 처리
+      waitForUpdate(1500).then((u)=>{ if(u) done(true); });
+
+      // 2초 타임아웃
+      setTimeout(()=> done(false), 2000);
+    });
+  }
+
+  async function createViaREST(payload){
+    const headers = { 'Content-Type': 'application/json', 'Accept':'application/json' };
+    const routes = [
+      ['/api/battles',               { ...payload }],
+      ['/api/battles',               { battle:{ ...payload } }],
+      ['/api/admin/battles',         { ...payload }],
+      ['/api/admin/battles',         { battle:{ ...payload } }],
+      ['/api/battles/create',        { ...payload }],
+      ['/api/admin/battles/create',  { ...payload }],
+    ];
+    let lastDetail = '';
+    for(const [url, body] of routes){
+      try{
+        const r = await fetch(url, { method:'POST', headers, credentials:'include', body: JSON.stringify(body) });
+        const text = await r.text();
+        if(!r.ok){
+          lastDetail = `${url} → ${r.status} ${text}`;
+          appendLog(`전투 생성 실패: ${lastDetail}`);
+          continue;
+        }
+        let j = {};
+        try{ j = JSON.parse(text); }catch{ appendLog(`전투 생성 응답 JSON 파싱 실패: ${url}`); }
+        const b = j.battle || j;
+        if(b && (b.id || b.battleId)){
+          battleId = b.id || b.battleId;
+          socket.emit('join', { battleId });
+          onBattleUpdate(b);
+          return true;
+        }else{
+          appendLog(`전투 생성 응답에 battle/id 없음: ${url}`);
+        }
+      }catch(e){
+        lastDetail = `${url} 예외 → ${e.message||e}`;
+        appendLog(lastDetail);
+      }
+    }
+    if(lastDetail) toast(lastDetail);
+    return false;
   }
 
   function activateControls(){
@@ -220,7 +291,6 @@
     if(!snap) return;
     lastSnap = snap;
     battleId = snap.id || battleId;
-
     renderBattleMeta(snap);
 
     const st = snap.status || 'waiting';
@@ -268,7 +338,7 @@
           <button class="btn">복사</button>
         `;
         const input = row.querySelector('input');
-        row.querySelector('button').addEventListener('click', ()=> copyToClipboard(input.value));
+        row.querySelector('button').addEventListener('click', ()=> navigator.clipboard.writeText(input.value).catch(()=>{}));
         els.playerLinks.appendChild(row);
       });
       toast('참여자 링크가 생성되었습니다');
@@ -325,12 +395,10 @@
       let j = {};
       try{ j = JSON.parse(text); } catch{ appendLog('업로드 응답 JSON 파싱 실패, 원문 사용 시도'); }
 
-      // 가능한 키들을 최대치로 수용
       const url   = j.url || j.imageUrl || j.avatarUrl || j.fileUrl;
       const path  = j.path || j.publicPath;
       const fname = j.filename || j.fileName;
 
-      // 절대경로 보정
       let resolved = '';
       if(url) resolved = new URL(url, window.location.origin).toString();
       else if(path) resolved = new URL(path, window.location.origin).toString();
@@ -363,7 +431,7 @@
 
     const player = {
       name: v.name,
-      team: els.pTeam.value, // phoenix|eaters
+      team: els.pTeam.value,
       hp: v.hp,
       maxHp: 100,
       stats: { attack: v.atk, defense: v.def, agility: v.agi, luck: v.luk },
@@ -377,41 +445,31 @@
 
     const payload = { battleId, player };
 
-    // ack 콜백을 활용해 서버 메시지를 그대로 표시
-    const ackWrap = (resolve)=> (res)=>{
-      try{
-        if(!res){ appendLog('참가자 추가 응답 없음'); return resolve(false); }
+    const ok = await new Promise((resolve)=>{
+      let settled=false; const done=(v)=>{ if(!settled){ settled=true; resolve(v); } };
+
+      const ack = (res)=>{
+        if(!res) return;
         if(res.error || res.err){
-          appendLog(`참가자 추가 오류: ${res.error||res.err}`);
-          toast((res.error||res.err));
-          return resolve(false);
+          appendLog(`참가자 추가 오류(ack): ${res.error||res.err}`);
+          return;
         }
-        // res.battle 또는 res.player 등 스냅샷 동봉 시 반영
-        if(res.battle) onBattleUpdate(res.battle);
-        toast('참가자 추가 완료');
-        resolve(true);
-      }catch(_){ resolve(false); }
-    };
+        const b = res.battle || null;
+        if(b) onBattleUpdate(b);
+        done(true);
+      };
 
-    const p = new Promise((resolve)=>{
-      let settled = false;
-      const done = (ok)=>{ if(!settled){ settled=true; resolve(ok); } };
+      try{ socket.emit('addPlayer', payload, ack); }catch(_){}
+      try{ socket.emit('admin:addPlayer', payload, ack); }catch(_){}
 
-      // 신/구 이벤트 동시 시도
-      socket.emit('addPlayer', payload, (r)=> ackWrap(done)(r));
-      socket.emit('admin:addPlayer', payload, (r)=> ackWrap(done)(r));
-
-      // 1.2초 내 브로드캐스트 업데이트가 오면 성공으로 간주
-      waitForUpdate(1200).then((u)=>{ if(u) done(true); });
-      // 2초 타임아웃 후 최종 상태 강제 조회
+      waitForUpdate(1200).then(u=>{ if(u) done(true); });
       setTimeout(async ()=>{
         if(settled) return;
         try{
           const r3 = await fetch(`/api/battles/${battleId}`, { credentials:'include' });
           if(r3.ok){
             const snap = await r3.json();
-            onBattleUpdate(snap);
-            done(true);
+            onBattleUpdate(snap); done(true);
           }else{
             const t = await r3.text();
             appendLog(`상태 재조회 실패: ${r3.status} ${t}`);
@@ -424,9 +482,7 @@
       }, 2000);
     });
 
-    const ok = await p;
-    if(!ok) appendLog('참가자 추가 실패 또는 응답 지연');
-    // 입력 초기화
+    if(ok) toast('참가자 추가 완료'); else appendLog('참가자 추가 실패 또는 응답 지연');
     els.pName.value=''; els.pAvatar.value=''; resetPreview();
   }
 
