@@ -1,5 +1,5 @@
 // /public/assets/js/admin.js
-// 기존 디자인/표기/룰 그대로. 소켓/REST 동시 지원 + 이벤트 호환 + 로그/채팅/이미지 업로드/미리보기/버튼활성 포함.
+// 참여자 추가가 서버 스키마와 달라도 붙도록(필드/형태/엔드포인트 폴백), 업로드 중복로그 억제, 실패 사유 노출 강화
 (function(){
   "use strict";
 
@@ -133,10 +133,6 @@
     socket.on('chat:message', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
     socket.on('battle:chat',  ({name,message})=> appendChat(name||'플레이어', message||''));
 
-    bindSocketCreateHooks();
-  }
-
-  function bindSocketCreateHooks(){
     // 생성 알림 호환
     socket.on('battle:created', (battle)=> onBattleCreatedViaSocket(battle));
     socket.on('admin:created',  (payload)=> onBattleCreatedViaSocket(payload?.battle));
@@ -158,15 +154,11 @@
     if(b){
       battleId = b;
       socket.emit('join', { battleId });
-      // 관리자 인증을 쓰는 환경을 대비(있으면 보냄, 없으면 무시됨)
       if(t){ socket.emit('adminAuth', { battleId, otp: t, token: t }); }
-
-      // 스냅샷 조회 시도
-      fetch(`/api/battles/${encodeURIComponent(battleId)}`).then(r=>{
-        if(r.ok) return r.json();
-      }).then(snap=>{
-        if(snap){ onBattleUpdate(snap); activateControls(); }
-      }).catch(()=>{});
+      fetch(`/api/battles/${encodeURIComponent(battleId)}`, { credentials:'include' })
+        .then(r=>r.ok?r.json():null)
+        .then(snap=>{ if(snap){ onBattleUpdate(snap); activateControls(); }})
+        .catch(()=>{});
     }
   }
 
@@ -184,11 +176,11 @@
     }catch(_){}
 
     // 2) REST 폴백: /api/admin/battles → /api/battles
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json', 'Accept':'application/json' };
     const payload = { mode };
 
     try{
-      const r1 = await fetch(`/api/admin/battles`, { method:'POST', headers, body: JSON.stringify(payload) });
+      const r1 = await fetch(`/api/admin/battles`, { method:'POST', headers, body: JSON.stringify(payload), credentials:'include' });
       if(r1.ok){
         const battle = await r1.json();
         battleId = battle?.id || battle?.battleId || battleId;
@@ -196,12 +188,17 @@
         onBattleUpdate(battle);
         activateControls(); toast('전투가 생성되었습니다');
         return;
+      }else{
+        const t = await r1.text(); appendLog(`전투 생성 실패 /api/admin/battles: ${r1.status} ${t}`);
       }
-    }catch(_){}
+    }catch(e){ appendLog(`전투 생성 예외 /api/admin/battles: ${e.message||e}`); }
 
     try{
-      const r2 = await fetch(`/api/battles`, { method:'POST', headers, body: JSON.stringify(payload) });
-      if(!r2.ok) throw new Error('REST 생성 실패');
+      const r2 = await fetch(`/api/battles`, { method:'POST', headers, body: JSON.stringify(payload), credentials:'include' });
+      if(!r2.ok){
+        const t = await r2.text(); appendLog(`전투 생성 실패 /api/battles: ${r2.status} ${t}`);
+        throw new Error('REST 생성 실패');
+      }
       const battle = await r2.json();
       battleId = battle?.id || battle?.battleId || battleId;
       socket.emit('join', { battleId });
@@ -267,13 +264,15 @@
   async function onGeneratePlayerLinks(){
     if(!battleId){ toast('전투 생성 후 이용하세요'); return; }
     try{
-      // 1차: /api/admin/battles/:id/links
-      let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST' });
+      let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST', credentials:'include' });
       if(!res.ok){
-        // 2차: /api/battles/:id/links
-        res = await fetch(`/api/battles/${battleId}/links`, { method:'POST' });
+        const t = await res.text(); appendLog(`링크 생성 실패 /api/admin/battles/: ${res.status} ${t}`);
+        res = await fetch(`/api/battles/${battleId}/links`, { method:'POST', credentials:'include' });
       }
-      if(!res.ok) throw new Error();
+      if(!res.ok){
+        const t = await res.text(); appendLog(`링크 생성 실패 /api/battles/: ${res.status} ${t}`);
+        throw new Error();
+      }
       const data = await res.json();
       const links = data?.playerLinks || data?.links || [];
 
@@ -299,9 +298,15 @@
   async function onGenerateSpectatorOtp(){
     if(!battleId){ toast('전투 생성 후 이용하세요'); return; }
     try{
-      let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST' });
-      if(!res.ok){ res = await fetch(`/api/battles/${battleId}/links`, { method:'POST' }); }
-      if(!res.ok) throw new Error();
+      let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+      if(!res.ok){
+        const t = await res.text(); appendLog(`관전자 비밀번호 실패 /api/admin/battles/: ${res.status} ${t}`);
+        res = await fetch(`/api/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+      }
+      if(!res.ok){
+        const t = await res.text(); appendLog(`관전자 비밀번호 실패 /api/battles/: ${res.status} ${t}`);
+        throw new Error();
+      }
       const data = await res.json();
       const otp = data?.spectatorOtp || data?.spectator?.otp || data?.otp || '';
       els.spectatorOtp.value = otp || '';
@@ -318,41 +323,100 @@
     toast('관전자 링크가 생성되었습니다');
   }
 
+  // -------- 입력 유효성 --------
+  function validateInputs(){
+    const name = (els.pName.value||'').trim();
+    if(!name){ toast('이름을 입력하세요'); els.pName.focus(); return { ok:false }; }
+
+    const hp = clampNum(safeNum(els.pHp.value,100), 1, 100);
+    const atk = clampNum(safeNum(els.sAtk.value,3), 1, 5);
+    const def = clampNum(safeNum(els.sDef.value,3), 1, 5);
+    const luk = clampNum(safeNum(els.sLuk.value,2), 1, 5);
+    const agi = clampNum(safeNum(els.sAgi.value,3), 1, 5);
+
+    return { ok:true, name, hp, atk, def, luk, agi };
+  }
+
+  // -------- 이미지 업로드(견고) --------
+  let uploadLoggedOnce = false;
+  async function uploadAvatar(file){
+    if(!file) return '';
+    const okTypes = ['image/png','image/jpeg','image/gif','image/webp'];
+    if(!okTypes.includes(file.type)) throw new Error('지원하지 않는 이미지 형식');
+
+    const tryList = [
+      ['/api/upload','file'], ['/api/upload','image'], ['/api/upload','avatar'],
+      ['/api/upload/avatar','file'], ['/api/upload/avatar','image'], ['/api/upload/avatar','avatar']
+    ];
+    for(const [endpoint, field] of tryList){
+      const url = await tryUpload(endpoint, field, file);
+      if(url) return url;
+    }
+    if(!uploadLoggedOnce){ appendLog('이미지 업로드 실패(등록은 계속 진행)'); uploadLoggedOnce = true; }
+    return '';
+  }
+
+  async function tryUpload(endpoint, field, file){
+    try{
+      const fd = new FormData();
+      fd.append(field, file, file.name);
+      const r = await fetch(endpoint, { method:'POST', body: fd, credentials:'include' });
+      if(!r.ok){
+        const t = await r.text();
+        if(!uploadLoggedOnce) appendLog(`업로드 실패 ${endpoint}[${field}] → ${r.status} ${t}`);
+        return '';
+      }
+      const j = await r.json().catch(()=> ({}));
+      const url = j.url || j.path || j.location || '';
+      if(!url){
+        if(!uploadLoggedOnce) appendLog(`업로드 응답에 url이 없습니다: ${endpoint}[${field}]`);
+      }
+      return url;
+    }catch(e){
+      if(!uploadLoggedOnce) appendLog(`업로드 예외 ${endpoint}[${field}] → ${e.message||e}`);
+      return '';
+    }
+  }
+
   // -------- 참가자 추가 --------
   async function onAddPlayer(){
     if(!battleId){ toast('전투 생성부터 진행하세요.'); return; }
+    const v = validateInputs();
+    if(!v.ok) return;
+
     try{
-      // 1) 이미지 업로드(선택) /api/upload → 실패 시 /api/upload/avatar
+      // 1) 이미지 업로드(선택)
       let avatarUrl = '';
       const file = els.pAvatar.files?.[0];
       if(file){
-        const fd = new FormData();
-        fd.append('file', file);
-        let up = await fetch(`/api/upload`, { method:'POST', body: fd });
-        if(!up.ok){
-          const fd2 = new FormData();
-          fd2.append('file', file);
-          up = await fetch(`/api/upload/avatar`, { method:'POST', body: fd2 });
-        }
-        if(up.ok){
-          const j = await up.json();
-          avatarUrl = j.url || j.path || '';
-        }else{
-          appendLog('이미지 업로드 실패(등록은 계속 진행)');
-        }
+        uploadLoggedOnce = false;
+        avatarUrl = await uploadAvatar(file);
       }
 
-      // 2) 본문 구성
-      const body = {
-        name: (els.pName.value||'').trim(),
-        team: els.pTeam.value,
-        hp: clampNum(safeNum(els.pHp.value,100), 1, 100),
+      // 2) 본문 구성(서버 호환 필드 동시 제공)
+      const base = {
+        // 이름 alias
+        name: v.name,
+        characterName: v.name,
+        character: v.name,
+        playerName: v.name,
+        nickname: v.name,
+        // 팀 alias
+        team: els.pTeam.value, // 'phoenix' | 'eaters'
+        side: els.pTeam.value,
+        teamCode: (String(els.pTeam.value).toLowerCase()==='phoenix'?'A':'B'),
+        teamId:   (String(els.pTeam.value).toLowerCase()==='phoenix'?'A':'B'),
+        // 체력
+        hp: v.hp,
+        maxHp: 100,
+        // 스탯
         stats:{
-          attack:  clampNum(safeNum(els.sAtk.value,3), 1, 5),
-          defense: clampNum(safeNum(els.sDef.value,3), 1, 5),
-          luck:    clampNum(safeNum(els.sLuk.value,2), 1, 5),
-          agility: clampNum(safeNum(els.sAgi.value,3), 1, 5),
+          attack:  v.atk,
+          defense: v.def,
+          luck:    v.luk,
+          agility: v.agi,
         },
+        // 아이템
         items:{
           dittany:       clampNum(safeNum(els.iDit.value,0), 0, 99),
           attack_boost:  clampNum(safeNum(els.iAtkB.value,0), 0, 99),
@@ -360,37 +424,71 @@
         },
         avatar: avatarUrl
       };
-      if(!body.name){ toast('이름을 입력하세요'); return; }
 
-      // 3) 소켓/REST 동시 시도
-      // 소켓(호환 이벤트)
-      socket.emit('addPlayer',       { battleId, player: body });
-      socket.emit('admin:addPlayer', { battleId, player: body });
-      socket.emit('player:add',      { battleId, player: body });
+      // 3) 소켓 알림(있으면 처리)
+      socket.emit('addPlayer',       { battleId, player: base });
+      socket.emit('admin:addPlayer', { battleId, player: base });
+      socket.emit('player:add',      { battleId, player: base });
 
-      // REST 1차
-      let ok = false;
-      try{
-        let r = await fetch(`/api/battles/${battleId}/players`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        if(!r.ok){
-          // REST 2차
-          r = await fetch(`/api/admin/battles/${battleId}/players`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      // 4) REST 시퀀스: 4단계 폴백 × 2형태
+      const headers = { 'Content-Type': 'application/json', 'Accept':'application/json' };
+      const seq = [
+        [`/api/battles/${battleId}/players`, base],
+        [`/api/battles/${battleId}/players`, { player: base }],
+        [`/api/admin/battles/${battleId}/players`, base],
+        [`/api/admin/battles/${battleId}/players`, { player: base }],
+      ];
+
+      let restOk = false, lastErr = '';
+      for(const [url, payload] of seq){
+        try{
+          const r = await fetch(url, { method:'POST', headers, credentials:'include', body: JSON.stringify(payload) });
+          if(r.ok){
+            const data = await r.json().catch(()=>null);
+            if(data?.battle) onBattleUpdate(data.battle);
+            restOk = true;
+            break;
+          }else{
+            const t = await r.text();
+            lastErr = `${url} → ${r.status} ${t}`;
+            appendLog(`참가자 추가 실패: ${lastErr}`);
+            // 이름 오류 문구를 그대로 보여주기
+            if(String(t).includes('이름') || String(t).includes('name')){
+              toast(t.trim());
+            }
+          }
+        }catch(e){
+          lastErr = `${url} 예외 → ${e.message||e}`;
+          appendLog(lastErr);
         }
-        if(r.ok){
-          const data = await r.json();
-          // 즉시 갱신
-          if(data?.battle){ onBattleUpdate(data.battle); }
-          ok = true;
-        }
-      }catch(_){}
+      }
 
-      // 소켓 브로드캐스트 대기(최대 1.2s)
+      // 5) 소켓 브로드캐스트 대기 + 강제 스냅샷 재조회
       const got = await waitForUpdate(1200);
-      if(ok || got){ toast('참가자 추가 완료'); }
-      else { appendLog('참가자 추가 요청은 전송되었으나 응답이 지연됩니다'); }
+      if(!(restOk || got)){
+        try{
+          const r3 = await fetch(`/api/battles/${battleId}`, { credentials:'include' });
+          if(r3.ok){
+            const snap = await r3.json();
+            onBattleUpdate(snap);
+          }else{
+            const t = await r3.text();
+            appendLog(`상태 재조회 실패: ${r3.status} ${t}`);
+          }
+        }catch(e){
+          appendLog(`상태 재조회 예외: ${e.message||e}`);
+        }
+      }
+
+      if(restOk || got) toast('참가자 추가 완료');
+      else {
+        appendLog('참가자 추가 요청은 전송되었으나 응답이 지연됩니다');
+        if(lastErr) toast('추가 실패: ' + lastErr);
+      }
 
       // 입력 초기화
       els.pName.value=''; els.pAvatar.value=''; resetPreview();
+
     }catch(e){
       alert('참가자 추가 실패');
     }
@@ -421,7 +519,7 @@
       const it = p.items || {};
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${escapeHtml(p.name||'-')}</td>
+        <td>${escapeHtml(p.name||p.characterName||p.playerName||p.nickname||'-')}</td>
         <td>${p.hp}/${maxHp}</td>
         <td>공 ${st.attack ?? '-'} · 방 ${st.defense ?? '-'} · 민 ${st.agility ?? '-'} · 운 ${st.luck ?? '-'}</td>
         <td>디터니 ${it.dittany ?? 0} · 공보 ${it.attack_boost ?? 0} · 방보 ${it.defense_boost ?? 0}</td>
@@ -466,7 +564,6 @@
   function sendChat(){
     const text = (els.chatMsg.value||'').trim();
     if(!text || !battleId) return;
-    // 신/구 둘 다 전송
     socket.emit('chatMessage', { battleId, message: text, role:'admin', name:'관리자' });
     socket.emit('chat:send',   { battleId, message: text, role:'admin', name:'관리자' });
     els.chatMsg.value='';
