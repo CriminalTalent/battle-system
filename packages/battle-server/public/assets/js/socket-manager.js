@@ -1,7 +1,9 @@
-/* PYXIS Socket Manager (browser)
+/* packages/battle-server/public/assets/js/socket-manager.js
+   PYXIS Socket Manager (browser)
    - 서버(index.js) 이벤트와 1:1 매칭
    - 관리자 새로고침 방지(leave confirm) 강제 해제
    - Admin/Player/Spectator 공용 래퍼
+   - 팀 표기는 송수신 시 A/B만 사용하도록 정규화(toAB)
    - 이모지 금지, 콘솔 로깅 강화
 */
 
@@ -12,22 +14,16 @@
   // 강제: 새로고침/탭닫기 경고(leave confirm) 해제
   // ──────────────────────────────────────────────
   try {
-    // 가장 흔한 패턴 제거
     window.onbeforeunload = null;
-    // 캡처 단계에서 다른 beforeunload 핸들러가 동작하기 전에 차단
     window.addEventListener(
       "beforeunload",
       function (e) {
-        // 어떤 스크립트가 preventDefault를 하더라도 여기서 막아 경고창 비표시
-        // (일부 브라우저는 beforeunload에서 stopImmediatePropagation을 허용)
         if (e && typeof e.stopImmediatePropagation === "function") {
           e.stopImmediatePropagation();
         }
-        // 절대 preventDefault/returnValue 설정하지 않음 → 경고창 미노출
       },
       true
     );
-    // 인기 라이브러리들이 남겨둔 흔적들 추가 방지
     delete window.onbeforeunload;
   } catch (_) {}
 
@@ -44,6 +40,14 @@
 
   function isFn(fn) {
     return typeof fn === "function";
+  }
+
+  // 팀 키 정규화: 항상 'A' / 'B' 로만
+  function toAB(t) {
+    const s = String(t || "").toLowerCase();
+    if (s === "phoenix" || s === "a" || s === "team_a" || s === "team-a") return "A";
+    if (s === "eaters" || s === "b" || s === "death" || s === "team_b" || s === "team-b") return "B";
+    return "";
   }
 
   // ──────────────────────────────────────────────
@@ -63,6 +67,7 @@
         battleId: null,
         playerId: null,
         name: null,
+        teamAB: null, // A/B 정규화된 팀
       };
     }
 
@@ -77,7 +82,6 @@
         return;
       }
 
-      // 재연결 옵션은 서버 ping/pong과 잘 맞음
       const socket = root.io(this.url, {
         transports: ["websocket", "polling"],
         withCredentials: true,
@@ -120,6 +124,7 @@
         if (payload?.role) this.ctx.role = payload.role;
         if (payload?.battleId) this.ctx.battleId = payload.battleId;
         if (payload?.playerId) this.ctx.playerId = payload.playerId;
+        if (payload?.team) this.ctx.teamAB = toAB(payload.team);
         this._emitLocal("auth:success", payload);
       });
 
@@ -220,7 +225,8 @@
         battleId: opt.battleId || this.ctx.battleId,
         name: clampLen(opt.name || this.ctx.name || "", 30),
         message: clampLen(message || "", 200),
-        team: opt.team || null,
+        // 팀은 항상 A/B로만 송신
+        team: toAB(opt.team || this.ctx.teamAB || ""),
         role: opt.role || this.ctx.role || "player",
       };
       if (!payload.battleId || !payload.message) return;
@@ -233,6 +239,7 @@
         battleId: opt.battleId || this.ctx.battleId,
         cheer: clampLen(cheer || "", 100),
         name: clampLen(opt.name || this.ctx.name || "", 30),
+        team: toAB(opt.team || this.ctx.teamAB || ""),
       };
       if (!payload.battleId || !payload.cheer) return;
       this.socket.emit("cheer:send", payload);
@@ -255,7 +262,6 @@
 
     createBattle(mode = "1v1") {
       if (!this.socket) return;
-      // 서버 이벤트명: createBattle
       this.socket.emit("createBattle", { mode });
     }
 
@@ -319,18 +325,20 @@
       if (!this.socket) return;
       const id = battleId || this.ctx.battleId;
       if (!id) return;
+      // 서버 이벤트명은 OTP 발급임(명칭만 URL이라도 내부는 OTP)
       this.socket.emit("generateSpectatorOtp", { battleId: id });
     }
 
     // -----------------------------
     // 플레이어
     // -----------------------------
-    playerAuth({ battleId, name, token }) {
+    playerAuth({ battleId, name, token, team }) {
       if (!this.socket) return;
       this.ctx.role = "player";
       this.ctx.battleId = battleId;
       this.ctx.name = name || null;
-      this.socket.emit("playerAuth", { battleId, name, token });
+      this.ctx.teamAB = toAB(team);
+      this.socket.emit("playerAuth", { battleId, name, token, team: this.ctx.teamAB });
     }
 
     playerReady(playerId, battleId) {
