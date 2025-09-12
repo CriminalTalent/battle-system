@@ -1,69 +1,26 @@
 // packages/battle-server/src/combat.js
-// PYXIS Combat Resolver (ESM)
-// - 하나의 전투참여자 행동을 받아 서버 전투 상태를 갱신합니다.
+// PYXIS Combat Resolver (ESM) - 7학년 모의 전투 규칙 적용
+// - 하나의 전투참가자 행동을 받아 서버 전투 상태를 갱신
 // - 지원 액션: attack, defend, dodge, item, pass
-// - 로그는 상위 계층에서 pushLog로 합쳐 브로드캐스트(이 파일은 순수 로직)
+// - 새로운 규칙: 보정기 2배, 역공격 없음, 팀 단위 턴제
 
-"use strict";
-
-import { rollWithReroll } from "./dice.js";
-import {
+import { 
+  computeAttackPower,
+  checkCriticalHit,
+  checkEvasion,
+  computeDefenseValue,
+  computeFinalDamage,
   ITEMS,
   normalizeItemKey,
-  computeHit,
-  computeDamage,
-  computeAttackScore,
-  consumeAttackMultiplier,
-  consumeDefenseMultiplierOnHit,
   applyItemEffect
 } from "./rules.js";
 
-/* =========================
- *  전투 효과 보조
- * ========================= */
+/** effects 보장 */
 function ensureEffects(battle) {
-  if (!battle.effects) battle.effects = [];
+  if (!Array.isArray(battle.effects)) battle.effects = [];
 }
 
-function applyDefenseBoostFactor(battle, defender) {
-  // defend 액션 혹은 defense_booster 성공 시 1회성 방어 배율을 누적 적용
-  let mul = 1;
-  for (const fx of battle.effects || []) {
-    if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-    if (fx.type === "defenseBoost") {
-      mul *= fx.factor || 1;
-      // 방어 배율은 피격 1회 후 자동 소모되도록 여기서 charges 차감
-      fx.charges -= 1;
-    }
-  }
-  // 사용된 효과 제거
-  battle.effects = battle.effects.filter(e => (e?.charges || 0) > 0);
-  return mul;
-}
-
-function hasDodgePrep(battle, defender) {
-  for (const fx of battle.effects || []) {
-    if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-    if (fx.type === "dodgePrep") return true;
-  }
-  return false;
-}
-
-function consumeDodge(battle, defender) {
-  for (const fx of battle.effects || []) {
-    if (!fx || fx.ownerId !== defender.id || fx.charges <= 0) continue;
-    if (fx.type === "dodgePrep") { 
-      fx.charges -= 1; 
-      break;
-    }
-  }
-  // 사용된 효과 제거
-  battle.effects = battle.effects.filter(e => (e?.charges || 0) > 0);
-}
-
-/* =========================
- *  유틸: 탐색
- * ========================= */
+/** 유틸: 탐색 */
 function findAny(battle, id) {
   return (battle.players || []).find(p => p && p.id === id) || null;
 }
@@ -85,17 +42,36 @@ function getAlliesOf(battle, actor) {
   return (battle.players || []).filter(p => p && p.team === actor.team && p.hp > 0 && p.id !== actor.id);
 }
 
-/* =========================
- *  HP 업데이트 병합
- * ========================= */
+/** HP 업데이트 병합 */
 function mergeHpUpdates(dest, src) {
   Object.keys(src || {}).forEach(k => { dest[k] = src[k]; });
 }
 
-/* =========================
- *  액션 해석기
- * ========================= */
+/** 방어 보정 효과 확인 */
+function hasDefenseBoost(battle, playerId) {
+  const effects = battle.effects || [];
+  for (const fx of effects) {
+    if (fx && fx.ownerId === playerId && fx.type === 'defenseBoost' && fx.charges > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 방어 보정 효과 소모 */
+function consumeDefenseBoost(battle, playerId) {
+  const effects = battle.effects || [];
+  for (const fx of effects) {
+    if (fx && fx.ownerId === playerId && fx.type === 'defenseBoost' && fx.charges > 0) {
+      fx.charges -= 1;
+      break;
+    }
+  }
+  battle.effects = effects.filter(e => (e?.charges || 0) > 0);
+}
+
 /**
+ * 액션 해석기 - 새로운 7학년 모의 전투 규칙 적용
  * @param {Object} battle - 서버 배틀 상태
  * @param {Object} action - { actorId, type, targetId?, itemType? }
  * @returns {Object} - { logs:[], updates:{hp:{}}, turnEnded:boolean }
@@ -119,39 +95,35 @@ export function resolveAction(battle, action) {
     return { logs, updates, turnEnded: true };
   }
 
-  // 2) 방어: 다음 피격 1회 방어 배율 2배 (확정)
+  // 2) 방어 - 다음 피격시 2배 방어력 (확률 없음)
   if (kind === "defend") {
     ensureEffects(battle);
     battle.effects.push({
       ownerId: actor.id,
       type: "defenseBoost",
-      factor: 2.0, // 2배 방어력
+      factor: 2.0,
       charges: 1,
       success: true,
       source: "action:defend",
       appliedAt: Date.now()
     });
-    logs.push({ type: "system", message: `${actor.name} 방어 태세 (다음 피격시 2배 방어력)` });
-    return { logs, updates, turnEnded: true };
-  }
-
-  // 3) 회피: 다음 피격 1회 회피 판정 +5 보너스
-  if (kind === "dodge") {
-    ensureEffects(battle);
-    battle.effects.push({
-      ownerId: actor.id,
-      type: "dodgePrep",
-      bonus: 5, // 회피 보너스
-      charges: 1,
-      success: true,
-      source: "action:dodge",
-      appliedAt: Date.now()
+    logs.push({ 
+      type: "system", 
+      message: `${actor.name} 방어 태세 (다음 피격시 2배 방어력)` 
     });
-    logs.push({ type: "system", message: `${actor.name} 회피 준비 (다음 피격시 +5 회피 보너스)` });
     return { logs, updates, turnEnded: true };
   }
 
-  // 4) 아이템: 즉시 적용 시스템
+  // 3) 회피 - 다음 회피 판정에 사용할 보너스 없음 (기본 민첩성으로만 판정)
+  if (kind === "dodge") {
+    logs.push({ 
+      type: "system", 
+      message: `${actor.name} 회피 자세 (다음 공격을 민첩성으로 회피 시도)` 
+    });
+    return { logs, updates, turnEnded: true };
+  }
+
+  // 4) 아이템 - 즉시 적용 시스템
   if (kind === "item") {
     const key = normalizeItemKey(itemType);
     if (!key) {
@@ -159,9 +131,14 @@ export function resolveAction(battle, action) {
       return { logs, updates, turnEnded: true };
     }
 
-    // 아이템별 처리
+    // 아이템 보유 확인
+    if (!actor.items || !actor.items[key] || actor.items[key] <= 0) {
+      logs.push({ type: "system", message: `${ITEMS[key]?.name || '아이템'}이 부족합니다` });
+      return { logs, updates, turnEnded: true };
+    }
+
     if (key === "dittany") {
-      // 디터니: 대상 지정 가능한 회복 아이템
+      // 디터니: 대상 지정 가능한 회복 아이템 (100% 성공률)
       let target = actor; // 기본값: 자신
       if (targetId) {
         const candidate = findAny(battle, targetId);
@@ -170,25 +147,28 @@ export function resolveAction(battle, action) {
         }
       }
 
+      if (target.hp <= 0) {
+        logs.push({ type: "system", message: "사망자에게는 회복 불가" });
+        return { logs, updates, turnEnded: true };
+      }
+
       const result = applyItemEffect(battle, actor.id, key, target.id);
       if (result.success) {
         updates.hp[target.id] = target.hp;
         logs.push({ 
           type: "item", 
-          message: result.message,
-          rollDetails: result.rollDetails
+          message: result.message
         });
       } else {
         logs.push({ 
           type: "item", 
-          message: result.message,
-          rollDetails: result.rollDetails
+          message: result.message
         });
       }
       return { logs, updates, turnEnded: true };
       
     } else if (key === "attack_boost") {
-      // 공격 보정기: 10% 확률로 즉시 보정된 공격 실행
+      // 공격 보정기: 10% 확률로 즉시 2배 데미지 공격 실행
       if (!targetId) {
         logs.push({ type: "system", message: "공격 보정기는 적 대상이 필요합니다" });
         return { logs, updates, turnEnded: true };
@@ -197,16 +177,14 @@ export function resolveAction(battle, action) {
       const target = findAny(battle, targetId);
       if (!target || target.team === actor.team || target.hp <= 0) {
         // 아이템 소모 (실패해도 소모)
-        if (actor.items && actor.items.attack_boost > 0) {
-          actor.items.attack_boost -= 1;
-        }
+        actor.items.attack_boost -= 1;
         logs.push({ type: "system", message: "올바른 적 대상을 선택하세요 (공격 보정기 소모됨)" });
         return { logs, updates, turnEnded: true };
       }
 
       const result = applyItemEffect(battle, actor.id, key, targetId);
       if (result.success && result.attack) {
-        // 성공: 즉시 공격 실행됨
+        // 성공: 즉시 2배 데미지 공격 실행
         if (result.attack.success) {
           updates.hp[targetId] = target.hp;
         }
@@ -215,10 +193,12 @@ export function resolveAction(battle, action) {
           message: result.message,
           rollDetails: result.rollDetails
         });
-        if (result.attack.hitDetails || result.attack.damageDetails) {
+        
+        // 공격 세부 정보 로그
+        if (result.attack.success) {
           logs.push({
             type: "battle",
-            message: `공격 세부사항: 명중 ${result.attack.hitDetails?.hitRoll || 0}/20, 데미지 ${result.attack.damageDetails?.atkRoll || 0}/20`,
+            message: `보정 공격 상세: ${result.attack.attackDetails?.breakdown || ''}, 피해: ${result.attack.damageDetails?.breakdown || ''}`,
             data: result.attack
           });
         }
@@ -243,12 +223,12 @@ export function resolveAction(battle, action) {
       return { logs, updates, turnEnded: true };
     }
 
-    // 알 수 없는 아이템
+    // 지원되지 않는 아이템
     logs.push({ type: "system", message: "지원되지 않는 아이템" });
     return { logs, updates, turnEnded: true };
   }
 
-  // 5) 공격
+  // 5) 공격 - 새로운 규칙 적용
   if (kind === "attack") {
     // 대상 결정
     let target = null;
@@ -265,113 +245,79 @@ export function resolveAction(battle, action) {
       return { logs, updates, turnEnded: true };
     }
 
-    // 공격 수치 계산 (재굴림 적용)
-    const attackResult = computeAttackScore({ 
-      atk: actor.stats?.attack || 0, 
-      atkMul: 1 
-    });
-    const attackScore = attackResult.score;
-
-    // 회피 체크 (재굴림 적용)
-    const evadeResult = rollWithReroll(20);
-    const evadeRoll = evadeResult.final;
+    // 1단계: 공격력 계산
+    const attackResult = computeAttackPower(actor, false); // 기본 공격 (보정기 없음)
     
-    // 회피 준비 보너스 적용
-    let evasionBonus = 0;
-    if (hasDodgePrep(battle, target)) {
-      evasionBonus = 5; // 회피 액션 보너스
-      consumeDodge(battle, target);
-    }
-
-    const targetAgility = target.stats?.agility || 0;
-    const totalEvasion = targetAgility + evadeRoll + evasionBonus;
-
-    // 회피 성공 체크
-    if (totalEvasion >= attackScore) {
+    // 2단계: 회피 체크
+    const evasionResult = checkEvasion(target, attackResult.attackPower);
+    if (evasionResult.evaded) {
       logs.push({ 
         type: "battle", 
-        message: evasionBonus > 0 
-          ? `${target.name}이(가) 준비된 회피로 ${actor.name}의 공격을 피함 (민첩성 ${targetAgility} + 주사위 ${evadeRoll} + 보너스 ${evasionBonus} = ${totalEvasion} vs ${attackScore})`
-          : `${target.name}이(가) ${actor.name}의 공격을 회피 (민첩성 ${targetAgility} + 주사위 ${evadeRoll} = ${totalEvasion} vs ${attackScore})`,
+        message: `${target.name}이(가) ${actor.name}의 공격을 회피! (${evasionResult.breakdown})`,
         data: { 
-          evadeRoll: evadeResult, 
-          attackScore, 
-          evasionBonus,
-          totalEvasion 
+          evasionDetails: evasionResult,
+          attackDetails: attackResult
         }
       });
       return { logs, updates, turnEnded: true };
     }
 
-    // 명중 판정 (재굴림 적용)
-    const hitResult = computeHit({ 
-      luk: actor.stats?.luck || 0
-    });
+    // 3단계: 치명타 체크
+    const critResult = checkCriticalHit(actor);
 
-    if (!hitResult.hit) {
-      logs.push({ 
-        type: "battle", 
-        message: `${actor.name}의 공격이 빗나감 (행운 ${actor.stats?.luck || 0} + 주사위 ${hitResult.hitRoll} = ${hitResult.hitScore})`,
-        data: hitResult
-      });
-      return { logs, updates, turnEnded: true };
+    // 4단계: 방어값 계산 (방어 보정기 효과 확인)
+    const defenseBoostActive = hasDefenseBoost(battle, target.id);
+    const defenseResult = computeDefenseValue(target, defenseBoostActive);
+    
+    // 방어 보정기 소모
+    if (defenseBoostActive) {
+      consumeDefenseBoost(battle, target.id);
     }
 
-    // 방어 배율 계산 (방어 태세/방어 보정기)
-    const defenseMultiplier = applyDefenseBoostFactor(battle, target);
+    // 5단계: 최종 피해 계산
+    const damageResult = computeFinalDamage(
+      attackResult.attackPower, 
+      defenseResult.defenseValue, 
+      critResult.isCrit
+    );
 
-    // 피해 계산 (재굴림 적용)
-    const damageResult = computeDamage({
-      atk: actor.stats?.attack || 0,
-      def: target.stats?.defense || 0,
-      crit: hitResult.crit,
-      atkMul: 1,
-      defMul: defenseMultiplier
-    });
-
-    // 체력 업데이트
+    // 6단계: 체력 업데이트
     const oldHp = target.hp;
-    const newHp = Math.max(0, oldHp - damageResult.dmg);
+    const newHp = Math.max(0, oldHp - damageResult.finalDamage);
     updates.hp[target.id] = newHp;
 
-    // 로그 생성
-    const baseMessage = hitResult.crit
-      ? `${actor.name}의 치명타 적중!`
+    // 7단계: 로그 생성
+    const defenseInfo = defenseBoostActive ? ` (2배 방어력 적용)` : '';
+    const baseMessage = critResult.isCrit
+      ? `${actor.name}의 치명타!`
       : `${actor.name}이(가) ${target.name}을(를) 공격`;
-    
-    const defenseInfo = defenseMultiplier > 1 
-      ? ` (${defenseMultiplier}배 방어력 적용)`
-      : '';
     
     logs.push({
       type: "battle",
-      message: `${baseMessage} - ${target.name}에게 ${damageResult.dmg} 피해${defenseInfo}`,
+      message: `${baseMessage} - ${target.name}에게 ${damageResult.finalDamage} 피해${defenseInfo}`,
       data: {
         attacker: actor.name,
         target: target.name,
-        damage: damageResult.dmg,
-        crit: hitResult.crit,
-        hitRoll: hitResult.rollDetails,
-        damageRoll: damageResult.rollDetails,
-        defenseMultiplier,
+        damage: damageResult.finalDamage,
+        crit: critResult.isCrit,
         oldHp,
-        newHp
+        newHp,
+        defenseBoost: defenseBoostActive
       }
     });
 
     // 상세 정보 로그
     logs.push({
       type: "system",
-      message: `공격 세부사항: 명중 ${hitResult.hitRoll}/20${hitResult.crit ? ' (치명타!)' : ''}, 데미지 ${damageResult.atkRoll}/20`,
+      message: `공격 상세: ${attackResult.breakdown}, 회피 시도: ${evasionResult.breakdown}, 치명타: ${critResult.breakdown}, 방어: ${defenseResult.breakdown}, 피해: ${damageResult.breakdown}`,
       data: {
-        hitDetails: hitResult,
+        attackDetails: attackResult,
+        evasionDetails: evasionResult,
+        critDetails: critResult,
+        defenseDetails: defenseResult,
         damageDetails: damageResult
       }
     });
-
-    // 1회성 효과 소모
-    consumeAttackMultiplier(battle, actor);
-    consumeDefenseMultiplierOnHit(battle, target);
 
     return { logs, updates, turnEnded: true };
   }
