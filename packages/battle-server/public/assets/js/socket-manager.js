@@ -1,18 +1,18 @@
 /* packages/battle-server/public/assets/js/socket-manager.js
    PYXIS Socket Manager (browser)
-   - 서버(index.js) 이벤트와 1:1 매칭
-   - 관리자 새로고침 방지(leave confirm) 강제 해제
+   - 서버(index.js) 이벤트와 1:1 매칭 + 구/신 이벤트 양쪽 호환
+   - 관리자 새로고침 경고(leave confirm) 강제 해제
    - Admin/Player/Spectator 공용 래퍼
-   - 팀 표기는 송수신 시 A/B만 사용하도록 정규화(toAB)
+   - 팀 표기는 송수신 시 A/B만 사용(toAB 정규화)
    - 이모지 금지, 콘솔 로깅 강화
 */
 
 (function (root) {
   "use strict";
 
-  // ──────────────────────────────────────────────
-  // 강제: 새로고침/탭닫기 경고(leave confirm) 해제
-  // ──────────────────────────────────────────────
+  /* ──────────────────────────────────────────────
+   * 강제: 새로고침/탭닫기 경고(leave confirm) 해제
+   * ────────────────────────────────────────────── */
   try {
     window.onbeforeunload = null;
     window.addEventListener(
@@ -24,23 +24,22 @@
       },
       true
     );
-    delete window.onbeforeunload;
+    // 일부 브라우저에선 delete가 실패해도 무시
+    try { delete window.onbeforeunload; } catch (_) {}
   } catch (_) {}
 
-  // ──────────────────────────────────────────────
-  // 유틸
-  // ──────────────────────────────────────────────
-  const NOOP = () => {};
+  /* ──────────────────────────────────────────────
+   * 유틸
+   * ────────────────────────────────────────────── */
   const LOGPFX = "[PYXIS/socket]";
+  const NOOP = () => {};
 
   function clampLen(str, n) {
     str = String(str == null ? "" : str);
     return str.length > n ? str.slice(0, n) : str;
   }
 
-  function isFn(fn) {
-    return typeof fn === "function";
-  }
+  function isFn(fn) { return typeof fn === "function"; }
 
   // 팀 키 정규화: 항상 'A' / 'B' 로만
   function toAB(t) {
@@ -50,9 +49,9 @@
     return "";
   }
 
-  // ──────────────────────────────────────────────
-  // 소켓 매니저
-  // ──────────────────────────────────────────────
+  /* ──────────────────────────────────────────────
+   * 소켓 매니저
+   * ────────────────────────────────────────────── */
   class SocketManager {
     constructor() {
       this.socket = null;
@@ -61,19 +60,19 @@
       // 이벤트 리스너 레지스트리
       this.handlers = new Map();
 
-      // 마지막 battleId/role 캐시
+      // 컨텍스트
       this.ctx = {
-        role: "guest", // admin | player | spectator | guest
+        role: "guest",   // admin | player | spectator | guest
         battleId: null,
         playerId: null,
         name: null,
-        teamAB: null, // A/B 정규화된 팀
+        teamAB: null,    // A/B 정규화된 팀
       };
     }
 
-    // -----------------------------
-    // 연결
-    // -----------------------------
+    /* -----------------------------
+     * 연결
+     * ----------------------------- */
     connect(url) {
       this.url = url || (root.PyxisSocket && root.PyxisSocket.url) || undefined;
 
@@ -83,6 +82,7 @@
       }
 
       const socket = root.io(this.url, {
+        path: "/socket.io",
         transports: ["websocket", "polling"],
         withCredentials: true,
         reconnection: true,
@@ -98,7 +98,7 @@
       return socket;
     }
 
-    // 내부 바인딩
+    /* 내부 바인딩 */
     _bindCore() {
       const s = this.socket;
       if (!s) return;
@@ -125,6 +125,7 @@
         if (payload?.battleId) this.ctx.battleId = payload.battleId;
         if (payload?.playerId) this.ctx.playerId = payload.playerId;
         if (payload?.team) this.ctx.teamAB = toAB(payload.team);
+        if (payload?.name) this.ctx.name = payload.name;
         this._emitLocal("auth:success", payload);
       });
 
@@ -132,65 +133,65 @@
         console.warn(LOGPFX, "auth error:", e);
         this._emitLocal("auth:error", e);
       });
-
-      // ----- 전투 상태 -----
-      s.on("battle:update", (b) => {
-        this._emitLocal("battle:update", b);
-      });
-      s.on("battle:started", (b) => {
-        this._emitLocal("battle:started", b);
-      });
-      s.on("battle:paused", (b) => {
-        this._emitLocal("battle:paused", b);
-      });
-      s.on("battle:resumed", (b) => {
-        this._emitLocal("battle:resumed", b);
-      });
-      s.on("battle:ended", (b) => {
-        this._emitLocal("battle:ended", b);
+      s.on("auth:error", (e) => {
+        console.warn(LOGPFX, "auth error:", e);
+        this._emitLocal("auth:error", e);
       });
 
-      // ----- 채팅/로그 -----
-      s.on("battle:chat", (msg) => {
-        this._emitLocal("battle:chat", msg);
+      // ----- 전투 상태(신/구 혼용 수신 → 단일 로컬 이벤트로 통일) -----
+      const forwardBattleUpdate = (b) => this._emitLocal("battle:update", b);
+      s.on("battle:update", forwardBattleUpdate);
+      s.on("battleUpdate", forwardBattleUpdate);
+      s.on("battleState", forwardBattleUpdate);
+      s.on("state:update", forwardBattleUpdate);
+
+      s.on("battle:started", (b) => this._emitLocal("battle:started", b));
+      s.on("battle:paused",  (b) => this._emitLocal("battle:paused",  b));
+      s.on("battle:resumed", (b) => this._emitLocal("battle:resumed", b));
+      s.on("battle:ended",   (b) => this._emitLocal("battle:ended",   b));
+
+      // ----- 생성/시작 응답 (서버 이벤트명 양쪽 다 수신) -----
+      const forwardCreated = (res) => this._emitLocal("battle:created", res?.battle || res);
+      s.on("battle:created", forwardCreated);
+      s.on("battleCreated",  forwardCreated);
+      s.on("admin:created",  (payload) => forwardCreated(payload?.battle || payload));
+
+      s.on("battleStarted", (res) => this._emitLocal("battle:started:ack", res));
+
+      // 개별 액션 응답
+      s.on("playerAdded",   (res) => this._emitLocal("player:added:ack",   res));
+      s.on("playerRemoved", (res) => this._emitLocal("player:removed:ack", res));
+      s.on("playerUpdated", (res) => this._emitLocal("player:updated:ack", res));
+      s.on("action:success",(res) => this._emitLocal("action:success",     res));
+      s.on("action:error",  (res) => this._emitLocal("action:error",       res));
+
+      // ----- 채팅/로그(양쪽 이벤트명 호환) -----
+      const fwdChat = (msg) => this._emitLocal("battle:chat", msg);
+      s.on("battle:chat", fwdChat);
+      s.on("chatMessage", (payload) => {
+        // 문자열/객체 모두 처리
+        if (typeof payload === "string") {
+          fwdChat({ name: "플레이어", message: payload });
+        } else {
+          fwdChat({ name: payload?.name || payload?.senderName || "플레이어", message: payload?.message || "" });
+        }
       });
-      s.on("battle:log", (line) => {
-        this._emitLocal("battle:log", line);
-      });
+      s.on("chat:message", (payload) => fwdChat({ name: payload?.name || payload?.senderName || "플레이어", message: payload?.message || "" }));
+
+      s.on("battleLog", (line) => this._emitLocal("battle:log", line));
+      s.on("battle:log", (line) => this._emitLocal("battle:log", line));
 
       // ----- 관전자 -----
       s.on("spectator:count", ({ count }) => {
         this._emitLocal("spectator:count", { count: Number(count) || 0 });
       });
 
-      // ----- 생성/시작 응답 (서버 이벤트명에 맞춤) -----
-      s.on("battleCreated", (res) => {
-        // { success, battleId, mode, adminUrl, playerBase, spectatorBase, error? }
-        this._emitLocal("battle:created", res);
-
-        if (res?.success && res.battleId) {
-          // 생성 직후 자동 관리자 인증
-          this.adminAuth(res.battleId, `admin-${res.battleId}`);
-        }
-      });
-
-      s.on("battleStarted", (res) => {
-        this._emitLocal("battle:started:ack", res);
-      });
-
-      // 개별 액션 응답
-      s.on("playerAdded", (res) => this._emitLocal("player:added:ack", res));
-      s.on("playerRemoved", (res) => this._emitLocal("player:removed:ack", res));
-      s.on("playerUpdated", (res) => this._emitLocal("player:updated:ack", res));
-      s.on("action:success", (res) => this._emitLocal("action:success", res));
-      s.on("action:error", (res) => this._emitLocal("action:error", res));
-
       // 기타
       s.on("battleError", (e) => this._emitLocal("battle:error", e));
       s.on("pong", () => this._emitLocal("pong"));
     }
 
-    // 로컬 이벤트 방출(구독자 통지)
+    /* 로컬 이벤트 방출/구독 */
     _emitLocal(evt, payload) {
       const list = this.handlers.get(evt);
       if (list && list.length) {
@@ -199,20 +200,20 @@
         });
       }
     }
-
     on(evt, handler) {
       if (!this.handlers.has(evt)) this.handlers.set(evt, []);
       this.handlers.get(evt).push(handler);
-      return () => {
-        const arr = this.handlers.get(evt) || [];
-        const idx = arr.indexOf(handler);
-        if (idx >= 0) arr.splice(idx, 1);
-      };
+      return () => this.off(evt, handler);
+    }
+    off(evt, handler) {
+      const arr = this.handlers.get(evt) || [];
+      const idx = arr.indexOf(handler);
+      if (idx >= 0) arr.splice(idx, 1);
     }
 
-    // -----------------------------
-    // 공통
-    // -----------------------------
+    /* -----------------------------
+     * 공통
+     * ----------------------------- */
     join(battleId) {
       const id = battleId || this.ctx.battleId;
       if (!this.socket || !id) return;
@@ -230,7 +231,9 @@
         role: opt.role || this.ctx.role || "player",
       };
       if (!payload.battleId || !payload.message) return;
+      // 구/신 이벤트 동시 전송
       this.socket.emit("chat:send", payload);
+      this.socket.emit("chatMessage", payload);
     }
 
     sendCheer(cheer, opt = {}) {
@@ -250,9 +253,9 @@
       this.socket.emit("ping");
     }
 
-    // -----------------------------
-    // 관리자
-    // -----------------------------
+    /* -----------------------------
+     * 관리자
+     * ----------------------------- */
     adminAuth(battleId, token) {
       if (!this.socket) return;
       this.ctx.role = "admin";
@@ -263,75 +266,83 @@
     createBattle(mode = "1v1") {
       if (!this.socket) return;
       this.socket.emit("createBattle", { mode });
+      this.socket.emit("battle:create", { mode }); // 호환
     }
 
     startBattle(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
+      const id = battleId || this.ctx.battleId; if (!id) return;
       this.socket.emit("startBattle", { battleId: id });
+      this.socket.emit("battle:start", { battleId: id }); // 호환
     }
 
     pauseBattle(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
+      const id = battleId || this.ctx.battleId; if (!id) return;
       this.socket.emit("pauseBattle", { battleId: id });
+      this.socket.emit("battle:pause", { battleId: id }); // 호환
     }
 
     resumeBattle(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
+      const id = battleId || this.ctx.battleId; if (!id) return;
       this.socket.emit("resumeBattle", { battleId: id });
+      this.socket.emit("battle:resume", { battleId: id }); // 호환
     }
 
     endBattle(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
+      const id = battleId || this.ctx.battleId; if (!id) return;
       this.socket.emit("endBattle", { battleId: id });
+      this.socket.emit("battle:end", { battleId: id }); // 호환
     }
 
     addPlayer(battleId, playerData) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
-      this.socket.emit("addPlayer", { battleId: id, playerData });
+      const id = battleId || this.ctx.battleId; if (!id) return;
+
+      // 팀 정규화 + 서버 규격 키(player)로 고정
+      const p = { ...(playerData || {}) };
+      p.team = toAB(p.team) || "A";
+
+      const payload = { battleId: id, player: p };
+      this.socket.emit("addPlayer", payload);
+      this.socket.emit("admin:addPlayer", payload); // 호환
     }
 
     removePlayer(battleId, playerId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id || !playerId) return;
+      const id = battleId || this.ctx.battleId; if (!id || !playerId) return;
       this.socket.emit("removePlayer", { battleId: id, playerId });
+      this.socket.emit("admin:removePlayer", { battleId: id, playerId }); // 호환
     }
 
     updatePlayer(battleId, playerId, updates) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id || !playerId) return;
-      this.socket.emit("updatePlayer", { battleId: id, playerId, updates });
+      const id = battleId || this.ctx.battleId; if (!id || !playerId) return;
+      // 팀 업데이트 시에도 정규화
+      const up = { ...(updates || {}) };
+      if (up.team != null) up.team = toAB(up.team) || "A";
+      this.socket.emit("updatePlayer", { battleId: id, playerId, updates: up });
+      this.socket.emit("admin:updatePlayer", { battleId: id, playerId, updates: up }); // 호환
     }
 
     generatePlayerLinks(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
+      const id = battleId || this.ctx.battleId; if (!id) return;
       this.socket.emit("generatePlayerPassword", { battleId: id });
     }
 
     generateSpectatorUrl(battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id) return;
-      // 서버 이벤트명은 OTP 발급임(명칭만 URL이라도 내부는 OTP)
+      const id = battleId || this.ctx.battleId; if (!id) return;
+      // 서버 측은 OTP 발급 이벤트명 사용 가능
       this.socket.emit("generateSpectatorOtp", { battleId: id });
     }
 
-    // -----------------------------
-    // 플레이어
-    // -----------------------------
+    /* -----------------------------
+     * 플레이어
+     * ----------------------------- */
     playerAuth({ battleId, name, token, team }) {
       if (!this.socket) return;
       this.ctx.role = "player";
@@ -343,21 +354,19 @@
 
     playerReady(playerId, battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id || !playerId) return;
+      const id = battleId || this.ctx.battleId; if (!id || !playerId) return;
       this.socket.emit("player:ready", { battleId: id, playerId });
     }
 
     playerAction(playerId, action, battleId) {
       if (!this.socket) return;
-      const id = battleId || this.ctx.battleId;
-      if (!id || !playerId || !action) return;
+      const id = battleId || this.ctx.battleId; if (!id || !playerId || !action) return;
       this.socket.emit("player:action", { battleId: id, playerId, action });
     }
 
-    // -----------------------------
-    // 관전자
-    // -----------------------------
+    /* -----------------------------
+     * 관전자
+     * ----------------------------- */
     spectatorAuth({ battleId, otp, name }) {
       if (!this.socket) return;
       this.ctx.role = "spectator";
@@ -379,6 +388,7 @@
     sendChat: (msg, opt) => root.PyxisSocketManager.sendChat(msg, opt),
     sendCheer: (msg, opt) => root.PyxisSocketManager.sendCheer(msg, opt),
     on: (evt, fn) => root.PyxisSocketManager.on(evt, fn),
+    off: (evt, fn) => root.PyxisSocketManager.off(evt, fn),
     ping: () => root.PyxisSocketManager.ping(),
 
     // 관리자
