@@ -1,18 +1,22 @@
 // /assets/js/common-battle-rules.js
 // PYXIS 공통 전투 룰 모듈 (최종 규격)
-// - 스탯: 각 1~5 / HP 최대 100
+// - 스탯: 각 1~5 / 총합 제한 없음
+// - HP 최대 100 (모든 회복/피해는 0~100 사이 클램프)
 // - 보정기: 성공확률 10%, 성공 시 해당 스탯 ×2배(그 턴 1회)
 // - 디터니: +10HP
-// - 치명타: d20 ≥ (20 - luck/2) → 최종 대미지 ×2
-// - 방어: 대미지 = max(0, 공격수치 - 방어수치)  ← 역공격/민첩 대결 없음
-// - 회피: 성공 시 0, 실패 시 하한(최소 1) 없음
+// - 치명타: d20 ≥ (20 - luck/2) → 최종 대미지 ×2  (공격 d20과 같은 주사위 사용)
+// - 방어: damage = max(0, 공격수치 - 방어수치)  (역공/카운터 없음)
+// - 회피: 민첩 + d20 ≥ 공격수치 → 대미지 0, 실패 시 하한(최소 1) 없음
+// - 선택적 명중 판정은 보조 기능(서버에서 끄고 켤 수 있음)
 
 ;(function initPyxisRules (root) {
+  "use strict";
+
   const RULES = {
     ATK_BOOSTER_SUCCESS: 0.10,
     DEF_BOOSTER_SUCCESS: 0.10,
-    ATK_MULTIPLIER: 2.0,   // ← 2배
-    DEF_MULTIPLIER: 2.0,   // ← 2배
+    ATK_MULTIPLIER: 2.0,
+    DEF_MULTIPLIER: 2.0,
     MAX_HP: 100
   };
 
@@ -35,10 +39,11 @@
     };
   }
 
-  function isCritical(attackerLuck) {
-    const th = 20 - (attackerLuck / 2);
-    const d  = rollD20();
-    return d >= th;
+  // 치명타 판정: 같은 d20을 전달받아 사용하도록 지원 (없으면 내부에서 굴림)
+  function isCritical(luck, rollValue) {
+    const threshold = 20 - (luck / 2);
+    const r = (typeof rollValue === 'number') ? rollValue : rollD20();
+    return r >= threshold;
   }
 
   function tryAttackBooster() {
@@ -54,18 +59,27 @@
   }
 
   // 공격자 최종 공격수치 = floor(공격력×보정) + d20
+  // isCrit = (같은 d20) ≥ 20 - luck/2
   function computeAttackScore(attacker, { useAtkBooster=false }={}) {
     const { attack, luck } = readStats(attacker);
     const roll = rollD20();
     let atkStat = attack;
     let booster = { success:false, mult:1 };
+
     if (useAtkBooster) {
       booster = tryAttackBooster();
       atkStat = Math.floor(atkStat * booster.mult);
     }
+
     const score = atkStat + roll;
-    const crit  = isCritical(luck);
-    return { score, roll, crit, boosterUsed: !!useAtkBooster, boosterSuccess: booster.success };
+    const crit  = isCritical(luck, roll); // 같은 주사위로 치명타 판정
+    return {
+      score,
+      roll,
+      crit,
+      boosterUsed: !!useAtkBooster,
+      boosterSuccess: booster.success
+    };
   }
 
   // 방어치 = floor(방어력×보정)
@@ -73,6 +87,7 @@
     const { defense } = readStats(defender);
     let defStat = defense;
     let booster = { success:false, mult:1 };
+
     if (useDefBooster) {
       booster = tryDefenseBooster();
       defStat = Math.floor(defStat * booster.mult);
@@ -80,7 +95,7 @@
     return { value: defStat, boosterUsed: !!useDefBooster, boosterSuccess: booster.success };
   }
 
-  // 방어: 단순 감산만 (역공/민첩 대결 제거)
+  // 방어: 단순 감산만 (역공 없음)
   // damage = max(0, (공격수치 ×(치명타?2:1)) - 방어치)
   function resolveDefense(attacker, defender, opts={}) {
     const atk = computeAttackScore(attacker, { useAtkBooster: !!opts.useAtkBooster });
@@ -94,15 +109,16 @@
       damage,
       defended: damage === 0,
       attackDetail: atk,
-      // 호환을 위해 필드 유지(민첩 대결은 제거했으므로 null)
+      // 호환용 필드(민첩 대결 제거했으므로 null)
       defenseDetail: { ...def, contestRoll: null, defendScore: null }
     };
   }
 
-  // 회피: 민첩 + d20 ≥ 공격수치 → 0, 실패 시 하한(최소 1) 없음
+  // 회피: 민첩 + d20 ≥ 공격수치 → 0, 실패 시 하한 없음
   function resolveDodge(attacker, defender, opts={}) {
     const atk = computeAttackScore(attacker, { useAtkBooster: !!opts.useAtkBooster });
     const { agility } = readStats(defender);
+
     const dodgeRoll = rollD20();
     const dodgeScore = agility + dodgeRoll;
     const dodged = dodgeScore >= atk.score;
@@ -116,7 +132,7 @@
     return { damage, dodged, attackDetail: atk, dodgeRoll, dodgeScore };
   }
 
-  // 선택적 명중 판정(필요 시 사용할 것)
+  // 선택적 명중 판정(옵션 기능)
   function optionalHitCheck(attacker, defender) {
     const { luck } = readStats(attacker);
     const { agility } = readStats(defender);
@@ -128,17 +144,19 @@
     return { hit, hitScore, dodgeScore, hitRoll, dodgeRoll };
   }
 
-  // 팀 선공
-  function computeTeamInitiative(teamPlayers=[]) {
-    let total = 0;
-    const breakdown = [];
-    teamPlayers.forEach(p=>{
+  // 팀 선공: 팀 민첩 합 + d20(팀당 1회)
+  function computeTeamInitiative(teamPlayers = []) {
+    const sumAgi = (teamPlayers || []).reduce((acc, p) => {
       const { agility } = readStats(p);
-      const r = rollD20();
-      total += agility + r;
-      breakdown.push({ name: p?.name || '', agility, roll: r, sum: agility + r });
+      return acc + agility;
+    }, 0);
+    const roll = rollD20();
+    const total = sumAgi + roll;
+    const breakdown = (teamPlayers || []).map(p => {
+      const { agility } = readStats(p);
+      return { name: p?.name || '', agility };
     });
-    return { total, breakdown };
+    return { total, roll, breakdown };
   }
 
   function applyDamage(hp, damage, maxHp = RULES.MAX_HP) {
@@ -152,16 +170,16 @@
     RULES,
     rollD20,
     readStats,
-    isCritical,
+    isCritical,            // 외부 사용 시 roll 전달 가능
     tryAttackBooster,
     tryDefenseBooster,
     useDittany,
-    computeAttackScore,
+    computeAttackScore,    // 치명타는 공격 d20과 동일한 주사위로 판정
     computeDefenseValue,
-    resolveDefense,   // 방어: 단순 감산, 역공 없음
-    resolveDodge,     // 회피: 성공 0 / 실패 하한 없음
-    optionalHitCheck,
-    computeTeamInitiative,
+    resolveDefense,        // 방어: 단순 감산, 역공 없음
+    resolveDodge,          // 회피: 성공 0 / 실패 하한 없음
+    optionalHitCheck,      // 선택 기능
+    computeTeamInitiative, // 팀 민첩 합 + d20(팀당 1회)
     applyDamage,
     applyHeal,
   };
