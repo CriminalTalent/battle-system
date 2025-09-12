@@ -1,9 +1,15 @@
 // packages/battle-server/public/assets/js/spectator.js
+// PYXIS Spectator View (룰 반영판)
 // - 관전자 인증: spectatorAuth / spectator:auth (양쪽 호환) + join
 // - URL ?battle= & (otp|token)= 인식, 이름은 선택
-// - 좌우 A/B팀 로스터(HP바+스탯), 중앙 현재 순서 인물 이미지, 아래 응원 버튼/로그/채팅(보기 전용)
+// - 좌우 A/B팀 로스터(HP바+스탯+아이템 수량), 중앙 현재 순서 인물 이미지, 아래 응원 버튼/로그/채팅(보기 전용)
 // - 팀 표기는 항상 A/B만 사용(수신 스냅샷도 정규화)
-// - 이모지 금지, 기존 표기/스타일 유지
+// - 7학년 모의 전투 규칙 표기 정합:
+//   • 팀 단위 턴제(선공팀 전원 → 후공팀 전원)
+//   • 공격/방어/회피/아이템은 서버가 판정. 관전 화면은 메시지와 상태만 반영.
+//   • 디터니/공격 보정기/방어 보정기는 1회용(수량 표시)
+//   • 방어 액션은 ‘단순 방어’(배수 안내 없음). 로그 문구만 그대로 표시.
+// - 이모지 금지, 기존 스타일 유지
 
 (function () {
   "use strict";
@@ -19,11 +25,9 @@
     const s = String(team || "").toLowerCase();
     if (s === "phoenix" || s === "a" || s === "team_a" || s === "team-a") return "A";
     if (s === "eaters" || s === "b" || s === "death" || s === "team_b" || s === "team-b") return "B";
+    if (s === "a") return "A";
+    if (s === "b") return "B";
     return "-";
-  }
-  function fromAB(ab) {
-    // 내부 호환용(서버가 phoenix/eaters로 줄 수도 있어도 렌더는 AB만 씀)
-    return ab === "A" ? "phoenix" : "eaters";
   }
 
   /* ========== 요소 ========== */
@@ -160,18 +164,20 @@
 
     // 턴 힌트(있으면 사용)
     s.on("turn:start", (p) => {
-      // 선택적 배너
       try {
         const ab = toAB(p?.phaseTeam) || currentPhaseAB();
+        // 순서팀 배너(옵션)
         window.PyxisEffects?.bannerCommit(ab);
       } catch (_) {}
     });
 
     s.on("battle:ended", (p) => {
       try {
-        const winnerKey = p?.winner; // "phoenix"|"eaters"|null
-        const ab = winnerKey ? toAB(winnerKey) : null;
-        if (ab) window.PyxisEffects?.bannerWin(ab);
+        // { winner: "A" | "B" | "draw" | null }
+        const w = (p && p.winner) ? String(p.winner) : "";
+        if (w === "A" || w.toLowerCase() === "a") window.PyxisEffects?.bannerWin("A");
+        else if (w === "B" || w.toLowerCase() === "b") window.PyxisEffects?.bannerWin("B");
+        else window.PyxisEffects?.bannerWin(); // 무승부/없음
       } catch (_) {}
     });
 
@@ -185,12 +191,12 @@
 
     // 로그/타임라인
     s.on("battle:log", ({ type, message, ts }) => {
+      // 서버 로그는 룰 텍스트를 포함(치명타/회피/방어/아이템 등) → 그대로 표기, 팀 키워드는 A/B로 정규화
       appendLog(type || "info", normalizeTeamWords(message || ""), ts || Date.now());
     });
 
     // 관전자 수(옵션)
     s.on("spectator:count", ({ count }) => {
-      // 필요 시 UI에 반영
       void count;
     });
     s.on("spectator:count_update", ({ count }) => {
@@ -212,8 +218,9 @@
     }));
 
     // turn.order / phaseIndex 정규화
-    const order =
-      (b.turn && Array.isArray(b.turn.order) && b.turn.order.length === 2 ? b.turn.order : ["A", "B"]).map(toAB);
+    const orderRaw =
+      (b.turn && Array.isArray(b.turn.order) && b.turn.order.length === 2 ? b.turn.order : ["A", "B"]);
+    const order = orderRaw.map(toAB);
     state.teamOrder = order[0] === "B" ? ["B", "A"] : ["A", "B"]; // 안전 보정
     state.phaseIndex = typeof b.turn?.phaseIndex === "number" ? (b.turn.phaseIndex === 1 ? 1 : 0) : 0;
   }
@@ -239,7 +246,7 @@
 
   function currentPhaseAB() {
     return state.teamOrder[state.phaseIndex] || "A";
-  }
+    }
 
   function renderRoster() {
     const listA = [];
@@ -256,6 +263,11 @@
       const def = p.stats?.defense ?? p.stats?.방어 ?? "-";
       const agi = p.stats?.agility ?? p.stats?.민첩 ?? "-";
       const luk = p.stats?.luck ?? p.stats?.행운 ?? "-";
+      const it = p.items || {};
+      const dit = Number.isFinite(+it.dittany) ? +it.dittany : 0;
+      const iAtk = Number.isFinite(+it.attack_boost) ? +it.attack_boost : 0;
+      const iDef = Number.isFinite(+it.defense_boost) ? +it.defense_boost : 0;
+
       const row = document.createElement("div");
       row.className = "member";
       row.innerHTML = `
@@ -265,6 +277,7 @@
           <div class="sub">공 ${atk} · 방 ${def} · 민 ${agi} · 운 ${luk}</div>
           <div class="hpbar" style="margin-top:6px"><i style="width:${hpPct}%"></i></div>
           <div class="sub">HP ${hp}/${maxHp}</div>
+          <div class="sub">아이템(1회용): 디터니 ${dit} · 공보 ${iAtk} · 방보 ${iDef}</div>
         </div>
       `;
       return row;
