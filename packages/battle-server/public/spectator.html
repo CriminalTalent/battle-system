@@ -1,3 +1,4 @@
+<!-- packages/battle-server/public/spectator.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -54,7 +55,6 @@
       background:var(--input-bg); color:var(--text); padding:0 10px;
     }
 
-    /* 테이블/보드 */
     table{width:100%; border-collapse:collapse; font-size:14px;}
     th, td{border-bottom:1px solid var(--border); padding:6px 8px; text-align:left;}
     th{color:var(--muted); font-weight:600;}
@@ -137,10 +137,17 @@
               <input id="spectatorOtp" type="text" placeholder="예: spectator-<battleId>"/>
             </div>
           </div>
+          <div class="grid g-2" style="margin-top:8px">
+            <div>
+              <div class="label">이름(선택)</div>
+              <input id="spectatorName" type="text" placeholder="표시용 이름(선택)"/>
+            </div>
+            <div></div>
+          </div>
           <div class="row" style="justify-content:flex-end; margin-top:8px">
             <button id="btnJoin" class="btn">입장</button>
           </div>
-          <div class="label" id="joinHint">관리자 페이지에서 발급한 전투 ID/비밀번호를 입력하세요.</div>
+          <div class="label" id="joinHint">관리자 페이지에서 발급한 전투 ID/비밀번호를 입력하세요. URL에 ?battle=...&(otp|token)=...&name=... 이 있으면 자동 입장합니다.</div>
         </div>
       </div>
     </div>
@@ -149,134 +156,194 @@
   <!-- 소켓 & 페이지 스크립트 -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/assets/js/effects.js"></script>
-  <!-- 관전자 전용 모듈(리스트 렌더, 로그/채팅 수신, cheerMessage 송신 등) -->
-  <script type="module">
-    // spectator.js 기능을 내장(파일이 이미 있다면 아래 블록을 제거하고 /assets/js/spectator.js로 교체 가능)
-    const $ = (q, el=document)=>el.querySelector(q);
-    const $$ = (q, el=document)=>Array.from(el.querySelectorAll(q));
+  <script>
+    (function(){
+      "use strict";
+      const $  = (q, el=document)=>el.querySelector(q);
+      const $$ = (q, el=document)=>Array.from(el.querySelectorAll(q));
+      const escapeHtml = (s)=> String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
 
-    const connDot = $('#connDot');
-    const meta = $('#battleMeta');
-    const teamA = $('#teamA');
-    const teamB = $('#teamB');
-    const logBox = $('#log');
-    const chatBox = $('#chat');
+      const connDot = $('#connDot');
+      const meta = $('#battleMeta');
+      const teamA = $('#teamA');
+      const teamB = $('#teamB');
+      const logBox = $('#log');
+      const chatBox = $('#chat');
 
-    const battleIdInput = $('#battleId');
-    const otpInput = $('#spectatorOtp');
+      const battleIdInput = $('#battleId');
+      const otpInput = $('#spectatorOtp');
+      const nameInput = $('#spectatorName');
 
-    let socket = null;
-    let currentBattleId = null;
+      let socket = null;
+      let currentBattleId = null;
+      let authed = false;
 
-    function setConn(ok){ connDot.classList.toggle('ok', !!ok); }
+      function setConn(ok){ connDot.classList.toggle('ok', !!ok); }
+      function teamAB(team){
+        const s = String(team||'').toLowerCase();
+        if(s==='phoenix'||s==='a') return 'A';
+        if(s==='eaters' ||s==='b'||s==='death') return 'B';
+        return '-';
+      }
 
-    function hpBar(pct){
-      const wrap = document.createElement('div');
-      wrap.className = 'hpbar';
-      const fill = document.createElement('div');
-      fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
-      fill.style.background = `linear-gradient(90deg,var(--gold-1),var(--gold-2))`;
-      wrap.appendChild(fill);
-      return wrap;
-    }
+      function hpBar(pct){
+        const wrap = document.createElement('div');
+        wrap.className = 'hpbar';
+        const fill = document.createElement('div');
+        fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+        fill.style.background = 'linear-gradient(90deg,var(--gold-1),var(--gold-2))';
+        wrap.appendChild(fill);
+        return wrap;
+      }
 
-    function memberRow(p){
-      const row = document.createElement('div');
-      row.className = 'member';
+      function memberRow(p){
+        const row = document.createElement('div');
+        row.className = 'member';
 
-      const avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      if (p.avatar) avatar.style.backgroundImage = `url(${p.avatar})`;
-      row.appendChild(avatar);
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        if (p.avatar) avatar.style.backgroundImage = `url(${p.avatar})`;
+        row.appendChild(avatar);
 
-      const mid = document.createElement('div');
-      const name = document.createElement('div');
-      name.style.fontWeight = '800';
-      name.textContent = p.name;
+        const mid = document.createElement('div');
+        const name = document.createElement('div');
+        name.style.fontWeight = '800';
+        name.textContent = p.name || '-';
 
-      const hp = document.createElement('div');
-      hp.className = 'hp';
-      const pct = (Number(p.hp||0) / Number(p.maxHp||100)) * 100;
-      const bar = hpBar(pct);
-      hp.textContent = `HP ${p.hp}/${p.maxHp}`;
-      mid.appendChild(name);
-      mid.appendChild(bar);
-      mid.appendChild(hp);
+        const hp = document.createElement('div');
+        hp.className = 'hp';
+        const maxHp = p.maxHp ?? 100;
+        const pct = (Number(p.hp||0) / Number(maxHp||100)) * 100;
+        const bar = hpBar(pct);
+        hp.textContent = `HP ${p.hp}/${maxHp}`;
+        mid.appendChild(name);
+        mid.appendChild(bar);
+        mid.appendChild(hp);
 
-      const right = document.createElement('div');
-      right.style.textAlign = 'right';
-      right.innerHTML = `
-        <div class="stat">공격 ${p.stats?.attack ?? '-'}/ 방어 ${p.stats?.defense ?? '-'}</div>
-        <div class="stat">민첩 ${p.stats?.agility ?? '-'}/ 행운 ${p.stats?.luck ?? '-'}</div>
-        <div class="buffs">
-          ${Number(p.items?.dittany||0)>0?'<span class="tag">디터니 '+p.items.dittany+'</span>':''}
-          ${Number(p.items?.attack_boost||0)>0?'<span class="tag">공격 보정기 '+p.items.attack_boost+'</span>':''}
-          ${Number(p.items?.defense_boost||0)>0?'<span class="tag">방어 보정기 '+p.items.defense_boost+'</span>':''}
-        </div>`;
-      row.appendChild(mid);
-      row.appendChild(right);
-      return row;
-    }
+        const right = document.createElement('div');
+        right.style.textAlign = 'right';
+        right.innerHTML = `
+          <div class="stat">공격 ${p.stats?.attack ?? '-'} / 방어 ${p.stats?.defense ?? '-'}</div>
+          <div class="stat">민첩 ${p.stats?.agility ?? '-'} / 행운 ${p.stats?.luck ?? '-'}</div>
+          <div class="buffs">
+            ${Number(p.items?.dittany||0)>0?'<span class="tag">디터니 '+p.items.dittany+'</span>':''}
+            ${Number(p.items?.attack_boost||0)>0?'<span class="tag">공격 보정기 '+p.items.attack_boost+'</span>':''}
+            ${Number(p.items?.defense_boost||0)>0?'<span class="tag">방어 보정기 '+p.items.defense_boost+'</span>':''}
+          </div>`;
+        row.appendChild(mid);
+        row.appendChild(right);
+        return row;
+      }
 
-    function render(battle){
-      meta.textContent = `상태: ${battle.status} · 인원 ${battle.players?.length ?? 0}`;
-      teamA.innerHTML = '';
-      teamB.innerHTML = '';
-      (battle.players||[]).forEach(p=>{
-        const row = memberRow(p);
-        if ((p.team||'phoenix') === 'phoenix') teamA.appendChild(row);
-        else teamB.appendChild(row);
+      function render(battle){
+        meta.textContent = `상태: ${battle.status||'-'} · 인원 ${battle.players?.length ?? 0}`;
+        teamA.innerHTML = '';
+        teamB.innerHTML = '';
+        (battle.players||[]).forEach(p=>{
+          const row = memberRow(p);
+          if (teamAB(p.team)==='A') teamA.appendChild(row);
+          else teamB.appendChild(row);
+        });
+
+        // 승패 배너(옵션)
+        if (battle.status==='ended') {
+          const winAB = (battle.winnerTeam==='eaters') ? 'B' : 'A';
+          window.PyxisEffects?.bannerWin(winAB);
+        }
+      }
+
+      function appendLog(msg){
+        const line = document.createElement('div');
+        line.textContent = msg;
+        logBox.appendChild(line);
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      function appendChat(name, message){
+        const line = document.createElement('div');
+        const safe = `${escapeHtml(name||'관전자')}: ${escapeHtml(message||'')}`;
+        line.innerHTML = `<strong>${safe.split(':')[0]}</strong>: ${safe.slice(safe.indexOf(':')+1)}`;
+        chatBox.appendChild(line);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+
+      function connect(){
+        if (socket) try{ socket.close(); }catch(_){}
+        socket = io('/', { path:'/socket.io', transports:['websocket','polling'], withCredentials:true, timeout:20000 });
+        socket.on('connect', ()=> setConn(true));
+        socket.on('disconnect', ()=> { setConn(false); authed=false; });
+
+        // 상태 스냅샷
+        socket.on('battleUpdate', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
+        socket.on('battle:update', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
+
+        // 전투 상태 이벤트(배너용)
+        socket.on('battle:started', ()=> window.PyxisEffects?.showResultBanner('전투 시작','info'));
+        socket.on('battle:ended', (p)=> {
+          const t = p?.winner ? `${p.winner}팀 승리` : '전투 종료';
+          window.PyxisEffects?.showResultBanner(t,'win',2000);
+        });
+
+        // 인증 성공/실패
+        socket.on('auth:success', (payload)=>{
+          authed = true;
+          if (payload?.battle) render(payload.battle);
+          appendLog('관전자 인증 성공');
+        });
+        socket.on('authError', (e)=> appendLog('관전자 인증 실패: ' + (e?.error||e?.message||'오류')));
+        socket.on('auth:error', (e)=> appendLog('관전자 인증 실패: ' + (e?.error||e?.message||'오류')));
+
+        // 채팅/응원/로그
+        socket.on('battle:chat', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
+        socket.on('chat:message', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
+        socket.on('battle:log', (line)=> appendLog(typeof line==='string'? line : (line?.message||JSON.stringify(line))));
+      }
+      connect();
+
+      // 관전자 입장(OTP 인증 + join)
+      $('#btnJoin').addEventListener('click', doJoin);
+      function doJoin(){
+        const id = battleIdInput.value.trim();
+        const otp = otpInput.value.trim();
+        const nm = nameInput.value.trim();
+        if (!id || !otp) { appendLog('전투 ID/비밀번호를 입력하세요'); return; }
+        currentBattleId = id;
+
+        // 관전자 인증(양쪽 이벤트명 호환)
+        socket.emit('spectatorAuth', { battleId: id, otp, name: nm });
+        socket.emit('spectator:auth', { battleId: id, otp, name: nm });
+
+        // 룸 합류(상태 동기화)
+        socket.emit('join', { battleId: id });
+
+        appendLog(`관전 방 입장 요청: ${id}`);
+      }
+
+      // 응원 메시지 전송(관전자용, 양쪽 경로 송신)
+      $('#btnSend').addEventListener('click', ()=>{
+        const msg = ($('#chatMsg').value||'').trim();
+        if (!msg || !currentBattleId) return;
+
+        // 응원 전용 채널
+        socket.emit('spectator:cheer', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자' });
+        socket.emit('cheer:send', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자' });
+
+        // 일반 채팅 채널도 병행(서버 설정에 따라 한쪽만 수신될 수 있음)
+        socket.emit('chatMessage', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자', role:'spectator' });
+
+        $('#chatMsg').value='';
       });
-    }
 
-    function appendLog(msg){
-      const line = document.createElement('div');
-      line.textContent = msg;
-      logBox.appendChild(line);
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-
-    function appendChat({name, message}){
-      const line = document.createElement('div');
-      line.innerHTML = `<strong>${name||'관전자'}</strong>: ${message}`;
-      chatBox.appendChild(line);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    function connect(){
-      if (socket) socket.close();
-      socket = io('/', { path:'/socket.io', transports:['websocket','polling'] });
-      socket.on('connect', ()=> setConn(true));
-      socket.on('disconnect', ()=> setConn(false));
-
-      // 서버가 브로드캐스트하는 전투 스냅샷
-      socket.on('battleUpdate', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
-      socket.on('battle:update', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
-
-      // 채팅/로그(관리자/플레이어와 동일 채널 구독)
-      socket.on('battle:chat', (payload)=> appendChat(payload));
-      // 필요 시 서버에서 로그 이벤트명을 맞춰 브로드캐스트하세요.
-      socket.on('battle:log', (line)=> appendLog(line));
-    }
-    connect();
-
-    // 입장(관전자용)
-    $('#btnJoin').addEventListener('click', ()=>{
-      const id = battleIdInput.value.trim();
-      const otp = otpInput.value.trim();
-      if (!id || !otp) return;
-      currentBattleId = id;
-      socket.emit('join', { battleId:id });
-      appendLog(`관전 방 입장: ${id}`);
-    });
-
-    // 응원 메시지 전송(관전자 전용)
-    $('#btnSend').addEventListener('click', ()=>{
-      const msg = ($('#chatMsg').value||'').trim();
-      if (!msg || !currentBattleId) return;
-      socket.emit('chatMessage', { battleId: currentBattleId, message: msg, name:'관전자', role:'spectator' });
-      $('#chatMsg').value='';
-    });
+      // URL 자동 입장 (?battle= & (otp|token)= & name= )
+      (function autofill(){
+        const p = new URLSearchParams(location.search);
+        const b = p.get('battle'); const t = p.get('otp') || p.get('token'); const n = p.get('name') || '';
+        if (b) battleIdInput.value = b;
+        if (t) otpInput.value = t;
+        if (n) nameInput.value = n;
+        if (b && t) doJoin();
+      })();
+    })();
   </script>
 </body>
 </html>
