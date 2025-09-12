@@ -1,19 +1,18 @@
-// packages/battle-server/public/assets/js/common-battle-rules.js
-// PYXIS 공통 전투 룰 모듈
+// /assets/js/common-battle-rules.js
+// PYXIS 공통 전투 룰 모듈 (최종 규격)
 // - 스탯: 각 1~5 / HP 최대 100
-// - 공격/방어 보정기: 성공확률 10%, 성공 시 해당 스탯 2배(그 턴 1회)
+// - 보정기: 성공확률 10%, 성공 시 해당 스탯 ×2배(그 턴 1회)
 // - 디터니: +10HP
-// - 치명타: d20 ≥ (20 - luck/2) → 최종 대미지 2배
-// - 방어: 대미지 = max(0, 공격수치 - 방어치)  ← 단순 감산식, 역공 없음
-// - 회피: 성공 시 0, 실패 시 하한 1 없음(직격)
+// - 치명타: d20 ≥ (20 - luck/2) → 최종 대미지 ×2
+// - 방어: 대미지 = max(0, 공격수치 - 방어수치)  ← 역공격/민첩 대결 없음
+// - 회피: 성공 시 0, 실패 시 하한(최소 1) 없음
 
 ;(function initPyxisRules (root) {
   const RULES = {
-    MIN_DAMAGE: 0,            // 회피 실패 하한 제거
     ATK_BOOSTER_SUCCESS: 0.10,
     DEF_BOOSTER_SUCCESS: 0.10,
-    ATK_MULTIPLIER: 2,        // ×2
-    DEF_MULTIPLIER: 2,        // ×2
+    ATK_MULTIPLIER: 2.0,   // ← 2배
+    DEF_MULTIPLIER: 2.0,   // ← 2배
     MAX_HP: 100
   };
 
@@ -27,7 +26,7 @@
     const attack  = toInt(s.attack  ?? s.atk, 3);
     const defense = toInt(s.defense ?? s.def, 3);
     const agility = toInt(s.agility ?? s.dex, 3);
-    const luck    = toInt(s.luck    ?? s.luk, 2);
+    const luck    = toInt(s.luck    ?? s.luk, 3);
     return {
       attack:  clamp(attack,  1, 5),
       defense: clamp(defense, 1, 5),
@@ -81,24 +80,26 @@
     return { value: defStat, boosterUsed: !!useDefBooster, boosterSuccess: booster.success };
   }
 
-  // 방어: damage = max(0, 공격수치 - 방어치). 역공/대항 굴림 없음.
+  // 방어: 단순 감산만 (역공/민첩 대결 제거)
+  // damage = max(0, (공격수치 ×(치명타?2:1)) - 방어치)
   function resolveDefense(attacker, defender, opts={}) {
     const atk = computeAttackScore(attacker, { useAtkBooster: !!opts.useAtkBooster });
     const def = computeDefenseValue(defender, { useDefBooster: !!opts.useDefBooster });
 
     let raw = atk.score - def.value;
-    if (atk.crit) raw *= 2;                   // 치명타는 최종 대미지 ×2
-    const damage = Math.max(0, raw);
+    if (atk.crit) raw *= 2;
 
+    const damage = Math.max(0, raw);
     return {
       damage,
-      defended: damage === 0,                 // 방어치가 더 높아 0이면 '성공'
+      defended: damage === 0,
       attackDetail: atk,
-      defenseDetail: def
+      // 호환을 위해 필드 유지(민첩 대결은 제거했으므로 null)
+      defenseDetail: { ...def, contestRoll: null, defendScore: null }
     };
   }
 
-  // 회피: 민첩 + d20 ≥ 공격수치 → 0, 실패 시 직격(하한 1 없음)
+  // 회피: 민첩 + d20 ≥ 공격수치 → 0, 실패 시 하한(최소 1) 없음
   function resolveDodge(attacker, defender, opts={}) {
     const atk = computeAttackScore(attacker, { useAtkBooster: !!opts.useAtkBooster });
     const { agility } = readStats(defender);
@@ -110,9 +111,9 @@
     if (!dodged) {
       let raw = atk.score;
       if (atk.crit) raw *= 2;
-      damage = Math.max(0, raw);             // 하한 제거
+      damage = Math.max(0, raw); // 하한 제거
     }
-    return { damage, dodged, attackDetail: atk, dodgeRoll };
+    return { damage, dodged, attackDetail: atk, dodgeRoll, dodgeScore };
   }
 
   // 선택적 명중 판정(필요 시 사용할 것)
@@ -157,8 +158,8 @@
     useDittany,
     computeAttackScore,
     computeDefenseValue,
-    resolveDefense,   // ← 단순 감산식 & 역공 제거
-    resolveDodge,     // ← 성공 0 / 실패 하한 없음
+    resolveDefense,   // 방어: 단순 감산, 역공 없음
+    resolveDodge,     // 회피: 성공 0 / 실패 하한 없음
     optionalHitCheck,
     computeTeamInitiative,
     applyDamage,
