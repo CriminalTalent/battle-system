@@ -14,16 +14,33 @@
  */
 export function makeSocketHandlers(io, deps = {}) {
   const battles = deps.battles instanceof Map ? deps.battles : new Map();
+
+  // 기본 emitUpdate: 해당 배틀 "방"에만 상태를 뿌린다.
   const emitUpdate =
     typeof deps.emitUpdate === 'function'
       ? deps.emitUpdate
       : (b) => {
-          io.emit('battleUpdate', b);
-          io.emit('battle:update', b);
+          if (!b || !b.id) return;
+          io.to(String(b.id)).emit('battleUpdate', b);
+          io.to(String(b.id)).emit('battle:update', b);
         };
 
   const newBattleId = () => 'battle_' + Math.random().toString(36).slice(2, 10);
   const newPlayerId = () => 'player_' + Math.random().toString(36).slice(2, 10);
+
+  const toAB = (t) => {
+    const s = String(t || '').toLowerCase();
+    if (s === 'a' || s === 'phoenix' || s === 'team_a' || s === 'team-a') return 'A';
+    if (s === 'b' || s === 'eaters'  || s === 'death'  || s === 'team_b' || s === 'team-b') return 'B';
+    return 'A'; // 기본 A
+  };
+
+  const addLog = (b, message, type='system') => {
+    if (!b) return;
+    b.log = Array.isArray(b.log) ? b.log : [];
+    b.log.push({ type, message, ts: Date.now() });
+    if (b.log.length > 500) b.log.splice(0, b.log.length - 500);
+  };
 
   const emptyBattle = (mode = '4v4') => ({
     id: newBattleId(),
@@ -31,7 +48,14 @@ export function makeSocketHandlers(io, deps = {}) {
     status: 'waiting',
     createdAt: Date.now(),
     players: [],
-    logs: [],
+    log: [],         // ← 통일
+    effects: [],     // 일회성 보정 슬롯 (선택)
+    turn: {          // 라운드/페이즈 기본값 (선택)
+      round: 0,
+      order: ['A','B'],
+      phaseIndex: 0,
+      acted: { A: [], B: [] } // 직렬화 친화(배열)
+    }
   });
 
   io.on('connection', (socket) => {
@@ -58,12 +82,13 @@ export function makeSocketHandlers(io, deps = {}) {
       if (typeof ack === 'function') ack({ ok: true });
     });
 
-    // 전투 생성
+    // 전투 생성 (신/구 이벤트 모두 수신)
     const handleCreate = (payload, ack) => {
       const mode = String(payload?.mode || '4v4');
       const battle = emptyBattle(mode);
       battles.set(battle.id, battle);
       socket.join(String(battle.id));
+      addLog(battle, `전투가 생성되었습니다. (모드: ${mode})`);
       emitUpdate(battle);
       socket.emit('battle:created', battle);
       if (typeof ack === 'function') ack(battle);
@@ -78,6 +103,9 @@ export function makeSocketHandlers(io, deps = {}) {
       const b = battles.get(battleId);
       if (!b) return;
       b.status = st;
+      if (st === 'active') addLog(b, '전투 시작', 'system');
+      if (st === 'paused') addLog(b, '전투 일시정지', 'system');
+      if (st === 'ended')  addLog(b, '전투 종료', 'system');
       emitUpdate(b);
     };
     socket.on('startBattle', ({ battleId }) => setStatus(battleId, 'active'));
@@ -86,7 +114,7 @@ export function makeSocketHandlers(io, deps = {}) {
     socket.on('resumeBattle', ({ battleId }) => setStatus(battleId, 'active'));
     socket.on('endBattle', ({ battleId }) => setStatus(battleId, 'ended'));
 
-    // 참가자 추가 (팀은 A/B만 허용)
+    // 참가자 추가 (팀은 A/B로 정규화)
     const handleAddPlayer = ({ battleId, player }, ack) => {
       const b = battles.get(battleId);
       if (!b) {
@@ -104,8 +132,8 @@ export function makeSocketHandlers(io, deps = {}) {
         return;
       }
 
-      const teamRaw = String(player.team || 'A').toUpperCase();
-      const team = teamRaw === 'B' ? 'B' : 'A';
+      // 정규화된 팀
+      const team = toAB(player.team);
 
       // 스탯 1~5 보정
       const clamp15 = (n, def = 3) => {
@@ -113,25 +141,25 @@ export function makeSocketHandlers(io, deps = {}) {
         return Math.max(1, Math.min(5, v));
       };
 
-      const hp = Number.isFinite(Number(player.hp)) ? Number(player.hp) : 100;
       const maxHp = Number.isFinite(Number(player.maxHp)) ? Number(player.maxHp) : 100;
+      const hp = Math.max(0, Math.min(maxHp, Number.isFinite(Number(player.hp)) ? Number(player.hp) : 100));
 
       const p = {
         id: player.id ? String(player.id) : newPlayerId(),
         name: nameTrim,
         team, // 'A' | 'B'
-        hp: Math.max(0, Math.min(maxHp, hp)),
+        hp,
         maxHp,
         stats: {
-          attack: clamp15(player.stats?.attack, 3),
+          attack:  clamp15(player.stats?.attack,  3),
           defense: clamp15(player.stats?.defense, 3),
           agility: clamp15(player.stats?.agility, 3),
-          luck: clamp15(player.stats?.luck, 2),
+          luck:    clamp15(player.stats?.luck,    2),
         },
         items: {
-          dittany: Math.max(0, Math.min(5, Number(player.items?.dittany ?? 0))),
-          attack_boost: Math.max(0, Math.min(5, Number(player.items?.attack_boost ?? 0))),
-          defense_boost: Math.max(0, Math.min(5, Number(player.items?.defense_boost ?? 0))),
+          dittany:       Math.max(0, Math.min(99, Number(player.items?.dittany ?? 0))),
+          attack_boost:  Math.max(0, Math.min(99, Number(player.items?.attack_boost ?? 0))),
+          defense_boost: Math.max(0, Math.min(99, Number(player.items?.defense_boost ?? 0))),
         },
         avatar: String(player.avatar || ''),
         ready: true,
@@ -139,23 +167,25 @@ export function makeSocketHandlers(io, deps = {}) {
       };
 
       b.players.push(p);
+      addLog(b, `${p.name} 이(가) ${team}팀에 추가되었습니다.`, 'system');
       emitUpdate(b);
       if (typeof ack === 'function') ack({ ok: true, battle: b, player: p });
     };
     socket.on('addPlayer', handleAddPlayer);
     socket.on('admin:addPlayer', handleAddPlayer);
 
-    // 채팅
+    // 채팅 (신/구 모두 송신 + name/senderName 둘 다 포함)
     const handleChat = ({ battleId, message, name, role }) => {
       if (!battleId || !message || !String(message).trim()) return;
       const chatData = {
         name: name || '플레이어',
+        senderName: name || '플레이어',
         message: String(message).trim(),
         role: role || 'unknown',
         timestamp: Date.now(),
       };
-      io.to(String(battleId)).emit('chatMessage', chatData);
       io.to(String(battleId)).emit('battle:chat', chatData);
+      io.to(String(battleId)).emit('chatMessage', chatData);
     };
     socket.on('chatMessage', handleChat);
     socket.on('chat:send', handleChat);
