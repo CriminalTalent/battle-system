@@ -115,7 +115,7 @@ class PyxisTargetSelector {
       .target-panel::before {
         content: '';
         position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        background: linear-gradient(90deg, transparent 0%, var(--pyxis-gold-bright) 50%, transparent 100%);
+        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent);
         opacity: 0.6;
       }
 
@@ -162,7 +162,7 @@ class PyxisTargetSelector {
       }
       .target-card::before {
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-        background: linear-gradient(90deg, transparent 0%, var(--pyxis-gold-bright) 50%, transparent 100%);
+        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent);
         opacity: 0.3;
       }
       .target-card:hover:not(.disabled) {
@@ -177,10 +177,10 @@ class PyxisTargetSelector {
       }
       .target-card.selected {
         border-color: var(--pyxis-gold-bright)!important;
-        background: linear-gradient(145deg, rgba(220,199,162,0.15) 0%, rgba(212,183,126,0.1) 100%)!important;
+        background: linear-gradient(145deg, rgba(220,199,162,0.15), rgba(212,183,126,0.1))!important;
         box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), inset 0 0 20px rgba(220,199,162,0.1)!important;
       }
-      .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8); background: linear-gradient(145deg, rgba(42,52,65,.5) 0%, rgba(26,31,42,.6) 100%); }
+      .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8); background: linear-gradient(145deg, rgba(42,52,65,.5), rgba(26,31,42,.6)); }
       .target-card.disabled:hover { transform: none!important; border-color: var(--pyxis-border-subtle)!important; box-shadow: none!important; }
 
       .target-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -191,16 +191,15 @@ class PyxisTargetSelector {
       .target-name { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600; color: var(--pyxis-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       .target-team { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
-      /* AB 표기용 뱃지 (phoenix/eaters 클래스도 역호환로 유지) */
       .target-team.team-A, .target-team.phoenix  { background: rgba(199,62,29,0.2); color: #FF6B4A; border: 1px solid rgba(199,62,29,0.3); }
       .target-team.team-B, .target-team.eaters   { background: rgba(45,90,39,0.2);  color: #66BB6A; border: 1px solid rgba(45,90,39,0.3); }
 
       .target-hp { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
       .target-hp-text { font-size: 14px; font-weight: 500; color: var(--pyxis-gold-warm); min-width: fit-content; }
       .target-hp-bar-container { flex: 1; height: 8px; background: rgba(0,30,53,0.8); border-radius: 4px; border: 1px solid var(--pyxis-border-subtle); overflow: hidden; position: relative; }
-      .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative; background: linear-gradient(90deg, var(--pyxis-success-green) 0%, var(--pyxis-gold-warm) 50%, var(--pyxis-gold-bright) 100%); }
-      .target-hp-bar.low { background: linear-gradient(90deg, var(--pyxis-combat-red) 0%, var(--pyxis-warning-amber) 100%); }
-      .target-hp-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.3) 50%, transparent 100%); animation: shimmer 2s infinite; }
+      .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative; background: linear-gradient(90deg, var(--pyxis-success-green), var(--pyxis-gold-warm), var(--pyxis-gold-bright)); }
+      .target-hp-bar.low { background: linear-gradient(90deg, var(--pyxis-combat-red), var(--pyxis-warning-amber)); }
+      .target-hp-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent); animation: shimmer 2s infinite; }
       @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
       .target-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px; color: rgba(220,199,162,.8); margin-bottom: 12px; }
@@ -213,17 +212,17 @@ class PyxisTargetSelector {
       .status-pill.boosted { background: rgba(184,134,11,.3); color: var(--pyxis-warning-amber); border: 1px solid rgba(184,134,11,.5); }
 
       .target-actions { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
-      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px; background: linear-gradient(145deg, rgba(0,30,53,.9) 0%, rgba(42,52,65,.8) 100%); color: var(--pyxis-gold-bright); font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1); text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
-      .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent 0%, rgba(220,199,162,.2) 50%, transparent 100%); transition: left .5s cubic-bezier(.4,0,.2,1); }
+      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px; background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(42,52,65,.8)); color: var(--pyxis-gold-bright); font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1); text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
+      .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(220,199,162,.2), transparent); transition: left .5s cubic-bezier(.4,0,.2,1); }
       .btn:hover::before { left: 100%; }
-      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95) 0%, rgba(42,52,65,.9) 100%); box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
-      .btn.btn-gold { background: linear-gradient(145deg, var(--pyxis-gold-warm) 0%, var(--pyxis-gold-bright) 100%); color: var(--pyxis-deep-navy); border-color: var(--pyxis-gold-bright); }
-      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright) 0%, var(--pyxis-gold-warm) 100%); box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
+      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95), rgba(42,52,65,.9)); box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
+      .btn.btn-gold { background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright)); color: var(--pyxis-deep-navy); border-color: var(--pyxis-gold-bright); }
+      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm)); box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
       .btn:disabled { opacity: .5; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
 
-      .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px; background: linear-gradient(145deg, rgba(0,30,53,.5) 0%, rgba(42,52,65,.3) 100%); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
+      .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px; background: linear-gradient(145deg, rgba(0,30,53,.5), rgba(42,52,65,.3)); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
 
-      .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7) 0%, rgba(42,52,65,.5) 100%); border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
+      .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7), rgba(42,52,65,.5)); border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
       .battle-mode { font-size: 14px; color: var(--pyxis-gold-warm); font-weight: 500; margin-bottom: 8px; }
       .turn-info { font-size: 12px; color: rgba(220,199,162,.7); }
 
@@ -387,8 +386,9 @@ class PyxisTargetSelector {
       this.battleInfoEl.style.display = '';
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
       const ab = this._toAB(battleData.currentTeam);
-      this.battleInfoEl.querySelector('.turn-info').textContent =
-        `턴 ${battleData.currentTurn || 1} • ${ab === '-' ? '' : `팀 ${ab} `}차례`.trim();
+      const parts = [`턴 ${battleData.currentTurn || 1}`];
+      if (ab === 'A' || ab === 'B') parts.push(`팀 ${ab} 차례`);
+      this.battleInfoEl.querySelector('.turn-info').textContent = parts.join(' • ');
     } else if (this.battleInfoEl) {
       this.battleInfoEl.style.display = 'none';
     }
@@ -436,7 +436,11 @@ class PyxisTargetSelector {
       const img = document.createElement('img');
       img.src = target.avatar;
       img.alt = target.name || '플레이어';
-      img.onerror = () => { avatar.innerHTML = (target.name || 'U').charAt(0).toUpperCase(); };
+      img.onerror = () => {
+        // 이미지 실패 시 깔끔한 이니셜 폴백
+        avatar.innerHTML = '';
+        avatar.textContent = (target.name || 'U').charAt(0).toUpperCase();
+      };
       avatar.appendChild(img);
     } else {
       avatar.textContent = (target.name || 'U').charAt(0).toUpperCase();
@@ -658,9 +662,12 @@ class PyxisTargetSelector {
   }
 
   addTarget(target) { this.targets.push(target); this.renderTargets(); }
+
   removeTarget(targetId) {
-    this.targets = this.targets.filter(t => (t.id && t.id !== targetId) && (t.name !== targetId));
-    this.selectedTargets = this.selectedTargets.filter(t => (t.id && t.id !== targetId) && (t.name !== targetId));
+    // id가 없던 타겟이 잘못 걸러지는 버그 수정
+    const keep = (t) => !((t.id != null && t.id === targetId) || (t.name === targetId));
+    this.targets = this.targets.filter(keep);
+    this.selectedTargets = this.selectedTargets.filter(keep);
     this.renderTargets(); this.updateConfirmButton();
   }
 
@@ -694,8 +701,9 @@ class PyxisTargetSelector {
       this.battleInfoEl.style.display = '';
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
       const ab = this._toAB(battleData.currentTeam);
-      this.battleInfoEl.querySelector('.turn-info').textContent =
-        `턴 ${battleData.currentTurn || 1} • ${ab === '-' ? '' : `팀 ${ab} `}차례`.trim();
+      const parts = [`턴 ${battleData.currentTurn || 1}`];
+      if (ab === 'A' || ab === 'B') parts.push(`팀 ${ab} 차례`);
+      this.battleInfoEl.querySelector('.turn-info').textContent = parts.join(' • ');
     }
   }
 
