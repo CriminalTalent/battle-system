@@ -162,6 +162,10 @@
       const $  = (q, el=document)=>el.querySelector(q);
       const $$ = (q, el=document)=>Array.from(el.querySelectorAll(q));
       const escapeHtml = (s)=> String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
+      // 이모지 금지(송수신 모두 필터)
+      const emojiRE = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}\u200D]/gu;
+      const stripEmoji = (s)=> String(s||'').replace(emojiRE,'');
+      const sanitizeInline = (s)=> stripEmoji(s).replace(/\s+/g,' ').trim();
 
       const connDot = $('#connDot');
       const meta = $('#battleMeta');
@@ -181,9 +185,14 @@
       function setConn(ok){ connDot.classList.toggle('ok', !!ok); }
       function teamAB(team){
         const s = String(team||'').toLowerCase();
-        if(s==='phoenix'||s==='a') return 'A';
-        if(s==='eaters' ||s==='b'||s==='death') return 'B';
+        if(s==='phoenix'||s==='a'||s==='team_a'||s==='team-a') return 'A';
+        if(s==='eaters' ||s==='b'||s==='death'||s==='team_b'||s==='team-b') return 'B';
         return '-';
+      }
+      function normalizeTeamWords(s){
+        return String(s||'')
+          .replace(/\bphoenix\b/gi,'A팀')
+          .replace(/\beaters\b/gi,'B팀');
       }
 
       function hpBar(pct){
@@ -236,7 +245,11 @@
       }
 
       function render(battle){
-        meta.textContent = `상태: ${battle.status||'-'} · 인원 ${battle.players?.length ?? 0}`;
+        // 상태 텍스트만 갱신(디자인 유지)
+        const st = String(battle.status||'waiting');
+        const stK = st==='active'?'진행중':(st==='waiting'?'대기중':(st==='paused'?'일시정지':'종료'));
+        meta.textContent = `상태: ${stK} · 인원 ${battle.players?.length ?? 0}`;
+
         teamA.innerHTML = '';
         teamB.innerHTML = '';
         (battle.players||[]).forEach(p=>{
@@ -245,24 +258,28 @@
           else teamB.appendChild(row);
         });
 
-        // 승패 배너(옵션)
+        // 종료 배너(승자 A/B로 통일)
         if (battle.status==='ended') {
-          const winAB = (battle.winnerTeam==='eaters') ? 'B' : 'A';
+          const winAB = teamAB(battle.winnerTeam)==='B' ? 'B' : 'A';
           window.PyxisEffects?.bannerWin(winAB);
         }
       }
 
       function appendLog(msg){
+        const safe = normalizeTeamWords(stripEmoji(String(msg||'')));
         const line = document.createElement('div');
-        line.textContent = msg;
+        line.textContent = safe;
         logBox.appendChild(line);
         logBox.scrollTop = logBox.scrollHeight;
       }
 
       function appendChat(name, message){
+        const n = sanitizeInline(name||'관전자');
+        const m = sanitizeInline(message||'');
         const line = document.createElement('div');
-        const safe = `${escapeHtml(name||'관전자')}: ${escapeHtml(message||'')}`;
-        line.innerHTML = `<strong>${safe.split(':')[0]}</strong>: ${safe.slice(safe.indexOf(':')+1)}`;
+        const safeName = escapeHtml(n);
+        const safeMsg  = escapeHtml(m);
+        line.innerHTML = `<strong>${safeName}</strong>: ${safeMsg}`;
         chatBox.appendChild(line);
         chatBox.scrollTop = chatBox.scrollHeight;
       }
@@ -273,18 +290,19 @@
         socket.on('connect', ()=> setConn(true));
         socket.on('disconnect', ()=> { setConn(false); authed=false; });
 
-        // 상태 스냅샷
+        // 상태 스냅샷(신/구 이벤트)
         socket.on('battleUpdate', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
         socket.on('battle:update', (b)=>{ if(!currentBattleId || b.id===currentBattleId) render(b); });
 
-        // 전투 상태 이벤트(배너용)
+        // 전투 상태 이벤트(배너 참고)
         socket.on('battle:started', ()=> window.PyxisEffects?.showResultBanner('전투 시작','info'));
         socket.on('battle:ended', (p)=> {
-          const t = p?.winner ? `${p.winner}팀 승리` : '전투 종료';
+          const ab = teamAB(p?.winner);
+          const t  = ab==='B' ? 'B팀 승리' : 'A팀 승리';
           window.PyxisEffects?.showResultBanner(t,'win',2000);
         });
 
-        // 인증 성공/실패
+        // 인증 성공/실패(신/구)
         socket.on('auth:success', (payload)=>{
           authed = true;
           if (payload?.battle) render(payload.battle);
@@ -293,7 +311,7 @@
         socket.on('authError', (e)=> appendLog('관전자 인증 실패: ' + (e?.error||e?.message||'오류')));
         socket.on('auth:error', (e)=> appendLog('관전자 인증 실패: ' + (e?.error||e?.message||'오류')));
 
-        // 채팅/응원/로그
+        // 채팅/응원/로그(보기 전용)
         socket.on('battle:chat', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
         socket.on('chat:message', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
         socket.on('battle:log', (line)=> appendLog(typeof line==='string'? line : (line?.message||JSON.stringify(line))));
@@ -303,9 +321,9 @@
       // 관전자 입장(OTP 인증 + join)
       $('#btnJoin').addEventListener('click', doJoin);
       function doJoin(){
-        const id = battleIdInput.value.trim();
-        const otp = otpInput.value.trim();
-        const nm = nameInput.value.trim();
+        const id = sanitizeInline(battleIdInput.value);
+        const otp = sanitizeInline(otpInput.value);
+        const nm = sanitizeInline(nameInput.value);
         if (!id || !otp) { appendLog('전투 ID/비밀번호를 입력하세요'); return; }
         currentBattleId = id;
 
@@ -319,17 +337,21 @@
         appendLog(`관전 방 입장 요청: ${id}`);
       }
 
-      // 응원 메시지 전송(관전자용, 양쪽 경로 송신)
+      // 응원 메시지 전송(관전자용, 양쪽 경로 송신) — 이모지 금지
       $('#btnSend').addEventListener('click', ()=>{
-        const msg = ($('#chatMsg').value||'').trim();
-        if (!msg || !currentBattleId) return;
+        if (!currentBattleId) return;
+        const raw = $('#chatMsg').value;
+        const msg = sanitizeInline(raw);
+        if (!msg) return;
+
+        const nm = sanitizeInline(nameInput.value) || '관전자';
 
         // 응원 전용 채널
-        socket.emit('spectator:cheer', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자' });
-        socket.emit('cheer:send', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자' });
+        socket.emit('spectator:cheer', { battleId: currentBattleId, message: msg, name: nm });
+        socket.emit('cheer:send', { battleId: currentBattleId, message: msg, name: nm });
 
         // 일반 채팅 채널도 병행(서버 설정에 따라 한쪽만 수신될 수 있음)
-        socket.emit('chatMessage', { battleId: currentBattleId, message: msg, name: nameInput.value.trim() || '관전자', role:'spectator' });
+        socket.emit('chatMessage', { battleId: currentBattleId, message: msg, name: nm, role:'spectator' });
 
         $('#chatMsg').value='';
       });
