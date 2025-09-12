@@ -3,7 +3,6 @@
 
 /**
  * 브로드캐스트 유틸 모음 (전투 로직 없음)
- * - 소켓 이벤트만 내보냅니다.
  * - 신/구 이벤트명을 모두 지원합니다.
  *
  * 사용 예)
@@ -24,12 +23,9 @@ function room(io, battleId) {
  *  상태/진행 브로드캐스트
  * ========================= */
 /**
- * battle 상태 전체를 브로드캐스트합니다.
+ * battle 상태 전체 브로드캐스트
  * - 신: "battle:update"
  * - 구: "battleUpdate"
- * @param {import('socket.io').Server} io
- * @param {Object} battle  전체 배틀 객체(직렬화 가능한 형태)
- * @param {Object} [extra] 추가로 붙여 보낼 메타(예: { turn })
  */
 export function broadcastBattle(io, battle, extra = {}) {
   if (!io || !battle || !battle.id) return;
@@ -39,11 +35,8 @@ export function broadcastBattle(io, battle, extra = {}) {
 }
 
 /**
- * 관리자 패널에만 델타/메타를 전송합니다.
+ * 관리자 패널 전용 메타/델타
  * - 신: "admin:update"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} data  { battle?, ... }
  */
 export function broadcastAdmin(io, battleId, data) {
   if (!io || !battleId) return;
@@ -51,11 +44,8 @@ export function broadcastAdmin(io, battleId, data) {
 }
 
 /**
- * 전투 종료 알림 (승자/무승부)
+ * 전투 종료 알림
  * - 신: "battle:ended"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} result  { winner: "A" | "B" | "draw" | null, reason?: string }
  */
 export function broadcastEnded(io, battleId, result) {
   if (!io || !battleId) return;
@@ -66,12 +56,9 @@ export function broadcastEnded(io, battleId, result) {
  *  로그/채팅/관전자 카운트
  * ========================= */
 /**
- * 전투 로그 1건 브로드캐스트
+ * 전투 로그 1건
  * - 신: "battle:log"
  * - 구: "battleLog"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} entry { type, message, ts, ... }
  */
 export function broadcastLog(io, battleId, entry) {
   if (!io || !battleId || !entry) return;
@@ -80,45 +67,46 @@ export function broadcastLog(io, battleId, entry) {
 }
 
 /**
- * 채팅 메시지 브로드캐스트
- * - 구: "chatMessage" (클라이언트 호환용 유지)
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} msg { senderName, message, timestamp? }
+ * 채팅 메시지
+ * - 신: "battle:chat"
+ * - 구: "chatMessage"
+ *  (양쪽 모두 송신해서 socket-manager / 기존 admin.js 둘 다 호환)
  */
 export function broadcastChat(io, battleId, msg) {
   if (!io || !battleId || !msg || !msg.message) return;
-  room(io, battleId).emit('chatMessage', {
-    senderName: msg.senderName || '익명',
+
+  const payload = {
+    name: msg.name || msg.senderName || '익명',
+    senderName: msg.senderName || msg.name || '익명',
     message: msg.message,
     timestamp: msg.timestamp || Date.now()
-  });
+  };
+
+  // 새 클라이언트용
+  room(io, battleId).emit('battle:chat', payload);
+  // 레거시 호환
+  room(io, battleId).emit('chatMessage', payload);
 }
 
 /**
  * 관전자 수 갱신
- * - 신: "spectator:count_update"
- * - 구: "spectatorCountUpdate"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {number} count
+ * - 신: "spectator:count"    ← socket-manager가 청취
+ * - 보조: "spectator:count_update", "spectatorCountUpdate" (레거시 호환)
  */
 export function broadcastSpectatorCount(io, battleId, count) {
   if (!io || !battleId || typeof count !== 'number') return;
-  const payload = { count };
-  room(io, battleId).emit('spectator:count_update', payload);
-  room(io, battleId).emit('spectatorCountUpdate', payload);
+  const payload = { count: Number(count) || 0 };
+  room(io, battleId).emit('spectator:count', payload);           // 신
+  room(io, battleId).emit('spectator:count_update', payload);    // 구(신규 구형 혼재)
+  room(io, battleId).emit('spectatorCountUpdate', payload);      // 구
 }
 
 /* =========================
  *  턴/페이즈 힌트(선택)
  * ========================= */
 /**
- * 현재 턴(행동자/팀) 힌트
+ * 현재 턴 시작 힌트
  * - 신: "turn:start"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} data { playerId?: string, phaseTeam?: "A"|"B", round?: number, order?: ["A"|"B","A"|"B"] }
  */
 export function broadcastTurnStart(io, battleId, data) {
   if (!io || !battleId) return;
@@ -126,11 +114,8 @@ export function broadcastTurnStart(io, battleId, data) {
 }
 
 /**
- * 턴 종료 알림
+ * 턴 종료 힌트
  * - 신: "turn:end"
- * @param {import('socket.io').Server} io
- * @param {string} battleId
- * @param {Object} data { teamPhaseCompleted?: boolean, roundCompleted?: boolean, currentTeam?: "A"|"B" }
  */
 export function broadcastTurnEnd(io, battleId, data) {
   if (!io || !battleId) return;
