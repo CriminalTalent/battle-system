@@ -1,6 +1,11 @@
 // packages/battle-server/src/utils/OTPManager.js
 // PYXIS OTP Manager - Enhanced Design Version (ESM)
 // 역할별 TTL/사용한도 + 배틀/사용자 인덱싱 + 만료·폐기·일괄정리 지원
+// 개선점 포함:
+//  - 혼동 문자(I/O/0/1) 제거된 코드 생성
+//  - clearExpired 시 stats.expired도 함께 집계
+//  - type 소문자 정규화
+//  - 표시용 포맷 helper(formatForDisplay) 추가
 
 'use strict';
 
@@ -21,15 +26,18 @@ class OTPManager extends EventEmitter {
         spectator: 30 * 60 * 1000, // 30분
         player: 30 * 60 * 1000,    // 30분
         admin: 60 * 60 * 1000,     // 60분
+        ...(options.defaultTTL || {}),
       },
       defaultMaxUses: {
         spectator: Number.MAX_SAFE_INTEGER,
         player: Number.MAX_SAFE_INTEGER,
         admin: Number.MAX_SAFE_INTEGER,
+        ...(options.defaultMaxUses || {}),
       },
       rateLimiting: {
         maxAttemptsPerIP: 10,
         windowMs: 15 * 60 * 1000,
+        ...(options.rateLimiting || {}),
       },
       ...options,
     };
@@ -67,6 +75,11 @@ class OTPManager extends EventEmitter {
   mask(otp, left = 2) {
     if (!otp) return '';
     return otp.slice(0, left) + '****';
+  }
+
+  // 화면 표시용: 4자리-그룹 형태 (예: ABCD-EF)
+  formatForDisplay(otp) {
+    return String(otp || '').replace(/(.{4})(?=.)/g, '$1-');
   }
 
   log(message, level = 'INFO', data = null) {
@@ -113,6 +126,8 @@ class OTPManager extends EventEmitter {
   // ────────────────────────────
   generateOTP(type, data = {}, options = {}) {
     try {
+      type = String(type || '').toLowerCase();
+
       const currentCount = this.getCountByType(type);
       const maxCount = this.getMaxCountByType(type);
       if (currentCount >= maxCount) {
@@ -132,10 +147,16 @@ class OTPManager extends EventEmitter {
         }
       } while (this.otpStore.has(otp));
 
-      const ttl = options.ttl ?? this.config.defaultTTL[type] ?? this.config.defaultTTL.spectator;
+      const ttl =
+        options.ttl ??
+        this.config.defaultTTL[type] ??
+        this.config.defaultTTL.spectator;
+
       const maxUses = options.oneTime
         ? 1
-        : (options.maxUses ?? this.config.defaultMaxUses[type] ?? this.config.defaultMaxUses.spectator);
+        : (options.maxUses ??
+           this.config.defaultMaxUses[type] ??
+           this.config.defaultMaxUses.spectator);
 
       const rec = {
         type,
@@ -158,8 +179,9 @@ class OTPManager extends EventEmitter {
     }
   }
 
+  // 혼동 문자(I,O,0,1) 제거
   _secureCode(length) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const bytes = randomBytes(length);
     let out = '';
     for (let i = 0; i < length; i++) out += chars[bytes[i] % chars.length];
@@ -202,7 +224,7 @@ class OTPManager extends EventEmitter {
       if (this.now() > rec.expiresAt) {
         this.otpStore.delete(otp);
         this._indexRemove(otp, rec);
-        this.stats.expired += 1;
+        this.stats.expired += 1; // 만료 카운트
         this.log('만료된 OTP', 'WARN', { otp: this.mask(otp) });
         return { valid: false, reason: 'expired' };
       }
@@ -297,10 +319,11 @@ class OTPManager extends EventEmitter {
     }
     if (n) {
       this.stats.cleaned += n;
+      this.stats.expired += n; // 만료 집계에 반영
       this.log(`만료 OTP 정리: ${n}건`, 'INFO');
     }
     return n;
-  }
+    }
 
   clearByBattle(battleId) {
     if (!battleId) return 0;
