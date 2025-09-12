@@ -15,6 +15,10 @@ import {
   applyItemEffect
 } from "./rules.js";
 
+/* =========================
+ * 유틸리티 함수들
+ * ========================= */
+
 /** effects 보장 */
 function ensureEffects(battle) {
   if (!Array.isArray(battle.effects)) battle.effects = [];
@@ -70,6 +74,9 @@ function consumeDefenseBoost(battle, playerId) {
   battle.effects = effects.filter(e => (e?.charges || 0) > 0);
 }
 
+/* =========================
+ * 액션 해석기
+ * ========================= */
 /**
  * 액션 해석기 - 새로운 7학년 모의 전투 규칙 적용
  * @param {Object} battle - 서버 배틀 상태
@@ -155,15 +162,9 @@ export function resolveAction(battle, action) {
       const result = applyItemEffect(battle, actor.id, key, target.id);
       if (result.success) {
         updates.hp[target.id] = target.hp;
-        logs.push({ 
-          type: "item", 
-          message: result.message
-        });
+        logs.push({ type: "item", message: result.message });
       } else {
-        logs.push({ 
-          type: "item", 
-          message: result.message
-        });
+        logs.push({ type: "item", message: result.message });
       }
       return { logs, updates, turnEnded: true };
       
@@ -327,4 +328,7 @@ export function resolveAction(battle, action) {
   return { logs, updates, turnEnded: false };
 }
 
+/* =========================
+ * 기본 export
+ * ========================= */
 export default { resolveAction };
