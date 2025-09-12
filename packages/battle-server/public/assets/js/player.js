@@ -1,9 +1,10 @@
-// public/assets/js/player.js
+// packages/battle-server/public/assets/js/player.js
 // 전투 참가자 화면 전용 스크립트(표기 고정: 플레이어→전투 참가자, OTP→비밀번호, 커밋→순서)
 // - 아군/상대 모두 HP바 + 스탯(공/방/민/운) 노출
 // - 신/구 소켓 이벤트 동시 지원(playerAction / player:action 등)
 // - 채팅 Enter 전송 + 기본 발신자 "전투 참가자"
 // - URL ?token= OR ?password= 폴백 지원
+// - 팀 표기는 항상 A/B로만 노출
 
 /* ========== DOM 헬퍼 ========== */
 const $  = (q,root=document)=>root.querySelector(q);
@@ -21,7 +22,7 @@ let myTeamAB   = (params.get('team') || 'A').toUpperCase()==='B' ? 'B' : 'A';
 /* ========== 전역 상태 ========== */
 let socket=null, me=null, lastSnap=null;
 let teamTimerHandle=null;
-const committedSet = new Set(); // 내 팀 현재 페이즈 커밋 표시
+const committedSet = new Set(); // 내 팀 현재 페이즈 순서(커밋) 표시
 let iCommittedThisPhase=false;
 let prevPhase='', prevTeamKey='';
 
@@ -71,11 +72,11 @@ function toast(msg){
   toastEl.classList.add('show');
   setTimeout(()=>toastEl.classList.remove('show'), 1600);
 }
-function teamKey(t){ return (String(t).toLowerCase()==='eaters') ? 'eaters' : 'phoenix'; }
+// 팀 키를 A/B로만 정규화
 function toAB(t){
   const s = String(t||'').toLowerCase();
-  if(s==='phoenix' || s==='a') return 'A';
-  if(s==='eaters'  || s==='b' || s==='death') return 'B';
+  if(s==='phoenix' || s==='a' || s==='team_a' || s==='team-a') return 'A';
+  if(s==='eaters'  || s==='b' || s==='death'  || s==='team_b' || s==='team-b') return 'B';
   return '';
 }
 function setEnabled(node, on){ if(node) node.disabled = !on; }
@@ -109,13 +110,13 @@ function connect(){
   socket.on('authError', ({error})=>{
     authOverlay?.classList.remove('hidden');
     authOverlay.querySelector('.sheet').innerHTML =
-      `<div>인증 실패</div><div style="color:#9aa4b2; font-size:12px; margin-top:6px">${error||'오류'}</div>`;
+      `<div>인증 실패</div><div style="color:#9aa4b2; font-size:12px; margin-top:6px">${escapeHtml(error||'오류')}</div>`;
   });
 
   // 상태 갱신(신/구 채널)
   socket.on('battleUpdate', renderAll);
   socket.on('battle:update', (snap)=>{
-    // 페이즈 전환 감지 → 커밋 상태 초기화
+    // 페이즈 전환 감지 → 순서(커밋) 상태 초기화
     if(prevPhase!==snap.phase || prevTeamKey!==snap.currentTeam){
       committedSet.clear();
       iCommittedThisPhase=false;
@@ -132,7 +133,7 @@ function connect(){
 
     // 종료 배너
     if(snap.status==='ended'){
-      const winAB = (snap.winnerTeam==='eaters') ? 'B' : 'A';
+      const winAB = toAB(snap.winnerTeam) || (snap.winnerTeam==='eaters' ? 'B' : 'A');
       window.PyxisEffects?.showResultBanner(`${winAB}팀 승리`, 'win', 2000);
     }
   });
@@ -219,7 +220,7 @@ function renderAll(state){
   allies.forEach(p=> allyList && allyList.appendChild(makeRow(p)));
   enemies.forEach(p=> enemyList && enemyList.appendChild(makeRow(p)));
 
-  // 현재 순서팀 표기(커밋→순서 용어 반영)
+  // 현재 순서팀 표기(커밋→순서 용어 반영) — 항상 A/B로만
   const phaseAB =
     state.phaseTeam ? toAB(state.phaseTeam) :
     (state.turn && state.turn.order ? (state.turn.order[state.turn.phaseIndex||0]||'A') : 'A');
@@ -237,7 +238,7 @@ function renderAll(state){
   renderQueue(state, phaseAB);
 
   // 팀 제한 타이머(5분)
-  setupTeamTimer(state.turnStartTime);
+  setupTeamTimer(state.turnStartTime || state.turn?.startedAt || Date.now());
 
   // 마지막 이벤트만 제공하는 서버 호환
   if(state.lastEvent) appendLog(state.lastEvent);
@@ -287,8 +288,9 @@ function updateMainImageByQueue(){
 function setupTeamTimer(turnStartTime){
   if(teamTimerHandle) clearInterval(teamTimerHandle);
   const limitMs = 5*60*1000;
+  const base = Number(turnStartTime)||Date.now();
   const tick = ()=>{
-    const remain = Math.max(0, limitMs - (Date.now() - (turnStartTime||0)));
+    const remain = Math.max(0, limitMs - (Date.now() - base));
     const m = Math.floor(remain/60000);
     const s = Math.floor((remain%60000)/1000);
     turnTimer.textContent = `팀 제한 시간 ${String(m)}:${String(s).padStart(2,'0')}`;
@@ -315,10 +317,13 @@ btnAttack?.addEventListener('click', ()=>{
 });
 btnDefend?.addEventListener('click', ()=>{
   if(!canAct()) return;
+  // 룰 반영: 방어 선택 시 방어 성공이면 0, 실패 시 (공격수치-방어치), 치명타 시 ×2 (하한 1 없음)
+  // 실제 계산은 서버에서 수행. 여기선 단순 타입만 전송.
   commitAction({ type:'defend' });
 });
 btnDodge ?.addEventListener('click', ()=>{
   if(!canAct()) return;
+  // 룰 반영: 회피 성공 시 0, 실패 시 정면 피격(클라이언트 설명만, 계산은 서버)
   commitAction({ type:'dodge' });
 });
 btnItem  ?.addEventListener('click', ()=>{
@@ -348,6 +353,7 @@ function commitAction(action){
     socket?.emit('playerAction', { battleId, actorId: me.id, type:'attack', targetId: action.targetId });
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'attack', targetId: action.targetId }});
   }else if(action.type==='item'){
+    // 아이템: attack_booster / defense_booster / dittany (+10, 대상 선택) — 서버 룰과 일치
     const payload = { battleId, actorId: me.id, type:'item', itemType: action.itemType, targetId: action.targetId };
     socket?.emit('playerAction', payload);
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'item', itemType: action.itemType, targetId: action.targetId }});
@@ -382,7 +388,7 @@ function openTargetPicker(kind, list){
       row.innerHTML = `
         <div>
           <div style="font-weight:700">${escapeHtml(p.name)}</div>
-          <div class="label">HP ${p.hp}/${maxHp}</div>
+          <div class="label">팀 ${toAB(p.team)} · HP ${p.hp}/${maxHp}</div>
         </div>
         <div class="hpbar" style="width:160px"><i style="width:${hpPct}%"></i></div>
       `;
@@ -407,9 +413,9 @@ function openItemPicker(){
     row.querySelector('.btn').addEventListener('click', handler);
     return row;
   };
-  // 공격 보정기(해당 턴 ×1.5)
+  // 공격 보정기(성공률 10%, 성공 시 해당 턴 공격스탯 ×1.5) — 서버에서 판정
   targetList.appendChild(mkBtn('공격 보정기', ()=>{ hideTargetPicker(); commitAction({ type:'item', itemType:'attack_booster' }); }));
-  // 방어 보정기(해당 턴 ×1.5)
+  // 방어 보정기(성공률 10%, 성공 시 해당 턴 방어스탯 ×1.5) — 서버에서 판정
   targetList.appendChild(mkBtn('방어 보정기', ()=>{ hideTargetPicker(); commitAction({ type:'item', itemType:'defense_booster' }); }));
   // 디터니(HP10 회복, 대상 선택)
   const allies = getAlliesAlive();
@@ -434,7 +440,7 @@ function getAlliesAlive(){
 
 /* ========== 팀/플레이어 조회 ========== */
 function getTeams(state){
-  // teams.A/B 혹은 players[team=phoenix/eaters] 호환
+  // teams.A/B 혹은 players[team=phoenix/eaters] 호환 → 항상 A/B로 변환
   if(state?.teams) return [ (state.teams.A?.players)||[], (state.teams.B?.players)||[] ];
   const arr = state?.players || [];
   return [ arr.filter(p=>toAB(p.team)==='A'), arr.filter(p=>toAB(p.team)==='B') ];
@@ -453,7 +459,7 @@ function appendLog(msg){
   logBox.scrollTop = logBox.scrollHeight;
 }
 function normalizeLog(s){
-  // 팀 키워드 통일
+  // 팀 키워드 통일(A/B로만)
   return s.replace(/\bphoenix\b/gi,'A팀').replace(/\beaters\b/gi,'B팀');
 }
 function appendChat(sender, text){
