@@ -2,7 +2,8 @@
    PYXIS Target Selector Component - Enhanced Gaming Edition
    - 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
    - 스탯 시스템: 1-5 범위, 총합 제한 없음 
-   - 이모지/특수문자 미사용 (제목 장식 기호 제거)
+   - 팀 표기: 내부/표시는 항상 A/B (phoenix/eaters 입력도 자동 정규화)
+   - 이모지/특수문자 미사용
 */
 
 class PyxisTargetSelector {
@@ -34,6 +35,16 @@ class PyxisTargetSelector {
     this._focusedIndex = 0;
 
     this.init();
+  }
+
+  /* ────────────────────────────────
+     팀 정규화(A/B 고정)
+  ──────────────────────────────── */
+  _toAB(team) {
+    const s = String(team || '').toLowerCase();
+    if (s === 'phoenix' || s === 'a' || s === 'team_a' || s === 'team-a') return 'A';
+    if (s === 'eaters'  || s === 'b' || s === 'death'  || s === 'team_b' || s === 'team-b') return 'B';
+    return '-';
   }
 
   init() {
@@ -81,17 +92,10 @@ class PyxisTargetSelector {
         animation: fadeInOverlay 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
 
-      @keyframes fadeInOverlay {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
+      @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
 
       .target-panel {
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.95) 0%,
-          rgba(42, 52, 65, 0.9) 100%
-        );
+        background: linear-gradient(145deg, rgba(0, 30, 53, 0.95) 0%, rgba(42, 52, 65, 0.9) 100%);
         backdrop-filter: blur(20px);
         border: 2px solid var(--pyxis-border-subtle);
         border-radius: 20px;
@@ -100,35 +104,18 @@ class PyxisTargetSelector {
         max-height: 85vh;
         width: 100%;
         max-width: 900px;
-        box-shadow:
-          0 25px 50px rgba(0, 0, 0, 0.5),
-          0 0 0 1px rgba(220, 199, 162, 0.1),
-          inset 0 1px 0 rgba(220, 199, 162, 0.2);
+        box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(220,199,162,0.1), inset 0 1px 0 rgba(220,199,162,0.2);
         position: relative;
         overflow: hidden;
         transform: scale(0.9) translateY(20px);
         animation: slideInPanel 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
       }
-
-      @keyframes slideInPanel {
-        to {
-          transform: scale(1) translateY(0);
-        }
-      }
+      @keyframes slideInPanel { to { transform: scale(1) translateY(0); } }
 
       .target-panel::before {
         content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          var(--pyxis-gold-bright) 50%,
-          transparent 100%
-        );
+        position: absolute; top: 0; left: 0; right: 0; height: 2px;
+        background: linear-gradient(90deg, transparent 0%, var(--pyxis-gold-bright) 50%, transparent 100%);
         opacity: 0.6;
       }
 
@@ -139,7 +126,7 @@ class PyxisTargetSelector {
         color: var(--pyxis-gold-bright);
         text-align: center;
         margin-bottom: 24px;
-        text-shadow: 0 2px 8px rgba(220, 199, 162, 0.3);
+        text-shadow: 0 2px 8px rgba(220,199,162,0.3);
         position: relative;
       }
 
@@ -154,471 +141,103 @@ class PyxisTargetSelector {
         scrollbar-width: thin;
         scrollbar-color: var(--pyxis-gold-warm) transparent;
       }
-
-      .target-list::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      .target-list::-webkit-scrollbar-track {
-        background: rgba(0, 30, 53, 0.3);
-        border-radius: 4px;
-      }
-
+      .target-list::-webkit-scrollbar { width: 8px; }
+      .target-list::-webkit-scrollbar-track { background: rgba(0,30,53,0.3); border-radius: 4px; }
       .target-list::-webkit-scrollbar-thumb {
         background: linear-gradient(180deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm));
         border-radius: 4px;
       }
 
       .target-card {
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.9) 0%,
-          rgba(42, 52, 65, 0.8) 100%
-        );
+        background: linear-gradient(145deg, rgba(0,30,53,0.9) 0%, rgba(42,52,65,0.8) 100%);
         backdrop-filter: blur(10px);
         border: 1.5px solid var(--pyxis-border-subtle);
         border-radius: 16px;
         padding: 20px;
         cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
         position: relative;
         overflow: hidden;
         transform: translateY(0);
       }
-
       .target-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          var(--pyxis-gold-bright) 50%,
-          transparent 100%
-        );
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent 0%, var(--pyxis-gold-bright) 50%, transparent 100%);
         opacity: 0.3;
       }
-
       .target-card:hover:not(.disabled) {
         transform: translateY(-4px);
         border-color: var(--pyxis-gold-bright);
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.95) 0%,
-          rgba(42, 52, 65, 0.9) 100%
-        );
-        box-shadow:
-          0 12px 24px rgba(0, 0, 0, 0.3),
-          0 0 0 1px var(--pyxis-gold-bright),
-          0 0 20px rgba(220, 199, 162, 0.2);
+        background: linear-gradient(145deg, rgba(0,30,53,0.95) 0%, rgba(42,52,65,0.9) 100%);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--pyxis-gold-bright), 0 0 20px rgba(220,199,162,0.2);
       }
-
       .target-card.focused {
         border-color: var(--pyxis-gold-bright);
-        box-shadow:
-          0 8px 16px rgba(0, 0, 0, 0.2),
-          0 0 0 2px var(--pyxis-gold-bright),
-          0 0 20px rgba(220, 199, 162, 0.3);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), 0 0 20px rgba(220,199,162,0.3);
       }
-
       .target-card.selected {
-        border-color: var(--pyxis-gold-bright) !important;
-        background: linear-gradient(
-          145deg,
-          rgba(220, 199, 162, 0.15) 0%,
-          rgba(212, 183, 126, 0.1) 100%
-        ) !important;
-        box-shadow:
-          0 8px 16px rgba(0, 0, 0, 0.2),
-          0 0 0 2px var(--pyxis-gold-bright),
-          inset 0 0 20px rgba(220, 199, 162, 0.1) !important;
+        border-color: var(--pyxis-gold-bright)!important;
+        background: linear-gradient(145deg, rgba(220,199,162,0.15) 0%, rgba(212,183,126,0.1) 100%)!important;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), inset 0 0 20px rgba(220,199,162,0.1)!important;
       }
+      .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8); background: linear-gradient(145deg, rgba(42,52,65,.5) 0%, rgba(26,31,42,.6) 100%); }
+      .target-card.disabled:hover { transform: none!important; border-color: var(--pyxis-border-subtle)!important; box-shadow: none!important; }
 
-      .target-card.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-        filter: grayscale(0.8);
-        background: linear-gradient(
-          145deg,
-          rgba(42, 52, 65, 0.5) 0%,
-          rgba(26, 31, 42, 0.6) 100%
-        );
-      }
+      .target-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+      .target-avatar { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright)); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; color: var(--pyxis-deep-navy); border: 2px solid var(--pyxis-border-subtle); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
+      .target-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
-      .target-card.disabled:hover {
-        transform: none !important;
-        border-color: var(--pyxis-border-subtle) !important;
-        box-shadow: none !important;
-      }
+      .target-info { flex: 1; min-width: 0; }
+      .target-name { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600; color: var(--pyxis-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-      .target-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
+      .target-team { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
+      /* AB 표기용 뱃지 (phoenix/eaters 클래스도 역호환로 유지) */
+      .target-team.team-A, .target-team.phoenix  { background: rgba(199,62,29,0.2); color: #FF6B4A; border: 1px solid rgba(199,62,29,0.3); }
+      .target-team.team-B, .target-team.eaters   { background: rgba(45,90,39,0.2);  color: #66BB6A; border: 1px solid rgba(45,90,39,0.3); }
 
-      .target-avatar {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
-        background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        font-size: 18px;
-        color: var(--pyxis-deep-navy);
-        border: 2px solid var(--pyxis-border-subtle);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-      }
+      .target-hp { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      .target-hp-text { font-size: 14px; font-weight: 500; color: var(--pyxis-gold-warm); min-width: fit-content; }
+      .target-hp-bar-container { flex: 1; height: 8px; background: rgba(0,30,53,0.8); border-radius: 4px; border: 1px solid var(--pyxis-border-subtle); overflow: hidden; position: relative; }
+      .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative; background: linear-gradient(90deg, var(--pyxis-success-green) 0%, var(--pyxis-gold-warm) 50%, var(--pyxis-gold-bright) 100%); }
+      .target-hp-bar.low { background: linear-gradient(90deg, var(--pyxis-combat-red) 0%, var(--pyxis-warning-amber) 100%); }
+      .target-hp-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.3) 50%, transparent 100%); animation: shimmer 2s infinite; }
+      @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
-      .target-avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 8px;
-      }
+      .target-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px; color: rgba(220,199,162,.8); margin-bottom: 12px; }
+      .target-stat { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,30,53,.5); border-radius: 6px; border: 1px solid var(--pyxis-border-subtle); }
 
-      .target-info {
-        flex: 1;
-        min-width: 0;
-      }
+      .target-status { display: flex; gap: 6px; flex-wrap: wrap; }
+      .status-pill { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+      .status-pill.alive { background: rgba(45,90,39,.3); color: #66BB6A; border: 1px solid rgba(45,90,39,.5); }
+      .status-pill.dead  { background: rgba(199,62,29,.3); color: #FF6B4A; border: 1px solid rgba(199,62,29,.5); }
+      .status-pill.boosted { background: rgba(184,134,11,.3); color: var(--pyxis-warning-amber); border: 1px solid rgba(184,134,11,.5); }
 
-      .target-name {
-        font-family: 'Inter', sans-serif;
-        font-size: 18px;
-        font-weight: 600;
-        color: var(--pyxis-gold-bright);
-        margin-bottom: 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
+      .target-actions { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
+      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px; background: linear-gradient(145deg, rgba(0,30,53,.9) 0%, rgba(42,52,65,.8) 100%); color: var(--pyxis-gold-bright); font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1); text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
+      .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent 0%, rgba(220,199,162,.2) 50%, transparent 100%); transition: left .5s cubic-bezier(.4,0,.2,1); }
+      .btn:hover::before { left: 100%; }
+      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95) 0%, rgba(42,52,65,.9) 100%); box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
+      .btn.btn-gold { background: linear-gradient(145deg, var(--pyxis-gold-warm) 0%, var(--pyxis-gold-bright) 100%); color: var(--pyxis-deep-navy); border-color: var(--pyxis-gold-bright); }
+      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright) 0%, var(--pyxis-gold-warm) 100%); box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
+      .btn:disabled { opacity: .5; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
 
-      .target-team {
-        font-size: 12px;
-        font-weight: 500;
-        padding: 2px 8px;
-        border-radius: 8px;
-        display: inline-block;
-        margin-bottom: 8px;
-      }
+      .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px; background: linear-gradient(145deg, rgba(0,30,53,.5) 0%, rgba(42,52,65,.3) 100%); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
 
-      .target-team.phoenix {
-        background: rgba(199, 62, 29, 0.2);
-        color: #FF6B4A;
-        border: 1px solid rgba(199, 62, 29, 0.3);
-      }
+      .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7) 0%, rgba(42,52,65,.5) 100%); border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
+      .battle-mode { font-size: 14px; color: var(--pyxis-gold-warm); font-weight: 500; margin-bottom: 8px; }
+      .turn-info { font-size: 12px; color: rgba(220,199,162,.7); }
 
-      .target-team.eaters {
-        background: rgba(45, 90, 39, 0.2);
-        color: #66BB6A;
-        border: 1px solid rgba(45, 90, 39, 0.3);
-      }
-
-      .target-hp {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-
-      .target-hp-text {
-        font-size: 14px;
-        font-weight: 500;
-        color: var(--pyxis-gold-warm);
-        min-width: fit-content;
-      }
-
-      .target-hp-bar-container {
-        flex: 1;
-        height: 8px;
-        background: rgba(0, 30, 53, 0.8);
-        border-radius: 4px;
-        border: 1px solid var(--pyxis-border-subtle);
-        overflow: hidden;
-        position: relative;
-      }
-
-      .target-hp-bar {
-        height: 100%;
-        border-radius: 3px;
-        transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-        background: linear-gradient(90deg, 
-          var(--pyxis-success-green) 0%,
-          var(--pyxis-gold-warm) 50%,
-          var(--pyxis-gold-bright) 100%
-        );
-      }
-
-      .target-hp-bar.low {
-        background: linear-gradient(90deg, 
-          var(--pyxis-combat-red) 0%,
-          var(--pyxis-warning-amber) 100%
-        );
-      }
-
-      .target-hp-bar::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          rgba(255, 255, 255, 0.3) 50%,
-          transparent 100%
-        );
-        animation: shimmer 2s infinite;
-      }
-
-      @keyframes shimmer {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(100%); }
-      }
-
-      .target-stats {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-        font-size: 11px;
-        color: rgba(220, 199, 162, 0.8);
-        margin-bottom: 12px;
-      }
-
-      .target-stat {
-        display: flex;
-        justify-content: space-between;
-        padding: 4px 8px;
-        background: rgba(0, 30, 53, 0.5);
-        border-radius: 6px;
-        border: 1px solid var(--pyxis-border-subtle);
-      }
-
-      .target-status {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-
-      .status-pill {
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 10px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .status-pill.alive {
-        background: rgba(45, 90, 39, 0.3);
-        color: #66BB6A;
-        border: 1px solid rgba(45, 90, 39, 0.5);
-      }
-
-      .status-pill.dead {
-        background: rgba(199, 62, 29, 0.3);
-        color: #FF6B4A;
-        border: 1px solid rgba(199, 62, 29, 0.5);
-      }
-
-      .status-pill.boosted {
-        background: rgba(184, 134, 11, 0.3);
-        color: var(--pyxis-warning-amber);
-        border: 1px solid rgba(184, 134, 11, 0.5);
-      }
-
-      .target-actions {
-        display: flex;
-        gap: 12px;
-        justify-content: center;
-        align-items: center;
-        margin-top: 24px;
-      }
-
-      .btn {
-        padding: 12px 24px;
-        border: 2px solid var(--pyxis-border-subtle);
-        border-radius: 12px;
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.9) 0%,
-          rgba(42, 52, 65, 0.8) 100%
-        );
-        color: var(--pyxis-gold-bright);
-        font-family: 'Inter', sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        position: relative;
-        overflow: hidden;
-        min-width: 100px;
-      }
-
-      .btn::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          rgba(220, 199, 162, 0.2) 50%,
-          transparent 100%
-        );
-        transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      .btn:hover::before {
-        left: 100%;
-      }
-
-      .btn:hover:not(:disabled) {
-        border-color: var(--pyxis-gold-bright);
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.95) 0%,
-          rgba(42, 52, 65, 0.9) 100%
-        );
-        box-shadow:
-          0 8px 16px rgba(0, 0, 0, 0.2),
-          0 0 20px rgba(220, 199, 162, 0.2);
-        transform: translateY(-2px);
-      }
-
-      .btn.btn-gold {
-        background: linear-gradient(
-          145deg,
-          var(--pyxis-gold-warm) 0%,
-          var(--pyxis-gold-bright) 100%
-        );
-        color: var(--pyxis-deep-navy);
-        border-color: var(--pyxis-gold-bright);
-      }
-
-      .btn.btn-gold:hover:not(:disabled) {
-        background: linear-gradient(
-          145deg,
-          var(--pyxis-gold-bright) 0%,
-          var(--pyxis-gold-warm) 100%
-        );
-        box-shadow:
-          0 8px 16px rgba(0, 0, 0, 0.3),
-          0 0 20px rgba(220, 199, 162, 0.4);
-      }
-
-      .btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none !important;
-        box-shadow: none !important;
-      }
-
-      .no-targets {
-        text-align: center;
-        color: rgba(220, 199, 162, 0.6);
-        font-style: italic;
-        padding: 60px 20px;
-        font-size: 18px;
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.5) 0%,
-          rgba(42, 52, 65, 0.3) 100%
-        );
-        border: 2px dashed var(--pyxis-border-subtle);
-        border-radius: 16px;
-        margin: 20px 0;
-      }
-
-      .battle-info {
-        text-align: center;
-        margin-bottom: 20px;
-        padding: 16px;
-        background: linear-gradient(
-          145deg,
-          rgba(0, 30, 53, 0.7) 0%,
-          rgba(42, 52, 65, 0.5) 100%
-        );
-        border: 1px solid var(--pyxis-border-subtle);
-        border-radius: 12px;
-      }
-
-      .battle-mode {
-        font-size: 14px;
-        color: var(--pyxis-gold-warm);
-        font-weight: 500;
-        margin-bottom: 8px;
-      }
-
-      .turn-info {
-        font-size: 12px;
-        color: rgba(220, 199, 162, 0.7);
-      }
-
-      /* 모바일 최적화 */
       @media (max-width: 768px) {
-        .target-panel {
-          margin: 16px;
-          padding: 20px;
-          max-height: 90vh;
-        }
-
-        .target-list {
-          grid-template-columns: 1fr;
-          max-height: 50vh;
-        }
-
-        .target-card {
-          padding: 16px;
-        }
-
-        .target-title {
-          font-size: 24px;
-          margin-bottom: 16px;
-        }
-
-        .target-actions {
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .btn {
-          width: 100%;
-          min-width: unset;
-        }
+        .target-panel { margin: 16px; padding: 20px; max-height: 90vh; }
+        .target-list { grid-template-columns: 1fr; max-height: 50vh; }
+        .target-card { padding: 16px; }
+        .target-title { font-size: 24px; margin-bottom: 16px; }
+        .target-actions { flex-direction: column; gap: 8px; }
+        .btn { width: 100%; min-width: unset; }
       }
 
-      /* 접근성 */
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
-        }
-      }
-
-      /* 고대비 모드 */
-      @media (prefers-contrast: high) {
-        .target-card {
-          border-width: 3px;
-        }
-
-        .btn {
-          border-width: 3px;
-        }
-      }
+      @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms!important; animation-iteration-count: 1!important; transition-duration: .01ms!important; } }
+      @media (prefers-contrast: high) { .target-card { border-width: 3px; } .btn { border-width: 3px; } }
     `;
 
     document.head.appendChild(styleSheet);
@@ -695,9 +314,7 @@ class PyxisTargetSelector {
     }
     document.removeEventListener('keydown', this._onEscKey);
     document.removeEventListener('keydown', this._onKeyboardNav);
-    if (this.overlay) {
-      this.overlay.removeEventListener('click', this._onOverlayClick);
-    }
+    if (this.overlay) this.overlay.removeEventListener('click', this._onOverlayClick);
     this._listenersBound = false;
   }
 
@@ -750,16 +367,11 @@ class PyxisTargetSelector {
     targetCards.forEach((card, index) => {
       card.classList.toggle('focused', index === this._focusedIndex);
     });
-    targetCards[this._focusedIndex]?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest'
-    });
+    targetCards[this._focusedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   _onOverlayClick(e) {
-    if (e.target === this.overlay) {
-      this.hide();
-    }
+    if (e.target === this.overlay) this.hide();
   }
 
   show(title, targets, callback, battleData = null) {
@@ -770,12 +382,13 @@ class PyxisTargetSelector {
     this.selectedTargets = [];
     this._focusedIndex = 0;
 
-    // 배틀 정보 UI
+    // 배틀 정보 UI (A/B 표기)
     if (this.battleInfoEl && battleData) {
       this.battleInfoEl.style.display = '';
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
+      const ab = this._toAB(battleData.currentTeam);
       this.battleInfoEl.querySelector('.turn-info').textContent =
-        `턴 ${battleData.currentTurn || 1} • ${battleData.currentTeam === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자'} 차례`;
+        `턴 ${battleData.currentTurn || 1} • ${ab === '-' ? '' : `팀 ${ab} `}차례`.trim();
     } else if (this.battleInfoEl) {
       this.battleInfoEl.style.display = 'none';
     }
@@ -814,40 +427,37 @@ class PyxisTargetSelector {
     card.setAttribute('aria-selected', 'false');
     card.setAttribute('aria-label', `${target.name || `대상 ${index + 1}`} 선택`);
 
-    // 헤더
     const header = document.createElement('div');
     header.className = 'target-header';
 
-    // 아바타
     const avatar = document.createElement('div');
     avatar.className = 'target-avatar';
     if (target.avatar && this.options.showAvatar) {
       const img = document.createElement('img');
       img.src = target.avatar;
       img.alt = target.name || '플레이어';
-      img.onerror = () => {
-        avatar.innerHTML = (target.name || 'U').charAt(0).toUpperCase();
-      };
+      img.onerror = () => { avatar.innerHTML = (target.name || 'U').charAt(0).toUpperCase(); };
       avatar.appendChild(img);
     } else {
       avatar.textContent = (target.name || 'U').charAt(0).toUpperCase();
     }
 
-    // 정보
     const info = document.createElement('div');
     info.className = 'target-info';
 
-    // 이름
     const name = document.createElement('div');
     name.className = 'target-name';
     name.textContent = target.name || `대상 ${index + 1}`;
 
-    // 팀 정보
-    if (this.options.showTeam && target.team) {
-      const team = document.createElement('div');
-      team.className = `target-team ${target.team}`;
-      team.textContent = target.team === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자';
-      info.appendChild(team);
+    // 팀 뱃지: 항상 A/B 표기 (phoenix/eaters 수신도 정규화)
+    if (this.options.showTeam && (target.team || target.teamAB)) {
+      const ab = this._toAB(target.teamAB || target.team);
+      if (ab === 'A' || ab === 'B') {
+        const team = document.createElement('div');
+        team.className = `target-team team-${ab}`;
+        team.textContent = `팀 ${ab}`;
+        info.appendChild(team);
+      }
     }
 
     info.appendChild(name);
@@ -862,14 +472,16 @@ class PyxisTargetSelector {
 
       const hpText = document.createElement('div');
       hpText.className = 'target-hp-text';
-      hpText.textContent = `${Math.max(0, target.hp)}/${target.maxHp || 100}`;
+      const maxHp = target.maxHp || 100;
+      const hpVal = Math.max(0, target.hp);
+      hpText.textContent = `${hpVal}/${maxHp}`;
 
       const hpBarContainer = document.createElement('div');
       hpBarContainer.className = 'target-hp-bar-container';
 
       const hpBar = document.createElement('div');
       hpBar.className = 'target-hp-bar';
-      const hpPercent = Math.max(0, Math.min(100, (target.hp / (target.maxHp || 100)) * 100));
+      const hpPercent = Math.max(0, Math.min(100, (hpVal / maxHp) * 100));
       if (hpPercent <= 25) hpBar.classList.add('low');
       hpBar.style.width = `${hpPercent}%`;
 
@@ -879,7 +491,7 @@ class PyxisTargetSelector {
       card.appendChild(hpContainer);
     }
 
-    // 스탯
+    // 스탯(1~5 보장)
     if (this.options.showStats && target.stats) {
       const statsContainer = document.createElement('div');
       statsContainer.className = 'target-stats';
@@ -893,8 +505,9 @@ class PyxisTargetSelector {
       statNames.forEach(stat => {
         const statEl = document.createElement('div');
         statEl.className = 'target-stat';
-        const value = stats[stat.key] ?? stats[stat.alt] ?? 3;
-        statEl.innerHTML = `<span>${stat.label}</span><span>${value}</span>`;
+        const raw = stats[stat.key] ?? stats[stat.alt] ?? 3;
+        const v = Math.max(1, Math.min(5, raw|0));
+        statEl.innerHTML = `<span>${stat.label}</span><span>${v}</span>`;
         statsContainer.appendChild(statEl);
       });
       card.appendChild(statsContainer);
@@ -924,9 +537,7 @@ class PyxisTargetSelector {
         this.selectTarget(target, card);
       };
       card.addEventListener('click', selectHandler);
-      card.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') selectHandler(e);
-      });
+      card.addEventListener('keypress', (e) => { if (e.key === 'Enter' || e.key === ' ') selectHandler(e); });
       if (this.options.enableSoundEffects) {
         card.addEventListener('mouseenter', () => this.playSound('hover'));
       }
@@ -963,9 +574,7 @@ class PyxisTargetSelector {
       const count = this.selectedTargets.length;
       this.confirmBtn.disabled = count === 0;
       this.selectedCountEl.textContent = count;
-      if (count > 0) {
-        this.confirmBtn.setAttribute('aria-label', `${count}명의 대상 선택 확인`);
-      }
+      if (count > 0) this.confirmBtn.setAttribute('aria-label', `${count}명의 대상 선택 확인`);
     }
   }
 
@@ -993,9 +602,8 @@ class PyxisTargetSelector {
       this.callback = null;
       this.battleData = null;
       this._focusedIndex = 0;
-      if (document.activeElement && document.activeElement.blur) {
-        document.activeElement.blur();
-      }
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      this.overlay.style.opacity = ''; if (panel) panel.style.transform = '';
     }, 200);
   }
 
@@ -1027,9 +635,7 @@ class PyxisTargetSelector {
       }
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.3);
-    } catch (error) {
-      /* ignore */
-    }
+    } catch (_) {}
   }
 
   filterTargets(predicate) {
@@ -1047,38 +653,19 @@ class PyxisTargetSelector {
   }
 
   updateTarget(targetId, updates) {
-    const targetIndex = this.targets.findIndex(t =>
-      (t.id && t.id === targetId) || (t.name === targetId)
-    );
-    if (targetIndex > -1) {
-      this.targets[targetIndex] = { ...this.targets[targetIndex], ...updates };
-      this.renderTargets();
-    }
+    const i = this.targets.findIndex(t => (t.id && t.id === targetId) || (t.name === targetId));
+    if (i > -1) { this.targets[i] = { ...this.targets[i], ...updates }; this.renderTargets(); }
   }
 
-  addTarget(target) {
-    this.targets.push(target);
-    this.renderTargets();
-  }
-
+  addTarget(target) { this.targets.push(target); this.renderTargets(); }
   removeTarget(targetId) {
-    this.targets = this.targets.filter(t =>
-      (t.id && t.id !== targetId) && (t.name !== targetId)
-    );
-    this.selectedTargets = this.selectedTargets.filter(t =>
-      (t.id && t.id !== targetId) && (t.name !== targetId)
-    );
-    this.renderTargets();
-    this.updateConfirmButton();
+    this.targets = this.targets.filter(t => (t.id && t.id !== targetId) && (t.name !== targetId));
+    this.selectedTargets = this.selectedTargets.filter(t => (t.id && t.id !== targetId) && (t.name !== targetId));
+    this.renderTargets(); this.updateConfirmButton();
   }
 
-  isShown() {
-    return this.isVisible;
-  }
-
-  getSelectedTargets() {
-    return [...this.selectedTargets];
-  }
+  isShown() { return this.isVisible; }
+  getSelectedTargets() { return [...this.selectedTargets]; }
 
   clearSelection() {
     this.selectedTargets = [];
@@ -1106,16 +693,15 @@ class PyxisTargetSelector {
     if (this.battleInfoEl && this.isVisible) {
       this.battleInfoEl.style.display = '';
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
+      const ab = this._toAB(battleData.currentTeam);
       this.battleInfoEl.querySelector('.turn-info').textContent =
-        `턴 ${battleData.currentTurn || 1} • ${battleData.currentTeam === 'phoenix' ? '불사조 기사단' : '죽음을 먹는 자'} 차례`;
+        `턴 ${battleData.currentTurn || 1} • ${ab === '-' ? '' : `팀 ${ab} `}차례`.trim();
     }
   }
 
   setTheme(theme) {
     this.options.theme = theme;
-    if (this.overlay) {
-      this.overlay.className = `target-overlay theme-${theme}`;
-    }
+    if (this.overlay) this.overlay.className = `target-overlay theme-${theme}`;
   }
 
   setCustomStyles(styles) {
@@ -1123,11 +709,8 @@ class PyxisTargetSelector {
     Object.entries(styles).forEach(([selector, cssText]) => {
       const elements = this.overlay?.querySelectorAll(selector) || [];
       elements.forEach(el => {
-        if (typeof cssText === 'string') {
-          el.style.cssText += cssText;
-        } else if (typeof cssText === 'object') {
-          Object.assign(el.style, cssText);
-        }
+        if (typeof cssText === 'string') el.style.cssText += cssText;
+        else if (typeof cssText === 'object') Object.assign(el.style, cssText);
       });
     });
   }
@@ -1137,23 +720,14 @@ class PyxisTargetSelector {
     if (this.overlay) {
       this.overlay.style.transition = enabled ? '' : 'none';
       const panel = this.overlay.querySelector('.target-panel');
-      if (panel) {
-        panel.style.transition = enabled ? '' : 'none';
-      }
+      if (panel) panel.style.transition = enabled ? '' : 'none';
     }
   }
 
-  toggleSoundEffects(enabled) {
-    this.options.enableSoundEffects = enabled;
-  }
+  toggleSoundEffects(enabled) { this.options.enableSoundEffects = enabled; }
 
   addKeyboardShortcut(key, callback) {
-    const handler = (e) => {
-      if (this.isVisible && e.key === key) {
-        e.preventDefault();
-        callback(e);
-      }
-    };
+    const handler = (e) => { if (this.isVisible && e.key === key) { e.preventDefault(); callback(e); } };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }
@@ -1164,7 +738,7 @@ class PyxisTargetSelector {
       selectedTargets: this.selectedTargets.length,
       aliveTargets: this.targets.filter(t => t.alive !== false && t.hp > 0).length,
       deadTargets: this.targets.filter(t => t.alive === false || t.hp <= 0).length,
-      averageHp: this.targets.reduce((sum, t) => sum + (t.hp || 0), 0) / this.targets.length || 0
+      averageHp: this.targets.length ? this.targets.reduce((sum, t) => sum + (t.hp || 0), 0) / this.targets.length : 0
     };
   }
 
@@ -1172,40 +746,25 @@ class PyxisTargetSelector {
     const announcement = document.createElement('div');
     announcement.setAttribute('aria-live', 'polite');
     announcement.setAttribute('aria-atomic', 'true');
-    announcement.style.cssText = `
-      position: absolute;
-      left: -10000px;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-    `;
+    announcement.style.cssText = 'position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden;';
     announcement.textContent = message;
     document.body.appendChild(announcement);
-    setTimeout(() => {
-      document.body.removeChild(announcement);
-    }, 1000);
+    setTimeout(() => { document.body.removeChild(announcement); }, 1000);
   }
 
   destroy() {
     this.teardownEventListeners();
-    if (this.overlay && this.overlay.parentNode) {
-      this.overlay.parentNode.removeChild(this.overlay);
-    }
+    if (this.overlay && this.overlay.parentNode) this.overlay.parentNode.removeChild(this.overlay);
     const styleSheet = document.getElementById('pyxis-target-selector-enhanced-styles');
     if (styleSheet) styleSheet.remove();
-    this.targets = [];
-    this.selectedTargets = [];
-    this.callback = null;
-    this.battleData = null;
-    this.isVisible = false;
-    this._focusedIndex = 0;
+    this.targets = []; this.selectedTargets = []; this.callback = null; this.battleData = null; this.isVisible = false; this._focusedIndex = 0;
   }
 }
 
-/* 전역 바인딩 및 호환 래퍼 */
+/* 전역 바인딩 */
 window.PyxisTargetSelector = PyxisTargetSelector;
 
-/* 싱글톤 인스턴스 */
+/* 싱글톤 */
 window.PyxisTarget = new PyxisTargetSelector({
   enableAnimations: true,
   enableSoundEffects: false,
@@ -1229,24 +788,28 @@ window.PYXISTargetSelector = {
       );
       window.PyxisTarget.show(title, normalized, (selected) => {
         if (!onPick) return;
-        if (Array.isArray(selected)) {
-          onPick(selected.map(t => t.id || t.name));
-        } else {
-          onPick(selected.id || selected.name);
-        }
+        if (Array.isArray(selected)) onPick(selected.map(t => t.id || t.name));
+        else onPick(selected.id || selected.name);
       }, battleData);
     } catch (e) {
       console.error('PYXISTargetSelector.open 에러:', e);
     }
   },
-  close() {
-    try { window.PyxisTarget.hide(); } catch (_) {}
-  }
+  close() { try { window.PyxisTarget.hide(); } catch (_) {} }
 };
 
-/* 유틸리티 */
+/* 유틸리티: A/B·phoenix/eaters 모두 허용 */
 window.PyxisTargetUtils = window.PyxisTargetUtils || {
-  filterByTeam: (targets, team) => targets.filter(target => target.team === team),
+  _toAB(team) {
+    const s = String(team || '').toLowerCase();
+    if (s === 'phoenix' || s === 'a' || s === 'team_a' || s === 'team-a') return 'A';
+    if (s === 'eaters'  || s === 'b' || s === 'death'  || s === 'team_b' || s === 'team-b') return 'B';
+    return '-';
+  },
+  filterByTeam: (targets, team) => {
+    const ab = window.PyxisTargetUtils._toAB(team);
+    return targets.filter(t => window.PyxisTargetUtils._toAB(t.team || t.teamAB) === ab);
+  },
   filterAlive: (targets) => targets.filter(target => target.alive !== false && target.hp > 0),
   sortByHp: (targets, ascending = true) => [...targets].sort((a, b) => {
     const hpA = a.hp || 0, hpB = b.hp || 0;
@@ -1258,20 +821,25 @@ window.PyxisTargetUtils = window.PyxisTargetUtils || {
     return ascending ? statsA - statsB : statsB - statsA;
   }),
   isValidTarget: (target) => target && target.alive !== false && target.hp > 0,
-  normalizeTarget: (target) => ({
-    id: target.id || target.name || Math.random().toString(36),
-    name: target.name || '무명의 전사',
-    team: target.team || 'phoenix',
-    hp: Math.max(0, target.hp || 100),
-    maxHp: target.maxHp || 100,
-    stats: {
-      attack:  Math.max(1, Math.min(5, target.stats?.attack  ?? target.stats?.atk  ?? 3)),
-      defense: Math.max(1, Math.min(5, target.stats?.defense ?? target.stats?.def  ?? 3)),
-      agility: Math.max(1, Math.min(5, target.stats?.agility ?? target.stats?.agi  ?? 3)),
-      luck:    Math.max(1, Math.min(5, target.stats?.luck    ?? target.stats?.luk  ?? 3))
-    },
-    alive: target.alive !== false && (target.hp ?? 100) > 0,
-    avatar: target.avatar || null,
-    effects: target.effects || []
-  })
+  normalizeTarget: (target) => {
+    const clamp5 = (v) => Math.max(1, Math.min(5, v|0));
+    const maxHp = target.maxHp || 100;
+    const hp = Math.max(0, target.hp ?? 100);
+    return {
+      id: target.id || target.name || Math.random().toString(36),
+      name: target.name || '무명의 전사',
+      team: target.team || target.teamAB || 'phoenix', // 원본 유지(표시는 AB로 변환)
+      teamAB: window.PyxisTargetUtils._toAB(target.team || target.teamAB),
+      hp, maxHp,
+      stats: {
+        attack:  clamp5(target.stats?.attack  ?? target.stats?.atk  ?? 3),
+        defense: clamp5(target.stats?.defense ?? target.stats?.def  ?? 3),
+        agility: clamp5(target.stats?.agility ?? target.stats?.agi  ?? 3),
+        luck:    clamp5(target.stats?.luck    ?? target.stats?.luk  ?? 3)
+      },
+      alive: target.alive !== false && hp > 0,
+      avatar: target.avatar || null,
+      effects: target.effects || []
+    };
+  }
 };
