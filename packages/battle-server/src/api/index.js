@@ -1,26 +1,19 @@
-const express = require('express');
-const router = express.Router();
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const rateLimit = require('express-rate-limit');
-
-const battleHandlers = require('../socket/battle-handlers');
-const { cleanupOTPsForBattle } = require('../utils/battleCleanup');
-
-const {
-  createBattle,
-  getBattle,
-  addPlayerToBattle,
-  listBattles,          // 선택: battle-handlers가 제공하면 사용
-  removePlayerFromBattle, // 선택
-  deleteBattle          // 선택
-} = battleHandlers || {};
-
-// ─────────────────────────────────────────────
-// PYXIS API Routes - Enhanced Design Version
+// packages/battle-server/src/api/index.js
+// PYXIS API Routes - ESM Enhanced Design Version
 // 강화된 에러 처리, 보안, 로깅, 검증
-// ─────────────────────────────────────────────
+// 용어: 전투참여자(Player), 비밀번호(OTP), A팀/B팀 분류
+
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import rateLimit from 'express-rate-limit';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const router = express.Router();
 
 // 로깅 헬퍼
 function logWithTimestamp(message, level = 'INFO', data = null) {
@@ -154,11 +147,48 @@ router.post('/battles', battleCreationLimit, (req, res) => {
       ...options,
     };
 
-    if (typeof createBattle !== 'function') {
-      throw new Error('서버 전투 핸들러가 초기화되지 않았습니다(createBattle 미정의).');
-    }
+    // 전투 생성 함수 호출 (index.js에서 정의됨)
+    const battles = req.app.get('battles');
+    const generateId = () => 'battle_' + Math.random().toString(36).slice(2, 10);
+    const generatePassword = (length = 8) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    };
 
-    const { battleId, adminOtp } = createBattle(battleMode, battleOptions);
+    const battleId = generateId();
+    const adminPassword = generatePassword(8);
+
+    // 전투 상태 생성
+    const battle = {
+      id: battleId,
+      mode: battleMode,
+      status: 'waiting',
+      createdAt: Date.now(),
+      startedAt: null,
+      endedAt: null,
+      players: [],
+      currentTurn: 0,
+      currentPlayer: null,
+      leadingTeam: null,
+      effects: [],
+      logs: [],
+      options: battleOptions
+    };
+
+    battles.set(battleId, battle);
+
+    // 비밀번호 저장
+    const passwordStore = req.app.get('passwordStore');
+    passwordStore.set(`admin_${battleId}`, {
+      password: adminPassword,
+      battleId,
+      role: 'admin',
+      expires: Date.now() + 30 * 60 * 1000 // 30분
+    });
 
     logWithTimestamp('전투 생성 성공', 'INFO', { battleId, mode: battleMode });
 
@@ -166,11 +196,11 @@ router.post('/battles', battleCreationLimit, (req, res) => {
       res,
       {
         battleId,
-        adminOtp,
+        adminPassword,
         mode: battleMode,
         options: battleOptions,
         urls: {
-          admin: `/admin?battle=${battleId}&otp=${adminOtp}`,
+          admin: `/admin?battle=${battleId}&password=${adminPassword}`,
           status: `/api/battles/${battleId}`,
         },
       },
@@ -183,7 +213,7 @@ router.post('/battles', battleCreationLimit, (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// 플레이어 추가 API
+// 전투참여자 추가 API
 // POST /api/battles/:battleId/players
 // ─────────────────────────────────────────────
 
@@ -192,40 +222,66 @@ router.post('/battles/:battleId/players', generalLimit, (req, res) => {
     const { battleId } = req.params;
     const playerData = req.body;
 
-    logWithTimestamp('플레이어 추가 요청', 'INFO', {
+    logWithTimestamp('전투참여자 추가 요청', 'INFO', {
       battleId,
       playerName: playerData?.name,
     });
 
     validateRequired(playerData, ['name', 'team']);
 
-    const battle = getBattle?.(battleId);
+    const battles = req.app.get('battles');
+    const battle = battles.get(battleId);
     if (!battle) throw new Error('전투를 찾을 수 없습니다');
 
     const sanitizedData = {
       name: sanitizeString(playerData.name, 20),
-      team: sanitizeString(playerData.team, 10),
+      team: playerData.team === 'B' ? 'B' : 'A', // A팀 또는 B팀
       stats: validatePlayerStats(playerData.stats),
       items: validatePlayerItems(playerData.items),
       avatar: playerData.avatar ? sanitizeString(playerData.avatar, 200) : null,
     };
 
-    // 이름 중복
-    const snapshot = battle.getSnapshot?.() || battle.getBattleState?.() || {};
-    const existingNames = (snapshot.players || []).map((p) =>
-      (p.name || '').toLowerCase()
-    );
+    // 이름 중복 체크
+    const existingNames = battle.players.map(p => (p.name || '').toLowerCase());
     if (existingNames.includes(sanitizedData.name.toLowerCase())) {
-      throw new Error('이미 같은 이름의 플레이어가 존재합니다');
+      throw new Error('이미 같은 이름의 전투참여자가 존재합니다');
     }
 
-    if (typeof addPlayerToBattle !== 'function') {
-      throw new Error('플레이어 추가 기능이 비활성화되어 있습니다(addPlayerToBattle 미정의).');
+    // 최대 인원 체크
+    const maxPlayers = parseInt(battle.mode.charAt(0)) * 2;
+    if (battle.players.length >= maxPlayers) {
+      throw new Error('전투가 가득 찼습니다');
     }
 
-    const player = addPlayerToBattle(battleId, sanitizedData);
+    // 전투참여자 생성
+    const player = {
+      id: `player_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: sanitizedData.name,
+      team: sanitizedData.team,
+      hp: 100,
+      maxHp: 100,
+      stats: sanitizedData.stats,
+      items: sanitizedData.items,
+      avatar: sanitizedData.avatar,
+      status: 'ready',
+      lastAction: null,
+      joinedAt: Date.now()
+    };
 
-    logWithTimestamp('플레이어 추가 성공', 'INFO', {
+    battle.players.push(player);
+
+    // 전투참여자용 비밀번호 생성
+    const passwordStore = req.app.get('passwordStore');
+    const playerPassword = Math.random().toString(36).slice(2, 8).toUpperCase();
+    passwordStore.set(`player_${battleId}_${player.id}`, {
+      password: playerPassword,
+      battleId,
+      playerId: player.id,
+      role: 'player',
+      expires: Date.now() + 2 * 60 * 60 * 1000 // 2시간
+    });
+
+    logWithTimestamp('전투참여자 추가 성공', 'INFO', {
       battleId,
       playerId: player.id,
       playerName: player.name,
@@ -238,23 +294,23 @@ router.post('/battles/:battleId/players', generalLimit, (req, res) => {
           id: player.id,
           name: player.name,
           team: player.team,
-          token: player.token,
+          password: playerPassword,
           stats: player.stats,
           items: player.items,
-          url: `/play?battle=${battleId}&token=${player.token}&name=${encodeURIComponent(
+          url: `/player?battle=${battleId}&token=${playerPassword}&name=${encodeURIComponent(
             player.name
           )}`,
         },
       },
-      '플레이어가 성공적으로 추가되었습니다'
+      '전투참여자가 성공적으로 추가되었습니다'
     );
   } catch (err) {
-    logWithTimestamp('플레이어 추가 실패', 'ERROR', err);
+    logWithTimestamp('전투참여자 추가 실패', 'ERROR', err);
     sendError(res, 400, err);
   }
 });
 
-// 플레이어 스탯 검증 (1-5, 총합 제한 없음)
+// 전투참여자 스탯 검증 (1-5 범위, 총합 제한 없음)
 function validatePlayerStats(stats) {
   if (!stats || typeof stats !== 'object') {
     return { attack: 3, defense: 3, agility: 3, luck: 3 };
@@ -270,15 +326,15 @@ function validatePlayerStats(stats) {
   return { attack, defense, agility, luck };
 }
 
-// 아이템 검증 (엔진은 0~9 허용, API는 합리적 상한 제공)
+// 아이템 검증 (0~5 범위)
 function validatePlayerItems(items) {
   if (!items || typeof items !== 'object') {
-    return { dittany: 1, attackBoost: 1, defenseBoost: 1 };
+    return { dittany: 1, attack_boost: 1, defense_boost: 1 };
   }
   const cfg = {
-    dittany: { min: 0, max: 9, def: 1 },
-    attackBoost: { min: 0, max: 9, def: 1 },
-    defenseBoost: { min: 0, max: 9, def: 1 },
+    dittany: { min: 0, max: 5, def: 1 },
+    attack_boost: { min: 0, max: 5, def: 1 },
+    defense_boost: { min: 0, max: 5, def: 1 },
   };
   const out = {};
   for (const k of Object.keys(cfg)) {
@@ -293,14 +349,14 @@ function validatePlayerItems(items) {
 }
 
 // ─────────────────────────────────────────────
-// OTP 발급 API
-// POST /api/otp
+// 비밀번호 발급 API
+// POST /api/password
 // ─────────────────────────────────────────────
 
-router.post('/otp', generalLimit, (req, res) => {
+router.post('/password', generalLimit, (req, res) => {
   try {
     const { role, battleId, playerId } = req.body;
-    logWithTimestamp('OTP 발급 요청', 'INFO', {
+    logWithTimestamp('비밀번호 발급 요청', 'INFO', {
       role,
       battleId,
       playerId: playerId ? '***' : null,
@@ -308,88 +364,93 @@ router.post('/otp', generalLimit, (req, res) => {
 
     validateRequired({ role, battleId }, ['role', 'battleId']);
 
-    // 우선 Express app에 주입된 OTPManager 사용 (있을 경우)
-    const otpMgr = req.app.get && req.app.get('otp');
-
-    if (otpMgr) {
-      let otpCode, url, ttlMs;
-      if (role === 'admin') {
-        otpCode = otpMgr.generateOTP('admin', { battleId }, { ttl: 60 * 60 * 1000, ip: req.ip });
-        url = `/admin?battle=${battleId}&otp=${otpCode}`;
-        ttlMs = 60 * 60 * 1000;
-      } else if (role === 'spectator') {
-        otpCode = otpMgr.generateOTP('spectator', { battleId }, { ttl: 30 * 60 * 1000, ip: req.ip });
-        url = `/spectator?battle=${battleId}&token=${otpCode}`;
-        ttlMs = 30 * 60 * 1000;
-      } else if (role === 'player') {
-        validateRequired({ playerId }, ['playerId']);
-        otpCode = otpMgr.generateOTP('player', { battleId, playerId }, { ttl: 30 * 60 * 1000, ip: req.ip });
-        url = `/play?battle=${battleId}&token=${otpCode}`;
-        ttlMs = 30 * 60 * 1000;
-      } else {
-        throw new Error('지원되지 않는 역할입니다. 사용 가능한 역할: admin, player, spectator');
-      }
-
-      logWithTimestamp('OTP 발급 성공(OTPManager)', 'INFO', { role, battleId });
-      return sendSuccess(
-        res,
-        { otp: otpCode, url, role, expiresIn: ttlMs },
-        `${role} OTP가 성공적으로 발급되었습니다`
-      );
-    }
-
-    // Fallback: 기존 battle-handlers 기반 (필요 시)
-    const battle = getBattle?.(battleId);
+    const battles = req.app.get('battles');
+    const battle = battles.get(battleId);
     if (!battle) throw new Error('전투를 찾을 수 없습니다');
 
-    const snapshot = battle.getSnapshot?.() || battle.getBattleState?.() || {};
-    let otp, url, expiresIn;
+    const passwordStore = req.app.get('passwordStore');
+    const generatePassword = (length = 6) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    };
+
+    let password, url, expiresIn;
 
     switch (role) {
       case 'admin': {
-        otp = battle.adminOtp || snapshot.adminOtp;
-        url = `/admin?battle=${battleId}&otp=${otp}`;
-        expiresIn = null;
+        const existing = passwordStore.get(`admin_${battleId}`);
+        if (existing && existing.expires > Date.now()) {
+          password = existing.password;
+        } else {
+          password = generatePassword(8);
+          passwordStore.set(`admin_${battleId}`, {
+            password,
+            battleId,
+            role: 'admin',
+            expires: Date.now() + 60 * 60 * 1000 // 1시간
+          });
+        }
+        url = `/admin?battle=${battleId}&password=${password}`;
+        expiresIn = 60 * 60 * 1000;
         break;
       }
       case 'spectator': {
-        const spectatorOtp = battle.spectatorOtp || snapshot.spectatorOtp;
-        if (!spectatorOtp) throw new Error('관전자 OTP를 생성할 수 없습니다');
-        otp = spectatorOtp;
-        url = `/spectator?battle=${battleId}&otp=${otp}`;
+        password = generatePassword(6);
+        passwordStore.set(`spectator_${battleId}_${Date.now()}`, {
+          password,
+          battleId,
+          role: 'spectator',
+          expires: Date.now() + 30 * 60 * 1000 // 30분
+        });
+        url = `/watch?battle=${battleId}&token=${password}`;
         expiresIn = 30 * 60 * 1000;
         break;
       }
       case 'player': {
         validateRequired({ playerId }, ['playerId']);
-        const player = battle.getPlayer?.(playerId);
-        if (!player) throw new Error('플레이어를 찾을 수 없습니다');
-        otp = player.token;
-        url = `/play?battle=${battleId}&token=${otp}&name=${encodeURIComponent(
-          player.name
-        )}`;
-        expiresIn = 2 * 60 * 1000 * 60;
+        const player = battle.players.find(p => p.id === playerId);
+        if (!player) throw new Error('전투참여자를 찾을 수 없습니다');
+        
+        const existing = passwordStore.get(`player_${battleId}_${playerId}`);
+        if (existing && existing.expires > Date.now()) {
+          password = existing.password;
+        } else {
+          password = generatePassword(6);
+          passwordStore.set(`player_${battleId}_${playerId}`, {
+            password,
+            battleId,
+            playerId,
+            role: 'player',
+            expires: Date.now() + 2 * 60 * 60 * 1000 // 2시간
+          });
+        }
+        url = `/player?battle=${battleId}&token=${password}&name=${encodeURIComponent(player.name)}`;
+        expiresIn = 2 * 60 * 60 * 1000;
         break;
       }
       default:
         throw new Error('지원되지 않는 역할입니다. 사용 가능한 역할: admin, player, spectator');
     }
 
-    logWithTimestamp('OTP 발급 성공(fallback)', 'INFO', { role, battleId });
+    logWithTimestamp('비밀번호 발급 성공', 'INFO', { role, battleId });
 
     sendSuccess(
       res,
       {
-        otp,
+        password,
         url,
         role,
         expiresIn,
         qrCode: generateQRCodeUrl(url),
       },
-      `${role} OTP가 성공적으로 발급되었습니다`
+      `${role} 비밀번호가 성공적으로 발급되었습니다`
     );
   } catch (err) {
-    logWithTimestamp('OTP 발급 실패', 'ERROR', err);
+    logWithTimestamp('비밀번호 발급 실패', 'ERROR', err);
     sendError(res, 400, err);
   }
 });
@@ -467,16 +528,17 @@ router.post('/battles/:battleId/avatar', uploadLimit, upload.single('avatar'), (
     if (!req.file) throw new Error('업로드된 파일이 없습니다');
     validateRequired({ playerId }, ['playerId']);
 
-    const battle = getBattle?.(battleId);
+    const battles = req.app.get('battles');
+    const battle = battles.get(battleId);
     if (!battle) {
       fs.unlink(req.file.path, () => {});
       throw new Error('전투를 찾을 수 없습니다');
     }
 
-    const player = battle.getPlayer?.(playerId);
+    const player = battle.players.find(p => p.id === playerId);
     if (!player) {
       fs.unlink(req.file.path, () => {});
-      throw new Error('플레이어를 찾을 수 없습니다');
+      throw new Error('전투참여자를 찾을 수 없습니다');
     }
 
     // 기존 파일 삭제 (서버 내부 파일만)
@@ -519,36 +581,50 @@ router.get('/battles/:battleId', generalLimit, (req, res) => {
 
     logWithTimestamp('전투 상태 조회', 'INFO', { battleId, detailed });
 
-    const battle = getBattle?.(battleId);
+    const battles = req.app.get('battles');
+    const battle = battles.get(battleId);
     if (!battle) throw new Error('전투를 찾을 수 없습니다');
 
-    const snapshot = battle.getSnapshot?.() || battle.getBattleState?.() || {};
     const baseData = {
       id: battleId,
-      mode: snapshot.options?.mode || battle.mode || 'unknown',
-      status: snapshot.status || battle.status || 'unknown',
-      playerCount: (snapshot.players || []).length,
-      spectatorCount: snapshot.spectatorCount || 0,
-      createdAt: snapshot.created || battle.created || null,
-      startedAt: snapshot.battleStartTime || battle.started || null,
-      endedAt: snapshot.battleEndTime || battle.ended || null,
-      currentTurn: snapshot.currentTurn,
-      currentTeam: snapshot.currentTeam,
+      mode: battle.mode || 'unknown',
+      status: battle.status || 'unknown',
+      playerCount: battle.players.length,
+      spectatorCount: 0, // 추후 구현
+      createdAt: battle.createdAt,
+      startedAt: battle.startedAt,
+      endedAt: battle.endedAt,
+      currentTurn: battle.currentTurn,
+      currentPlayer: battle.currentPlayer,
     };
 
     if (String(detailed) === 'true') {
+      const teamAHp = battle.players
+        .filter(p => p.team === 'A')
+        .reduce((sum, p) => sum + p.hp, 0);
+      const teamBHp = battle.players
+        .filter(p => p.team === 'B')
+        .reduce((sum, p) => sum + p.hp, 0);
+
       sendSuccess(res, {
         ...baseData,
-        state: snapshot,
+        players: battle.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          team: p.team,
+          hp: p.hp,
+          maxHp: p.maxHp,
+          stats: p.stats,
+          items: p.items,
+          status: p.status
+        })),
         statistics: {
-          totalTurns: snapshot.currentTurn || 0,
-          totalActions: snapshot.stats?.totalActions || 0,
-          criticalHits: snapshot.stats?.criticalHits || 0,
-          totalDamage: snapshot.stats?.totalDamage || 0,
-          totalHealing: snapshot.stats?.totalHealing || 0,
-          battleDuration: snapshot.battleEndTime
-            ? snapshot.battleEndTime - (snapshot.battleStartTime || snapshot.created || Date.now())
-            : Date.now() - (snapshot.battleStartTime || snapshot.created || Date.now()),
+          totalTurns: battle.currentTurn || 0,
+          teamAHp,
+          teamBHp,
+          battleDuration: battle.startedAt 
+            ? (battle.endedAt || Date.now()) - battle.startedAt
+            : 0,
         },
       });
     } else {
@@ -557,168 +633,6 @@ router.get('/battles/:battleId', generalLimit, (req, res) => {
   } catch (err) {
     logWithTimestamp('전투 상태 조회 실패', 'ERROR', err);
     sendError(res, 404, err);
-  }
-});
-
-// ─────────────────────────────────────────────
-// 전투 목록 조회 API
-// GET /api/battles
-// ─────────────────────────────────────────────
-
-router.get('/battles', generalLimit, (req, res) => {
-  try {
-    const {
-      status,
-      mode,
-      limit = 20,
-      offset = 0,
-      sortBy = 'created',
-      sortOrder = 'desc',
-    } = req.query;
-
-    logWithTimestamp('전투 목록 조회', 'INFO', {
-      status,
-      mode,
-      limit,
-      offset,
-    });
-
-    let allBattles = [];
-    if (typeof listBattles === 'function') {
-      allBattles = listBattles();
-    } else {
-      // 핸들러가 제공되지 않으면 빈 배열로 응답
-      allBattles = [];
-    }
-
-    const normalized = allBattles.map((b) => {
-      const snap = b.getSnapshot?.() || b.getBattleState?.() || {};
-      return {
-        id: b.id || snap.battleId,
-        mode: snap.options?.mode || b.mode || 'unknown',
-        status: snap.status || b.status || 'unknown',
-        created: snap.created || b.created || null,
-        playerCount: (snap.players || []).length,
-      };
-    });
-
-    const filtered = normalized
-      .filter((b) => (!status ? true : b.status === status))
-      .filter((b) => (!mode ? true : b.mode === mode))
-      .sort((a, b) => {
-        const aVal = a[sortBy];
-        const bVal = b[sortBy];
-        return sortOrder === 'desc' ? (bVal > aVal ? 1 : -1) : aVal > bVal ? 1 : -1;
-      });
-
-    const off = parseInt(offset, 10);
-    const lim = parseInt(limit, 10);
-    const page = filtered.slice(off, off + lim);
-
-    sendSuccess(res, {
-      battles: page,
-      pagination: {
-        total: filtered.length,
-        limit: lim,
-        offset: off,
-        hasMore: off + lim < filtered.length,
-      },
-    });
-  } catch (err) {
-    logWithTimestamp('전투 목록 조회 실패', 'ERROR', err);
-    sendError(res, 500, err);
-  }
-});
-
-// ─────────────────────────────────────────────
-// 플레이어 삭제 API
-// DELETE /api/battles/:battleId/players/:playerId
-// ─────────────────────────────────────────────
-
-router.delete('/battles/:battleId/players/:playerId', generalLimit, (req, res) => {
-  try {
-    const { battleId, playerId } = req.params;
-    logWithTimestamp('플레이어 삭제 요청', 'INFO', { battleId, playerId });
-
-    const battle = getBattle?.(battleId);
-    if (!battle) throw new Error('전투를 찾을 수 없습니다');
-
-    const snapshot = battle.getSnapshot?.() || battle.getBattleState?.() || {};
-    const status = snapshot.status || battle.status;
-    if (['active', 'ongoing'].includes(status)) {
-      throw new Error('진행 중인 전투에서는 플레이어를 삭제할 수 없습니다');
-    }
-
-    const player = battle.getPlayer?.(playerId);
-    if (!player) throw new Error('플레이어를 찾을 수 없습니다');
-
-    if (player.avatar && player.avatar.startsWith('/uploads/')) {
-      const filePath = path.join(uploadDir, path.basename(player.avatar));
-      fs.unlink(filePath, () => {});
-    }
-
-    if (typeof removePlayerFromBattle === 'function') {
-      removePlayerFromBattle(battleId, playerId);
-    } else if (typeof battle.removePlayer === 'function') {
-      battle.removePlayer(playerId);
-    } else {
-      throw new Error('플레이어 삭제 기능이 비활성화되어 있습니다');
-    }
-
-    logWithTimestamp('플레이어 삭제 성공', 'INFO', { battleId, playerId });
-    sendSuccess(res, {}, '플레이어가 성공적으로 삭제되었습니다');
-  } catch (err) {
-    logWithTimestamp('플레이어 삭제 실패', 'ERROR', err);
-    sendError(res, 400, err);
-  }
-});
-
-// ─────────────────────────────────────────────
-// 전투 삭제 API (OTP 일괄 폐기 포함)
-// DELETE /api/battles/:battleId
-// ─────────────────────────────────────────────
-
-router.delete('/battles/:battleId', generalLimit, (req, res) => {
-  try {
-    const { battleId } = req.params;
-    const { adminOtp } = req.body;
-
-    logWithTimestamp('전투 삭제 요청', 'INFO', { battleId });
-
-    const battle = getBattle?.(battleId);
-    if (!battle) throw new Error('전투를 찾을 수 없습니다');
-
-    const otp = battle.adminOtp || (battle.getSnapshot?.() || {}).adminOtp;
-    if (!adminOtp || adminOtp !== otp) {
-      throw new Error('관리자 권한이 필요합니다');
-    }
-
-    // 플레이어 아바타 파일 정리
-    const snap = battle.getSnapshot?.() || battle.getBattleState?.() || {};
-    (snap.players || []).forEach((p) => {
-      if (p.avatar && p.avatar.startsWith('/uploads/')) {
-        const filePath = path.join(uploadDir, path.basename(p.avatar));
-        fs.unlink(filePath, () => {});
-      }
-    });
-
-    // ★ 배틀의 OTP 전부 폐기
-    const r = cleanupOTPsForBattle(req.app, battleId);
-    logWithTimestamp('배틀 OTP 정리', r.ok ? 'INFO' : 'WARN', { battleId, removed: r.removed, reason: r.reason });
-
-    if (typeof deleteBattle === 'function') {
-      deleteBattle(battleId);
-    } else if (typeof battle.cleanup === 'function') {
-      battle.cleanup();
-    } else {
-      throw new Error('전투 삭제 기능이 비활성화되어 있습니다');
-    }
-
-    logWithTimestamp('전투 삭제 성공', 'INFO', { battleId });
-    sendSuccess(res, { otpRemoved: r.removed }, '전투가 성공적으로 삭제되었습니다');
-  } catch (err) {
-    logWithTimestamp('전투 삭제 실패', 'ERROR', err);
-    sendError(res, 403, err);
   }
 });
 
@@ -776,4 +690,4 @@ router.use((err, req, res, next) => {
   sendError(res, 500, '서버 내부 오류가 발생했습니다');
 });
 
-module.exports = router;
+export default router;
