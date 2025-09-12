@@ -5,6 +5,9 @@
 // - 채팅 Enter 전송 + 기본 발신자 "전투 참가자"
 // - URL ?token= OR ?password= 폴백 지원
 // - 팀 표기는 항상 A/B로만 노출
+// - 아이템 키 정규화: attack_boost / defense_boost / dittany (모두 1회용)
+
+"use strict";
 
 /* ========== DOM 헬퍼 ========== */
 const $  = (q,root=document)=>root.querySelector(q);
@@ -317,13 +320,12 @@ btnAttack?.addEventListener('click', ()=>{
 });
 btnDefend?.addEventListener('click', ()=>{
   if(!canAct()) return;
-  // 룰 반영: 방어 선택 시 방어 성공이면 0, 실패 시 (공격수치-방어치), 치명타 시 ×2 (하한 1 없음)
-  // 실제 계산은 서버에서 수행. 여기선 단순 타입만 전송.
+  // 방어: 단순 방어(다음 피격에 강화 효과가 있을 수 있음). 실제 계산은 서버 처리.
   commitAction({ type:'defend' });
 });
 btnDodge ?.addEventListener('click', ()=>{
   if(!canAct()) return;
-  // 룰 반영: 회피 성공 시 0, 실패 시 정면 피격(클라이언트 설명만, 계산은 서버)
+  // 회피: 서버가 민첩+d20 규칙으로 판정
   commitAction({ type:'dodge' });
 });
 btnItem  ?.addEventListener('click', ()=>{
@@ -353,7 +355,7 @@ function commitAction(action){
     socket?.emit('playerAction', { battleId, actorId: me.id, type:'attack', targetId: action.targetId });
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'attack', targetId: action.targetId }});
   }else if(action.type==='item'){
-    // 아이템: attack_booster / defense_booster / dittany (+10, 대상 선택) — 서버 룰과 일치
+    // 아이템: attack_boost / defense_boost / dittany — 모두 1회용, 서버에서 판정 및 소모
     const payload = { battleId, actorId: me.id, type:'item', itemType: action.itemType, targetId: action.targetId };
     socket?.emit('playerAction', payload);
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'item', itemType: action.itemType, targetId: action.targetId }});
@@ -413,13 +415,19 @@ function openItemPicker(){
     row.querySelector('.btn').addEventListener('click', handler);
     return row;
   };
-  // 공격 보정기(성공률 10%, 성공 시 해당 턴 공격스탯 ×1.5) — 서버에서 판정
-  targetList.appendChild(mkBtn('공격 보정기', ()=>{ hideTargetPicker(); commitAction({ type:'item', itemType:'attack_booster' }); }));
-  // 방어 보정기(성공률 10%, 성공 시 해당 턴 방어스탯 ×1.5) — 서버에서 판정
-  targetList.appendChild(mkBtn('방어 보정기', ()=>{ hideTargetPicker(); commitAction({ type:'item', itemType:'defense_booster' }); }));
-  // 디터니(HP10 회복, 대상 선택)
+  // 공격 보정기(1회용, 10% 성공 시 즉시 2배 피해 공격)
+  targetList.appendChild(mkBtn('공격 보정기 (1회용, 10% 성공 시 즉시 2배 피해)', ()=>{
+    hideTargetPicker(); commitAction({ type:'item', itemType:'attack_boost' });
+  }));
+  // 방어 보정기(1회용, 10% 성공 시 다음 피격에 방어 2배 적용)
+  targetList.appendChild(mkBtn('방어 보정기 (1회용, 10% 성공 시 다음 피격 방어 2배)', ()=>{
+    hideTargetPicker(); commitAction({ type:'item', itemType:'defense_boost' });
+  }));
+  // 디터니(1회용, HP +10, 대상 선택)
   const allies = getAlliesAlive();
-  targetList.appendChild(mkBtn('디터니 (대상 선택)', ()=>{ openTargetPicker('dittany', allies); }));
+  targetList.appendChild(mkBtn('디터니 (1회용, HP +10 · 대상 선택)', ()=>{
+    openTargetPicker('dittany', allies);
+  }));
   targetOverlay.classList.remove('hidden');
 }
 
