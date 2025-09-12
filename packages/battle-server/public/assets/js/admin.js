@@ -1,6 +1,7 @@
 // /public/assets/js/admin.js
 // 소켓 연결 견고화: 여러 호스트/경로 조합 시도 + 재연결 + 연결 전 emit 금지 + 상세 로그
 // 전투 생성/참가자 추가/채팅은 기존 동작 유지(룰/표기/디자인 변경 없음)
+// 팀 표기는 A/B만 사용
 
 (function(){
   "use strict";
@@ -64,7 +65,6 @@
   const clampNum = (n, min, max)=> Math.max(min, Math.min(max, n));
   const escapeHtml = (s)=> String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
   const toast = (msg)=>{ if(!els.toast) return; els.toast.textContent=msg; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'),1600); };
-  const makeAbsolute = (p)=> new URL(p, window.location.origin).toString();
 
   function appendLog(msg){
     if(!els.log) return;
@@ -168,6 +168,7 @@
 
       // 전역 io 사용
       try{
+        // eslint-disable-next-line no-undef
         socket = io(base, ioOpts);
       }catch(e){
         appendLog(`소켓 생성 에러: ${e.message||e}`);
@@ -407,6 +408,14 @@
     }
   }
 
+  function onBuildSpectatorUrl(){
+    if(!battleId){ toast('전투 생성 후 이용하세요'); return; }
+    const otp = (els.spectatorOtp.value||'').trim();
+    if(!otp){ toast('먼저 관전자 비밀번호를 발급하세요'); return; }
+    const url = new URL(`/watch?battle=${encodeURIComponent(battleId)}&token=${encodeURIComponent(otp)}`, window.location.origin).toString();
+    els.spectatorUrl.value = url;
+  }
+
   // -------- 입력 유효성 --------
   function validateInputs(){
     const name = (els.pName.value||'').trim();
@@ -476,9 +485,12 @@
       else avatarUrl = u;
     }
 
+    const rawTeam = (els.pTeam.value || 'A').toString().toUpperCase();
+    const team = rawTeam === 'B' ? 'B' : 'A'; // A/B만 허용
+
     const player = {
       name: v.name,
-      team: els.pTeam.value,
+      team,
       hp: v.hp,
       maxHp: 100,
       stats: { attack: v.atk, defense: v.def, agility: v.agi, luck: v.luk },
@@ -567,14 +579,18 @@
       return tr;
     };
 
-    els.listA.innerHTML=''; A.forEach(p=> els.listA.appendChild(drawRow(p)));
-    els.listB.innerHTML=''; B.forEach(p=> els.listB.appendChild(drawRow(p)));
+    if(els.listA){ els.listA.innerHTML=''; A.forEach(p=> els.listA.appendChild(drawRow(p))); }
+    if(els.listB){ els.listB.innerHTML=''; B.forEach(p=> els.listB.appendChild(drawRow(p))); }
   }
 
   function toAB(team){
-    const s = String(team||'').toLowerCase();
-    if(s==='phoenix'||s==='a') return 'A';
-    if(s==='eaters' ||s==='b'||s==='death') return 'B';
+    const s = String(team||'').toUpperCase();
+    if(s==='A') return 'A';
+    if(s==='B') return 'B';
+    // 레거시 호환
+    const sl = String(team||'').toLowerCase();
+    if(sl==='phoenix') return 'A';
+    if(sl==='eaters' || sl==='death') return 'B';
     return '-';
   }
 
@@ -588,6 +604,7 @@
   }
 
   function appendChat(sender, text){
+    if(!els.chat) return;
     const d = document.createElement('div');
     d.textContent = `${sender}: ${text}`;
     els.chat.appendChild(d);
