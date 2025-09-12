@@ -1,46 +1,112 @@
-// packages/battle-server/ecosystem.config.js
-// PM2 실행 설정: 포트 3001 고정, Socket.IO 경로 /socket.io, 로그/메모리/배포 스크립트 포함
+// ecosystem.config.js - PYXIS Battle System (통합 설정)
+// 서버 실행: /root/battle-system/ 에서 실행
 module.exports = {
   apps: [
     {
-      name: "battle-server",
-      cwd: "./packages/battle-server",
-      script: "index.js",
-      exec_mode: "fork",
+      name: 'pyxis-battle-system',
+      
+      // 작업 디렉토리를 루트로 설정하여 상대경로 문제 해결
+      cwd: '/root/battle-system',
+      script: 'packages/battle-server/index.js',
+
+      // WebSocket을 위한 단일 인스턴스
+      exec_mode: 'fork',
       instances: 1,
+      
+      // 재시작 설정
       watch: false,
       autorestart: true,
-      node_args: "--enable-source-maps",
-      env: {
-        NODE_ENV: "production",
-        PORT: 3001,
-        SOCKET_PATH: "/socket.io"
-      },
-      // .env 로딩(필요 시). 경로는 이 파일 기준.
-      env_file: "./packages/battle-server/.env",
-      // 로그/메모리
-      out_file: "./logs/battle-server.out.log",
-      error_file: "./logs/battle-server.err.log",
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 3000,
+      exp_backoff_restart_delay: 500,
+      kill_timeout: 15000,
+      listen_timeout: 10000,
+      max_memory_restart: '1G',
+
+      // Node.js 최적화
+      node_args: [
+        '--max-old-space-size=1024',
+        '--optimize-for-size',
+        '--enable-source-maps'
+      ],
+
+      // 환경변수 파일 (루트 기준)
+      env_file: '.env',
+
+      // 로그 설정
       time: true,
-      max_memory_restart: "1G",
-      kill_timeout: 5000
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      log_file: './logs/combined.log',
+      error_file: './logs/error.log',
+      out_file: './logs/out.log',
+      pid_file: './logs/battle-system.pid',
+
+      // 감시 제외 목록
+      ignore_watch: [
+        'node_modules',
+        'logs',
+        'uploads',
+        '.git',
+        '*.log'
+      ],
+
+      // 기타 설정
+      vizion: false,
+      source_map_support: true,
+      instance_var: 'INSTANCE_ID',
+      
+      // 매일 새벽 2시 자동 재시작
+      cron_restart: '0 2 * * *',
+
+      // 환경별 설정
+      env: {
+        NODE_ENV: 'production',
+        HOST: '0.0.0.0',
+        PORT: 3001,
+        CORS_ORIGIN: '*',
+        LOG_LEVEL: 'info'
+      },
+      
+      env_development: {
+        NODE_ENV: 'development',
+        HOST: '127.0.0.1',
+        PORT: 3001,
+        CORS_ORIGIN: 'http://localhost:3000,http://127.0.0.1:3000',
+        LOG_LEVEL: 'debug'
+      },
+      
+      env_production: {
+        NODE_ENV: 'production',
+        HOST: '0.0.0.0', 
+        PORT: 3001,
+        CORS_ORIGIN: 'https://pyxisbattlesystem.monster,http://65.21.147.119:3001',
+        LOG_LEVEL: 'info'
+      }
     }
   ],
 
-  // 선택: pm2 deploy 사용 시
+  // 배포 설정 (PM2 Deploy 사용 시)
   deploy: {
     production: {
-      user: "root",
-      host: ["65.21.147.119"],
-      ref: "origin/main",
-      repo: "https://github.com/CriminalTalent/battle-system.git",
-      path: "/root/battle-system",
-      "post-deploy": [
-        "cd packages/battle-server",
-        "npm ci",
-        "pm2 reload /root/battle-system/packages/battle-server/ecosystem.config.js --only battle-server --update-env",
-        "pm2 save"
-      ].join(" && ")
+      user: 'root',
+      host: ['65.21.147.119'],
+      ref: 'origin/main',
+      repo: 'git@github.com:CriminalTalent/battle-system.git',
+      path: '/root/battle-system',
+      'pre-deploy-local': '',
+      'post-deploy': [
+        // 필요 디렉토리 생성
+        'mkdir -p logs uploads packages/battle-server/public/uploads/avatars',
+        // 의존성 설치 (루트와 패키지 모두)
+        'npm ci --omit=dev',
+        'cd packages/battle-server && npm ci --omit=dev',
+        // PM2 재시작
+        'cd /root/battle-system && pm2 reload ecosystem.config.js --env production',
+        'pm2 save'
+      ].join(' && '),
+      'pre-setup': ''
     }
   }
 };
