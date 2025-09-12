@@ -1,6 +1,7 @@
 /* PYXIS UI Helpers (browser)
    - 관리자/플레이어/관전자 공용 헬퍼
-   - PyxisNotify(알림)와 자연스럽게 연동 (없으면 자체 토스트 폴백)
+   - PyxisNotify(알림) 연동, 없으면 자체 토스트 폴백
+   - 팀 표기는 A/B만 사용
    - 이모지 금지
 */
 (function (root, factory) {
@@ -119,12 +120,22 @@
   }
 
   // ──────────────────────────────────────────────
+  // 팀 정규화/표기
+  // ──────────────────────────────────────────────
+  function toAB(team) {
+    const s = String(team || "").toLowerCase();
+    if (s === "phoenix" || s === "a" || s === "team_a" || s === "team-a") return "A";
+    if (s === "eaters"  || s === "b" || s === "death"  || s === "team_b" || s === "team-b") return "B";
+    return "-";
+  }
+  function getTeamName(key) {
+    const ab = toAB(key);
+    return ab === "A" ? "팀 A" : ab === "B" ? "팀 B" : "-";
+  }
+
+  // ──────────────────────────────────────────────
   // 전투 표시 유틸
   // ──────────────────────────────────────────────
-  function getTeamName(key) {
-    const t = (key === "A" || key === "phoenix") ? "phoenix" : "eaters";
-    return t === "phoenix" ? "불사조 기사단" : "죽음을 먹는 자";
-  }
   function calculateHpPercent(hp, maxHp) {
     const h = Math.max(0, Number(hp || 0));
     const m = Math.max(1, Number(maxHp || 100));
@@ -228,6 +239,20 @@
     });
   }
 
+  // 엔터키 → 버튼 클릭/핸들러 실행 (채팅 전송 등)
+  function bindEnterToClick(inputEl, trigger) {
+    if (!inputEl || !trigger) return () => {};
+    const handler = (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (typeof trigger === "function") trigger();
+        else if (trigger.click) trigger.click();
+      }
+    };
+    inputEl.addEventListener("keydown", handler);
+    return () => inputEl.removeEventListener("keydown", handler);
+  }
+
   // ──────────────────────────────────────────────
   // 효과
   // ──────────────────────────────────────────────
@@ -271,7 +296,6 @@
   // 토스트: PyxisNotify 연동 + 폴백
   // ──────────────────────────────────────────────
   function toast(message, opts = {}) {
-    // PyxisNotify가 자체 toast 제공 시 우선 사용
     if (typeof window !== "undefined" && window.PyxisNotify && typeof window.PyxisNotify.toast === "function") {
       return window.PyxisNotify.toast(String(message), {
         title: opts.title || "알림",
@@ -280,7 +304,6 @@
         dedupKey: opts.dedupKey
       });
     }
-    // 폴백 토스트
     return fallbackToast(String(message), opts);
   }
   function success(msg, title = "성공") { return toast(msg, { title, tone: "ok" }); }
@@ -340,8 +363,8 @@
     // 시간/문자/수치
     fmtTime, fmtTimeAgo, escapeHtml, parseQS, toInt, clamp,
 
-    // 전투 표시
-    getTeamName, calculateHpPercent, setHpBar,
+    // 팀/전투 표시
+    toAB, getTeamName, calculateHpPercent, setHpBar,
 
     // 로그/채팅
     appendLog, appendChat,
@@ -349,8 +372,8 @@
     // 로딩
     startLoading,
 
-    // 접근성/효과
-    focusTrap, enableKeyboardNav, addRippleEffect,
+    // 접근성/효과/키보드
+    focusTrap, enableKeyboardNav, addRippleEffect, bindEnterToClick,
 
     // 알림/토스트/클립보드
     toast, success, warning, error, info, copyToClipboard
