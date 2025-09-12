@@ -600,10 +600,10 @@ io.on('connection', (socket) => {
 // Server start
 // -----------------------------
 server.listen(PORT, HOST, () => {
-  console.log(`\n🎮 PYXIS Battle System`);
-  console.log(`📡 Server: http://${HOST}:${PORT}`);
-  console.log(`🔌 Socket: ${SOCKET_PATH}`);
-  console.log(`📁 Static: ${publicDir}`);
-  console.log(`📤 Uploads: ${uploadsDir}`);
-  console.log(`🚀 Ready for battle!\n`);
+  console.log(`\n PYXIS Battle System`);
+  console.log(` Server: http://${HOST}:${PORT}`);
+  console.log(` Socket: ${SOCKET_PATH}`);
+  console.log(` Static: ${publicDir}`);
+  console.log(` Uploads: ${uploadsDir}`);
+  console.log(` Ready for battle!\n`);
 });
