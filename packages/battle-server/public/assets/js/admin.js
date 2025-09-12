@@ -1,6 +1,9 @@
 // /public/assets/js/admin.js
 // 소켓 연결 견고화: 여러 호스트/경로 조합 시도 + 재연결 + 연결 전 emit 금지 + 상세 로그
 // 전투 생성/참가자 추가/채팅은 기존 동작 유지(룰/표기/디자인 변경 없음)
+// ★ 수정 요약
+//  - 팀 송신값을 항상 A/B로 정규화 (onAddPlayer)
+//  - 아이템 개수 입력을 0~5로 클램프 (onAddPlayer)
 
 (function(){
   "use strict";
@@ -495,16 +498,20 @@
       else avatarUrl = u;
     }
 
+    // ★ 팀을 A/B로 정규화해서 송신
+    const teamAB = toAB(els.pTeam.value);
+
     const player = {
       name: v.name,
-      team: els.pTeam.value,
+      team: teamAB, // 항상 'A' 또는 'B'
       hp: v.hp,
       maxHp: 100,
       stats: { attack: v.atk, defense: v.def, agility: v.agi, luck: v.luk },
       items: {
-        dittany:       clampNum(safeNum(els.iDit.value,0), 0, 99),
-        attack_boost:  clampNum(safeNum(els.iAtkB.value,0), 0, 99),
-        defense_boost: clampNum(safeNum(els.iDefB.value,0), 0, 99),
+        // ★ UI에서도 0~5로 제한 (서버와 동일)
+        dittany:       clampNum(safeNum(els.iDit.value,0), 0, 5),
+        attack_boost:  clampNum(safeNum(els.iAtkB.value,0), 0, 5),
+        defense_boost: clampNum(safeNum(els.iDefB.value,0), 0, 5),
       },
       avatar: avatarUrl
     };
@@ -592,9 +599,9 @@
 
   function toAB(team){
     const s = String(team||'').toLowerCase();
-    if(s==='phoenix'||s==='a') return 'A';
-    if(s==='eaters' ||s==='b'||s==='death') return 'B';
-    return '-';
+    if(s==='phoenix'||s==='a'||s==='team_a'||s==='team-a') return 'A';
+    if(s==='eaters' ||s==='b'||s==='death'||s==='team_b'||s==='team-b') return 'B';
+    return 'A'; // 기본값을 A로
   }
 
   function formatActionLog(type, payload){
