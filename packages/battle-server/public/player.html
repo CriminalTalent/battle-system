@@ -263,7 +263,7 @@
   <!-- 타깃 선택 모달 -->
   <div id="targetModal" class="modal hidden">
     <div class="modal-content">
-      <div class="modal-title">타깃 선택</div>
+      <div class="modal-title" id="targetModalTitle">타깃 선택</div>
       <div id="targetList" class="target-list"></div>
       <div style="display:flex; gap:12px; margin-top:16px">
         <button class="btn" id="cancelTarget">취소</button>
@@ -287,7 +287,7 @@
   </div>
 
   <script>
-    // ===== 공통 도우미 =====
+    // ===== 공통 도우미/간단 REST(상태 조회/로그만) =====
     const $ = (id)=>document.getElementById(id);
     const api = {
       token(){ return localStorage.getItem('xauth') || ''; },
@@ -298,21 +298,12 @@
         const t = api.token(); if(t) h['X-Auth'] = t;
         return h;
       },
-      async get(path){ const r = await fetch(api.base()+path, {headers:api.headers()}); return r.json(); },
-      async post(path, body){ const r = await fetch(api.base()+path, {method:'POST', headers:api.headers(), body: JSON.stringify(body||{})}); return r.json(); }
+      async get(path){ const r = await fetch(api.base()+path, {headers:api.headers()}); try{ return await r.json(); }catch{ return {}; } },
     };
 
-    // 팀 라벨
-    function teamK(team){
-      if(team==='phoenix' || team==='A') return '불사조 기사단';
-      if(team==='eaters'  || team==='B') return '죽음을 먹는 자들';
-      return team||'-';
-    }
-    function teamSide(team){
-      if(team==='phoenix' || team==='A') return 'A';
-      if(team==='eaters'  || team==='B') return 'B';
-      return '?';
-    }
+    function clamp1to5(v){ v=+v||1; if(v<1) v=1; if(v>5) v=5; return v; }
+    function isA(team){ const s=String(team||'').toLowerCase(); return s==='a'||s==='phoenix'||s==='team_a'||s==='team-a'; }
+    function isB(team){ const s=String(team||'').toLowerCase(); return s==='b'||s==='eaters'||s==='death'||s==='team_b'||s==='team-b'; }
 
     class PlayerClient {
       constructor(){
@@ -320,12 +311,15 @@
           id:null, name:'', team:null,
           stats:{ attack:1, defense:1, agility:1, luck:1 },
           hp:100, maxHp:100,
-          items:{ attackBoost:0, defenseBoost:0, healPotion:0 }
+          // 서버 규격: dittany / attack_boost / defense_boost (모두 1회용)
+          items:{ dittany:0, attack_boost:0, defense_boost:0 }
         };
         this.battle = { id:null, status:'waiting', players:[], turn:{} };
         this.socket = null;
         this.turnTimer = 0;
         this.turnTicker = null;
+
+        this._pendingAction = null; // 클릭 스팸 방지
 
         this.bindUI();
         this.autoFromURL();
@@ -337,7 +331,7 @@
         $('otpInput').addEventListener('keypress', e=>{ if(e.key==='Enter') this.authenticate(); });
 
         // 액션
-        $('btnAttack').onclick = ()=> this.chooseTargetAndAttack();
+        $('btnAttack').onclick = ()=> this.openTargetPicker('attack');
         $('btnDefense').onclick = ()=> this.actSimple('defend');
         $('btnDodge').onclick  = ()=> this.actSimple('dodge');
         $('btnPass').onclick   = ()=> this.actSimple('pass');
@@ -347,23 +341,42 @@
         $('btnSendChat').onclick = ()=> this.sendChat();
         $('chatInput').addEventListener('keypress', e=>{ if(e.key==='Enter') this.sendChat(); });
 
-        // 타깃/아이템 모달
-        $('cancelTarget').onclick = ()=> $('targetModal').classList.add('hidden');
+        // 모달
+        $('cancelTarget').onclick = ()=> this.hideTargetPicker();
         $('cancelItemUse').onclick = ()=> $('itemModal').classList.add('hidden');
-        $('useAttackBoost').onclick = ()=> this.useItem('attackBoost');
-        $('useDefenseBoost').onclick = ()=> this.useItem('defenseBoost');
-        $('useHealPotion').onclick   = ()=> this.useItem('healPotion');
+
+        // 아이템(룰 반영)
+        $('useAttackBoost').onclick = ()=> {
+          if(this.player.items.attack_boost<=0) return;
+          // 공격 보정기는 적 대상 필요 (성공 시 즉시 강화 공격 1회) — 서버에서 1회용 소모/판정
+          this.hideItemModal();
+          this.openTargetPicker('attack_boost');
+        };
+        $('useDefenseBoost').onclick = ()=> {
+          if(this.player.items.defense_boost<=0) return;
+          // 방어 보정기: 1회용, 성공 시 "다음 피격에 단순 방어 강화" (서버 룰 적용) — 대상 없음
+          this.emitAction({ type:'item', itemType:'defense_boost' });
+          this.hideItemModal();
+        };
+        $('useHealPotion').onclick   = ()=> {
+          if(this.player.items.dittany<=0) return;
+          // 디터니: 1회용, 자신 또는 아군 대상 회복 — 대상 선택
+          this.hideItemModal();
+          this.openTargetPicker('dittany');
+        };
       }
 
       autoFromURL(){
         try{
           const u = new URL(location.href);
-          const t = u.searchParams.get('t') || u.searchParams.get('otp'); // 호환
-          const bid = u.searchParams.get('battleId');
+          const t = u.searchParams.get('t') || u.searchParams.get('otp') || u.searchParams.get('token'); // 호환
+          const bid = u.searchParams.get('battleId') || u.searchParams.get('battle');
           const pid = u.searchParams.get('playerId');
+          const name = u.searchParams.get('name') || '';
           if(t){ $('otpInput').value = t; api.setToken(t); }
           if(bid){ this.battle.id = bid; }
           if(pid){ this.player.id = pid; }
+          if(name){ this.player.name = name; }
           if(t && bid){ this.authenticate(); }
         }catch(e){}
       }
@@ -376,18 +389,12 @@
         $('authError').classList.add('hidden');
 
         try{
-          // 배틀 조회
-          if(!this.battle.id){
-            return this.authError('유효한 battleId 가 필요합니다.');
-          }
+          if(!this.battle.id){ return this.authError('유효한 battleId 가 필요합니다.'); }
           const st = await api.get('/api/battles/'+this.battle.id);
-          if(!st?.ok) return this.authError(st?.error||'전투 조회 실패');
-
-          // 내 정보 세팅
-          this.battle = st.battle;
+          if(st?.battle){ this.battle = st.battle; }
+          // 내 정보 존재 확인
           if(!this.player.id){
-            // 토큰으로 서버가 식별하는 구조가 아니라면 반드시 playerId 포함 링크를 사용해야 함
-            return this.authError('playerId 가 누락되었습니다. 관리자에게 받은 링크를 다시 확인하세요.');
+            return this.authError('playerId 가 누락되었습니다. 관리자 링크를 다시 확인하세요.');
           }
           const me = (this.battle.players||[]).find(p=>String(p.id)===String(this.player.id));
           if(!me) return this.authError('전투 참가자를 찾을 수 없습니다.');
@@ -395,11 +402,7 @@
           this.hydratePlayer(me);
           this.renderAll();
           this.showGame();
-
-          // 소켓
           this.initSocket();
-
-          // 로그 로드
           this.loadLog();
         }catch(e){
           this.authError('인증 실패: '+(e?.message||e));
@@ -427,21 +430,13 @@
         this.player.hp = Math.max(0, Math.min(100, p.hp ?? 100));
         this.player.maxHp = 100;
 
-        // 아이템: 서버가 배열(strings) 또는 객체(counts) 둘 다 수용
-        const items = p.items || [];
-        const counts = { attackBoost:0, defenseBoost:0, healPotion:0 };
-        if(Array.isArray(items)){
-          for(const it of items){
-            if(it==='공격 보정기') counts.attackBoost++;
-            else if(it==='방어 보정기') counts.defenseBoost++;
-            else if(it==='디터니') counts.healPotion++;
-          }
-        }else{
-          counts.attackBoost = +items.attackBoost||0;
-          counts.defenseBoost= +items.defenseBoost||0;
-          counts.healPotion  = +items.healPotion||0;
-        }
-        this.player.items = counts;
+        // 아이템: dittany / attack_boost / defense_boost (모두 1회용)
+        const items = p.items || {};
+        this.player.items = {
+          dittany: +(items.dittany ?? items.healPotion ?? 0),
+          attack_boost: +(items.attack_boost ?? items.attackBoost ?? 0),
+          defense_boost: +(items.defense_boost ?? items.defenseBoost ?? 0),
+        };
 
         // 아바타: 이니셜
         const initials = (this.player.name||'U').trim().slice(0,2).toUpperCase();
@@ -456,26 +451,59 @@
 
       initSocket(){
         if(this.socket) return;
-        this.socket = io(api.base(), { path:'/socket.io' });
-        this.socket.emit('join', { battleId: this.battle.id });
-        this.socket.on('battle:update', payload=>{
-          const b = payload.battle || payload;
-          if(b?.id === this.battle.id){
-            this.battle = b;
-            // 내 최신 상태 반영
-            const me = (b.players||[]).find(p=>String(p.id)===String(this.player.id));
-            if(me) this.hydratePlayer(me);
-            this.renderAll();
-            if(payload?.event) this.addLog('battle', JSON.stringify(payload.event));
-          }
+        this.socket = io(api.base(), { path:'/socket.io', transports:['websocket','polling'], withCredentials:true });
+
+        this.socket.on('connect', ()=>{
+          // 플레이어 인증(양쪽 호환 이벤트)
+          this.socket.emit('playerAuth', { battleId:this.battle.id, token:api.token(), playerId:this.player.id, name:this.player.name, team:this.player.team });
+          this.socket.emit('player:auth', { battleId:this.battle.id, token:api.token(), playerId:this.player.id, name:this.player.name, team:this.player.team });
+          this.socket.emit('join', { battleId:this.battle.id });
         });
+
+        // 인증 결과(옵션)
+        this.socket.on('authError', (e)=> this.addLog('system','인증 실패: '+(e?.error||e?.message||'오류')));
+        this.socket.on('auth:error', (e)=> this.addLog('system','인증 실패: '+(e?.error||e?.message||'오류')));
+
+        // 상태 갱신
+        const onSnap = (payload)=>{
+          const b = payload?.battle || payload;
+          if(!b || b.id!==this.battle.id) return;
+          this.battle = b;
+          const me = (b.players||[]).find(p=>String(p.id)===String(this.player.id));
+          if(me) this.hydratePlayer(me);
+          this.renderAll();
+          if(payload?.event?.message){ this.addLog('battle', payload.event.message); }
+        };
+        this.socket.on('battleUpdate', onSnap);
+        this.socket.on('battle:update', onSnap);
+
+        // 액션 응답
+        this.socket.on('actionSuccess', (m)=>{
+          if(m?.message) this.addLog('battle', m.message);
+          this._pendingAction = null;
+          this.updateTurnState();
+        });
+        this.socket.on('actionError', (m)=>{
+          this.addLog('system', '행동 실패: '+(m?.error||'오류'));
+          this._pendingAction = null;
+          this.updateTurnState();
+        });
+
+        // 로그
+        this.socket.on('battle:log', (m)=>{ if(m?.message) this.addLog('battle', m.message); });
+        // 채팅 수신(보기만)
+        this.socket.on('chatMessage', (m)=>{ if(typeof m==='string'){ this.addChat('team','전투 참가자', m); } else { this.addChat('team', m?.name||m?.senderName||'전투 참가자', m?.message||''); }});
+        this.socket.on('chat:message', (m)=>{ this.addChat('team', m?.name||m?.senderName||'전투 참가자', m?.message||''); });
       }
 
       async loadLog(){
         const lg = await api.get('/api/battles/'+this.battle.id+'/log');
-        if(lg?.ok){
+        if(lg?.log){
           $('battleLog').innerHTML='';
-          (lg.log||[]).slice(-100).forEach(ev=> this.addLog('battle', JSON.stringify(ev)));
+          lg.log.slice(-100).forEach(ev=>{
+            const msg = (typeof ev==='string') ? ev : (ev.message || JSON.stringify(ev));
+            this.addLog('battle', msg);
+          });
         }
       }
 
@@ -485,29 +513,29 @@
         this.updateStatusAlert();
 
         // 팀 로스터
-        const A = (this.battle.players||[]).filter(p=>p.team==='phoenix' || p.team==='A');
-        const B = (this.battle.players||[]).filter(p=>p.team==='eaters'  || p.team==='B');
+        const A = (this.battle.players||[]).filter(p=>isA(p.team));
+        const B = (this.battle.players||[]).filter(p=>isB(p.team));
         this.renderRoster('A', A);
         this.renderRoster('B', B);
 
         // 내 정보
-        $('playerName').textContent = this.player.name;
+        $('playerName').textContent = this.player.name || '전투 참가자';
         $('statAttack').textContent = this.player.stats.attack;
         $('statDefense').textContent= this.player.stats.defense;
         $('statAgility').textContent= this.player.stats.agility;
         $('statLuck').textContent   = this.player.stats.luck;
         this.updateHPBar();
 
-        // 아이템
-        $('itemAttackBoost').textContent = this.player.items.attackBoost;
-        $('itemDefenseBoost').textContent= this.player.items.defenseBoost;
-        $('itemHealPotion').textContent  = this.player.items.healPotion;
-        $('attackBoostCount').textContent= `(${this.player.items.attackBoost}개)`;
-        $('defenseBoostCount').textContent=`(${this.player.items.defenseBoost}개)`;
-        $('healPotionCount').textContent = `(${this.player.items.healPotion}개)`;
-        $('useAttackBoost').disabled = this.player.items.attackBoost<=0;
-        $('useDefenseBoost').disabled= this.player.items.defenseBoost<=0;
-        $('useHealPotion').disabled  = this.player.items.healPotion<=0;
+        // 아이템(모두 1회용)
+        $('itemAttackBoost').textContent = this.player.items.attack_boost;
+        $('itemDefenseBoost').textContent= this.player.items.defense_boost;
+        $('itemHealPotion').textContent  = this.player.items.dittany;
+        $('attackBoostCount').textContent= `(${this.player.items.attack_boost}개)`;
+        $('defenseBoostCount').textContent=`(${this.player.items.defense_boost}개)`;
+        $('healPotionCount').textContent = `(${this.player.items.dittany}개)`;
+        $('useAttackBoost').disabled = this.player.items.attack_boost<=0;
+        $('useDefenseBoost').disabled= this.player.items.defense_boost<=0;
+        $('useHealPotion').disabled  = this.player.items.dittany<=0;
 
         // 턴 상태
         this.updateTurnState();
@@ -566,31 +594,29 @@
         msg.textContent   = (m[st]?.m)||'';
       }
 
-      // ===== 턴 처리 =====
+      // ===== 턴 처리(팀 단위) =====
+      isMyTurn(){
+        const st = this.battle.status||'waiting';
+        if(st!=='active') return false;
+        const t = this.battle.turn||{};
+        const curTeam = t.currentTeam || this.battle.phaseTeam || (Array.isArray(t.order)? t.order[t.phaseIndex||0] : null);
+        if(!curTeam) return false;
+        const actedSet = new Set((t.acted?.[curTeam])||[]);
+        const myTeam = this.player.team;
+        return (String(curTeam).toLowerCase() === String(myTeam).toLowerCase()) && !actedSet.has(String(this.player.id));
+      }
+
       updateTurnState(){
         const st = this.battle.status||'waiting';
-        const turn = this.battle.turn||{};
-        let myTurn = false;
-
-        // 팀 단위: currentTeam/acted
-        const myTeam = (this.player.team);
-        if(turn.currentTeam && myTeam){
-          const actedSet = new Set((turn.acted?.[turn.currentTeam])||[]);
-          if(turn.currentTeam===myTeam && !actedSet.has(String(this.player.id))){
-            myTurn = true;
-          }
-        }
-        // 구버전 개인 단위 보조
-        if(turn.current && String(turn.current)===String(this.player.id)) myTurn = true;
-
-        // 버튼/타이머
         if(st!=='active'){
           $('turnStatus').textContent='대기중';
           $('turnTimer').textContent='--:--';
           $('turnDescription').textContent='전투가 시작되기를 기다리고 있습니다.';
           this.enableActions(false);
           this.stopTimer();
-        }else if(myTurn){
+          return;
+        }
+        if(this.isMyTurn() && !this._pendingAction){
           $('turnStatus').textContent='내 턴';
           $('turnDescription').textContent='행동을 선택하세요. (제한 5분)';
           this.enableActions(true);
@@ -628,70 +654,88 @@
       stopTimer(){ if(this.turnTicker){ clearInterval(this.turnTicker); this.turnTicker=null; } }
       fmtTime(s){ const m=Math.floor(s/60), ss=(s%60+'').padStart(2,'0'); return m+':'+ss; }
 
-      // ===== 액션 =====
-      chooseTargetAndAttack(){
-        // 상대팀 생존자 목록
-        const enemies = (this.battle.players||[]).filter(p=>{
-          const t = p.team;
-          const isEnemy = ( (this.player.team==='phoenix'||this.player.team==='A') ? (t==='eaters'||t==='B') : (t==='phoenix'||t==='A') );
-          return isEnemy && (p.hp??0)>0;
-        });
-        const list = $('targetList'); list.innerHTML='';
-        if(enemies.length===0){
-          list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:10px">대상이 없습니다</div>';
+      // ===== 액션 송신(소켓) =====
+      emitAction(payload){
+        if(!this.socket || !this.socket.connected) { this.addLog('system','서버 연결 상태를 확인하세요'); return; }
+        if(this._pendingAction) return; // 중복 방지
+        this._pendingAction = payload.type;
+        // 신/구 이벤트 호환
+        const a = { battleId:this.battle.id, actorId:this.player.id, ...payload };
+        const legacy = { battleId:this.battle.id, playerId:this.player.id, action:{ type:payload.type, targetId:payload.targetId, itemType:payload.itemType } };
+        try{ this.socket.emit('playerAction', a); }catch(_){}
+        try{ this.socket.emit('player:action', legacy); }catch(_){}
+        // 낙관적 비활성화
+        this.updateTurnState();
+      }
+
+      // 공격
+      openTargetPicker(kind){
+        const listEl = $('targetList'); listEl.innerHTML='';
+        const title = $('targetModalTitle');
+        let targets = [];
+        if(kind==='attack' || kind==='attack_boost'){
+          const enemies = (this.battle.players||[]).filter(p=>{
+            return (isA(this.player.team) ? isB(p.team) : isA(p.team)) && (p.hp??0)>0;
+          });
+          targets = enemies;
+          title.textContent = (kind==='attack') ? '공격 대상 선택' : '공격 보정기 대상 선택';
+        }else if(kind==='dittany'){
+          const allies = (this.battle.players||[]).filter(p=>{
+            return (isA(this.player.team) ? isA(p.team) : isB(p.team)) && (p.hp??0)>0;
+          });
+          targets = allies;
+          title.textContent = '디터니 사용 대상 선택';
         }else{
-          for(const p of enemies){
+          return;
+        }
+
+        if(targets.length===0){
+          listEl.innerHTML='<div style="text-align:center;color:var(--text-muted);padding:10px">대상이 없습니다</div>';
+        }else{
+          for(const p of targets){
             const row = document.createElement('div'); row.className='target-row';
             row.innerHTML = '<div>'+p.name+' ('+p.id+')</div><div>'+ (p.hp??0) +'/100</div>';
-            row.onclick = ()=>{ $('targetModal').classList.add('hidden'); this.actAttack(p.id); };
-            list.appendChild(row);
+            row.onclick = ()=>{
+              this.hideTargetPicker();
+              if(kind==='attack'){
+                this.emitAction({ type:'attack', targetId:p.id });
+              }else if(kind==='attack_boost'){
+                this.emitAction({ type:'item', itemType:'attack_boost', targetId:p.id });
+              }else if(kind==='dittany'){
+                this.emitAction({ type:'item', itemType:'dittany', targetId:p.id });
+              }
+            };
+            listEl.appendChild(row);
           }
         }
         $('targetModal').classList.remove('hidden');
       }
+      hideTargetPicker(){ $('targetModal').classList.add('hidden'); $('targetList').innerHTML=''; }
+      hideItemModal(){ $('itemModal').classList.add('hidden'); }
 
-      async actAttack(targetId){
-        const r = await api.post('/api/battles/'+this.battle.id+'/actions/attack', { attackerId: this.player.id, targetId });
-        if(!r?.ok){ this.addLog('system','공격 실패: '+(r?.error||'오류')); return; }
-        if(r.event) this.addLog('battle', JSON.stringify(r.event));
-        if(r.battle) this.battle = r.battle;
-        const me = (this.battle.players||[]).find(p=>String(p.id)===String(this.player.id)); if(me) this.hydratePlayer(me);
-        this.renderAll();
-      }
-
-      async actSimple(kind){
-        const ep = {
-          defend:'/api/battles/'+this.battle.id+'/actions/defend',
-          dodge: '/api/battles/'+this.battle.id+'/actions/dodge',
-          pass:  '/api/battles/'+this.battle.id+'/actions/pass'
-        }[kind];
-        if(!ep) return;
-        const r = await api.post(ep, { playerId: this.player.id });
-        if(!r?.ok){ this.addLog('system', (kind+' 실패: ')+(r?.error||'오류')); return; }
-        if(r.event) this.addLog('battle', JSON.stringify(r.event));
-        if(r.battle) this.battle = r.battle;
-        const me = (this.battle.players||[]).find(p=>String(p.id)===String(this.player.id)); if(me) this.hydratePlayer(me);
-        this.renderAll();
+      // 간단 액션
+      actSimple(kind){
+        if(kind==='defend'){ // 룰: "단순 방어" — 서버가 다음 피격 시 방어 처리(곱하기 아님) + 1회용 버프 없음
+          this.emitAction({ type:'defend' });
+          return;
+        }
+        if(kind==='dodge'){
+          this.emitAction({ type:'dodge' });
+          return;
+        }
+        if(kind==='pass'){
+          this.emitAction({ type:'pass' });
+          return;
+        }
       }
 
       showItemModal(){ $('itemModal').classList.remove('hidden'); }
-      async useItem(code){
-        const map = { attackBoost:'공격 보정기', defenseBoost:'방어 보정기', healPotion:'디터니' };
-        if(this.player.items[code]<=0) return;
-        const r = await api.post('/api/battles/'+this.battle.id+'/actions/item', { playerId:this.player.id, item:map[code], code });
-        if(!r?.ok){ this.addLog('system','아이템 실패: '+(r?.error||'오류')); return; }
-        $('itemModal').classList.add('hidden');
-        if(r.event) this.addLog('battle', JSON.stringify(r.event));
-        if(r.battle) this.battle = r.battle;
-        const me = (this.battle.players||[]).find(p=>String(p.id)===String(this.player.id)); if(me) this.hydratePlayer(me);
-        this.renderAll();
-      }
 
       // ===== 채팅/로그(클라이언트 로컬 표시) =====
       sendChat(){
         const input = $('chatInput');
         const msg = input.value.trim(); if(!msg) return;
-        this.addChat('team', this.player.name, msg);
+        this.addChat('team', this.player.name || '전투 참가자', msg);
         input.value='';
       }
       addChat(type, sender, message){
@@ -709,8 +753,6 @@
         c.appendChild(d); c.scrollTop = c.scrollHeight;
       }
     }
-
-    function clamp1to5(v){ v=+v||1; if(v<1) v=1; if(v>5) v=5; return v; }
 
     // 시작
     const client = new PlayerClient();
