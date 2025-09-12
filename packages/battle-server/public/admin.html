@@ -7,34 +7,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root{
-      --deep-navy:#00080D;
-      --glass-1:rgba(15,25,40,.8);
-      --glass-2:rgba(20,30,45,.9);
-      --gold-1:#DCC7A2;
-      --gold-2:#D4BA8D;
-      --gold-bright:#F0E6C7;
-      --gold-shimmer:#E8DDB5;
-      --text:#E5E7EB;
-      --text-dim:#D1D5DB;
-      --text-muted:#9CA3AF;
-      --border-light:rgba(212,183,126,.2);
-      --border-subtle:rgba(212,183,126,.1);
-      --success:#10B981;
-      --danger:#EF4444;
-      --warning:#F59E0B;
-      --info:#3B82F6;
-      --blur-light:blur(12px) saturate(180%);
-      --blur-medium:blur(16px) saturate(180%);
-      --radius:12px; --radius-sm:8px;
-      --shadow-soft:0 4px 20px rgba(0,0,0,.3);
-      --shadow-med:0 8px 30px rgba(0,0,0,.4);
-      --t: .18s ease-out;
-      --serif:'Cinzel',serif; --sans:'Inter',sans-serif;
+      --deep-navy:#00080D; --glass-1:rgba(15,25,40,.8); --glass-2:rgba(20,30,45,.9);
+      --gold-1:#DCC7A2; --gold-2:#D4BA8D; --gold-bright:#F0E6C7; --gold-shimmer:#E8DDB5;
+      --text:#E5E7EB; --text-dim:#D1D5DB; --text-muted:#9CA3AF;
+      --border-light:rgba(212,183,126,.2); --border-subtle:rgba(212,183,126,.1);
+      --success:#10B981; --danger:#EF4444; --warning:#F59E0B; --info:#3B82F6;
+      --blur-light:blur(12px) saturate(180%); --blur-medium:blur(16px) saturate(180%);
+      --radius:12px; --radius-sm:10px; --shadow-soft:0 4px 20px rgba(0,0,0,.3); --shadow-med:0 8px 30px rgba(0,0,0,.4);
+      --t:.18s ease-out; --serif:'Cinzel',serif; --sans:'Inter',sans-serif;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:var(--sans);background:linear-gradient(135deg,var(--deep-navy),#000B14 50%,var(--deep-navy));color:var(--text);min-height:100vh}
     .header{position:sticky;top:0;z-index:10;background:var(--glass-2);backdrop-filter:var(--blur-light);border-bottom:1px solid var(--border-light);padding:20px 0}
-    .wrap{max-width:1400px;margin:0 auto;padding:0 20px}
+    .wrap{max-width:1400px;margin:0 auto;padding:0 20px;text-align:center}
     .logo{font-family:var(--serif);font-weight:900;font-size:34px;letter-spacing:.15em;background:linear-gradient(135deg,var(--gold-1),var(--gold-shimmer) 50%,var(--gold-2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 20px rgba(220,199,162,.35)}
     .sub{font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
     .main{max-width:1400px;margin:0 auto;padding:24px 20px}
@@ -72,13 +57,21 @@
     .waiting{background:rgba(245,158,11,.16);color:var(--warning);border:1px solid var(--warning)}
     .active{background:rgba(16,185,129,.16);color:var(--success);border:1px solid var(--success)}
     .ended{background:rgba(107,114,128,.16);color:var(--text-muted);border:1px solid var(--text-muted)}
+    /* 아바타 업로드 UI */
+    .avatar-row{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:center}
+    .avatar-preview{width:96px;height:96px;border-radius:14px;background:rgba(0,0,0,.25);border:1px solid var(--border-light);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px}
+    .avatar-tools{display:flex;gap:8px;align-items:center}
+    .file-wrap{position:relative;display:inline-block}
+    .file-wrap input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .file-btn{padding:8px 12px;border-radius:10px;border:1px solid var(--gold-1);background:linear-gradient(135deg,var(--gold-1),var(--gold-2));font-weight:700;font-size:12px;color:#091218}
+    .clear-btn{padding:8px 12px;border-radius:10px;border:1px solid #6B7280;background:linear-gradient(135deg,#6B7280,#4B5563);color:#fff;font-weight:700;font-size:12px}
     @media (max-width:1200px){.grid{grid-template-columns:1fr 1fr}}
     @media (max-width:768px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <header class="header">
-    <div class="wrap" style="text-align:center">
+    <div class="wrap">
       <div class="logo">PYXIS</div>
       <div class="sub">전투 시스템 관리자 콘솔</div>
     </div>
@@ -142,7 +135,8 @@
 
       <!-- 중앙: 전투 참가자 관리 -->
       <div class="card">
-        <div class="title">전투 참가자 관리</div>
+        <div class="title">전투 참가자 추가</div>
+
         <div class="row row-2">
           <div>
             <label>이름</label>
@@ -157,8 +151,22 @@
           </div>
         </div>
 
-        <div class="row row-4">
-          <div class="row row-4" style="grid-template-columns:repeat(4,1fr);gap:8px">
+        <div class="row" style="margin-top:2px">
+          <div class="avatar-row">
+            <div id="avatarPreview" class="avatar-preview">미리보기</div>
+            <div class="avatar-tools">
+              <div class="file-wrap">
+                <button class="file-btn" type="button">이미지 선택</button>
+                <input id="avatarFile" type="file" accept="image/*">
+              </div>
+              <button id="avatarClear" class="clear-btn" type="button">지우기</button>
+              <div id="avatarHint" style="font-size:11px;color:var(--text-muted)">정방형 권장, 최대 5MB</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <div class="row" style="grid-template-columns:repeat(4,1fr);gap:8px">
             <div>
               <label>공격(1~5)</label>
               <input id="atk" type="number" min="1" max="5" value="1"/>
@@ -178,18 +186,18 @@
           </div>
         </div>
 
-        <div class="row row-3">
+        <div class="row row-3" style="margin-top:4px">
           <div>
             <label>공격 보정기</label>
-            <input id="itemAtk" type="number" min="0" max="3" value="0"/>
+            <input id="itemAtk" type="number" min="0" max="99" value="0"/>
           </div>
           <div>
             <label>방어 보정기</label>
-            <input id="itemDef" type="number" min="0" max="3" value="0"/>
+            <input id="itemDef" type="number" min="0" max="99" value="0"/>
           </div>
           <div>
             <label>디터니</label>
-            <input id="itemHeal" type="number" min="0" max="5" value="1"/>
+            <input id="itemHeal" type="number" min="0" max="99" value="1"/>
           </div>
         </div>
 
@@ -228,7 +236,7 @@
 
   <script>
     // 설정
-    const API_BASE = location.origin; // 같은 호스트에서 정적 서빙 가정
+    const API_BASE = location.origin;
     const $ = (id)=>document.getElementById(id);
 
     const state = {
@@ -236,8 +244,20 @@
       mode: '1v1',
       status: 'waiting',
       playersA: [],
-      playersB: []
+      playersB: [],
+      pendingAvatarFile: null,
+      pendingAvatarPreviewUrl: null
     };
+
+    // 팀 키 <-> A/B 매핑
+    function toAB(teamKey){
+      if(!teamKey) return 'B';
+      const t = String(teamKey).toLowerCase();
+      if(t === 'a' || t === 'phoenix') return 'A';
+      if(t === 'b' || t === 'eaters') return 'B';
+      return (t === 'a') ? 'A' : 'B';
+    }
+    function abLabel(ab){ return ab === 'A' ? 'A팀' : 'B팀'; }
 
     // 유틸
     const clamp = (v,min,max)=>Math.max(min,Math.min(max,Number(v||0)));
@@ -290,13 +310,15 @@
         }
         list.forEach(p=>{
           const div = document.createElement('div');
-          const stat = p.stats||{};
-          const items = p.items||{};
+          const st = p.stats||{};
           div.className='pitem';
           div.innerHTML = `
-            <div>
-              <div class="pname">${p.name}</div>
-              <div class="pmeta">ATK:${stat.attack} DEF:${stat.defense} AGI:${stat.agility} LUK:${stat.luck} | HP:${p.hp}</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:32px;height:32px;border-radius:8px;background:#00000033;border:1px solid var(--border-subtle);background-size:cover;background-position:center;${p.avatar?`background-image:url('${String(p.avatar).replace(/"/g,'&quot;')}')`:""}"></div>
+              <div>
+                <div class="pname">${p.name}</div>
+                <div class="pmeta">공격:${st.attack} 방어:${st.defense} 민첩:${st.agility} 행운:${st.luck} | HP:${p.hp}</div>
+              </div>
             </div>
             <button class="btn btn-danger" style="padding:6px 10px;font-size:11px" data-id="${p.id}">삭제</button>
           `;
@@ -310,20 +332,98 @@
 
     async function fetchBattle(){
       if(!state.battleId) return;
-      const r = await fetch(`${API_BASE}/api/battles/${state.battleId}`);
-      if(!r.ok){ log('system','전투 조회 실패'); return; }
-      const {battle} = await r.json();
-      setStatus(battle.status);
-      $('battleIdText').textContent = battle.id;
-      $('battleModeText').textContent = battle.mode;
+      try{
+        const r = await fetch(`${API_BASE}/api/battles/${state.battleId}`);
+        if(!r.ok){ log('system','전투 조회 실패'); return; }
+        const {battle} = await r.json();
+        setStatus(battle.status);
+        $('battleIdText').textContent = battle.id;
+        $('battleModeText').textContent = battle.mode;
 
-      const A=[]; const B=[];
-      (battle.players||[]).forEach(p=>{
-        (p.team==='A'?A:B).push(p);
+        const A=[]; const B=[];
+        (battle.players||[]).forEach(p=>{
+          const ab = toAB(p.team);
+          if(ab === 'A') A.push(p); else B.push(p);
+          // 표시용으로 교정
+          p.team = ab;
+        });
+        state.playersA = A; state.playersB = B;
+        renderRosters();
+        refreshButtons();
+      }catch(err){
+        log('system', `전투 조회 오류: ${err.message}`);
+      }
+    }
+
+    // 아바타 미리보기/업로드
+    function setAvatarPreview(file){
+      const prev = $('avatarPreview');
+      if(state.pendingAvatarPreviewUrl){
+        URL.revokeObjectURL(state.pendingAvatarPreviewUrl);
+        state.pendingAvatarPreviewUrl = null;
+      }
+      if(file){
+        const url = URL.createObjectURL(file);
+        state.pendingAvatarPreviewUrl = url;
+        prev.style.backgroundImage = `url('${url}')`;
+        prev.textContent = '';
+      }else{
+        prev.style.backgroundImage = 'none';
+        prev.textContent = '미리보기';
+      }
+    }
+
+    async function fileToBase64(file){
+      return new Promise((resolve,reject)=>{
+        const fr = new FileReader();
+        fr.onload = ()=>resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(file);
       });
-      state.playersA = A; state.playersB = B;
-      renderRosters();
-      refreshButtons();
+    }
+
+    async function uploadAvatar(file){
+      // 1) multipart 'file' → 2) multipart 'avatar' → 3) JSON base64(data | base64)
+      const tryForm = async (fieldName) => {
+        const fd = new FormData();
+        fd.append(fieldName, file, file.name);
+        const r = await fetch(`${API_BASE}/api/upload/avatar`,{ method:'POST', body: fd });
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const js = await r.json();
+        if(js.ok === false) throw new Error(js.error || '서버 응답 실패');
+        const url = js.url || js.path || js.avatar;
+        if(!url) throw new Error('업로드 응답에 url이 없습니다.');
+        return url;
+      };
+      const tryJson = async (keyName) => {
+        const b64 = await fileToBase64(file);
+        const body = {}; body[keyName] = b64;
+        const r = await fetch(`${API_BASE}/api/upload/avatar`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(body)
+        });
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        const js = await r.json();
+        if(js.ok === false) throw new Error(js.error || '서버 응답 실패');
+        const url = js.url || js.path || js.avatar;
+        if(!url) throw new Error('업로드 응답에 url이 없습니다.');
+        return url;
+      };
+
+      try{ return await tryForm('file'); }
+      catch(e1){
+        try{ return await tryForm('avatar'); }
+        catch(e2){
+          try{ return await tryJson('data'); }
+          catch(e3){
+            try{ return await tryJson('base64'); }
+            catch(e4){
+              throw new Error(`업로드 실패(시도 4회): ${e4.message}`);
+            }
+          }
+        }
+      }
     }
 
     // 이벤트 바인딩
@@ -373,7 +473,7 @@
         }
       });
 
-      // 일시정지/재개/종료(서버에 전용 API가 없으면 상태만 표시)
+      // 일시정지/재개/종료(서버 전용 API 없으면 표시만)
       $('btnPause').addEventListener('click', ()=>{
         setStatus('paused'); log('admin','전투가 일시정지되었습니다.'); refreshButtons();
       });
@@ -394,7 +494,7 @@
         const build = (p)=> {
           const otp = genOTP();
           const url = `${location.origin}/player?battleId=${state.battleId}&otp=${otp}&playerId=${encodeURIComponent(p.id)}`;
-          links.push({who:`${p.name} (${p.team}팀)`, url, otp});
+          links.push({who:`${p.name} (${abLabel(p.team)})`, url, otp});
         };
         [...state.playersA,...state.playersB].forEach(build);
         renderLinks('전투 참가자 링크', links);
@@ -416,11 +516,29 @@
         if(e.key==='Enter'){ e.preventDefault(); sendChat(); }
       });
 
-      // 입력 범위 강제
+      // 스탯 입력 범위 강제
       ['atk','def','agi','luk'].forEach(id=>{
         $(id).addEventListener('input',e=>{
           e.target.value = clamp(e.target.value,1,5);
         });
+      });
+
+      // 아바타 파일 선택/지우기
+      $('avatarFile').addEventListener('change', (e)=>{
+        const file = e.target.files && e.target.files[0];
+        if(!file){ state.pendingAvatarFile=null; setAvatarPreview(null); return; }
+        if(file.size > 5*1024*1024){
+          log('system','이미지 용량이 큽니다. 5MB 이하로 업로드해주세요.');
+          e.target.value = '';
+          return;
+        }
+        state.pendingAvatarFile = file;
+        setAvatarPreview(file);
+      });
+      $('avatarClear').addEventListener('click', ()=>{
+        $('avatarFile').value='';
+        state.pendingAvatarFile=null;
+        setAvatarPreview(null);
       });
 
       refreshButtons();
@@ -430,7 +548,7 @@
     async function addPlayerHandler(){
       if(!state.battleId){ log('system','전투가 없습니다. 전투를 먼저 생성하세요.'); return; }
       const name = $('pName').value.trim();
-      const team = $('pTeam').value;
+      const teamAB = $('pTeam').value;             // 'A' | 'B'
       const stats = {
         attack: clamp($('atk').value,1,5),
         defense: clamp($('def').value,1,5),
@@ -445,31 +563,45 @@
 
       if(!name){ log('system','이름을 입력하세요.'); return; }
 
+      let avatarUrl = '';
+      try{
+        if(state.pendingAvatarFile){
+          avatarUrl = await uploadAvatar(state.pendingAvatarFile);
+        }
+      }catch(err){
+        log('system', `아바타 업로드 실패: ${err.message}. 아바타 없이 진행합니다.`);
+      }
+
       try{
         const r = await fetch(`${API_BASE}/api/battles/${state.battleId}/players`,{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
-            name, team, hp:100,
-            stats, items
+            name, team: teamAB, hp:100,
+            stats, items,
+            avatar: avatarUrl || ''
           })
         });
         const js = await r.json();
         if(!js.ok) throw new Error(js.error||'추가 실패');
 
-        const p = js.player;
-        if(p.team==='A') state.playersA.push(p); else state.playersB.push(p);
-        renderRosters();
-        refreshButtons();
-        log('admin', `${p.name} 이(가) ${p.team}팀에 추가되었습니다.`);
+        // 서버 진실로 동기화(phoenix/eaters 대응)
+        await fetchBattle();
+
+        // 로그 표기
+        log('admin', `${name} 이(가) ${abLabel(teamAB)}에 추가되었습니다.`);
+
+        // 입력 초기화
         $('pName').value='';
+        $('avatarFile').value='';
+        state.pendingAvatarFile=null;
+        setAvatarPreview(null);
       }catch(err){
         log('system', `전투 참가자 추가 오류: ${err.message}`);
       }
     }
 
     async function removePlayer(pid){
-      // 서버에 삭제 API가 없다면 클라 반영만 하지 않습니다.
       log('system','삭제 API가 아직 없습니다. 서버 지원 전까지는 수동 제거 불가.');
     }
 
@@ -505,7 +637,6 @@
     }
 
     function genOTP(){
-      // 관전자 비밀번호(간단 난수)
       return Math.random().toString(36).slice(2,8).toUpperCase();
     }
 
@@ -517,7 +648,7 @@
       // 서버 소켓 연동 전까지는 로컬 표시만
     }
 
-    // 전투 상태 주기 동기화(선택)
+    // 상태 폴링
     setInterval(()=>{ if(state.battleId) fetchBattle(); }, 5000);
   </script>
 </body>
