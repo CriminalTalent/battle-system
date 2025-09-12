@@ -1,8 +1,6 @@
 // /public/assets/js/admin.js
-// 변경 요약:
-// - 전투 생성은 소켓 전용(REST 제거). 소켓 연결 보장 후 emit, ack/브로드캐스트로 확정.
-// - socket이 준비되지 않은 상태에서 emit 호출하던 문제 제거.
-// - 나머지 UI/표기/룰/로깅은 기존 유지.
+// 소켓 연결 견고화: 여러 호스트/경로 조합 시도 + 재연결 + 연결 전 emit 금지 + 상세 로그
+// 전투 생성/참가자 추가/채팅은 기존 동작 유지(룰/표기/디자인 변경 없음)
 
 (function(){
   "use strict";
@@ -45,8 +43,8 @@
     btnAdd:  byId('btnAdd'),
 
     // 테이블
-    listA: byId('listA').querySelector('tbody'),
-    listB: byId('listB').querySelector('tbody'),
+    listA: byId('listA')?.querySelector('tbody'),
+    listB: byId('listB')?.querySelector('tbody'),
 
     // 로그/채팅
     log: byId('log'),
@@ -68,6 +66,13 @@
   const toast = (msg)=>{ if(!els.toast) return; els.toast.textContent=msg; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'),1600); };
   const makeAbsolute = (p)=> new URL(p, window.location.origin).toString();
 
+  function appendLog(msg){
+    if(!els.log) return;
+    const d = document.createElement('div');
+    d.textContent = msg;
+    els.log.appendChild(d);
+    els.log.scrollTop = els.log.scrollHeight;
+  }
   function setConn(on){ els.connDot?.classList.toggle('ok', !!on); }
   function setCtrlEnabled(on){
     [els.btnCreate, els.btnStart, els.btnPause, els.btnResume, els.btnEnd,
@@ -84,10 +89,17 @@
   }
 
   // -------- 초기화 --------
+  document.addEventListener('DOMContentLoaded', init);
+
   function init(){
     bindUI();
-    connect();
-    autoJoinFromURL();
+    connectSequence().then((ok)=>{
+      if(!ok){
+        appendLog('서버 연결 실패: 전투 생성 불가');
+        return;
+      }
+      autoJoinFromURL(); // 연결 이후에 처리
+    });
   }
 
   function bindUI(){
@@ -108,17 +120,92 @@
     els.chatMsg.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
   }
 
-  function connect(){
-    socket = io(window.location.origin, { path:'/socket.io', transports:['websocket','polling'], withCredentials:true, timeout:20000 });
-    socket.on('connect', ()=> setConn(true));
-    socket.on('disconnect', ()=> setConn(false));
+  // -------- 견고한 소켓 연결 시퀀스 --------
+  async function connectSequence(){
+    const origin = window.location.origin;
+    const fallbacks = [
+      { base: origin, path: '/socket.io'  },
+      { base: origin, path: '/socket.io/' },
+      { base: 'https://pyxisbattlesystem.monster', path: '/socket.io'  },
+      { base: 'https://pyxisbattlesystem.monster', path: '/socket.io/' },
+    ];
 
-    // 상태 업데이트(신/구 호환)
+    appendLog('서버 연결 대기 중...');
+
+    for(let i=0;i<fallbacks.length;i++){
+      const opt = fallbacks[i];
+      const ok = await tryConnect(opt.base, opt.path);
+      if(ok){
+        appendLog(`소켓 연결 성공: ${opt.base}${opt.path}`);
+        return true;
+      }else{
+        appendLog(`소켓 연결 실패: ${opt.base}${opt.path}`);
+      }
+    }
+    setConn(false);
+    return false;
+  }
+
+  function tryConnect(base, path){
+    return new Promise((resolve)=>{
+      // 이전 소켓 정리
+      try{ socket?.off(); socket?.close(); }catch(_){}
+      socket = null;
+
+      // io 옵션
+      const ioOpts = {
+        path,
+        transports: ['websocket', 'polling'],
+        withCredentials: true,
+        timeout: 20000,
+        reconnection: true,
+        reconnectionAttempts: 12,
+        reconnectionDelay: 400,
+        reconnectionDelayMax: 3000,
+        forceNew: true,
+        query: { role: 'admin' }
+      };
+
+      // 전역 io 사용
+      try{
+        socket = io(base, ioOpts);
+      }catch(e){
+        appendLog(`소켓 생성 에러: ${e.message||e}`);
+        return resolve(false);
+      }
+
+      let settled = false;
+      const done = (ok)=>{ if(!settled){ settled = true; resolve(ok); } };
+
+      socket.once('connect', ()=>{
+        setConn(true);
+        // 공통 리스너 등록
+        bindSocketEvents();
+        done(true);
+      });
+
+      socket.once('connect_error', (err)=>{
+        setConn(false);
+        appendLog(`connect_error: ${err?.message||err}`);
+        // 여기서 바로 실패 처리하지 않고 타임아웃까지 대기(일부 환경에서 polling 전환까지 시간이 필요)
+      });
+
+      setTimeout(()=>{
+        if(socket?.connected){ return; }
+        done(false);
+        try{ socket?.off(); socket?.close(); }catch(_){}
+      }, 2500);
+    });
+  }
+
+  function bindSocketEvents(){
+    if(!socket) return;
+
     ['battleUpdate','battle:update','battleState','state:update'].forEach(ev=>{
       socket.on(ev, onBattleUpdate);
     });
 
-    // 로그 수신
+    socket.on('disconnect', ()=> setConn(false));
     socket.on('battleLog', (m)=> appendLog(typeof m==='string'? m : (m?.message||JSON.stringify(m))));
     socket.on('battle:log', ({message})=> appendLog(message||''));
     socket.on('actionSuccess', (m)=> appendLog(formatActionLog('성공', m)));
@@ -128,7 +215,6 @@
     socket.on('playerAction',  (m)=> appendLog(formatActionLog('행동', m)));
     socket.on('player:action', (m)=> appendLog(formatActionLog('행동', m)));
 
-    // 채팅 수신
     socket.on('chatMessage', (payload)=>{
       if(typeof payload==='string'){ appendChat('플레이어', payload); }
       else { appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''); }
@@ -136,28 +222,31 @@
     socket.on('chat:message', (payload)=> appendChat(payload?.name||payload?.senderName||'플레이어', payload?.message||''));
     socket.on('battle:chat',  ({name,message})=> appendChat(name||'플레이어', message||''));    
 
-    // 생성 알림 호환
     socket.on('battle:created', (battle)=> onBattleCreatedViaSocket(battle));
     socket.on('admin:created',  (payload)=> onBattleCreatedViaSocket(payload?.battle));
   }
 
-  function onBattleCreatedViaSocket(battle){
-    if(!battle) return;
-    battleId = battle.id || battle.battleId || battleId;
-    appendLog('전투 생성 완료(소켓)');
-    if(socket && socket.connected){ socket.emit('join', { battleId }); }
-    onBattleUpdate(battle);
-    activateControls();
-  }
-
+  // -------- URL 파라미터 기반 자동 조인/인증 --------
   function autoJoinFromURL(){
     const p = new URLSearchParams(location.search);
     const b = p.get('battle');
     const t = p.get('token') || p.get('otp');
+
+    if(!socket || !socket.connected) return;
+
     if(b){
       battleId = b;
-      if(socket && socket.connected){ socket.emit('join', { battleId }); }
-      if(t && socket && socket.connected){ socket.emit('adminAuth', { battleId, otp: t, token: t }); }
+      socket.emit('join', { battleId });
+    }
+    if(b && t){
+      // 서버가 adminAuth를 요구하는 경우 자동 수행
+      socket.emit('adminAuth', { battleId, otp: t, token: t }, (ack)=>{
+        if(ack?.error){ appendLog(`adminAuth 실패: ${ack.error}`); }
+        else { appendLog('adminAuth 성공'); }
+      });
+    }
+
+    if(b){
       fetch(`/api/battles/${encodeURIComponent(battleId)}`, { credentials:'include' })
         .then(r=>r.ok?r.json():null)
         .then(snap=>{ if(snap){ onBattleUpdate(snap); activateControls(); }})
@@ -173,20 +262,14 @@
   }
 
   async function onCreateBattle(){
-    const payload = modePayload();
-
-    // 소켓이 연결되어 있지 않다면 연결을 기다렸다가 1회 시도
     if(!socket || !socket.connected){
       appendLog('서버 연결 대기 중...');
-      await waitSocketConnected(2500);
-      if(!socket || !socket.connected){
-        appendLog('서버 연결 실패: 전투 생성 불가');
-        alert('서버 연결을 확인하세요');
-        return;
-      }
+      return;
     }
 
+    const payload = modePayload();
     appendLog(`전투 생성 요청(소켓): 모드 ${payload.mode}`);
+
     const ok = await createViaSocket(payload);
     if(ok){ activateControls(); toast('전투가 생성되었습니다'); return; }
 
@@ -194,19 +277,10 @@
     alert('전투 생성 실패');
   }
 
-  function waitSocketConnected(ms){
-    return new Promise((resolve)=>{
-      if(socket && socket.connected) return resolve(true);
-      const onConnect = ()=>{ socket.off('connect_error', onError); resolve(true); };
-      const onError   = ()=>{};
-      socket?.once('connect', onConnect);
-      socket?.once('connect_error', onError);
-      setTimeout(()=>{ socket?.off('connect', onConnect); socket?.off('connect_error', onError); resolve(socket?.connected||false); }, ms);
-    });
-  }
-
   function createViaSocket(payload){
     return new Promise((resolve)=>{
+      if(!socket || !socket.connected) return resolve(false);
+
       let settled=false;
       const done=(ok)=>{ if(!settled){ settled=true; resolve(ok); }};
 
@@ -220,23 +294,19 @@
           const b = res.battle || res;
           if(b && (b.id || b.battleId)){
             battleId = b.id || b.battleId;
-            if(socket && socket.connected){ socket.emit('join', { battleId }); }
+            socket.emit('join', { battleId });
             onBattleUpdate(b);
             done(true);
           }
         }catch(_){}
       };
 
-      // 신/구 이벤트 병행 시도
       try{ socket.emit('createBattle', payload, ack); }catch(_){}
       try{ socket.emit('battle:create', payload, ack); }catch(_){}
       try{ socket.emit('admin:createBattle', payload, ack); }catch(_){}
       try{ socket.emit('create:battle', payload, ack); }catch(_){}
 
-      // 브로드캐스트 대기
       waitForUpdate(1500).then((u)=>{ if(u) done(true); });
-
-      // 타임아웃
       setTimeout(()=> done(false), 2200);
     });
   }
@@ -252,10 +322,12 @@
 
   function adminAction(kind){
     if(!battleId){ toast('전투 생성부터 진행하세요.'); return; }
-    if(kind==='start'){  if(socket && socket.connected){ socket.emit('startBattle', { battleId });  socket.emit('battle:start',  { battleId }); } appendLog('전투 시작 요청'); }
-    if(kind==='pause'){  if(socket && socket.connected){ socket.emit('pauseBattle', { battleId });  socket.emit('battle:pause',  { battleId }); } appendLog('전투 일시정지 요청'); }
-    if(kind==='resume'){ if(socket && socket.connected){ socket.emit('resumeBattle',{ battleId });  socket.emit('battle:resume', { battleId }); } appendLog('전투 재개 요청'); }
-    if(kind==='end'){    if(socket && socket.connected){ socket.emit('endBattle',   { battleId });  socket.emit('battle:end',    { battleId }); } appendLog('전투 종료 요청'); }
+    if(!socket || !socket.connected){ toast('서버 연결을 확인하세요'); return; }
+
+    if(kind==='start'){  socket.emit('startBattle', { battleId });  socket.emit('battle:start',  { battleId }); appendLog('전투 시작 요청'); }
+    if(kind==='pause'){  socket.emit('pauseBattle', { battleId });  socket.emit('battle:pause',  { battleId }); appendLog('전투 일시정지 요청'); }
+    if(kind==='resume'){ socket.emit('resumeBattle',{ battleId });  socket.emit('battle:resume', { battleId }); appendLog('전투 재개 요청'); }
+    if(kind==='end'){    socket.emit('endBattle',   { battleId });  socket.emit('battle:end',    { battleId }); appendLog('전투 종료 요청'); }
   }
 
   function onBattleUpdate(snap){
@@ -282,6 +354,7 @@
 
   function waitForUpdate(ms){
     return new Promise((resolve)=>{
+      if(!socket) return resolve(false);
       let hit=false;
       const h = (snap)=>{ if(hit) return; if(snap?.id){ hit=true; off(); battleId=snap.id; onBattleUpdate(snap); resolve(true); } };
       const off = ()=>{ ['battleUpdate','battle:update','battleState','state:update'].forEach(ev=> socket.off(ev, h)); };
@@ -299,6 +372,7 @@
       if(!res.ok) throw new Error();
       const data = await res.json();
       const links = data?.playerLinks || data?.links || [];
+
       els.playerLinks.innerHTML='';
       links.forEach((ln, idx)=>{
         const row = document.createElement('div');
@@ -504,13 +578,6 @@
     return '-';
   }
 
-  // -------- 로그/채팅 --------
-  function appendLog(msg){
-    const d = document.createElement('div');
-    d.textContent = msg;
-    els.log.appendChild(d);
-    els.log.scrollTop = els.log.scrollHeight;
-  }
   function formatActionLog(type, payload){
     try{
       const p = payload || {};
@@ -536,5 +603,4 @@
     els.chatMsg.value='';
   }
 
-  document.addEventListener('DOMContentLoaded', init);
 })();
