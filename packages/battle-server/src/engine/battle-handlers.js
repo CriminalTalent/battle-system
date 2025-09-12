@@ -1,11 +1,11 @@
+// packages/battle-server/src/engine/battle-handlers.js
 "use strict";
 
 /**
  * Battle 경량 핸들러 (라운드/페이즈 내장)
  * - 상태키: waiting | active | paused | ended
  * - 시작: 팀별 (민첩 + d20) 합 비교, 동점 시 자동 재굴림
- * - 턴: 선공 페이즈(A/B 레터) → 후공 페이즈 → 라운드 +1, 선공/후공 스왑
- * - 레거시 호환을 위해 current/firstTeamKey(phoenix|eaters)도 계속 제공
+ * - 턴: 선공 페이즈(A/B) → 후공 페이즈 → 라운드 +1, 선공/후공 스왑
  */
 
 /* ---------- d20 ---------- */
@@ -30,17 +30,12 @@ function createBattle({ id, mode = "2v2", adminToken, spectatorOtp }) {
       round: 0,                 // startBattle 시 1
       order: ["A", "B"],        // ["A","B"]=A선공, ["B","A"]=B선공
       phaseIndex: 0,            // 0=선공, 1=후공
-      acted: { A: new Set(), B: new Set() } // 현재 라운드에서 각 페이즈 내 "행동 완료한 플레이어 ID"
+      acted: { A: new Set(), B: new Set() }
     },
 
-    // 레거시 호환
-    turnMs: 5 * 60 * 1000,
-    current: null,          // 현재 페이즈 팀키("phoenix"/"eaters")
-    firstTeamKey: null,     // 첫 라운드 선공 팀키
-
-    players: [],            // { id, name, team:"phoenix"|"eaters", stats:{atk,def,agi,luk}, hp, ready, avatarUrl }
+    players: [],            // { id, name, team:"A"|"B", stats:{attack,defense,agility,luck}, hp, ready, avatarUrl }
     log: [],                // { type, message, ts }
-    effects: []             // 일회성 보정(defenseBoost/dodgePrep 등)
+    effects: []             // 일회성 보정(defenseBoost 등)
   };
 }
 
@@ -63,32 +58,32 @@ function isBattleOver(battle) {
   if (!battle || !Array.isArray(battle.players)) return true;
   if (battle.status === "ended") return true;
 
-  const aliveA = battle.players.some(p => p && p.team === "phoenix" && (p.hp || 0) > 0);
-  const aliveB = battle.players.some(p => p && p.team === "eaters"  && (p.hp || 0) > 0);
+  const aliveA = battle.players.some(p => p && p.team === "A" && (p.hp || 0) > 0);
+  const aliveB = battle.players.some(p => p && p.team === "B" && (p.hp || 0) > 0);
   return !(aliveA && aliveB);
 }
 
 function winnerByHpSum(battle) {
   if (!battle || !Array.isArray(battle.players)) return null;
-  const sum = (teamKey) => battle.players
-    .filter(p => p && p.team === teamKey)
+  const sum = (team) => battle.players
+    .filter(p => p && p.team === team)
     .reduce((s, p) => s + (p?.hp || 0), 0);
 
-  const sumA = sum("phoenix");
-  const sumB = sum("eaters");
+  const sumA = sum("A");
+  const sumB = sum("B");
   if (sumA === sumB) return null;
-  return sumA > sumB ? "phoenix" : "eaters";
+  return sumA > sumB ? "A" : "B";
 }
 
 /* ---------- 선공 결정 (민첩+d20, 동점 재굴림) ---------- */
 function decideLeadingOrder(players) {
-  const rollTeam = (teamKey) =>
-    players.filter(p => p && p.team === teamKey)
-      .reduce((tot, p) => tot + Number(p?.stats?.agi || p?.stats?.agility || 0) + d20(), 0);
+  const rollTeam = (team) =>
+    players.filter(p => p && p.team === team)
+      .reduce((tot, p) => tot + Number(p?.stats?.agility || 0) + d20(), 0);
 
   while (true) {
-    const a = rollTeam("phoenix");
-    const b = rollTeam("eaters");
+    const a = rollTeam("A");
+    const b = rollTeam("B");
     if (a > b) return ["A","B"];
     if (b > a) return ["B","A"];
   }
@@ -102,20 +97,14 @@ function startBattle(battle) {
   battle.startedAt = Date.now();
   if (!Array.isArray(battle.players)) battle.players = [];
 
-  // 선공 결정
-  const order = decideLeadingOrder(battle.players); // ["A","B"] or ["B","A"]
+  const order = decideLeadingOrder(battle.players);
   battle.turn.order = order;
   battle.turn.phaseIndex = 0;
   battle.turn.round = 1;
   battle.turn.acted.A = new Set();
   battle.turn.acted.B = new Set();
 
-  // 레거시 호환
-  const leadTeam = order[0] === "A" ? "phoenix" : "eaters";
-  battle.firstTeamKey = leadTeam;
-  battle.current = leadTeam;
-
-  pushLog(battle, { type:"system", message:`전투 시작 (1턴 선공: ${leadTeam === "phoenix" ? "A팀" : "B팀"})` });
+  pushLog(battle, { type:"system", message:`전투 시작 (1턴 선공: ${order[0]}팀)` });
 }
 
 function endBattle(battle) {
@@ -124,61 +113,46 @@ function endBattle(battle) {
   battle.endedAt = Date.now();
 }
 
-/* ---------- 내부 매핑 ---------- */
+/* ---------- 내부 유틸 ---------- */
 function _phaseTeamLetter(battle){ return battle.turn.order[battle.turn.phaseIndex]; } // "A"|"B"
-function _letterToTeamKey(letter){ return letter === "A" ? "phoenix" : "eaters"; }
 function _otherLetter(letter){ return letter === "A" ? "B" : "A"; }
 
-function _aliveIdsOfTeam(battle, teamKey){
+function _aliveIdsOfTeam(battle, team){
   return (battle.players || [])
-    .filter(p => p && p.team === teamKey && (p.hp || 0) > 0)
+    .filter(p => p && p.team === team && (p.hp || 0) > 0)
     .map(p => p.id);
 }
 
-/* ---------- 턴/페이즈 진행 핵심 ---------- */
-/**
- * nextTurn(battle, { actorId })
- * - 현재 페이즈 팀의 생존자가 모두 1회 행동하면 페이즈 전환
- * - 후공 페이즈까지 끝나면 라운드 +1, 선공/후공 스왑
- * 반환:
- *   { teamPhaseCompleted, roundCompleted, currentTeamKey }
- */
+/* ---------- 턴/페이즈 진행 ---------- */
 function nextTurn(battle, { actorId } = {}) {
   if (!battle || battle.status !== "active")
-    return { teamPhaseCompleted:false, roundCompleted:false, currentTeamKey:null };
+    return { teamPhaseCompleted:false, roundCompleted:false, currentTeam:null };
 
-  const phaseLetter = _phaseTeamLetter(battle);           // "A"|"B"
-  const phaseTeamKey = _letterToTeamKey(phaseLetter);     // "phoenix"|"eaters"
+  const phaseLetter = _phaseTeamLetter(battle);
 
-  // 행동자 카운트(같은 팀 + 생존)
   if (actorId) {
     const actor = (battle.players || []).find(p => p && p.id === actorId);
-    if (actor && actor.team === phaseTeamKey && (actor.hp || 0) > 0) {
+    if (actor && actor.team === phaseLetter && (actor.hp || 0) > 0) {
       battle.turn.acted[phaseLetter].add(actorId);
     }
   }
 
-  // 페이즈 종료 여부: 생존자 전원이 acted에 포함되어야 함
-  const aliveIds = _aliveIdsOfTeam(battle, phaseTeamKey);
+  const aliveIds = _aliveIdsOfTeam(battle, phaseLetter);
   const actedSet = battle.turn.acted[phaseLetter];
   const done = aliveIds.every(id => actedSet.has(id));
 
   if (!done) {
-    battle.current = phaseTeamKey; // 레거시 호환
-    return { teamPhaseCompleted:false, roundCompleted:false, currentTeamKey:battle.current };
+    return { teamPhaseCompleted:false, roundCompleted:false, currentTeam:phaseLetter };
   }
 
-  // 선공 페이즈 → 후공 페이즈
   if (battle.turn.phaseIndex === 0) {
     battle.turn.phaseIndex = 1;
     const nextLetter = _phaseTeamLetter(battle);
-    battle.turn.acted[nextLetter] = new Set(); // 다음 페이즈 카운터 초기화
-    battle.current = _letterToTeamKey(nextLetter);
+    battle.turn.acted[nextLetter] = new Set();
     pushLog(battle, { type:"system", message:"후공 페이즈로 전환" });
-    return { teamPhaseCompleted:true, roundCompleted:false, currentTeamKey:battle.current };
+    return { teamPhaseCompleted:true, roundCompleted:false, currentTeam:nextLetter };
   }
 
-  // 후공까지 끝나면 라운드 종료 → 다음 라운드에서 직전 후공이 선공
   const oldLead = battle.turn.order[0];
   const oldLag  = battle.turn.order[1];
   battle.turn.order = [oldLag, oldLead];
@@ -187,13 +161,9 @@ function nextTurn(battle, { actorId } = {}) {
   battle.turn.acted.A = new Set();
   battle.turn.acted.B = new Set();
 
-  const newLeadTeamKey = _letterToTeamKey(battle.turn.order[0]);
-  battle.current = newLeadTeamKey;
-  battle.firstTeamKey = newLeadTeamKey; // 참고용
+  pushLog(battle, { type:"system", message:`라운드 종료 → ${battle.turn.round}턴 시작 준비 (선공: ${battle.turn.order[0]}팀)` });
 
-  pushLog(battle, { type:"system", message:`라운드 종료 → ${battle.turn.round}턴 시작 준비 (선공: ${newLeadTeamKey === "phoenix" ? "A팀" : "B팀"})` });
-
-  return { teamPhaseCompleted:true, roundCompleted:true, currentTeamKey:battle.current };
+  return { teamPhaseCompleted:true, roundCompleted:true, currentTeam:battle.turn.order[0] };
 }
 
 /* ---------- 유효성/정리 ---------- */
@@ -208,7 +178,6 @@ function validateBattleState(battle) {
   const valid = ["waiting","active","paused","ended"];
   if (!valid.includes(battle.status)) battle.status = "waiting";
 
-  // turn 보정
   if (!battle.turn) {
     battle.turn = { round:0, order:["A","B"], phaseIndex:0, acted:{A:new Set(),B:new Set()} };
   } else {
