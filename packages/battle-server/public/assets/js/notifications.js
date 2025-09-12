@@ -1,9 +1,11 @@
+// packages/battle-server/public/assets/js/notifications.js
 /* PYXIS Notifications
    - 데스크톱 알림 + 사운드
    - 초기화: window.PyxisNotify.init({ socket, enabled?, volume? })
    - 기본 수신 이벤트: battle:update, battle:log, battle:started, battle:ended, turn:start, turn:end
    - 플레이어 턴 감지: window.__PYXIS_PLAYER_ID 값을 사용
    - 이모지 사용 금지
+   - 팀 표기는 A/B만 사용 (내부 값이 다른 문자열이어도 A/B로 정규화)
 */
 (function () {
   "use strict";
@@ -112,10 +114,13 @@
       }
     });
 
-    socket.on("battle:ended", (p) => {
-      const msg =
-        (p && p.message) ||
-        (p && p.winner ? `${p.winner} 팀의 승리입니다.` : "전투가 종료되었습니다.");
+    socket.on("battle:ended", (p = {}) => {
+      const winnerAB = normalizeTeam(p.winner);
+      const msg = p.message
+        ? p.message
+        : (typeof winnerAB === "string"
+            ? `${winnerAB}팀의 승리입니다.`
+            : "전투가 종료되었습니다.");
       this.show("전투 종료", msg);
       this._last.status = "ended";
     });
@@ -169,6 +174,16 @@
     }
   }
 
+  // 팀 표기 통일(A/B)
+  function normalizeTeam(raw) {
+    const s = String(raw || "").toLowerCase();
+    if (!s) return null;
+    if (s === "a" || s === "phoenix" || s === "team_a" || s === "team-a") return "A";
+    if (s === "b" || s === "eaters"  || s === "team_b" || s === "team-b" || s === "death") return "B";
+    // 미지정/알 수 없음
+    return null;
+  }
+
   function shouldShowSystem(message = "") {
     // 너무 일반적인 메시지는 생략
     const m = String(message);
@@ -180,7 +195,7 @@
 
   function clamp(n, min, max) {
     return Math.max(min, Math.min(max, isFinite(n) ? n : min));
-    }
+  }
 
   // 사운드 + 데스크톱 알림
   Notify.show = function (title, body) {
