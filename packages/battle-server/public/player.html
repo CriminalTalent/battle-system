@@ -2,180 +2,219 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PYXIS - 전투 참가자</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    :root {
-      --deep-navy: #050a12;
-      --darker-navy: #0a111c;
-      --dark-navy: #0f1620;
-      --mid-navy: #1a2332;
-      --light-navy: #252d3d;
-      --gold: #DCC7A2;
-      --gold-bright: #E6D2A8;
-      --gold-shimmer: #F0E6C8;
-      --gold-subtle: rgba(220, 199, 162, 0.15);
-      --text: #F8F9FA;
-      --text-accent: #E9ECEF;
-      --text-muted: #8A93A3;
-      --glass-1: rgba(26, 35, 50, 0.3);
-      --glass-2: rgba(26, 35, 50, 0.5);
-      --glass-3: rgba(26, 35, 50, 0.7);
-      --border: rgba(37, 45, 61, 0.6);
-      --border-light: rgba(37, 45, 61, 0.8);
-      --border-subtle: rgba(37, 45, 61, 0.3);
-      --border-gold: rgba(220, 199, 162, 0.4);
-      --serif: 'Cinzel', serif;
-      --radius: 8px;
-      --radius-small: 6px;
-      --transition: 0.2s ease-out;
-      --blur: blur(8px);
-      --success: #27AE60;
-      --warning: #F39C12;
-      --danger: #E74C3C;
-      --info: #3498DB;
+    :root{
+      --deep:#050a12;--deep2:#0a111c;--glass1:rgba(26,35,50,.3);--glass2:rgba(26,35,50,.5);
+      --border:rgba(37,45,61,.6);--gold:#dcc7a2;--gold2:#e6d2a8;--txt:#f8f9fa;--muted:#8a93a3;
+      --r:10px
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100vh; font-family: var(--serif); background: linear-gradient(135deg, var(--deep-navy) 0%, var(--darker-navy) 100%); color: var(--text); overflow: hidden; }
-    .header { background: var(--glass-3); backdrop-filter: var(--blur); border-bottom: 1px solid var(--border-light); padding: 8px 0; position: sticky; top: 0; z-index: 100; }
-    .header-content { text-align: center; max-width: 1200px; margin: 0 auto; padding: 0 12px; }
-    .title-main { font-size: 20px; font-weight: 800; color: var(--gold-bright); letter-spacing: 1px; margin: 0; }
-    .title-sub { font-size: 10px; color: var(--text-muted); margin-top: -2px; }
-    .auth-container { display: flex; align-items: center; justify-content: center; height: calc(100vh - 60px); padding: 20px; }
-    .auth-card { background: var(--glass-2); backdrop-filter: var(--blur); border: 1px solid var(--border-gold); border-radius: var(--radius); padding: 24px; max-width: 380px; width: 100%; text-align: center; }
-    .auth-title { font-size: 16px; font-weight: 600; color: var(--gold-bright); margin-bottom: 16px; }
-    .form-group { margin-bottom: 12px; text-align: left; }
-    .label { display: block; font-size: 11px; font-weight: 600; color: var(--text-accent); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-    input[type="text"], input[type="password"] {
-      width: 100%; background: var(--glass-1); border: 1px solid var(--border); border-radius: var(--radius-small);
-      padding: 8px 12px; color: var(--text); font-size: 12px; font-family: var(--serif); transition: all var(--transition);
-    }
-    input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px rgba(220, 199, 162, 0.2); }
-    .btn { background: linear-gradient(135deg, var(--gold), var(--gold-bright)); color: var(--deep-navy); border: none; border-radius: var(--radius-small);
-      padding: 8px 16px; font-family: var(--serif); font-size: 12px; font-weight: 600; cursor: pointer; transition: all var(--transition);
-      text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;
-    }
-    .btn:hover { background: linear-gradient(135deg, var(--gold-bright), var(--gold-shimmer)); transform: translateY(-1px); }
-    .game-container { display: none; height: calc(100vh - 60px); max-width: 1200px; margin: 0 auto; padding: 8px; grid-template-columns: 200px 1fr 250px; grid-template-rows: 1fr 230px; gap: 8px; }
-    .game-container.active { display: grid; }
-    .team-panel, .action-panel, .player-info, .chat-panel, .turn-visual { background: var(--glass-2); backdrop-filter: var(--blur); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
-    .hidden { display: none !important; }
-    .show { display: block !important; }
+    *{box-sizing:border-box} html,body{height:100%;margin:0;font-family:'Cinzel',serif;background:linear-gradient(135deg,var(--deep),var(--deep2));color:var(--txt)}
+    .header{position:sticky;top:0;z-index:5;background:rgba(0,0,0,.25);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.06)}
+    .header .wrap{max-width:1200px;margin:0 auto;padding:10px 14px;text-align:center}
+    .header h1{margin:0;color:var(--gold2);letter-spacing:1px}
+    .header small{color:var(--muted)}
+    .auth{height:calc(100vh - 56px);display:flex;align-items:center;justify-content:center;padding:16px}
+    .card{width:100%;max-width:420px;background:var(--glass2);border:1px solid rgba(220,199,162,.35);border-radius:var(--r);padding:20px}
+    .card h2{margin:0 0 12px;color:var(--gold2);font-size:18px}
+    .fg{margin-bottom:10px}
+    .fg label{display:block;font-size:11px;color:#d3d7df;margin-bottom:4px}
+    input[type=text],input[type=password]{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--glass1);color:var(--txt)}
+    .btn{display:inline-block;margin-top:8px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0d1117;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .hidden{display:none!important}
+    .game{display:none;max-width:1200px;margin:16px auto;padding:8px;color:#ddd}
+    .game.active{display:block}
+    .log{font-size:12px;opacity:.75;margin-top:8px;white-space:pre-line}
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="header-content">
-      <h1 class="title-main">PYXIS</h1>
-      <div class="title-sub">전투 시스템</div>
+    <div class="wrap">
+      <h1>PYXIS</h1>
+      <small>전투 시스템</small>
     </div>
   </div>
 
-  <!-- 인증 페이지 -->
-  <div id="authPage" class="auth-container">
-    <div class="auth-card">
-      <div class="auth-title">전투 참가자 인증</div>
-      <div class="form-group">
-        <label class="label">초대 링크 붙여넣기 (선택)</label>
-        <input type="text" id="inviteUrl" placeholder="관리자가 준 참가자 링크를 붙여넣으세요">
+  <!-- 인증 화면 -->
+  <section id="authPage" class="auth">
+    <div class="card">
+      <h2>전투 참가자 인증</h2>
+      <div class="fg">
+        <label>초대 링크 붙여넣기 (선택)</label>
+        <input type="text" id="inviteUrl" placeholder="관리자가 준 참가자 링크를 붙여넣으세요" />
       </div>
-      <form id="authForm">
-        <div class="form-group">
-          <label class="label">전투 참가자명</label>
-          <input type="text" id="playerName" placeholder="이름을 입력하세요" required>
+
+      <form id="authForm" autocomplete="off">
+        <div class="fg">
+          <label>전투 참가자명</label>
+          <input type="text" id="playerName" placeholder="이름을 입력하세요" required autocomplete="username"/>
         </div>
-        <div class="form-group">
-          <label class="label">비밀번호</label>
-          <input type="password" id="playerOtp" placeholder="비밀번호를 입력하세요" required>
+        <div class="fg">
+          <label>비밀번호</label>
+          <input type="password" id="playerOtp" placeholder="비밀번호를 입력하세요" required autocomplete="current-password"/>
         </div>
-        <div class="actions">
-          <button type="submit" class="btn">전투 참가</button>
-        </div>
+        <button type="submit" class="btn">전투 참가</button>
       </form>
+
+      <div class="log" id="localLog"></div>
     </div>
-  </div>
+  </section>
 
-  <!-- 메인 게임 페이지 (축약 표시, 실제로는 기존 UI 계속 유지) -->
-  <div id="gamePage" class="game-container">
-    <div>게임 UI</div>
-  </div>
+  <!-- 게임 화면 (UI는 서버 이벤트 성공시 표시) -->
+  <section id="gamePage" class="game">
+    <h2>게임에 입장했습니다.</h2>
+    <div>서버 스냅샷을 기다리는 중...</div>
+  </section>
 
-  <script>
-    const socket = io({ path: '/socket.io' });
-    const state = { battleId: null, authenticated: false, playerData: null };
+<script>
+/* ================== 유틸 로그 ================== */
+const logEl = document.getElementById('localLog');
+const L = (...a)=>{ console.log('[LOG]', ...a); logEl.textContent = ([...a].map(v => typeof v==='object'? JSON.stringify(v):String(v)).join(' ')) + '\n' + (logEl.textContent||''); };
 
-    const authPage = document.getElementById('authPage');
-    const gamePage = document.getElementById('gamePage');
-    const authForm = document.getElementById('authForm');
-    const inviteUrlInput = document.getElementById('inviteUrl');
-    const playerNameInput = document.getElementById('playerName');
-    const playerOtpInput = document.getElementById('playerOtp');
+/* ================== 상태/DOM ================== */
+const socket = io({ path: '/socket.io' }); // nginx 위치와 동일
+const state = {
+  battleId: null, playerId: null, playerName: null, otp: null,
+  authed: false, joined: false
+};
+const authPage = document.getElementById('authPage');
+const gamePage = document.getElementById('gamePage');
+const inviteUrlInput = document.getElementById('inviteUrl');
+const playerNameInput = document.getElementById('playerName');
+const playerOtpInput = document.getElementById('playerOtp');
 
-    function addLogEntry(msg) { console.log("[LOG]", msg); }
-
-    // === 초대 링크 파싱 + 자동 인증 ===
-    function parseParamsFrom(urlLike) {
-      try {
-        const url = new URL(urlLike, window.location.origin);
-        const params = new URLSearchParams(url.search);
-        return {
-          battle: params.get('battle') || params.get('battleId'),
-          player: params.get('name') || params.get('player'),
-          token: params.get('otp') || params.get('token') || params.get('password')
-        };
-      } catch { return {}; }
+/* ================== 파라미터 파싱 ================== */
+function readQueryAll() {
+  // search + hash(?...) 모두 지원
+  const all = new URLSearchParams(location.search);
+  if (location.hash.includes('?')) {
+    for (const [k, v] of new URLSearchParams(location.hash.split('?')[1]).entries()) {
+      if (!all.has(k)) all.set(k, v);
     }
+  }
+  const q = (k)=> all.get(k);
+  return {
+    battle: q('battle') || q('battleId') || q('b'),
+    name: q('name') || q('player') || q('user'),
+    token: q('token') || q('otp') || q('password') || q('pwd'),
+    playerId: q('playerId') || q('pid')
+  };
+}
+function applyParsedToInputs(p) {
+  if (p.name)  playerNameInput.value = p.name;
+  if (p.token) playerOtpInput.value  = p.token;
+  if (p.battle) state.battleId = p.battle;
+  if (p.playerId) state.playerId = p.playerId;
+}
 
-    function autoAuthenticate() {
-      const playerName = playerNameInput.value.trim();
-      const otp = playerOtpInput.value.trim();
-      const battleId = state.battleId;
-      if (!battleId || !playerName || !otp) return;
-      const payload = { battleId, playerName, otp, token: otp, password: otp };
-      socket.emit('playerAuth', payload);
-      socket.emit('auth:player', payload);
-      addLogEntry("자동 인증 시도");
-    }
+/* ================== 조인 → 인증 순서 ================== */
+function ensureJoinThenAuth() {
+  if (!state.battleId) { L('전투 ID 없음 – 초대 링크가 필요합니다.'); return; }
+  // 1) join 먼저
+  if (!state.joined) {
+    L('전투방 조인 시도:', state.battleId);
+    socket.emit('join', { battleId: state.battleId });   // 서버가 사용하는 표준 이벤트
+    // 일부 서버는 다른 별칭도 받으므로 함께 전송
+    socket.emit('battle:join', { battleId: state.battleId });
+  }
+  // 2) 인증
+  const name = playerNameInput.value.trim();
+  const otp  = playerOtpInput.value.trim();
+  if (!name || !otp) return;
+  state.playerName = name;
+  state.otp = otp;
 
-    function checkAutoAuthFromLocation() {
-      const p = new URLSearchParams(window.location.search);
-      state.battleId = p.get('battle') || p.get('battleId');
-      const player = p.get('name') || p.get('player');
-      const token  = p.get('otp') || p.get('token') || p.get('password');
-      if (player) playerNameInput.value = player;
-      if (token)  playerOtpInput.value = token;
-      if (state.battleId && player && token) autoAuthenticate();
-    }
+  // 서버 구현별 키를 모두 채워 보냄
+  const payload = {
+    battleId: state.battleId,
+    playerName: name,
+    otp: otp,
+    token: otp,
+    password: otp,
+    passcode: otp,
+    playerId: state.playerId || undefined
+  };
+  L('자동/수동 인증 시도', payload);
+  socket.emit('playerAuth', payload);
+  socket.emit('auth:player', payload);
+}
 
-    inviteUrlInput.addEventListener('change', () => {
-      const raw = inviteUrlInput.value.trim();
-      if (!raw) return;
-      const parsed = parseParamsFrom(raw);
-      state.battleId = parsed.battle;
-      if (parsed.player) playerNameInput.value = parsed.player;
-      if (parsed.token)  playerOtpInput.value = parsed.token;
-      if (parsed.battle && parsed.player && parsed.token) autoAuthenticate();
-    });
+/* ================== 이벤트 바인딩 ================== */
+socket.on('connect', () => {
+  L('서버 연결');
+  // URL에서 자동 세팅 후 즉시 시도
+  const parsed = readQueryAll();
+  applyParsedToInputs(parsed);
+  ensureJoinThenAuth();
+});
 
-    authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const playerName = playerNameInput.value.trim();
-      const otp = playerOtpInput.value.trim();
-      if (!state.battleId || !playerName || !otp) return alert("필수값 누락");
-      const payload = { battleId: state.battleId, playerName, otp, token: otp, password: otp };
-      socket.emit('playerAuth', payload);
-      socket.emit('auth:player', payload);
-      addLogEntry("수동 인증 시도");
-    });
+socket.on('disconnect', () => L('서버 연결 끊김. 자동 재연결 대기.'));
 
-    socket.on('connect', () => { addLogEntry("서버 연결"); checkAutoAuthFromLocation(); });
-    socket.on('authResult', (d)=>{ if(d.success){ authPage.classList.add('hidden'); gamePage.classList.add('active'); addLogEntry("인증 성공"); } });
-    socket.on('auth:result', (d)=>{ if(d.success){ authPage.classList.add('hidden'); gamePage.classList.add('active'); addLogEntry("인증 성공"); } });
+socket.on('joined', (d)=>{  // 서버가 이 이벤트명을 쓰는 경우
+  if (d?.battleId === state.battleId) { state.joined = true; L('전투방 조인 완료'); ensureJoinThenAuth(); }
+});
+socket.on('battle:joined', (d)=>{ if (d?.battleId === state.battleId) { state.joined = true; L('전투방 조인 완료'); ensureJoinThenAuth(); }});
+socket.on('joinOk', (d)=>{ if (d?.battleId === state.battleId) { state.joined = true; L('전투방 조인 완료'); }});
+socket.on('joinResult', (d)=>{ if (d?.success) { state.joined = true; L('전투방 조인 완료'); ensureJoinThenAuth(); }});
 
-    window.addEventListener('load', checkAutoAuthFromLocation);
-  </script>
+/* ---- 인증 결과(양쪽 네임스페이스 모두 수신) ---- */
+function onAuthOK(d){
+  state.authed = true;
+  L('인증 성공');
+  authPage.classList.add('hidden');
+  gamePage.classList.add('active');
+}
+function onAuthFail(d){
+  const msg = d?.message || '인증 실패';
+  L('인증 실패:', msg);
+  // 실패 시에도 조인 누락 때문에 그럴 수 있으니 재시도
+  setTimeout(ensureJoinThenAuth, 400);
+}
+socket.on('authResult', (d)=> d?.success ? onAuthOK(d) : onAuthFail(d));
+socket.on('auth:result', (d)=> d?.success ? onAuthOK(d) : onAuthFail(d));
+socket.on('authFailed', onAuthFail);
+socket.on('auth:error', onAuthFail);
+
+/* ---- 관리자가 주는 다양한 스냅샷 이벤트 호환 ---- */
+socket.on('battleUpdate', (d)=>{ if (d?.id || d?.battleId) state.battleId = state.battleId || d.id || d.battleId; });
+socket.on('battle:update', (d)=>{ if (d?.id || d?.battleId) state.battleId = state.battleId || d.id || d.battleId; });
+
+/* ================== 폼/입력 핸들러 ================== */
+document.getElementById('authForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  if (!state.battleId) { alert('전투 ID가 없습니다. 초대 링크로 접속하거나 붙여넣어 주세요.'); return; }
+  ensureJoinThenAuth();
+});
+
+inviteUrlInput.addEventListener('change', ()=>{
+  const raw = inviteUrlInput.value.trim();
+  if (!raw) return;
+  try{
+    const u = new URL(raw, location.origin);
+    const params = new URLSearchParams(u.search);
+    const p = {
+      battle: params.get('battle')||params.get('battleId'),
+      name: params.get('name')||params.get('player'),
+      token: params.get('token')||params.get('otp')||params.get('password'),
+      playerId: params.get('playerId')
+    };
+    applyParsedToInputs(p);
+    ensureJoinThenAuth();
+  }catch{ L('잘못된 링크 형식'); }
+});
+
+/* ================== 최초 로드에서도 1회 보장 ================== */
+window.addEventListener('DOMContentLoaded', ()=>{
+  const p = readQueryAll();
+  applyParsedToInputs(p);
+  // 소켓이 아직 연결 전일 수 있으니 약간 늦춰 재시도
+  setTimeout(()=> ensureJoinThenAuth(), 300);
+});
+</script>
 </body>
 </html>
