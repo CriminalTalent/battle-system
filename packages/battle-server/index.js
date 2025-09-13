@@ -1,4 +1,4 @@
-// packages/battle-server/index.js - PYXIS Battle Server (정적 라우트/자동 로그인/관리자용 링크 생성 + 디버그 로그/호환 이벤트 포함)
+// packages/battle-server/index.js - PYXIS Battle Server (정적 라우트/관리자/플레이어 분리, 업로드, 호환 이벤트)
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -7,8 +7,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
-import multer from "multer";
-import crypto from "crypto";
+
+// 업로드 라우터
+import uploadRouter from "./src/routes/avatar-upload.js";
 
 dotenv.config();
 
@@ -73,76 +74,37 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-/* ----------------------------- Static & Folders --------------------------- */
+/* ----------------------------- Static & Routes ---------------------------- */
 const publicDir = path.join(__dirname, "public");
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
-fs.mkdirSync(publicDir, { recursive: true });
-app.use(express.static(publicDir));
+fs.mkdirSync(publicDir, { recursive: true }); // 폴더가 없으면 생성
+
 app.use("/uploads", express.static(uploadsDir));
+app.use(express.static(publicDir));
 console.log("[STATIC] Serving from:", publicDir);
+console.log("[STATIC] Uploads from:", uploadsDir);
 
-/* ----------------------------- Avatar Upload ------------------------------ */
-const avatarDir = path.join(uploadsDir, "avatars");
-fs.mkdirSync(avatarDir, { recursive: true });
+// 업로드 API (POST /api/upload/avatar)
+app.use("/api/upload", uploadRouter);
 
-const ALLOWED_MIME = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-  "image/gif",
-]);
-
-const avatarStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, avatarDir),
-  filename: (_req, file, cb) => {
-    const ext = (path.extname(file.originalname || "") || ".png").toLowerCase();
-    const rnd = crypto.randomBytes(6).toString("hex");
-    cb(null, `${Date.now()}_${rnd}${ext}`);
-  },
+/** 루트 -> admin.html */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(publicDir, "admin.html"));
 });
 
-const avatarUpload = multer({
-  storage: avatarStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ok = ALLOWED_MIME.has((file.mimetype || "").toLowerCase());
-    cb(ok ? null : new Error("UNSUPPORTED_FILE_TYPE"));
-  },
+/** 명시적 파일 라우트 (직접 접근) */
+app.get(["/admin.html", "/player.html", "/spectator.html"], (req, res) => {
+  res.sendFile(path.join(publicDir, path.basename(req.path)));
 });
 
-const avatarFields = avatarUpload.fields([
-  { name: "avatar", maxCount: 1 },
-  { name: "image", maxCount: 1 },
-  { name: "file", maxCount: 1 },
-]);
-
-const runAvatarUpload = (req, res) => {
-  avatarFields(req, res, (err) => {
-    if (err) {
-      const code = err.message === "UNSUPPORTED_FILE_TYPE" ? 415 : 400;
-      return res
-        .status(code)
-        .json({ ok: false, error: err.message || "UPLOAD_ERROR" });
-    }
-    const f =
-      (req.files?.avatar && req.files.avatar[0]) ||
-      (req.files?.image && req.files.image[0]) ||
-      (req.files?.file && req.files.file[0]);
-    if (!f) return res.status(400).json({ ok: false, error: "NO_FILE" });
-    const filename = path.basename(f.path);
-    const url = `/uploads/avatars/${filename}`;
-    return res.status(200).json({ ok: true, filename, url, fileUrl: url });
-  });
-};
-
-// 프런트가 시도하는 다양한 경로를 모두 받아줌(호환)
-app.post("/api/upload/avatar", runAvatarUpload);
-app.post("/api/battles/:id/avatar", runAvatarUpload);
-app.post("/api/battle/:id/avatar", runAvatarUpload);
-app.post("/api/battles/:id/upload-avatar", runAvatarUpload);
-app.post("/api/battle/:id/upload-avatar", runAvatarUpload);
+/** 캐치올(SPA처럼 동작하게): 나머지 GET은 admin.html 반환 */
+app.use((req, res, next) => {
+  if (req.method === "GET" && req.accepts("html")) {
+    return res.sendFile(path.join(publicDir, "admin.html"));
+  }
+  next();
+});
 
 /* --------------------------------- APIs ---------------------------------- */
 app.get("/api/health", (req, res) => {
@@ -244,20 +206,6 @@ app.post("/api/battles/:id/links", (req, res) =>
     () => {}
   )
 );
-
-/* ----------------------------- HTML Entrypoints --------------------------- */
-app.get("/", (req, res) => {
-  res.sendFile(path.join(publicDir, "admin.html"));
-});
-app.get(["/admin.html", "/player.html", "/spectator.html"], (req, res) => {
-  res.sendFile(path.join(publicDir, path.basename(req.path)));
-});
-app.use((req, res, next) => {
-  if (req.method === "GET" && req.accepts("html")) {
-    return res.sendFile(path.join(publicDir, "admin.html"));
-  }
-  next();
-});
 
 /* ------------------------------- Socket.IO -------------------------------- */
 io.on("connection", (socket) => {
