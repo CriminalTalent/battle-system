@@ -6,7 +6,6 @@
    - 팀 표기는 송수신 시 A/B만 사용(toAB 정규화)
    - 이모지 금지, 콘솔 로깅 강화
 */
-
 (function (root) {
   "use strict";
 
@@ -24,7 +23,6 @@
       },
       true
     );
-    // 일부 브라우저에선 delete가 실패해도 무시
     try { delete window.onbeforeunload; } catch (_) {}
   } catch (_) {}
 
@@ -38,7 +36,6 @@
     str = String(str == null ? "" : str);
     return str.length > n ? str.slice(0, n) : str;
   }
-
   function isFn(fn) { return typeof fn === "function"; }
 
   // 팀 키 정규화: 항상 'A' / 'B' 로만
@@ -98,6 +95,15 @@
       return socket;
     }
 
+    disconnect() {
+      if (!this.socket) return;
+      try {
+        this.socket.off();
+        this.socket.close();
+      } catch (_) {}
+      this.socket = null;
+    }
+
     /* 내부 바인딩 */
     _bindCore() {
       const s = this.socket;
@@ -126,7 +132,17 @@
         if (payload?.playerId) this.ctx.playerId = payload.playerId;
         if (payload?.team) this.ctx.teamAB = toAB(payload.team);
         if (payload?.name) this.ctx.name = payload.name;
+
+        // 자동 룸 조인
+        if (this.ctx.battleId) {
+          try { this.join(this.ctx.battleId); } catch (_) {}
+        }
         this._emitLocal("auth:success", payload);
+      });
+
+      s.on("authSuccess", (payload) => {
+        // 구 이벤트명도 동일 처리
+        s.emit("auth:success", payload);
       });
 
       s.on("authError", (e) => {
@@ -205,10 +221,17 @@
       this.handlers.get(evt).push(handler);
       return () => this.off(evt, handler);
     }
+    once(evt, handler) {
+      const off = this.on(evt, (p) => { try { handler(p); } finally { off(); } });
+      return off;
+    }
     off(evt, handler) {
       const arr = this.handlers.get(evt) || [];
       const idx = arr.indexOf(handler);
       if (idx >= 0) arr.splice(idx, 1);
+    }
+    offAll() {
+      this.handlers.clear();
     }
 
     /* -----------------------------
@@ -240,17 +263,31 @@
       if (!this.socket) return;
       const payload = {
         battleId: opt.battleId || this.ctx.battleId,
+        message: clampLen(cheer || "", 100),            // 레거시 호환 위해 key는 message로도 넣자
         cheer: clampLen(cheer || "", 100),
         name: clampLen(opt.name || this.ctx.name || "", 30),
         team: toAB(opt.team || this.ctx.teamAB || ""),
       };
       if (!payload.battleId || !payload.cheer) return;
+      // 신규 + 레거시 모두 발사
       this.socket.emit("cheer:send", payload);
+      this.socket.emit("cheerMessage", payload);
+      this.socket.emit("spectator:cheer", payload);
     }
 
     ping() {
       if (!this.socket) return;
       this.socket.emit("ping");
+    }
+
+    getContext() {
+      return { ...this.ctx };
+    }
+    setContextPatch(patch = {}) {
+      const next = { ...this.ctx, ...patch };
+      if (patch.teamAB != null) next.teamAB = toAB(patch.teamAB);
+      this.ctx = next;
+      return this.getContext();
     }
 
     /* -----------------------------
@@ -336,7 +373,6 @@
     generateSpectatorUrl(battleId) {
       if (!this.socket) return;
       const id = battleId || this.ctx.battleId; if (!id) return;
-      // 서버 측은 OTP 발급 이벤트명 사용 가능
       this.socket.emit("generateSpectatorOtp", { battleId: id });
     }
 
@@ -355,13 +391,29 @@
     playerReady(playerId, battleId) {
       if (!this.socket) return;
       const id = battleId || this.ctx.battleId; if (!id || !playerId) return;
+      // 신규/레거시 동시
       this.socket.emit("player:ready", { battleId: id, playerId });
+      this.socket.emit("playerReady",   { battleId: id, playerId, ready: true });
     }
 
     playerAction(playerId, action, battleId) {
       if (!this.socket) return;
       const id = battleId || this.ctx.battleId; if (!id || !playerId || !action) return;
+
+      // 신규
       this.socket.emit("player:action", { battleId: id, playerId, action });
+
+      // 레거시 페이로드도 함께
+      // - 공격: { type:'attack', targetId }
+      // - 방어/회피/패스: { type:'defend'|'dodge'|'pass' }
+      // - 아이템: { type:'item', itemType:'attack_boost'|'defense_boost'|'dittany', targetId? }
+      const legacy = { battleId: id, actorId: playerId };
+      if (action && typeof action === "object") {
+        if (action.type) legacy.type = action.type;
+        if (action.targetId != null) legacy.targetId = action.targetId;
+        if (action.itemType) legacy.itemType = action.itemType;
+      }
+      this.socket.emit("playerAction", legacy);
     }
 
     /* -----------------------------
@@ -382,14 +434,19 @@
   // 편의 노출
   root.PyxisSocketAPI = {
     connect: (url) => root.PyxisSocketManager.connect(url),
+    disconnect: () => root.PyxisSocketManager.disconnect(),
 
     // 공통
     join: (id) => root.PyxisSocketManager.join(id),
     sendChat: (msg, opt) => root.PyxisSocketManager.sendChat(msg, opt),
     sendCheer: (msg, opt) => root.PyxisSocketManager.sendCheer(msg, opt),
     on: (evt, fn) => root.PyxisSocketManager.on(evt, fn),
+    once: (evt, fn) => root.PyxisSocketManager.once(evt, fn),
     off: (evt, fn) => root.PyxisSocketManager.off(evt, fn),
+    offAll: () => root.PyxisSocketManager.offAll(),
     ping: () => root.PyxisSocketManager.ping(),
+    getContext: () => root.PyxisSocketManager.getContext(),
+    setContextPatch: (p) => root.PyxisSocketManager.setContextPatch(p),
 
     // 관리자
     adminAuth: (id, token) => root.PyxisSocketManager.adminAuth(id, token),
