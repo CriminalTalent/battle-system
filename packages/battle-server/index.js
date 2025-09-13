@@ -1,121 +1,91 @@
-// packages/battle-server/index.js
-// 플레이어 링크 생성 API 수정
+// packages/battle-server/public/assets/js/admin.js
+// 플레이어 링크 생성 함수 수정
 
-app.post('/api/admin/battles/:id/links', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    if (!battle) return res.status(404).json({ ok: false, error: 'not_found' });
-
-    const base = `${req.protocol}://${req.get('host')}`;
-    const spectatorOtp = generateOTP(6);
-    
-    // 관전자 OTP 저장
-    otpStore.set(`spectator_${battleId}`, {
-      otp: spectatorOtp,
-      battleId,
-      role: 'spectator',
-      expires: Date.now() + 30 * 60 * 1000,
+async function onGeneratePlayerLinks(){
+  if(!battleId){ toast('전투 생성 후 이용하세요'); return; }
+  
+  try{
+    let res = await fetch(`/api/admin/battles/${battleId}/links`, { 
+      method:'POST', 
+      credentials:'include' 
     });
-
-    const links = [];
-    const players = battle.players || [];
     
-    players.forEach((player, index) => {
-      const playerToken = generateOTP(6);
-      const otpKey = `player_${battleId}_${player.id}`;
+    if(!res.ok){ 
+      res = await fetch(`/api/battles/${battleId}/links`, { 
+        method:'POST', 
+        credentials:'include' 
+      }); 
+    }
+    
+    if(!res.ok) throw new Error();
+    
+    const data = await res.json();
+    const links = data?.playerLinks || data?.links || [];
+
+    els.playerLinks.innerHTML = '';
+    
+    links.forEach((link, i) => {
+      const row = document.createElement('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '38px 1fr 72px';
+      row.style.gap = '6px';
+      row.style.marginBottom = '4px';
       
-      // 플레이어 토큰 저장
-      otpStore.set(otpKey, {
-        otp: playerToken,
-        battleId,
-        role: 'player',
-        playerId: player.id,
-        playerName: player.name,
-        team: player.team,
-        expires: Date.now() + 2 * 60 * 60 * 1000, // 2시간
+      // 플레이어 정보 표시 개선
+      const playerInfo = `${link.playerName || `플레이어${i+1}`} (${link.team}팀)`;
+      
+      row.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;">
+          ${i+1}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div style="font-size:12px;color:var(--text-muted);">${playerInfo}</div>
+          <input type="text" class="mono" value="${link.url || ''}" readonly style="font-size:11px;"/>
+        </div>
+        <button class="btn" style="padding:4px 8px;font-size:12px;">복사</button>
+      `;
+      
+      const input = row.querySelector('input');
+      const copyBtn = row.querySelector('button');
+      
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(input.value);
+          toast(`${playerInfo} 링크가 복사되었습니다`);
+          
+          // 복사 완료 시각적 피드백
+          copyBtn.textContent = '완료';
+          copyBtn.style.background = 'var(--success)';
+          setTimeout(() => {
+            copyBtn.textContent = '복사';
+            copyBtn.style.background = '';
+          }, 1500);
+        } catch {
+          toast('복사에 실패했습니다', 'error');
+        }
       });
       
-      // 자동로그인을 위한 URL 생성 (password와 token 둘 다 포함)
-      const playerUrl = `${base}/player.html?battle=${encodeURIComponent(battleId)}&password=${encodeURIComponent(playerToken)}&token=${encodeURIComponent(playerToken)}&playerId=${encodeURIComponent(player.id)}&name=${encodeURIComponent(player.name)}&team=${encodeURIComponent(player.team)}`;
-        
-      links.push({ 
-        id: index + 1, 
-        playerId: player.id,
-        playerName: player.name,
-        team: player.team,
-        url: playerUrl
-      });
-      
-      console.log(`Created auto-login link for player ${player.name} (${player.id}): ${playerUrl}`);
+      els.playerLinks.appendChild(row);
     });
-
-    res.json({
-      ok: true,
-      spectatorOtp,
-      spectatorUrl: `${base}/spectator.html?battle=${encodeURIComponent(battleId)}&otp=${encodeURIComponent(spectatorOtp)}`,
-      playerLinks: links,
-    });
-  } catch (e) {
-    console.error('Link creation error:', e);
-    res.status(500).json({ ok: false, error: 'link_creation_failed' });
+    
+    toast('참가자 링크가 생성되었습니다');
+  } catch(_) {
+    alert('링크 생성 실패');
   }
-});
+}
 
-// 대체 API도 동일하게 수정
-app.post('/api/battles/:id/links', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    if (!battle) return res.status(404).json({ ok: false, error: 'not_found' });
+// 서버 API 수정도 필요합니다 (index.js에서)
+// 플레이어 링크 URL 생성 부분을 다음과 같이 수정:
 
-    const base = `${req.protocol}://${req.get('host')}`;
-    const spectatorOtp = generateOTP(6);
-    
-    otpStore.set(`spectator_${battleId}`, {
-      otp: spectatorOtp,
-      battleId,
-      role: 'spectator',
-      expires: Date.now() + 30 * 60 * 1000,
-    });
+/*
+기존:
+const playerUrl = `${base}/player?battle=${battleId}&token=${tok}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
 
-    const links = [];
-    const players = battle.players || [];
-    
-    players.forEach((player, index) => {
-      const playerToken = generateOTP(6);
-      const otpKey = `player_${battleId}_${player.id}`;
-      
-      otpStore.set(otpKey, {
-        otp: playerToken,
-        battleId,
-        role: 'player',
-        playerId: player.id,
-        playerName: player.name,
-        team: player.team,
-        expires: Date.now() + 2 * 60 * 60 * 1000,
-      });
-      
-      // 자동로그인을 위한 완전한 URL 생성
-      const playerUrl = `${base}/player.html?battle=${encodeURIComponent(battleId)}&password=${encodeURIComponent(playerToken)}&token=${encodeURIComponent(playerToken)}&playerId=${encodeURIComponent(player.id)}&name=${encodeURIComponent(player.name)}&team=${encodeURIComponent(player.team)}`;
-      
-      links.push({ 
-        id: index + 1, 
-        playerId: player.id,
-        playerName: player.name,
-        team: player.team,
-        url: playerUrl
-      });
-    });
+수정:
+const playerUrl = `${base}/player.html?battle=${battleId}&token=${tok}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
+*/
 
-    res.json({
-      ok: true,
-      spectatorOtp,
-      spectatorUrl: `${base}/spectator.html?battle=${encodeURIComponent(battleId)}&otp=${encodeURIComponent(spectatorOtp)}`,
-      playerLinks: links,
-    });
-  } catch (e) {
-    console.error('Link creation error:', e);
-    res.status(500).json({ ok: false, error: 'link_creation_failed' });
-  }
-});
+// 또는 password 파라미터도 추가:
+/*
+const playerUrl = `${base}/player.html?battle=${battleId}&password=${tok}&token=${tok}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
+*/
