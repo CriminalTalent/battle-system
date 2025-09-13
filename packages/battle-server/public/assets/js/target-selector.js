@@ -1,9 +1,8 @@
 /* packages/battle-server/public/assets/js/target-selector.js
-   PYXIS Target Selector Component - Enhanced Gaming Edition
-   - 우아한 천체 테마의 실시간 전투 타겟 선택 시스템
-   - 스탯 시스템: 1-5 범위, 총합 제한 없음 
+   PYXIS Target Selector Component - Enhanced Gaming Edition (final)
    - 팀 표기: 내부/표시는 항상 A/B (phoenix/eaters 입력도 자동 정규화)
-   - 이모지/특수문자 미사용
+   - 키보드 내비게이션, 포커스 복원, 모션 감축 대응, 오디오 컨텍스트 재사용
+   - 단일/다중 선택 지원 (멀티셀렉트일 때 Ctrl+Enter로 확인)
 */
 
 class PyxisTargetSelector {
@@ -33,13 +32,19 @@ class PyxisTargetSelector {
 
     this._listenersBound = false;
     this._focusedIndex = 0;
+    this._prevActive = null;
+    this._audioCtx = null;
 
     this.init();
   }
 
   /* ────────────────────────────────
-     팀 정규화(A/B 고정)
+     유틸 & 팀 정규화(A/B 고정)
   ──────────────────────────────── */
+  static _shouldReduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
   _toAB(team) {
     const s = String(team || '').toLowerCase();
     if (s === 'phoenix' || s === 'a' || s === 'team_a' || s === 'team-a') return 'A';
@@ -73,25 +78,14 @@ class PyxisTargetSelector {
 
       .target-overlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: linear-gradient(
-          135deg,
-          rgba(0, 8, 13, 0.95) 0%,
-          rgba(0, 30, 53, 0.9) 50%,
-          rgba(0, 8, 13, 0.95) 100%
-        );
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: linear-gradient(135deg, rgba(0, 8, 13, 0.95) 0%, rgba(0, 30, 53, 0.9) 50%, rgba(0, 8, 13, 0.95) 100%);
         backdrop-filter: blur(12px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        opacity: 0;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 10000; opacity: 0;
         animation: fadeInOverlay 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
-
       @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
 
       .target-panel {
@@ -100,75 +94,56 @@ class PyxisTargetSelector {
         border: 2px solid var(--pyxis-border-subtle);
         border-radius: 20px;
         padding: 32px;
-        max-width: 90vw;
-        max-height: 85vh;
-        width: 100%;
-        max-width: 900px;
+        max-width: 90vw; max-height: 85vh; width: 100%; max-width: 900px;
         box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(220,199,162,0.1), inset 0 1px 0 rgba(220,199,162,0.2);
-        position: relative;
-        overflow: hidden;
+        position: relative; overflow: hidden;
         transform: scale(0.9) translateY(20px);
         animation: slideInPanel 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
       }
       @keyframes slideInPanel { to { transform: scale(1) translateY(0); } }
 
       .target-panel::before {
-        content: '';
-        position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent);
-        opacity: 0.6;
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent); opacity: 0.6;
       }
 
       .target-title {
         font-family: 'Cinzel', serif;
         font-size: clamp(24px, 4vw, 32px);
-        font-weight: 600;
-        color: var(--pyxis-gold-bright);
-        text-align: center;
-        margin-bottom: 24px;
+        font-weight: 600; color: var(--pyxis-gold-bright); text-align: center; margin-bottom: 8px;
         text-shadow: 0 2px 8px rgba(220,199,162,0.3);
-        position: relative;
+      }
+
+      .target-desc {
+        font-size: 12px; color: rgba(220,199,162,.7); text-align: center; margin-bottom: 16px;
       }
 
       .target-list {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
-        max-height: 60vh;
-        overflow-y: auto;
-        padding: 8px;
-        margin-bottom: 24px;
-        scrollbar-width: thin;
-        scrollbar-color: var(--pyxis-gold-warm) transparent;
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px; max-height: 60vh; overflow-y: auto; padding: 8px; margin-bottom: 24px;
+        scrollbar-width: thin; scrollbar-color: var(--pyxis-gold-warm) transparent;
       }
       .target-list::-webkit-scrollbar { width: 8px; }
       .target-list::-webkit-scrollbar-track { background: rgba(0,30,53,0.3); border-radius: 4px; }
       .target-list::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm));
-        border-radius: 4px;
+        background: linear-gradient(180deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm)); border-radius: 4px;
       }
 
       .target-card {
         background: linear-gradient(145deg, rgba(0,30,53,0.9) 0%, rgba(42,52,65,0.8) 100%);
         backdrop-filter: blur(10px);
         border: 1.5px solid var(--pyxis-border-subtle);
-        border-radius: 16px;
-        padding: 20px;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-        position: relative;
-        overflow: hidden;
+        border-radius: 16px; padding: 20px; cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1); position: relative; overflow: hidden;
         transform: translateY(0);
       }
       .target-card::before {
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent);
-        opacity: 0.3;
+        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent); opacity: 0.3;
       }
       .target-card:hover:not(.disabled) {
-        transform: translateY(-4px);
-        border-color: var(--pyxis-gold-bright);
-        background: linear-gradient(145deg, rgba(0,30,53,0.95) 0%, rgba(42,52,65,0.9) 100%);
+        transform: translateY(-4px); border-color: var(--pyxis-gold-bright);
+        background: linear-gradient(145deg, rgba(0,30,53,0.95), rgba(42,52,65,0.9));
         box-shadow: 0 12px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--pyxis-gold-bright), 0 0 20px rgba(220,199,162,0.2);
       }
       .target-card.focused {
@@ -180,24 +155,30 @@ class PyxisTargetSelector {
         background: linear-gradient(145deg, rgba(220,199,162,0.15), rgba(212,183,126,0.1))!important;
         box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), inset 0 0 20px rgba(220,199,162,0.1)!important;
       }
-      .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8); background: linear-gradient(145deg, rgba(42,52,65,.5), rgba(26,31,42,.6)); }
+      .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8);
+        background: linear-gradient(145deg, rgba(42,52,65,.5), rgba(26,31,42,.6)); }
       .target-card.disabled:hover { transform: none!important; border-color: var(--pyxis-border-subtle)!important; box-shadow: none!important; }
 
       .target-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-      .target-avatar { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright)); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; color: var(--pyxis-deep-navy); border: 2px solid var(--pyxis-border-subtle); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
+      .target-avatar { width: 48px; height: 48px; border-radius: 12px;
+        background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright));
+        display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; color: var(--pyxis-deep-navy);
+        border: 2px solid var(--pyxis-border-subtle); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
       .target-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
       .target-info { flex: 1; min-width: 0; }
-      .target-name { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600; color: var(--pyxis-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .target-name { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600;
+        color: var(--pyxis-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       .target-team { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
-      .target-team.team-A, .target-team.phoenix  { background: rgba(199,62,29,0.2); color: #FF6B4A; border: 1px solid rgba(199,62,29,0.3); }
-      .target-team.team-B, .target-team.eaters   { background: rgba(45,90,39,0.2);  color: #66BB6A; border: 1px solid rgba(45,90,39,0.3); }
+      .target-team.team-A { background: rgba(199,62,29,0.2); color: #FF6B4A; border: 1px solid rgba(199,62,29,0.3); }
+      .target-team.team-B { background: rgba(45,90,39,0.2);  color: #66BB6A; border: 1px solid rgba(45,90,39,0.3); }
 
       .target-hp { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
       .target-hp-text { font-size: 14px; font-weight: 500; color: var(--pyxis-gold-warm); min-width: fit-content; }
       .target-hp-bar-container { flex: 1; height: 8px; background: rgba(0,30,53,0.8); border-radius: 4px; border: 1px solid var(--pyxis-border-subtle); overflow: hidden; position: relative; }
-      .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative; background: linear-gradient(90deg, var(--pyxis-success-green), var(--pyxis-gold-warm), var(--pyxis-gold-bright)); }
+      .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative;
+        background: linear-gradient(90deg, var(--pyxis-success-green), var(--pyxis-gold-warm), var(--pyxis-gold-bright)); }
       .target-hp-bar.low { background: linear-gradient(90deg, var(--pyxis-combat-red), var(--pyxis-warning-amber)); }
       .target-hp-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent); animation: shimmer 2s infinite; }
       @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
@@ -212,17 +193,25 @@ class PyxisTargetSelector {
       .status-pill.boosted { background: rgba(184,134,11,.3); color: var(--pyxis-warning-amber); border: 1px solid rgba(184,134,11,.5); }
 
       .target-actions { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
-      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px; background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(42,52,65,.8)); color: var(--pyxis-gold-bright); font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1); text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
-      .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(220,199,162,.2), transparent); transition: left .5s cubic-bezier(.4,0,.2,1); }
+      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px;
+        background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(42,52,65,.8)); color: var(--pyxis-gold-bright);
+        font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1);
+        text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
+      .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(220,199,162,.2), transparent); transition: left .5s cubic-bezier(.4,0,.2,1); }
       .btn:hover::before { left: 100%; }
-      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95), rgba(42,52,65,.9)); box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
+      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95), rgba(42,52,65,.9));
+        box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
       .btn.btn-gold { background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright)); color: var(--pyxis-deep-navy); border-color: var(--pyxis-gold-bright); }
-      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm)); box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
+      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm));
+        box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
       .btn:disabled { opacity: .5; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
 
-      .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px; background: linear-gradient(145deg, rgba(0,30,53,.5), rgba(42,52,65,.3)); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
+      .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px;
+        background: linear-gradient(145deg, rgba(0,30,53,.5), rgba(42,52,65,.3)); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
 
-      .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7), rgba(42,52,65,.5)); border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
+      .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7), rgba(42,52,65,.5));
+        border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
       .battle-mode { font-size: 14px; color: var(--pyxis-gold-warm); font-weight: 500; margin-bottom: 8px; }
       .turn-info { font-size: 12px; color: rgba(220,199,162,.7); }
 
@@ -230,15 +219,16 @@ class PyxisTargetSelector {
         .target-panel { margin: 16px; padding: 20px; max-height: 90vh; }
         .target-list { grid-template-columns: 1fr; max-height: 50vh; }
         .target-card { padding: 16px; }
-        .target-title { font-size: 24px; margin-bottom: 16px; }
+        .target-title { font-size: 24px; margin-bottom: 8px; }
         .target-actions { flex-direction: column; gap: 8px; }
         .btn { width: 100%; min-width: unset; }
       }
 
-      @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms!important; animation-iteration-count: 1!important; transition-duration: .01ms!important; } }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: .01ms!important; animation-iteration-count: 1!important; transition-duration: .01ms!important; }
+      }
       @media (prefers-contrast: high) { .target-card { border-width: 3px; } .btn { border-width: 3px; } }
     `;
-
     document.head.appendChild(styleSheet);
   }
 
@@ -253,10 +243,12 @@ class PyxisTargetSelector {
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-labelledby', 'targetTitle');
+    this.overlay.setAttribute('aria-describedby', 'targetDesc');
 
     this.overlay.innerHTML = `
       <div class="target-panel">
         <div class="target-title" id="targetTitle">전투 대상 선택</div>
+        <div class="target-desc" id="targetDesc">화살표로 이동하고 스페이스/엔터로 선택합니다. ${this.options.allowMultiSelect ? 'Ctrl+Enter로 확인합니다.' : ''}</div>
         <div class="battle-info" style="display:none;">
           <div class="battle-mode"></div>
           <div class="turn-info"></div>
@@ -276,6 +268,7 @@ class PyxisTargetSelector {
     document.body.appendChild(this.overlay);
 
     this.titleEl = this.overlay.querySelector('#targetTitle');
+    this.descEl = this.overlay.querySelector('#targetDesc');
     this.listEl = this.overlay.querySelector('#targetList');
     this.cancelBtn = this.overlay.querySelector('#cancelTarget');
     this.confirmBtn = this.overlay.querySelector('#confirmTarget');
@@ -329,18 +322,26 @@ class PyxisTargetSelector {
     if (!this.isVisible) return;
     const targetCards = this.listEl.querySelectorAll('.target-card:not(.disabled)');
     if (targetCards.length === 0) return;
+
+    // 멀티셀렉트: Ctrl+Enter 로 확인
+    if (this.options.allowMultiSelect && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.confirm();
+      return;
+    }
+
     switch (e.key) {
       case 'ArrowDown':
       case 'ArrowRight':
         e.preventDefault();
         this._focusedIndex = Math.min(this._focusedIndex + 1, targetCards.length - 1);
-        this.updateFocus(targetCards);
+        this.updateFocus();
         break;
       case 'ArrowUp':
       case 'ArrowLeft':
         e.preventDefault();
         this._focusedIndex = Math.max(this._focusedIndex - 1, 0);
-        this.updateFocus(targetCards);
+        this.updateFocus();
         break;
       case 'Enter':
       case ' ':
@@ -352,21 +353,23 @@ class PyxisTargetSelector {
       case 'Home':
         e.preventDefault();
         this._focusedIndex = 0;
-        this.updateFocus(targetCards);
+        this.updateFocus();
         break;
       case 'End':
         e.preventDefault();
         this._focusedIndex = targetCards.length - 1;
-        this.updateFocus(targetCards);
+        this.updateFocus();
         break;
     }
   }
 
-  updateFocus(targetCards) {
-    targetCards.forEach((card, index) => {
+  updateFocus() {
+    const cards = this.listEl.querySelectorAll('.target-card:not(.disabled)');
+    cards.forEach((card, index) => {
       card.classList.toggle('focused', index === this._focusedIndex);
     });
-    targetCards[this._focusedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const behavior = PyxisTargetSelector._shouldReduceMotion() ? 'auto' : 'smooth';
+    cards[this._focusedIndex]?.scrollIntoView({ behavior, block: 'nearest' });
   }
 
   _onOverlayClick(e) {
@@ -374,9 +377,13 @@ class PyxisTargetSelector {
   }
 
   show(title, targets, callback, battleData = null) {
+    this._prevActive = document.activeElement;
+
     this.titleEl.textContent = title || '전투 대상 선택';
+    this.descEl.textContent =
+      `화살표로 이동하고 스페이스/엔터로 선택합니다.${this.options.allowMultiSelect ? ' Ctrl+Enter로 확인합니다.' : ''}`;
     this.targets = Array.isArray(targets) ? targets : [];
-    this.callback = callback;
+    this.callback = typeof callback === 'function' ? callback : null;
     this.battleData = battleData;
     this.selectedTargets = [];
     this._focusedIndex = 0;
@@ -400,8 +407,8 @@ class PyxisTargetSelector {
     const firstCard = this.listEl.querySelector('.target-card:not(.disabled)');
     if (firstCard) {
       setTimeout(() => {
-        firstCard.focus();
-        this.updateFocus([firstCard]);
+        try { firstCard.focus(); } catch (_) {}
+        this.updateFocus();
       }, 100);
     }
   }
@@ -437,7 +444,6 @@ class PyxisTargetSelector {
       img.src = target.avatar;
       img.alt = target.name || '플레이어';
       img.onerror = () => {
-        // 이미지 실패 시 깔끔한 이니셜 폴백
         avatar.innerHTML = '';
         avatar.textContent = (target.name || 'U').charAt(0).toUpperCase();
       };
@@ -449,11 +455,7 @@ class PyxisTargetSelector {
     const info = document.createElement('div');
     info.className = 'target-info';
 
-    const name = document.createElement('div');
-    name.className = 'target-name';
-    name.textContent = target.name || `대상 ${index + 1}`;
-
-    // 팀 뱃지: 항상 A/B 표기 (phoenix/eaters 수신도 정규화)
+    // 팀 뱃지(항상 A/B)
     if (this.options.showTeam && (target.team || target.teamAB)) {
       const ab = this._toAB(target.teamAB || target.team);
       if (ab === 'A' || ab === 'B') {
@@ -464,7 +466,11 @@ class PyxisTargetSelector {
       }
     }
 
+    const name = document.createElement('div');
+    name.className = 'target-name';
+    name.textContent = target.name || `대상 ${index + 1}`;
     info.appendChild(name);
+
     header.appendChild(avatar);
     header.appendChild(info);
     card.appendChild(header);
@@ -553,6 +559,7 @@ class PyxisTargetSelector {
   selectTarget(target, cardEl) {
     if (target.alive === false || target.hp <= 0) return;
     if (this.options.enableSoundEffects) this.playSound('select');
+
     if (this.options.allowMultiSelect) {
       const index = this.selectedTargets.findIndex(t =>
         (t.id && t.id === target.id) || (t.name === target.name)
@@ -583,21 +590,26 @@ class PyxisTargetSelector {
   }
 
   confirm() {
+    if (!this.options.allowMultiSelect) return; // 단일선택 모드에서는 confirm 버튼이 없음
     if (this.selectedTargets.length === 0) return;
     if (this.options.enableSoundEffects) this.playSound('confirm');
     this.hide();
     if (this.callback) {
       setTimeout(() => {
-        this.callback(this.options.allowMultiSelect ? this.selectedTargets : this.selectedTargets[0]);
+        this.callback(this.selectedTargets);
       }, 100);
     }
   }
 
   hide() {
     if (!this.overlay) return;
-    this.overlay.style.opacity = '0';
+
+    if (!PyxisTargetSelector._shouldReduceMotion()) this.overlay.style.opacity = '0';
     const panel = this.overlay.querySelector('.target-panel');
-    if (panel) panel.style.transform = 'scale(0.9) translateY(20px)';
+    if (panel && !PyxisTargetSelector._shouldReduceMotion()) {
+      panel.style.transform = 'scale(0.9) translateY(20px)';
+    }
+
     setTimeout(() => {
       this.overlay.style.display = 'none';
       this.isVisible = false;
@@ -606,19 +618,27 @@ class PyxisTargetSelector {
       this.callback = null;
       this.battleData = null;
       this._focusedIndex = 0;
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      this.overlay.style.opacity = ''; if (panel) panel.style.transform = '';
-    }, 200);
+
+      if (this._prevActive && this._prevActive.focus) {
+        try { this._prevActive.focus(); } catch (_) {}
+      }
+      this._prevActive = null;
+
+      this.overlay.style.opacity = '';
+      if (panel) panel.style.transform = '';
+    }, PyxisTargetSelector._shouldReduceMotion() ? 0 : 200);
   }
 
   playSound(type) {
     if (!this.options.enableSoundEffects) return;
     try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (!this._audioCtx) this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioContext = this._audioCtx;
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
+
       switch (type) {
         case 'hover':
           oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
@@ -664,7 +684,6 @@ class PyxisTargetSelector {
   addTarget(target) { this.targets.push(target); this.renderTargets(); }
 
   removeTarget(targetId) {
-    // id가 없던 타겟이 잘못 걸러지는 버그 수정
     const keep = (t) => !((t.id != null && t.id === targetId) || (t.name === targetId));
     this.targets = this.targets.filter(keep);
     this.selectedTargets = this.selectedTargets.filter(keep);
@@ -692,6 +711,9 @@ class PyxisTargetSelector {
       this.teardownEventListeners();
       this.createOverlay();
       this.setupEventListeners();
+    } else if (this.descEl) {
+      this.descEl.textContent =
+        `화살표로 이동하고 스페이스/엔터로 선택합니다.${this.options.allowMultiSelect ? ' Ctrl+Enter로 확인합니다.' : ''}`;
     }
   }
 
@@ -726,9 +748,15 @@ class PyxisTargetSelector {
   toggleAnimations(enabled) {
     this.options.enableAnimations = enabled;
     if (this.overlay) {
-      this.overlay.style.transition = enabled ? '' : 'none';
-      const panel = this.overlay.querySelector('.target-panel');
-      if (panel) panel.style.transition = enabled ? '' : 'none';
+      if (!enabled || PyxisTargetSelector._shouldReduceMotion()) {
+        this.overlay.style.transition = 'none';
+        const panel = this.overlay.querySelector('.target-panel');
+        if (panel) panel.style.transition = 'none';
+      } else {
+        this.overlay.style.transition = '';
+        const panel = this.overlay.querySelector('.target-panel');
+        if (panel) panel.style.transition = '';
+      }
     }
   }
 
@@ -766,6 +794,8 @@ class PyxisTargetSelector {
     const styleSheet = document.getElementById('pyxis-target-selector-enhanced-styles');
     if (styleSheet) styleSheet.remove();
     this.targets = []; this.selectedTargets = []; this.callback = null; this.battleData = null; this.isVisible = false; this._focusedIndex = 0;
+    try { this._audioCtx?.close(); } catch(_) {}
+    this._audioCtx = null;
   }
 }
 
@@ -784,7 +814,8 @@ window.PyxisTarget = new PyxisTargetSelector({
 
 /* 플레이어 클라이언트 호환용 래퍼
    - 기대 시그니처: window.PYXISTargetSelector.open({ players, onPick, title?, battleData?, allowMultiSelect? })
-   - onPick에는 선택된 target의 id를 넘김(단일 선택 기본)
+   - 단일 선택: onPick(선택 id)
+   - 다중 선택: onPick(선택된 target 배열)  ← (기존 요구에 맞춰 객체 배열 전달; 필요 시 id 배열로 변환 가능)
 */
 window.PYXISTargetSelector = {
   open({ players = [], onPick, title = '전투 대상 선택', battleData = null, allowMultiSelect = false } = {}) {
@@ -795,9 +826,8 @@ window.PYXISTargetSelector = {
         : (t) => t
       );
       window.PyxisTarget.show(title, normalized, (selected) => {
-        if (!onPick) return;
-        if (Array.isArray(selected)) onPick(selected.map(t => t.id || t.name));
-        else onPick(selected.id || selected.name);
+        if (!onPick || typeof onPick !== 'function') return;
+        onPick(selected);
       }, battleData);
     } catch (e) {
       console.error('PYXISTargetSelector.open 에러:', e);
