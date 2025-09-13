@@ -95,7 +95,7 @@ function connect(){
 
   socket.on('connect', ()=>{
     // 신/구 인증 이벤트 모두 지원
-    socket.emit('playerAuth', { battleId, name: myName, token: otp, team: myTeamAB });
+    socket.emit('playerAuth', { battleId, name: myName, token: otp, password: otp, otp, team: myTeamAB });
   });
 
   // 인증 성공(신/구 이벤트)
@@ -323,6 +323,7 @@ btnReady?.addEventListener('click', ()=>{
   btnReady.disabled = true;
   btnReady.textContent = '준비 완료됨';
   toast('준비 완료 전송');
+  appendLog('준비 완료를 전송했습니다.');
 });
 
 btnAttack?.addEventListener('click', ()=>{
