@@ -987,9 +987,20 @@
 
     // 액션 버튼 상태 업데이트
     function updateActionButtons(battleData) {
-      const isMyTurn = battleData.currentTurn?.currentTeam === gameState.playerData?.team;
-      const hasActed = battleData.currentTurn?.playerActions?.[gameState.playerData?.name];
-      const canAct = isMyTurn && !hasActed && battleData.status === 'active';
+      if (!battleData || !gameState.playerData) {
+        // 데이터가 없으면 모든 버튼 비활성화
+        document.querySelectorAll('.action-btn, .item-btn').forEach(btn => {
+          btn.disabled = true;
+        });
+        return;
+      }
+      
+      const currentTurn = battleData.currentTurn || battleData.turn;
+      const isMyTurn = currentTurn?.currentTeam === gameState.playerData.team;
+      const hasActed = currentTurn?.playerActions?.[gameState.playerData.name];
+      const canAct = isMyTurn && !hasActed && (battleData.status === 'active' || battleData.status === 'started');
+      
+      console.log('액션 버튼 상태:', { isMyTurn, hasActed, canAct, battleStatus: battleData.status });
       
       // 기본 액션 버튼들
       document.getElementById('attackBtn').disabled = !canAct;
@@ -998,11 +1009,73 @@
       document.getElementById('passBtn').disabled = !canAct;
       
       // 아이템 버튼들 (아이템 보유 여부 확인)
-      const playerItems = gameState.playerData?.items || {};
-      document.getElementById('attackBoostBtn').disabled = !canAct || !playerItems.attackBoost;
-      document.getElementById('defenseBoostBtn').disabled = !canAct || !playerItems.defenseBoost;
-      document.getElementById('healBtn').disabled = !canAct || !playerItems.heal;
+      const playerItems = gameState.playerData.items || {};
+      document.getElementById('attackBoostBtn').disabled = !canAct || !(playerItems.attackBooster > 0);
+      document.getElementById('defenseBoostBtn').disabled = !canAct || !(playerItems.defenseBooster > 0);
+      document.getElementById('healBtn').disabled = !canAct || !(playerItems.ditany > 0);
+      
+      // 아이템 버튼 텍스트 업데이트 (개수 표시)
+      document.getElementById('attackBoostBtn').textContent = `공격 보정기 (${playerItems.attackBooster || 0})`;
+      document.getElementById('defenseBoostBtn').textContent = `방어 보정기 (${playerItems.defenseBooster || 0})`;
+      document.getElementById('healBtn').textContent = `디터니 (${playerItems.ditany || 0})`;
     }
+
+    // 추가 Socket 이벤트 리스너들
+    socket.on('battleUpdate', (data) => {
+      console.log('전투 업데이트:', data);
+      gameState.battleData = data;
+      updateBattleDisplay(data);
+    });
+
+    socket.on('battle:update', (data) => {
+      console.log('전투 업데이트 (새 이벤트):', data);
+      gameState.battleData = data;
+      updateBattleDisplay(data);
+    });
+
+    socket.on('playerUpdate', (data) => {
+      console.log('플레이어 업데이트:', data);
+      if (data.name === gameState.playerData?.name) {
+        // 내 정보 업데이트
+        gameState.playerData = { ...gameState.playerData, ...data };
+        updatePlayerInfo(gameState.playerData);
+      }
+      // 전체 전투 상태도 다시 요청
+      if (gameState.battleData) {
+        updateBattleDisplay(gameState.battleData);
+      }
+    });
+
+    socket.on('player:update', (data) => {
+      console.log('플레이어 업데이트 (새 이벤트):', data);
+      if (data.name === gameState.playerData?.name) {
+        gameState.playerData = { ...gameState.playerData, ...data };
+        updatePlayerInfo(gameState.playerData);
+      }
+    });
+
+    socket.on('turnUpdate', (data) => {
+      console.log('턴 업데이트:', data);
+      gameState.currentTurn = data;
+      updateTurnDisplay(data);
+      
+      // 액션 버튼 상태도 업데이트
+      if (gameState.battleData) {
+        gameState.battleData.currentTurn = data;
+        updateActionButtons(gameState.battleData);
+      }
+    });
+
+    socket.on('turn:update', (data) => {
+      console.log('턴 업데이트 (새 이벤트):', data);
+      gameState.currentTurn = data;
+      updateTurnDisplay(data);
+      
+      if (gameState.battleData) {
+        gameState.battleData.currentTurn = data;
+        updateActionButtons(gameState.battleData);
+      }
+    });
 
     // 로그 엔트리 추가
     function addLogEntry(message, type = 'system') {
