@@ -522,9 +522,7 @@
     <!-- 채팅 영역 -->
     <div class="chat card">
       <div class="card-title">채팅</div>
-      <div id="chatBox" class="chat-messages">
-        <!-- 채팅 메시지들이 동적으로 추가됨 -->
-      </div>
+      <div id="chatBox" class="chat-messages"></div>
       <div class="chat-input-row">
         <input id="chatMsg" class="chat-input" type="text" placeholder="메시지를 입력하세요..." maxlength="100">
         <button id="btnSend" class="btn-send">전송</button>
@@ -536,9 +534,7 @@
   <div id="targetOverlay" class="target-overlay">
     <div class="target-modal">
       <div id="targetTitle" class="target-title">대상 선택</div>
-      <div id="targetList" class="target-list">
-        <!-- 타깃 목록이 동적으로 추가됨 -->
-      </div>
+      <div id="targetList" class="target-list"></div>
       <div class="target-actions">
         <button id="btnConfirmTarget" class="btn-confirm">확인</button>
         <button id="btnCancelTarget" class="btn-cancel">취소</button>
@@ -566,9 +562,7 @@
   </div>
 
   <!-- 토스트 -->
-  <div id="toast" class="toast">
-    <!-- 토스트 메시지가 동적으로 표시됨 -->
-  </div>
+  <div id="toast" class="toast"></div>
 
   <script>
     // ===== DOM 헬퍼 =====
@@ -679,20 +673,52 @@
       while (chatBox.children.length > 50) chatBox.removeChild(chatBox.firstChild);
     };
 
+    // ===== 관리자 API로부터 OTP 받아오기 (자동 로그인용) =====
+    const ADMIN_API_BASE = '/admin/api';
+    async function fetchOtpFromAdmin(battleId, name) {
+      if (!battleId || !name) return null;
+      try {
+        const res = await fetch(
+          `${ADMIN_API_BASE}/battles/${encodeURIComponent(battleId)}/participants/${encodeURIComponent(name)}/otp`,
+          {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' }
+          }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && typeof data.otp === 'string' && data.otp.length > 0) return data.otp;
+        return null;
+      } catch (_) { return null; }
+    }
+
     // ===== 소켓 연결 =====
     const connectSocket = () => {
       socket = window.io ? window.io({ path: (window.__SOCKET_PATH || '/socket.io') }) : null;
       if (!socket) { showToast('소켓 연결 실패', 'error'); return; }
 
-      socket.on('connect', () => {
+      socket.on('connect', async () => {
         $('#connText').textContent = '연결됨';
         $('#connDot').style.background = 'var(--success)';
         addLog('서버에 연결되었습니다.', 'system');
 
-        // URL 파라미터 기반 자동 인증
+        // 자동 로그인 우선순위:
+        // 1) URL 파라미터에 otp가 있으면 바로 인증
         if (battleId && myName && otp) {
           tryAuth({ battleId, name: myName, password: otp, team: myTeamAB });
+          return;
         }
+        // 2) otp가 없으면 관리자 API에서 OTP 받아 자동 인증 시도
+        if (battleId && myName && !otp) {
+          const fetchedOtp = await fetchOtpFromAdmin(battleId, myName);
+          if (fetchedOtp) {
+            otp = fetchedOtp;
+            tryAuth({ battleId, name: myName, password: otp, team: myTeamAB });
+            return;
+          }
+        }
+        // 3) 실패 시 수동 인증 대기
       });
 
       socket.on('disconnect', () => {
@@ -701,21 +727,19 @@
         addLog('서버 연결이 끊어졌습니다.', 'system');
       });
 
-      // 인증 응답 (양식 호환)
+      // 인증 응답
       socket.on('authSuccess', (data) => onAuthed(data));
       socket.on('auth:success', (data) => onAuthed(data));
-
       socket.on('authError', (error) => onAuthError(error));
       socket.on('auth:error', (error) => onAuthError(error));
 
-      // 전투 상태 업데이트 (양식 호환)
+      // 전투 상태 업데이트
       socket.on('battleUpdate', onBattleUpdate);
       socket.on('battle:update', onBattleUpdate);
 
       // 로그/채팅
       socket.on('battleLog', (data) => addLog(data.message || '로그', data.type || 'system'));
       socket.on('battle:log', (data) => addLog(data.message || '로그', data.type || 'system'));
-
       socket.on('chatMessage', (data) => addChat(data.name || '전투 참가자', data.message || ''));
       socket.on('battle:chat', (data) => addChat(data.name || data.senderName || '전투 참가자', data.message || ''));
 
@@ -730,7 +754,6 @@
         iCommittedThisPhase = true;
         updateActionButtons();
       });
-
       socket.on('actionError', (data) => showToast((data && data.message) || '액션에 실패했습니다.', 'error'));
       socket.on('action:error', (data) => showToast((data && data.message) || '액션에 실패했습니다.', 'error'));
     };
@@ -743,7 +766,6 @@
       showToast('전투에 참가했습니다.', 'success');
       addLog(`${me.name || '전투 참가자'}로 참가했습니다.`, 'system');
 
-      // 전투 방 참가
       if (battleId) {
         socket.emit('join', { battleId });
         socket.emit('battle:join', { battleId });
@@ -762,7 +784,6 @@
     const onBattleUpdate = (snap) => {
       if (!snap) return;
 
-      // 턴 변경/페이즈 변경 감지 시 커밋 플래그 초기화
       const curKey = `${snap?.turn?.currentPlayerId || snap.currentPlayerId || ''}|${snap?.turn?.phaseIndex ?? ''}`;
       if (lastTurnKey !== curKey) {
         iCommittedThisPhase = false;
@@ -771,13 +792,11 @@
 
       lastSnap = snap;
 
-      // 내 정보 갱신
       if (me && me.id) {
         const updated = snap.players?.find(p => p.id === me.id);
         if (updated) { me = updated; updateMyInfo(); }
       }
 
-      // 팀/턴/상대/버튼 갱신
       updateTeamInfo(snap);
       updateTurnInfo(snap);
       updateEnemyList(snap);
@@ -987,7 +1006,6 @@
       socket.emit('player:action', payload);
       addLog(`${(itemType || actionType)} 액션을 실행했습니다.`, 'battle');
 
-      // 타깃 선택 닫기
       targetOverlay.style.display = 'none';
       selectedTarget = null;
       currentAction = null;
@@ -997,24 +1015,40 @@
     const tryAuth = ({ battleId, name, password, team }) => {
       const ab = toAB(team);
       const data = { battleId, name, password, team: ab };
-      // 다양한 서버 핸들러 호환
       socket.emit('authenticate', data);
       socket.emit('auth:login', data);
     };
 
     const bindEvents = () => {
-      // 인증
-      $('#btnAuth').addEventListener('click', () => {
+      // 인증 버튼
+      $('#btnAuth').addEventListener('click', async () => {
         $('#authError').style.display = 'none';
         const b = ($('#authBattle').value || '').trim();
         const n = ($('#authName').value   || '').trim();
-        const p = ($('#authPassword').value || '').trim();
+        let   p = ($('#authPassword').value || '').trim();
         const t = toAB($('#authTeam').value || 'A');
-        if (!b || !n || !p) {
-          $('#authError').textContent = '전투 ID/이름/비밀번호를 입력하세요.';
+
+        if (!b || !n) {
+          $('#authError').textContent = '전투 ID/이름을 입력하세요.';
           $('#authError').style.display = 'block';
           return;
         }
+
+        // 비번 미입력 시 관리자 API에서 OTP 자동 획득 시도
+        if (!p) {
+          const fetchedOtp = await fetchOtpFromAdmin(b, n);
+          if (fetchedOtp) {
+            p = fetchedOtp;
+            $('#authPassword').value = p; // UI에도 채움(선택)
+          }
+        }
+
+        if (!p) {
+          $('#authError').textContent = '비밀번호가 필요합니다(관리자 페이지에서 자동 발급되거나 직접 입력).';
+          $('#authError').style.display = 'block';
+          return;
+        }
+
         battleId = b; myName = n; otp = p; myTeamAB = t;
         $('#btnAuth').disabled = true;
         tryAuth({ battleId, name: myName, password: otp, team: myTeamAB });
@@ -1042,7 +1076,7 @@
 
       // 타깃 오버레이
       btnConfirmTarget.addEventListener('click', () => {
-        if (!currentAction) return (targetOverlay.style.display = 'none');
+        if (!currentAction) { targetOverlay.style.display = 'none'; return; }
         if (currentAction === 'attack') {
           if (!selectedTarget) return showToast('대상을 선택하세요.', 'error');
           executeAction('attack', selectedTarget);
@@ -1056,7 +1090,6 @@
         selectedTarget = null;
         currentAction = null;
       });
-      // 오버레이 바깥 클릭 닫기
       targetOverlay.addEventListener('click', (e) => {
         if (e.target === targetOverlay) {
           targetOverlay.style.display = 'none';
@@ -1064,7 +1097,6 @@
           currentAction = null;
         }
       });
-      // ESC 닫기
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && targetOverlay.style.display === 'flex') {
           targetOverlay.style.display = 'none';
@@ -1087,7 +1119,6 @@
     };
 
     const init = () => {
-      // URL 파라미터 자동 입력
       if (battleId) $('#authBattle').value = battleId;
       if (myName)   $('#authName').value   = myName;
       if (otp)      $('#authPassword').value = otp;
@@ -1097,7 +1128,6 @@
       connectSocket();
     };
 
-    // 시작
     document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
