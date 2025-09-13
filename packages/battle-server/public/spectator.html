@@ -32,6 +32,7 @@
     }
     .container{max-width:1600px;margin:0 auto;padding:0 20px}
 
+    /* 헤더 */
     .header{background:var(--glass-2);backdrop-filter:var(--blur-light);border-bottom:1px solid var(--border-light);
       padding:16px 0; position:sticky; top:0; z-index:100; box-shadow:var(--shadow-soft)}
     .title{text-align:center;color:var(--gold-bright)}
@@ -42,6 +43,7 @@
     }
     .title-sub{font-size:14px;font-weight:400;color:var(--text-muted);margin-top:4px}
 
+    /* 인증 카드 */
     .auth-card{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border-light);
       border-radius:var(--radius);padding:40px;margin:60px auto;max-width:500px;text-align:center;box-shadow:var(--shadow-deep)}
     .section-title{font-size:24px;font-weight:600;color:var(--gold-bright);margin-bottom:32px;text-shadow:0 2px 4px rgba(0,0,0,.3)}
@@ -64,8 +66,10 @@
     .btn:hover:not(:disabled)::before{left:100%}
     .btn:disabled{background:var(--glass-1);color:var(--text-muted);cursor:not-allowed;transform:none;box-shadow:none}
 
+    /* 레이아웃 */
     .main-layout{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr auto;gap:24px;padding:24px 0;min-height:calc(100vh - 100px)}
 
+    /* 카드 */
     .card{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border-light);
       border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-soft);transition:all var(--transition-fast)}
     .card-title{font-size:18px;font-weight:600;color:var(--gold-bright);margin-bottom:20px;text-align:center;text-shadow:0 2px 4px rgba(0,0,0,.3);text-transform:uppercase;letter-spacing:1px}
@@ -95,6 +99,7 @@
     .hp-bar-container{background:var(--glass-1);border:1px solid var(--border-subtle);border-radius:8px;height:16px;overflow:hidden;position:relative}
     .hp-bar{background:linear-gradient(90deg,var(--success),#27ae60);height:100%;transition:width .5s ease;border-radius:8px}
 
+    /* 응원/채팅 */
     .cheer-section{grid-column:1;grid-row:2}
     .cheer-buttons{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .cheer-btn{background:linear-gradient(135deg,var(--gold),var(--gold-bright));color:var(--deep-navy);border:none;border-radius:var(--radius-small);
@@ -124,6 +129,7 @@
     .log-timestamp{font-size:10px;color:var(--text-muted);margin-bottom:4px;opacity:.7}
     .log-content{font-size:12px;line-height:1.4}
 
+    /* 턴 오버레이 */
     .turn-overlay{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--glass-2);backdrop-filter:var(--blur-medium);
       border:2px solid var(--gold);border-radius:var(--radius);padding:30px;text-align:center;box-shadow:var(--shadow-deep);z-index:200;min-width:300px}
     .turn-status{font-size:20px;font-weight:700;color:var(--gold-bright);margin-bottom:12px;text-shadow:0 2px 4px rgba(0,0,0,.3)}
@@ -132,8 +138,15 @@
     .current-character img{width:100%;height:100%;object-fit:cover}
     .current-character-name{font-size:16px;font-weight:600;color:var(--text)}
 
-    @keyframes slideInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    /* 배지 */
+    .badge{display:inline-block;margin-top:6px;padding:4px 8px;border:1px solid var(--border-light);border-radius:999px;font-size:11px;color:var(--text-muted);background:var(--glass-1)}
 
+    /* 애니메이션 */
+    @keyframes slideInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+
+    /* 반응형 */
     @media (max-width:1200px){
       .main-layout{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;gap:16px}
       .team-a-section{grid-column:1;grid-row:1}
@@ -143,6 +156,7 @@
       .container{padding:0 16px}
     }
 
+    /* 토스트 */
     .toast{position:fixed;top:20px;right:20px;background:var(--glass-2);backdrop-filter:var(--blur-light);
       border:1px solid var(--border-light);border-radius:var(--radius-small);padding:12px 16px;color:var(--text);
       font-size:14px;font-weight:600;box-shadow:var(--shadow-medium);z-index:1000;animation:slideInUp .3s ease-out}
@@ -155,28 +169,29 @@
   </style>
 </head>
 <body>
+  <!-- 헤더 -->
   <header class="header">
     <div class="container">
       <div class="title">
         <div class="title-main">PYXIS</div>
-        <div class="title-sub">관전자</div>
+        <div class="title-sub">관전자 <span class="badge">데스매치 · 무승부 없음</span></div>
       </div>
     </div>
   </header>
 
+  <!-- 메인 컨테이너 -->
   <div class="container">
     <!-- 인증 카드 -->
     <div class="auth-card" id="authCard">
       <h2 class="section-title">관전자 인증</h2>
       <div class="form-group">
+        <label class="label">관전자 이름 (선택)</label>
+        <input type="text" id="nameInput" placeholder="표시할 이름을 입력하세요"/>
+      </div>
+      <div class="form-group">
         <label class="label">비밀번호</label>
         <input type="password" id="passwordInput" placeholder="관리자가 제공한 비밀번호를 입력하세요"/>
       </div>
-      <!-- 필요 시 이름 입력을 사용하려면 아래 주석을 해제하세요
-      <div class="form-group">
-        <label class="label">관전자 이름</label>
-        <input type="text" id="nameInput" placeholder="표시할 이름을 입력하세요"/>
-      </div> -->
       <div class="actions">
         <button class="btn" id="authBtn">관전 시작</button>
       </div>
@@ -184,18 +199,21 @@
 
     <!-- 메인 UI -->
     <div class="main-layout" id="gameLayout" style="display:none;">
+      <!-- A팀 -->
       <section class="team-a-section">
         <div class="card">
-          <h3 class="card-title">불사조 기사단 (A팀)</h3>
+          <h3 class="card-title">A팀</h3>
           <div class="team-list" id="teamAList"></div>
         </div>
       </section>
+      <!-- B팀 -->
       <section class="team-b-section">
         <div class="card">
-          <h3 class="card-title">죽음을 먹는 자들 (B팀)</h3>
+          <h3 class="card-title">B팀</h3>
           <div class="team-list" id="teamBList"></div>
         </div>
       </section>
+      <!-- 응원 -->
       <section class="cheer-section">
         <div class="card">
           <h3 class="card-title">응원하기</h3>
@@ -209,6 +227,7 @@
           </div>
         </div>
       </section>
+      <!-- 로그 -->
       <section class="chat-section">
         <div class="card">
           <h3 class="card-title">실시간 로그</h3>
@@ -219,27 +238,29 @@
 
     <!-- 턴 오버레이 -->
     <div class="turn-overlay" id="turnOverlay" style="display:none;">
-      <div class="turn-status" id="turnStatus">현재 순서팀: 불사조 기사단</div>
+      <div class="turn-status" id="turnStatus">현재 순서팀: A팀</div>
       <div class="turn-timer" id="turnTimer">팀 제한 시간 3:45</div>
       <div class="current-character" id="currentCharacter">
         <img src="" alt="현재 턴 캐릭터" id="currentCharacterImg"/>
       </div>
-      <div class="current-character-name" id="currentCharacterName">플레이어</div>
+      <div class="current-character-name" id="currentCharacterName">전투 참가자</div>
     </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // ===== 전역 변수 =====
     let socket = null;
     let battleId = null;
     let battleState = null;
     let isAuthenticated = false;
     let spectatorName = '관전자';
 
+    // ===== DOM 요소 =====
     const authCard = document.getElementById('authCard');
     const gameLayout = document.getElementById('gameLayout');
     const passwordInput = document.getElementById('passwordInput');
-    const nameInput = document.getElementById('nameInput') || null;
+    const nameInput = document.getElementById('nameInput');
     const authBtn = document.getElementById('authBtn');
     const teamAList = document.getElementById('teamAList');
     const teamBList = document.getElementById('teamBList');
@@ -250,8 +271,7 @@
     const currentCharacterImg = document.getElementById('currentCharacterImg');
     const currentCharacterName = document.getElementById('currentCharacterName');
 
-    const cheerMessages = ["멋지다!","이겨라!","살아서 돌아와!","화이팅!","죽으면 나한테 죽어!","힘내요!"];
-
+    // ===== 유틸 =====
     function showToast(message, type = 'success') {
       const toast = document.createElement('div');
       toast.className = `toast ${type}`;
@@ -283,6 +303,7 @@
       setTimeout(() => entry.classList.remove('new'), 100);
     }
 
+    // ===== 팀 렌더링 =====
     function createTeamMemberElement(player) {
       const div = document.createElement('div');
       div.className = 'team-member';
@@ -303,7 +324,7 @@
             ${player.avatar ? `<img src="${player.avatar}" alt="${escapeHtml(player.name || '')}">` : ''}
           </div>
           <div class="member-info">
-            <div class="member-name">${escapeHtml(player.name || '플레이어')}</div>
+            <div class="member-name">${escapeHtml(player.name || '전투 참가자')}</div>
             <div class="member-team">팀 ${player.team}</div>
           </div>
         </div>
@@ -326,7 +347,7 @@
       if (!battleState || !battleState.players) return;
 
       const teamA = battleState.players.filter(p => (p.team || 'A') === 'A');
-      const teamB = battleState.players.filter(p => (p.team || 'B') === 'B');
+      const teamB = battleState.players.filter(p => (p.team || 'A') === 'B');
 
       teamAList.innerHTML = teamA.length
         ? ''
@@ -339,11 +360,12 @@
       teamB.forEach(player => teamBList.appendChild(createTeamMemberElement(player)));
     }
 
+    // ===== 턴 정보 =====
     function updateTurnInfo() {
       if (!battleState) return;
 
-      const currentTeam = battleState.currentTeam || battleState.currentTurn?.currentTeam || 'A';
-      const teamName = currentTeam === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
+      const currentTeam = battleState.currentTeam || 'A';
+      const teamName = currentTeam === 'A' ? 'A팀' : 'B팀';
       turnStatus.textContent = `현재 순서팀: ${teamName}`;
 
       const timeLeft = Number(battleState.timeLeft ?? 300);
@@ -352,7 +374,7 @@
       turnTimer.textContent = `팀 제한 시간 ${minutes}:${String(seconds).padStart(2, '0')}`;
 
       const currentTeamPlayers = (battleState.players || [])
-        .filter(p => p.team === currentTeam && Number(p.hp || 0) > 0);
+        .filter(p => (p.team || 'A') === currentTeam && Number(p.hp || 0) > 0);
 
       if (currentTeamPlayers.length > 0) {
         const activePlayer = currentTeamPlayers[0];
@@ -362,7 +384,7 @@
         } else {
           currentCharacterImg.style.display = 'none';
         }
-        currentCharacterName.textContent = activePlayer.name || '플레이어';
+        currentCharacterName.textContent = activePlayer.name || '전투 참가자';
       } else {
         currentCharacterImg.style.display = 'none';
         currentCharacterName.textContent = '준비 중';
@@ -376,20 +398,12 @@
       updateTurnInfo();
     }
 
+    // ===== 소켓 연결 =====
     function connectSocket() {
       socket = io({ transports: ['websocket', 'polling'], withCredentials: true, timeout: 20000 });
 
-      socket.on('connect', () => {
-        showToast('서버에 연결되었습니다.');
-        const urlParams = new URLSearchParams(window.location.search);
-        const b = urlParams.get('battle');
-        if (b) {
-          battleId = b;
-          socket.emit('join', { battleId });
-        }
-      });
-
-      socket.on('disconnect', () => showToast('서버 연결이 끊어졌습니다.', 'error'));
+      socket.on('connect', () => { showToast('서버에 연결되었습니다.'); });
+      socket.on('disconnect', () => { showToast('서버 연결이 끊어졌습니다.', 'error'); });
 
       socket.on('battleUpdate', data => { battleState = data; updateUI(); });
       socket.on('battle:update', data => { battleState = data; updateUI(); });
@@ -398,11 +412,11 @@
       socket.on('battle:log', data => addLogEntry(battleLog, data.message || data, 'battle'));
 
       socket.on('chatMessage', data => {
-        const senderName = data.name || data.senderName || '플레이어';
+        const senderName = data.name || data.senderName || '전투 참가자';
         addLogEntry(battleLog, `${senderName}: ${data.message}`, 'chat');
       });
       socket.on('battle:chat', data => {
-        const senderName = data.name || data.senderName || '플레이어';
+        const senderName = data.name || data.senderName || '전투 참가자';
         addLogEntry(battleLog, `${senderName}: ${data.message}`, 'chat');
       });
 
@@ -415,50 +429,36 @@
         addLogEntry(battleLog, `[응원] ${senderName}: ${data.message}`, 'cheer');
       });
 
-      // 인증 성공/실패 이벤트 다중 호환
-      const handleAuthSuccess = (data) => {
-        isAuthenticated = true;
-        battleState = data?.battle || battleState;
-        authCard.style.display = 'none';
-        gameLayout.style.display = 'grid';
-        showToast(`${spectatorName}님, 관전을 시작합니다!`);
-        updateUI();
-      };
-      const handleAuthError = (data) => {
-        showToast(data?.message || '인증에 실패했습니다.', 'error');
-        authBtn.disabled = false;
-        authBtn.textContent = '관전 시작';
-      };
-
-      socket.on('authSuccess', handleAuthSuccess);
-      socket.on('auth:success', handleAuthSuccess);
-      socket.on('authResult', (d)=> d?.success ? handleAuthSuccess(d) : handleAuthError(d));
-      socket.on('auth:result', (d)=> d?.success ? handleAuthSuccess(d) : handleAuthError(d));
-      socket.on('spectatorAuthResult', (d)=> d?.success ? handleAuthSuccess(d) : handleAuthError(d));
-      socket.on('spectator:auth:result', (d)=> d?.success ? handleAuthSuccess(d) : handleAuthError(d));
-      socket.on('spectator:auth:success', handleAuthSuccess);
-      socket.on('authError', handleAuthError);
-      socket.on('auth:error', handleAuthError);
+      socket.on('playerReady', data => {
+        const senderName = data.name || data.playerName || '전투 참가자';
+        addLogEntry(battleLog, `${senderName}님이 준비 완료했습니다!`, 'system');
+        if (data.allReady) addLogEntry(battleLog, '모든 전투 참가자가 준비 완료되었습니다.', 'battle');
+      });
+      socket.on('player:ready', data => {
+        const senderName = data.name || data.playerName || '전투 참가자';
+        addLogEntry(battleLog, `${senderName}님이 준비 완료했습니다!`, 'system');
+        if (data.allReady) addLogEntry(battleLog, '모든 전투 참가자가 준비 완료되었습니다.', 'battle');
+      });
 
       socket.on('battleStarted', data => {
         const firstTeam = data.firstTeam || (data.turn && data.turn.order && data.turn.order[0]) || 'A';
         const round = (data.turn && data.turn.round) || 1;
-        const teamName = firstTeam === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
-        addLogEntry(battleLog, '전투가 시작되었습니다!', 'battle');
+        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
+        addLogEntry(battleLog, '전투가 시작되었습니다.', 'battle');
         addLogEntry(battleLog, `${round}라운드 - 선공: ${teamName}`, 'critical');
       });
       socket.on('battle:started', data => {
         const firstTeam = data.firstTeam || (data.turn && data.turn.order && data.turn.order[0]) || 'A';
         const round = (data.turn && data.turn.round) || 1;
-        const teamName = firstTeam === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
-        addLogEntry(battleLog, '전투가 시작되었습니다!', 'battle');
+        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
+        addLogEntry(battleLog, '전투가 시작되었습니다.', 'battle');
         addLogEntry(battleLog, `${round}라운드 - 선공: ${teamName}`, 'critical');
       });
 
       socket.on('roundStart', data => {
         const round = data.round || 1;
         const firstTeam = data.firstTeam || 'A';
-        const teamName = firstTeam === 'A' ? '불사조 기사단' : '죽음을 먹는 자들';
+        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
         addLogEntry(battleLog, `${round}라운드 시작 - 선공: ${teamName}`, 'critical');
       });
 
@@ -466,12 +466,13 @@
       socket.on('actionError', data => addLogEntry(battleLog, data.message || '액션이 실패했습니다.', 'system'));
 
       socket.on('battle:ended', data => {
-        const winner = data.winner || '무승부';
+        const winner = data.winner || '종료';
         addLogEntry(battleLog, `전투가 종료되었습니다. 승자: ${winner}`, 'system');
         turnOverlay.style.display = 'none';
       });
     }
 
+    // ===== 인증 처리 =====
     function authenticate() {
       const password = (passwordInput?.value || '').trim();
       const name = (nameInput?.value || '').trim();
@@ -486,50 +487,43 @@
       authBtn.disabled = true;
       authBtn.textContent = '인증 중...';
 
-      // 방 참가 후 인증 요청
-      socket.emit('join', { battleId });
-
-      let finished = false;
-      const restore = () => {
-        if (finished) return;
-        finished = true;
-        authBtn.disabled = false;
-        authBtn.textContent = '관전 시작';
-      };
-
-      // ACK 기반 인증
-      socket.emit('spectatorAuth', { battleId, token: password, name: spectatorName }, (ack) => {
-        if (finished) return;
-        finished = true;
-        if (ack && ack.success) {
-          isAuthenticated = true;
-          battleState = ack.battle || battleState;
-          authCard.style.display = 'none';
-          gameLayout.style.display = 'grid';
-          showToast(`${spectatorName}님, 관전을 시작합니다!`);
-          updateUI();
-        } else {
-          showToast((ack && (ack.message || ack.error)) || '인증에 실패했습니다.', 'error');
-          authBtn.disabled = false;
-          authBtn.textContent = '관전 시작';
-        }
+      socket.emit('spectatorAuth', {
+        battleId: battleId,
+        token: password,
+        name: spectatorName
       });
 
-      // 서버가 ACK를 주지 않는 경우 대비 타임아웃
-      setTimeout(() => {
-        if (!finished) {
-          showToast('인증 응답이 지연되고 있습니다. 다시 시도하세요.', 'warning');
-          restore();
-        }
-      }, 8000);
+      socket.once('authSuccess', (data) => {
+        isAuthenticated = true;
+        battleState = data.battle;
+        authCard.style.display = 'none';
+        gameLayout.style.display = 'grid';
+        showToast(`${spectatorName}님, 관전을 시작합니다.`);
+        updateUI();
+      });
+
+      socket.once('auth:success', (data) => {
+        isAuthenticated = true;
+        battleState = data.battle;
+        authCard.style.display = 'none';
+        gameLayout.style.display = 'grid';
+        showToast(`${spectatorName}님, 관전을 시작합니다.`);
+        updateUI();
+      });
+
+      socket.once('authError', (data) => {
+        showToast(data?.message || '인증에 실패했습니다.', 'error');
+        authBtn.disabled = false;
+        authBtn.textContent = '관전 시작';
+      });
     }
 
+    // ===== 이벤트 바인딩 =====
     authBtn.addEventListener('click', authenticate);
     passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
-    if (nameInput) {
-      nameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
-    }
+    nameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
 
+    // 응원 버튼 리스너
     document.addEventListener('click', (e) => {
       if (e.target.classList.contains('cheer-btn')) {
         if (!socket || !battleId || !isAuthenticated) { showToast('먼저 인증을 완료해주세요.', 'error'); return; }
@@ -540,8 +534,10 @@
       }
     });
 
+    // ===== 초기화 =====
     document.addEventListener('DOMContentLoaded', () => {
       connectSocket();
+
       const urlParams = new URLSearchParams(window.location.search);
       const autoPassword =
         urlParams.get('otp') ||
@@ -550,12 +546,8 @@
         urlParams.get('pwd') ||
         urlParams.get('auth');
 
-      const b = urlParams.get('battle');
-      if (b) battleId = b;
       if (autoPassword) {
         passwordInput.value = autoPassword;
-        // 자동 인증 시도
-        setTimeout(() => authenticate(), 50);
       }
     });
   </script>
