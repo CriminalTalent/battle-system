@@ -1323,10 +1323,20 @@
       authBtn.disabled = true;
       authBtn.textContent = '인증 중...';
 
-      // 소켓으로 인증 요청
+    // 소켓으로 인증 요청 - 다양한 이벤트명 지원
       socket.emit('playerAuth', {
         battleId: battleId,
-        password: password
+        password: password,
+        token: password,  // 서버에서 token으로 받을 수도 있음
+        otp: password     // 또는 otp로 받을 수도 있음
+      });
+
+      // 추가 호환성을 위한 다른 이벤트도 전송
+      socket.emit('player:auth', {
+        battleId: battleId,
+        password: password,
+        token: password,
+        otp: password
       });
 
       socket.once('authSuccess', (data) => {
