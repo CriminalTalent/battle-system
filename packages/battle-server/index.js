@@ -64,12 +64,12 @@ function createBattleState(id, mode = '2v2') {
     players: [],
     currentTurn: 0,
     currentPlayer: null,
-    leadingTeam: null, // 'A' | 'B'
+    leadingTeam: null,
     effects: [],
     logs: [],
     options: {
-      timeLimit: 60 * 60 * 1000, // 1h
-      turnTimeout: 5 * 60 * 1000, // 5m
+      timeLimit: 60 * 60 * 1000,
+      turnTimeout: 5 * 60 * 1000,
       maxPlayers: parseInt(mode, 10) ? parseInt(mode, 10) * 2 : parseInt(mode[0], 10) * 2,
     },
   };
@@ -314,14 +314,12 @@ io.on('connection', (socket) => {
     console.log('[SOCKET] Disconnected:', socket.id);
   });
 
-  // Join battle room
   socket.on('join', ({ battleId }) => {
     if (battleId) {
       socket.join(battleId);
     }
   });
 
-  // Add player (from socket)
   socket.on('addPlayer', ({ battleId, player }, callback) => {
     try {
       const battle = battles.get(battleId);
@@ -367,7 +365,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Basic socket events for battle management
   socket.on('createBattle', ({ mode = '2v2' }, callback) => {
     try {
       if (!['1v1', '2v2', '3v3', '4v4'].includes(mode)) {
