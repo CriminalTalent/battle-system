@@ -1,4 +1,4 @@
-// packages/battle-server/index.js - PYXIS Battle Server (ESM)
+// packages/battle-server/index.js - PYXIS Battle Server (플레이어 인증 추가)
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
@@ -7,8 +7,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { Server as IOServer } from 'socket.io';
-
-import uploadRouter from './src/routes/avatar-upload.js';
 
 dotenv.config();
 
@@ -19,124 +17,96 @@ const PORT = Number(process.env.PORT || 3001);
 const SOCKET_PATH = process.env.SOCKET_PATH || '/socket.io';
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Express 앱 먼저 생성
+// Express 앱 생성
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, {
   path: SOCKET_PATH,
-  cors: { origin: process.env.CORS_ORIGIN?.split(',') || true, credentials: true },
-  transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  cors: { origin: true, credentials: true },
+  transports: ['websocket', 'polling']
 });
 
-// -----------------------------
-// In-memory state
-// -----------------------------
+// 메모리 저장소
 const battles = new Map();
 const otpStore = new Map();
 
-// -----------------------------
-// Helpers
-// -----------------------------
+// 헬퍼 함수
 function generateId() {
   return 'battle_' + Math.random().toString(36).slice(2, 10);
 }
+
 function generateOTP(length = 6) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let r = '';
   for (let i = 0; i < length; i++) r += chars[(Math.random() * chars.length) | 0];
   return r;
 }
+
 function validateStats(stats) {
   if (!stats || typeof stats !== 'object') return false;
   const { attack, defense, agility, luck } = stats;
   return [attack, defense, agility, luck].every(n => Number.isInteger(n) && n >= 1 && n <= 5);
 }
-function createBattleState(id, mode = '2v2') {
-  return {
-    id,
-    mode,
-    status: 'waiting',
-    createdAt: Date.now(),
-    startedAt: null,
-    endedAt: null,
-    players: [],
-    currentTurn: 0,
-    currentPlayer: null,
-    leadingTeam: null,
-    effects: [],
-    logs: [],
-    options: {
-      timeLimit: 60 * 60 * 1000,
-      turnTimeout: 5 * 60 * 1000,
-      maxPlayers: parseInt(mode, 10) ? parseInt(mode, 10) * 2 : parseInt(mode[0], 10) * 2,
-    },
-  };
-}
+
 function emitBattleUpdate(battleId) {
   const battle = battles.get(battleId);
   if (!battle) return;
   io.to(battleId).emit('battleUpdate', battle);
   io.to(battleId).emit('battle:update', battle);
 }
+
 function pushLog(battleId, type, message, data = {}) {
   const b = battles.get(battleId);
   if (!b) return;
   const entry = { timestamp: Date.now(), type, message, data };
+  b.logs = b.logs || [];
   b.logs.push(entry);
   if (b.logs.length > 1000) b.logs = b.logs.slice(-500);
   io.to(battleId).emit('battle:log', entry);
 }
 
-// -----------------------------
-// Middleware & static
-// -----------------------------
+// 미들웨어
 app.set('trust proxy', true);
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true, credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
 
+// 정적 파일 서빙
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
+// 업로드 디렉토리
 const uploadsDir = path.join(__dirname, 'uploads');
-const avatarsDir = path.join(uploadsDir, 'avatars');
-fs.mkdirSync(avatarsDir, { recursive: true });
+fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
-// uploads
-app.use('/api/upload', uploadRouter);
-
-// -----------------------------
-// Routes
-// -----------------------------
-
-// 루트 경로를 admin.html로 연결
+// 루트 경로 -> admin.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
-// API
-app.get('/api/health', (_req, res) =>
-  res.json({
-    ok: true,
-    service: 'PYXIS Battle System',
-    uptime: Math.floor(process.uptime()),
-    battles: battles.size,
-    timestamp: Date.now(),
-  }),
-);
+// 헬스체크
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, timestamp: Date.now() });
+});
 
+// 전투 생성 API
 app.post('/api/battles', (req, res) => {
   try {
-    const { mode = '2v2', options = {} } = req.body || {};
+    const { mode = '2v2' } = req.body || {};
     if (!['1v1', '2v2', '3v3', '4v4'].includes(mode)) {
       return res.status(400).json({ ok: false, error: 'Invalid mode' });
     }
 
     const battleId = generateId();
-    const battle = createBattleState(battleId, mode);
+    const battle = {
+      id: battleId,
+      mode,
+      status: 'waiting',
+      createdAt: Date.now(),
+      players: [],
+      logs: []
+    };
     battles.set(battleId, battle);
 
     console.log(`Battle created: ${battleId} (${mode})`);
@@ -147,52 +117,7 @@ app.post('/api/battles', (req, res) => {
   }
 });
 
-app.post('/api/battles/:id/players', (req, res) => {
-  try {
-    const battleId = req.params.id;
-    const battle = battles.get(battleId);
-    if (!battle) return res.status(404).json({ ok: false, error: 'Battle not found' });
-
-    const { name, team = 'A', stats, items = {}, avatar } = req.body;
-    if (!name || !validateStats(stats)) {
-      return res.status(400).json({ ok: false, error: 'Invalid player data' });
-    }
-
-    const playerId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const player = {
-      id: playerId,
-      name: String(name).trim(),
-      team: team === 'B' ? 'B' : 'A',
-      hp: 100,
-      maxHp: 100,
-      stats: {
-        attack: Math.max(1, Math.min(5, parseInt(stats.attack) || 3)),
-        defense: Math.max(1, Math.min(5, parseInt(stats.defense) || 3)),
-        agility: Math.max(1, Math.min(5, parseInt(stats.agility) || 3)),
-        luck: Math.max(1, Math.min(5, parseInt(stats.luck) || 2)),
-      },
-      items: {
-        dittany: Math.max(0, parseInt(items.dittany) || 0),
-        attack_boost: Math.max(0, parseInt(items.attackBooster || items.attack_boost) || 0),
-        defense_boost: Math.max(0, parseInt(items.defenseBooster || items.defense_boost) || 0),
-      },
-      avatar: avatar || null,
-      ready: false,
-      joinedAt: Date.now(),
-    };
-
-    battle.players.push(player);
-    console.log(`Player added: ${name} (${playerId}) to team ${player.team}`);
-    
-    emitBattleUpdate(battleId);
-    res.json({ ok: true, player });
-  } catch (e) {
-    console.error('Player addition error:', e);
-    res.status(500).json({ ok: false, error: 'Addition failed' });
-  }
-});
-
-// Admin links API
+// 링크 생성 API
 app.post('/api/admin/battles/:id/links', (req, res) => {
   try {
     const battleId = req.params.id;
@@ -201,6 +126,8 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
 
     const base = `${req.protocol}://${req.get('host')}`;
     const spectatorOtp = generateOTP(6);
+    
+    // 관전자 OTP 저장
     otpStore.set(`spectator_${battleId}`, {
       otp: spectatorOtp,
       battleId,
@@ -212,10 +139,12 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
     const players = battle.players || [];
     
     players.forEach((player, index) => {
-      const tok = generateOTP(6);
+      const playerToken = generateOTP(6);
       const otpKey = `player_${battleId}_${player.id}`;
+      
+      // 플레이어 토큰 저장
       otpStore.set(otpKey, {
-        otp: tok,
+        otp: playerToken,
         battleId,
         role: 'player',
         playerId: player.id,
@@ -224,7 +153,8 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
         expires: Date.now() + 2 * 60 * 60 * 1000,
       });
       
-      const playerUrl = `${base}/player.html?battle=${battleId}&password=${tok}&token=${tok}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
+      // 자동로그인 URL 생성
+      const playerUrl = `${base}/player.html?battle=${battleId}&password=${playerToken}&token=${playerToken}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
         
       links.push({ 
         id: index + 1, 
@@ -234,7 +164,7 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
         url: playerUrl
       });
       
-      console.log(`Created link for player ${player.name} (${player.id}): ${playerUrl}`);
+      console.log(`Created auto-login link: ${playerUrl}`);
     });
 
     res.json({
@@ -249,7 +179,7 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   }
 });
 
-// Alternative links API
+// 대체 링크 API
 app.post('/api/battles/:id/links', (req, res) => {
   try {
     const battleId = req.params.id;
@@ -258,6 +188,7 @@ app.post('/api/battles/:id/links', (req, res) => {
 
     const base = `${req.protocol}://${req.get('host')}`;
     const spectatorOtp = generateOTP(6);
+    
     otpStore.set(`spectator_${battleId}`, {
       otp: spectatorOtp,
       battleId,
@@ -269,10 +200,11 @@ app.post('/api/battles/:id/links', (req, res) => {
     const players = battle.players || [];
     
     players.forEach((player, index) => {
-      const tok = generateOTP(6);
+      const playerToken = generateOTP(6);
       const otpKey = `player_${battleId}_${player.id}`;
+      
       otpStore.set(otpKey, {
-        otp: tok,
+        otp: playerToken,
         battleId,
         role: 'player',
         playerId: player.id,
@@ -281,7 +213,7 @@ app.post('/api/battles/:id/links', (req, res) => {
         expires: Date.now() + 2 * 60 * 60 * 1000,
       });
       
-      const playerUrl = `${base}/player.html?battle=${battleId}&password=${tok}&token=${tok}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
+      const playerUrl = `${base}/player.html?battle=${battleId}&password=${playerToken}&token=${playerToken}&playerId=${player.id}&name=${encodeURIComponent(player.name)}&team=${player.team}`;
       
       links.push({ 
         id: index + 1, 
@@ -304,9 +236,7 @@ app.post('/api/battles/:id/links', (req, res) => {
   }
 });
 
-// -----------------------------
-// Socket.IO
-// -----------------------------
+// 소켓 이벤트
 io.on('connection', (socket) => {
   console.log('[SOCKET] Connected:', socket.id);
 
@@ -314,12 +244,34 @@ io.on('connection', (socket) => {
     console.log('[SOCKET] Disconnected:', socket.id);
   });
 
-  socket.on('join', ({ battleId }) => {
-    if (battleId) {
+  // 전투 생성
+  socket.on('createBattle', ({ mode = '2v2' }, callback) => {
+    try {
+      if (!['1v1', '2v2', '3v3', '4v4'].includes(mode)) {
+        return callback({ error: 'Invalid mode' });
+      }
+
+      const battleId = generateId();
+      const battle = {
+        id: battleId,
+        mode,
+        status: 'waiting',
+        createdAt: Date.now(),
+        players: [],
+        logs: []
+      };
+      battles.set(battleId, battle);
+
       socket.join(battleId);
+      console.log(`Battle created: ${battleId} (${mode})`);
+      callback({ ok: true, battleId, battle });
+    } catch (e) {
+      console.error('Socket battle creation error:', e);
+      callback({ error: 'Creation failed' });
     }
   });
 
+  // 플레이어 추가
   socket.on('addPlayer', ({ battleId, player }, callback) => {
     try {
       const battle = battles.get(battleId);
@@ -365,54 +317,104 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('createBattle', ({ mode = '2v2' }, callback) => {
+  // 플레이어 인증 (자동로그인용)
+  socket.on('playerAuth', ({ battleId, password, token, otp }, callback) => {
     try {
-      if (!['1v1', '2v2', '3v3', '4v4'].includes(mode)) {
-        return callback({ error: 'Invalid mode' });
+      console.log(`[AUTH] Player auth: battleId=${battleId}, token=${password || token || otp}`);
+      
+      const battle = battles.get(battleId);
+      if (!battle) {
+        const err = { ok: false, error: 'battle_not_found', message: '전투를 찾을 수 없습니다.' };
+        console.log('[AUTH] Battle not found');
+        if (typeof callback === 'function') callback(err);
+        socket.emit('authError', err);
+        return;
       }
 
-      const battleId = generateId();
-      const battle = createBattleState(battleId, mode);
-      battles.set(battleId, battle);
+      // 토큰으로 OTP 검증
+      const authToken = password || token || otp;
+      let otpRecord = null;
+      
+      for (const [key, record] of otpStore.entries()) {
+        if (key.startsWith(`player_${battleId}`) && record.otp === authToken) {
+          if (record.expires && Date.now() > record.expires) {
+            otpStore.delete(key);
+            continue;
+          }
+          otpRecord = record;
+          break;
+        }
+      }
 
+      if (!otpRecord) {
+        const err = { ok: false, error: 'invalid_token', message: '잘못된 비밀번호입니다.' };
+        console.log('[AUTH] Invalid token');
+        if (typeof callback === 'function') callback(err);
+        socket.emit('authError', err);
+        return;
+      }
+
+      // 플레이어 찾기
+      const player = battle.players.find(p => p.id === otpRecord.playerId);
+      if (!player) {
+        const err = { ok: false, error: 'player_not_found', message: '플레이어를 찾을 수 없습니다.' };
+        console.log('[AUTH] Player not found');
+        if (typeof callback === 'function') callback(err);
+        socket.emit('authError', err);
+        return;
+      }
+
+      // 인증 성공
       socket.join(battleId);
-      console.log(`Battle created via socket: ${battleId} (${mode})`);
-      callback({ ok: true, battleId, battle });
+      socket.battleId = battleId;
+      socket.playerId = player.id;
+      socket.role = 'player';
+
+      const result = { 
+        ok: true, 
+        playerId: player.id,
+        playerData: player,
+        battle,
+        message: '인증 성공! 전투에 참가했습니다.' 
+      };
+
+      console.log(`[AUTH] Player authenticated: ${player.name} (${player.id})`);
+      
+      if (typeof callback === 'function') callback(result);
+      socket.emit('authSuccess', result);
+      socket.emit('auth:success', result);
+
+      pushLog(battleId, 'system', `${player.name}님이 접속했습니다.`);
     } catch (e) {
-      console.error('Socket battle creation error:', e);
-      callback({ error: 'Creation failed' });
+      console.error('[AUTH] Player auth error:', e);
+      const err = { ok: false, error: 'auth_failed', message: '인증 중 오류가 발생했습니다.' };
+      if (typeof callback === 'function') callback(err);
+      socket.emit('authError', err);
     }
   });
+
+  // 호환성을 위한 추가 이벤트
+  socket.on('player:auth', (...args) => socket.emit('playerAuth', ...args));
 });
 
-// -----------------------------
-// Error handling
-// -----------------------------
+// 에러 핸들링
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection:', reason);
 });
 
-// -----------------------------
-// Server start
-// -----------------------------
+// 서버 시작
 server.listen(PORT, HOST, () => {
   console.log(`
- ______   __  __  __   __  ______  ______       
-/\\  == \\ /\\ \\_\\ \\/\\ \\ / /\\  ___\\/\\  ___\\      
-\\ \\  __/ \\ \\____ \\ \\ \\'/\\ \\___  \\ \\___  \\     
- \\ \\_\\ \\_\\\\/\\_____\\\\ \\__| \\/\\_____\\/\\_____\\    
-  \\/_/ /_/ \\/_____/ \\/_/   \\/_____/\\/_____/    
-                                               
- PYXIS Battle System v1.0
- 
- Server: http://${HOST}:${PORT}
- Socket: ${SOCKET_PATH}
- Static: ${publicDir}
- Uploads: ${uploadsDir}
- Ready for battle!
+PYXIS Battle System
+
+Server: http://${HOST}:${PORT}
+Socket: ${SOCKET_PATH}  
+Static: ${publicDir}
+Uploads: ${uploadsDir}
+Ready for battle!
 `);
 });
