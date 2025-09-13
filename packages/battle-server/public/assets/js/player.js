@@ -1,15 +1,15 @@
 // packages/battle-server/public/assets/js/player.js
-// 전투 참가자 화면 (룰 반영판)
+// 전투 참가자 화면 (최종 반영판)
 // - 팀 표기는 항상 A/B만 사용
-// - 7학년 모의 전투 규칙 반영:
-//    • 팀 단위 턴제(선공팀 전원 → 후공팀 전원)
-//    • 방어는 '단순 방어'(배수 보정 아님) — 계산은 서버에서 수행
-//    • 아이템(디터니/공격 보정기/방어 보정기)은 모두 1회용 (수량 0이면 사용 불가)
-// - 신/구 소켓 이벤트 양쪽 지원(playerAction / player:action 등)
-// - 채팅 Enter 전송 + 기본 발신자 "전투 참가자"
+// - 팀 단위 턴제: 선공팀 전원 → 후공팀 전원 → 라운드 결과 → 선/후공 교대
+// - 아이템(모두 1회용):
+//    • 공격 보정기: "이번 공격 1회" 공격력 ×2  (서버에서 1회 소진/적용)
+//    • 방어 보정기: "이번 피격 1회" 방어력 ×2  (서버에서 1회 소진/적용)
+//    • 디터니: 대상 HP +10
+// - 방어/회피/피해 계산은 서버가 수행
+// - 신/구 소켓 이벤트 양쪽(playerAction / player:action 등) 호환
+// - 채팅은 Enter 전송 지원
 // - URL ?token= 또는 ?password= 폴백 지원
-// 공격 보정기: 이번 공격 1회 공격력 ×2
-// 방어 보정기: 이번 피격 1회 방어력 ×2
 
 /* ========== DOM 헬퍼 ========== */
 const $  = (q,root=document)=>root.querySelector(q);
@@ -66,10 +66,10 @@ const btnSend   = $('#btnSend');
 
 const logBox    = $('#log');
 
-const targetOverlay  = $('#targetOverlay');
-const targetTitle    = $('#targetTitle');
-const targetList     = $('#targetList');
-const btnCancelTarget= $('#btnCancelTarget');
+const targetOverlay   = $('#targetOverlay');
+const targetTitle     = $('#targetTitle');
+const targetList      = $('#targetList');
+const btnCancelTarget = $('#btnCancelTarget');
 
 /* ========== 공용 유틸 ========== */
 function toast(msg){
@@ -78,7 +78,6 @@ function toast(msg){
   toastEl.classList.add('show');
   setTimeout(()=>toastEl.classList.remove('show'), 1600);
 }
-// 팀 키를 A/B로만 정규화
 function toAB(t){
   const s = String(t||'').toLowerCase();
   if(s==='phoenix' || s==='a' || s==='team_a' || s==='team-a') return 'A';
@@ -197,7 +196,7 @@ function renderAll(state){
       const d  = num(it.dittany, 0);
       const ab = num(it.attack_boost, 0);
       const db = num(it.defense_boost, 0);
-      myItemsEl.textContent = `아이템(1회용): 디터니 ${d} · 공보 ${ab} · 방보 ${db}`;
+      myItemsEl.textContent = `아이템(1회용): 디터니 ${d} · 공보(이번 공격×2) ${ab} · 방보(이번 피격×2) ${db}`;
     }
   }
 
@@ -335,12 +334,11 @@ btnAttack?.addEventListener('click', ()=>{
 });
 btnDefend?.addEventListener('click', ()=>{
   if(!canAct()) return;
-  // 룰 반영: 방어는 '단순 방어'(배수 보정 아님). 실제 계산은 서버에서 수행.
+  // 방어 행동 자체(상태 유지). 방어 보정기는 아이템 버튼에서 별도로 사용.
   commitAction({ type:'defend' });
 });
 btnDodge ?.addEventListener('click', ()=>{
   if(!canAct()) return;
-  // 룰 반영: 회피 성공 시 0, 실패 시 정면 피격(계산은 서버)
   commitAction({ type:'dodge' });
 });
 btnItem  ?.addEventListener('click', ()=>{
@@ -371,10 +369,14 @@ function commitAction(action){
     socket?.emit('playerAction', { battleId, actorId: me.id, type:'attack', targetId: action.targetId });
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'attack', targetId: action.targetId }});
   }else if(action.type==='item'){
-    // 아이템 키(룰 반영): attack_boost / defense_boost / dittany (모두 1회용)
+    // 아이템 키: attack_boost(이번 공격×2) / defense_boost(이번 피격×2) / dittany(+10, 대상 필요)
     const payload = { battleId, actorId: me.id, type:'item', itemType: action.itemType, targetId: action.targetId };
     socket?.emit('playerAction', payload);
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type:'item', itemType: action.itemType, targetId: action.targetId }});
+    // UX용 즉시 로그
+    if(action.itemType==='attack_boost') appendLog('공격 보정기 사용: 이번 공격 공격력 ×2');
+    if(action.itemType==='defense_boost') appendLog('방어 보정기 사용: 이번 피격 방어력 ×2');
+    if(action.itemType==='dittany') appendLog('디터니 사용: 대상 HP +10');
   }else{
     socket?.emit('playerAction', { battleId, actorId: me.id, type: action.type });
     socket?.emit('player:action', { battleId, playerId: me.id, action:{ type: action.type }});
@@ -447,21 +449,21 @@ function openItemPicker(){
     targetList.appendChild(row);
   };
 
-  // 공격 보정기(성공률/효과 등은 서버가 판정; 여기서는 1회용 수량만 통제)
-  mkRow('공격 보정기', counts.attack_boost, ()=>{
+  // 공격 보정기: 이번 공격 ×2 (서버 1회 적용)
+  mkRow('공격 보정기 (이번 공격 ×2)', counts.attack_boost, ()=>{
     hideTargetPicker();
     commitAction({ type:'item', itemType:'attack_boost' });
   }, counts.attack_boost<=0);
 
-  // 방어 보정기(단순 방어 룰과 병행 — 실제 판정은 서버)
-  mkRow('방어 보정기', counts.defense_boost, ()=>{
+  // 방어 보정기: 이번 피격 ×2 (서버 1회 적용)
+  mkRow('방어 보정기 (이번 피격 ×2)', counts.defense_boost, ()=>{
     hideTargetPicker();
     commitAction({ type:'item', itemType:'defense_boost' });
   }, counts.defense_boost<=0);
 
-  // 디터니(HP +10, 대상 선택 — 아군 중 생존자)
+  // 디터니(+10) — 아군 중 생존자 대상 선택
   const allies = getAlliesAlive();
-  mkRow('디터니 (대상 선택)', counts.dittany, ()=>{
+  mkRow('디터니 (+10, 대상 선택)', counts.dittany, ()=>{
     if(counts.dittany<=0){ return; }
     openTargetPicker('dittany', allies);
   }, counts.dittany<=0 || allies.length===0);
@@ -530,9 +532,9 @@ function sendChat(){
 
 /* ========== 수동 로그인 폼(HTML 오버레이) ========== */
 $('#btnAuth')?.addEventListener('click', ()=>{
-  const b = $('#authBattle').value.trim();
-  const n = $('#authName').value.trim();
-  const t = $('#authToken').value.trim(); // 비밀번호 표기
+  const b  = $('#authBattle').value.trim();
+  const n  = $('#authName').value.trim();
+  const t  = $('#authToken').value.trim(); // 비밀번호 표기
   const tm = ($('#authTeam').value || 'A').toUpperCase()==='B' ? 'B':'A';
   if(!b || !n || !t){ toast('모두 입력하세요'); return; }
   battleId=b; myName=n; otp=t; myTeamAB=tm;
