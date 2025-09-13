@@ -12,7 +12,798 @@
       --black: #0a0a0a;
       --black-2: #0e0e0e;
       --black-3: #141414;
+      --panel: rgba(255,255,255,0.04);<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1"
+  />
+  <title>PYXIS - 전투 참가자</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --black: #0b0b0d;         /* 네이비 → 블랙 테마 */
+      --black-2: #111216;
       --panel: rgba(255,255,255,0.04);
+      --panel-2: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.12);
+      --text: #f7f8fa;
+      --muted: #aeb3be;
+      --gold: #dcc7a2;
+      --gold-2: #e6d2a8;
+      --accent: #7aa2ff;
+      --success: #2ecc71;
+      --danger: #ef5350;
+      --warn: #f39c12;
+      --info: #3fa7ff;
+      --radius: 14px;
+      --shadow: 0 10px 25px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{
+      height:100%;
+      background: radial-gradient(1200px 800px at 20% -10%, #1a1c22 0%, var(--black) 45%) no-repeat, var(--black);
+      color:var(--text);
+      font-family:'Cinzel', serif;
+    }
+    a{color:var(--gold)}
+    .wrap{
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 18px 16px 28px;
+      display:grid;
+      grid-template-columns: 360px 1fr 380px;
+      gap:16px;
+      align-items:start;
+    }
+    @media (max-width:1200px){
+      .wrap{grid-template-columns:1fr; gap:12px;}
+    }
+
+    /* 공통 카드 */
+    .card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    .title{
+      font-size:14px; letter-spacing:1px; text-transform:uppercase;
+      color:var(--gold); margin: 2px 0 12px;
+      border-bottom:1px solid var(--border); padding-bottom:8px;
+      font-weight:800;
+    }
+
+    /* 헤더 */
+    .topbar{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:10px;
+    }
+    .conn{
+      display:flex; align-items:center; gap:8px;
+      font-size:12px; color:var(--muted)
+    }
+    .dot{
+      width:8px; height:8px; border-radius:50%; background:#777;
+      box-shadow:0 0 0 4px rgba(255,255,255,0.03) inset;
+    }
+    .dot.ok{ background: var(--success); }
+
+    /* 좌: 내 카드 + 아군 */
+    .me{
+      display:grid; gap:12px;
+    }
+    .me .idrow{
+      display:flex; justify-content:space-between; gap:8px; align-items:center;
+      font-size:12px; color:var(--muted)
+    }
+    .me .profile{
+      display:grid; grid-template-columns: 90px 1fr; gap:12px;
+      align-items:center;
+    }
+    .avatar{
+      width:90px; height:90px; border-radius:12px;
+      background:var(--panel-2) center/cover no-repeat;
+      border:1px solid var(--border);
+    }
+    .kvs{display:grid; grid-template-columns: 1fr 1fr; gap:8px;}
+    .kv{background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px;}
+    .kv .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px}
+    .kv .v{font-size:16px; font-weight:800; margin-top:3px;}
+    .hpbar{
+      height:8px; border-radius:6px; background:#2a2d36; overflow:hidden; border:1px solid #343744;
+      margin-top:6px;
+    }
+    .hpbar > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg, #4caf50, #8bc34a); }
+
+    .stats{
+      display:grid; grid-template-columns: repeat(4, 1fr); gap:6px;
+    }
+    .stat{
+      background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px; text-align:center;
+    }
+    .stat .k{font-size:11px; color:var(--muted)}
+    .stat .v{font-size:16px; font-weight:800; margin-top:4px}
+
+    .items{
+      display:grid; grid-template-columns: repeat(3,1fr); gap:6px;
+    }
+    .pill{
+      background:var(--panel-2); border:1px solid var(--border); border-radius:999px;
+      padding:8px 10px; font-size:12px; text-align:center;
+    }
+
+    .readyrow{
+      display:flex; gap:8px; align-items:center; margin-top:4px;
+    }
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:6px;
+      padding:10px 14px; border-radius:10px; border:1px solid var(--border);
+      background:linear-gradient(180deg, var(--gold), var(--gold-2));
+      color:#1a1a1a; font-weight:800; letter-spacing:.5px; text-transform:uppercase;
+      cursor:pointer; user-select:none; min-height:40px;
+    }
+    .btn[disabled]{ opacity:.5; cursor:not-allowed; }
+    .btn.alt{
+      background:var(--panel-2); color:var(--text); border-color:var(--border);
+    }
+
+    /* 중앙: 턴/초상화(크게) + 액션 */
+    .center{
+      display:grid; gap:12px;
+    }
+    .turnbox{
+      display:grid; grid-template-columns: 220px 1fr; gap:12px; align-items:stretch;
+    }
+    @media (max-width:1200px){
+      .turnbox{ grid-template-columns: 1fr; }
+    }
+    .portrait{
+      height: 360px; /* 중앙 초상화 크게 */
+      background: #0f1014 center/cover no-repeat;
+      border:1px solid var(--border); border-radius:14px;
+      box-shadow: var(--shadow);
+    }
+    .turninfo{
+      background:var(--panel-2); border:1px solid var(--border); border-radius:14px; padding:12px;
+      display:grid; gap:10px; align-content:start;
+    }
+    .row{ display:flex; gap:10px; align-items:center; justify-content:space-between; }
+    .badge{
+      display:inline-flex; align-items:center; gap:8px;
+      border:1px solid var(--border); background:rgba(255,255,255,0.05);
+      padding:8px 10px; border-radius:999px; font-size:12px;
+    }
+    .badge .dot{ width:10px; height:10px; border-radius:50%;}
+    .dot.teamA{ background:#5b86ff; }
+    .dot.teamB{ background:#ff6a6a; }
+
+    .queue{ display:flex; gap:6px; flex-wrap:wrap }
+    .chip{
+      border:1px solid var(--border); padding:6px 8px; border-radius:999px;
+      background:var(--panel); font-size:12px;
+      opacity:.9;
+    }
+    .chip.on{ outline:2px solid var(--gold-2); }
+
+    .actions{
+      display:grid; grid-template-columns: repeat(5,1fr); gap:8px;
+    }
+    .actions .btn{ min-height:46px; }
+
+    /* 우: 팀(아군+적군) + 로그 + 채팅 */
+    .side{
+      display:grid; gap:12px;
+    }
+    .teamgrid{
+      display:grid; grid-template-columns: 1fr 1fr; gap:10px;
+    }
+    .member{
+      display:flex; gap:10px; align-items:center;
+      background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:8px;
+    }
+    .member .pic{ width:36px; height:36px; border-radius:8px; background:#0f1014 center/cover no-repeat; border:1px solid var(--border); }
+    .member .meta{ font-size:12px; }
+    .member .meta .name{ font-weight:800; }
+    .member .bar{ height:6px; background:#2a2d36; border:1px solid #343744; border-radius:6px; overflow:hidden; margin-top:4px }
+    .member .bar i{ display:block; height:100%; width:0%; background:linear-gradient(90deg, #4caf50, #8bc34a); }
+
+    .logs{
+      height: 220px; overflow:auto; background:var(--panel-2);
+      border:1px solid var(--border); border-radius:12px; padding:10px;
+      font-size:12px; line-height:1.45;
+    }
+    .logline{ padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.08) }
+    .logline:last-child{ border-bottom:none }
+    .logline .ts{ color:var(--muted); font-size:11px; margin-right:6px }
+    .logline.system{ color:var(--info) }
+    .logline.combat{ color:#ffca85 }
+    .logline.damage{ color:#ffa2a2 }
+    .logline.item{ color:#9ad8ff }
+    .logline.chat{ color:#c6c6c6 }
+
+    .chat{
+      display:grid; grid-template-columns: 1fr 100px; gap:8px;
+    }
+    .input{
+      width:100%; padding:10px 12px; border-radius:10px;
+      border:1px solid var(--border); background:#121317; color:var(--text);
+      font-family:'Cinzel', serif; font-size:12px;
+    }
+    .input::placeholder{ color:#667 }
+    /* 드롭다운(셀렉트) 가독성 강화 */
+    select.input{ appearance:none; background-image: linear-gradient(180deg, transparent, transparent); }
+
+    /* 인증 오버레이 */
+    .overlay{
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.6); z-index:50;
+    }
+    .auth{
+      width: min(480px, 92vw);
+      background:var(--black-2);
+      border:1px solid var(--border);
+      border-radius:16px; box-shadow:var(--shadow); padding:16px;
+    }
+    .auth h2{ margin:0 0 8px; color:var(--gold) }
+    .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .grid2 .input{ width:100% }
+    .rowr{ display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:8px }
+    .btn.dark{ background:#1c1f27; color:var(--text); border-color:var(--border); }
+  </style>
+</head>
+<body>
+  <div class="topbar wrap" style="grid-template-columns:1fr;">
+    <div class="conn">
+      <span id="connText">연결 대기</span>
+      <span id="connDot" class="dot"></span>
+    </div>
+    <div style="font-weight:800; color:var(--gold)">PYXIS · 전투 참가자</div>
+  </div>
+
+  <div class="wrap" id="layout" style="display:none;">
+    <!-- 좌측: 내 카드 / 아군 요약 -->
+    <section class="card me">
+      <div class="title">전투 참가자</div>
+      <div class="idrow">
+        <div id="meTeamLabel">팀 -</div>
+        <div id="meId" style="opacity:.65">ID: -</div>
+      </div>
+      <div class="profile">
+        <div id="meAvatar" class="avatar" aria-label="내 초상화"></div>
+        <div>
+          <div id="meName" style="font-weight:800; font-size:18px;">이름 -</div>
+          <div class="hpbar"><i id="meHpBar"></i></div>
+          <div id="meHp" style="font-size:12px; color:var(--muted); margin-top:4px;">HP -</div>
+        </div>
+      </div>
+      <div class="kvs">
+        <div class="kv"><div class="k">전투 상태</div><div id="battleStatus" class="v">-</div></div>
+        <div class="kv"><div class="k">선공</div><div id="leadingTeam" class="v">-</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">공격</div><div id="sAtk" class="v">-</div></div>
+        <div class="stat"><div class="k">방어</div><div id="sDef" class="v">-</div></div>
+        <div class="stat"><div class="k">민첩</div><div id="sAgi" class="v">-</div></div>
+        <div class="stat"><div class="k">행운</div><div id="sLuk" class="v">-</div></div>
+      </div>
+      <div class="items">
+        <div class="pill">디터니 × <b id="itDit">0</b></div>
+        <div class="pill">공격 보정기 × <b id="itAtk">0</b></div>
+        <div class="pill">방어 보정기 × <b id="itDef">0</b></div>
+      </div>
+      <div class="readyrow">
+        <button id="btnReady" class="btn">준비 완료</button>
+        <small id="readyHint" style="color:var(--muted)">준비 후 대기</small>
+      </div>
+    </section>
+
+    <!-- 중앙: 초상화 크게 + 턴/큐 + 액션 -->
+    <section class="center">
+      <div class="card turnbox">
+        <div id="turnPortrait" class="portrait" aria-label="현재 차례 초상화"></div>
+        <div class="turninfo">
+          <div class="row">
+            <div class="badge">
+              <span class="dot teamA" id="leadDot"></span>
+              <span>선공 팀</span>
+              <b id="leadText">-</b>
+            </div>
+            <div class="badge">
+              <span>현재 팀</span>
+              <b id="curTeam">-</b>
+            </div>
+            <div class="badge">
+              <span>라운드</span>
+              <b id="roundNo">-</b>
+            </div>
+            <div class="badge">
+              <span>팀 제한 시간</span>
+              <b id="teamTimer">--:--</b>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">행동 순서(팀 내)</div>
+            <div id="queue" class="queue"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="title">행동</div>
+        <div class="actions">
+          <button class="btn alt" id="btnAttack" disabled>공격</button>
+          <button class="btn alt" id="btnDefend" disabled>방어</button>
+          <button class="btn alt" id="btnDodge" disabled>회피</button>
+          <button class="btn alt" id="btnItem" disabled>아이템</button>
+          <button class="btn alt" id="btnPass" disabled>패스</button>
+        </div>
+        <small id="actionHint" style="display:block; margin-top:8px; color:var(--muted)"></small>
+      </div>
+    </section>
+
+    <!-- 우측: 팀 리스트 + 로그 + 채팅 -->
+    <aside class="side">
+      <div class="card">
+        <div class="title">팀 구성</div>
+        <div class="teamgrid" id="teamGrid">
+          <!-- 왼쪽: A팀, 오른쪽: B팀 -->
+          <div>
+            <div style="font-weight:800; margin:0 0 6px;">A팀</div>
+            <div id="listA"></div>
+          </div>
+          <div>
+            <div style="font-weight:800; margin:0 0 6px;">B팀</div>
+            <div id="listB"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="title">실시간 로그</div>
+        <div class="logs" id="logs"></div>
+        <div class="chat" style="margin-top:8px;">
+          <input id="chatMsg" class="input" type="text" placeholder="채팅 입력 (Enter 전송)" maxlength="120" />
+          <button id="btnSend" class="btn alt">전송</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 인증 -->
+  <div class="overlay" id="authOverlay" style="display:none;">
+    <div class="auth">
+      <h2>전투 참가 인증</h2>
+      <div class="grid2">
+        <input id="inName" class="input" placeholder="이름(필수)" maxlength="20" />
+        <select id="inTeam" class="input" title="팀 선택">
+          <option value="A">A팀</option>
+          <option value="B">B팀</option>
+        </select>
+      </div>
+      <div class="grid2" style="margin-top:8px;">
+        <input id="inBattle" class="input" placeholder="전투 ID (예: battle_xxxx)" />
+        <input id="inToken" class="input" placeholder="비밀번호/토큰 (필수)" />
+      </div>
+      <div class="rowr">
+        <button id="btnAuth" class="btn">참가</button>
+        <button id="btnCancelAuth" class="btn dark">닫기</button>
+      </div>
+      <small style="display:block; margin-top:6px; color:var(--muted);">
+        관리자에서 발급한 참가자 링크로 접속했다면 자동으로 값이 채워질 수 있습니다. 이름/토큰은 반드시 입력해야 합니다.
+      </small>
+    </div>
+  </div>
+
+  <script>
+    /* ────────────────────────────── 상태 ────────────────────────────── */
+    const $ = (q)=>document.querySelector(q);
+    const esc = (s)=> String(s||"").replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+    let socket = null;
+    let joined = false;
+    let my = { id:null, name:null, team:null };
+    let battle = null;
+    let lastTurnTick = 0;   // 팀 제한 타이머용
+    let actedThisRound = false;
+
+    /* ────────────────────────────── DOM ────────────────────────────── */
+    const connText = $('#connText'), connDot = $('#connDot');
+    const layout = $('#layout');
+
+    const meAvatar = $('#meAvatar'), meName = $('#meName'), meId = $('#meId'), meTeamLabel = $('#meTeamLabel');
+    const meHpBar = $('#meHpBar'), meHp = $('#meHp');
+    const sAtk = $('#sAtk'), sDef = $('#sDef'), sAgi = $('#sAgi'), sLuk = $('#sLuk');
+    const itDit = $('#itDit'), itAtk = $('#itAtk'), itDef = $('#itDef');
+
+    const battleStatus = $('#battleStatus'), leadingTeam = $('#leadingTeam');
+    const btnReady = $('#btnReady'), readyHint = $('#readyHint');
+
+    const turnPortrait = $('#turnPortrait'), leadDot = $('#leadDot'), leadText = $('#leadText'), curTeam = $('#curTeam'), roundNo = $('#roundNo'), teamTimer = $('#teamTimer'), queueEl = $('#queue');
+
+    const listA = $('#listA'), listB = $('#listB'), logsEl = $('#logs');
+    const chatMsg = $('#chatMsg'), btnSend = $('#btnSend');
+
+    const btnAttack = $('#btnAttack'), btnDefend = $('#btnDefend'), btnDodge = $('#btnDodge'), btnItem = $('#btnItem'), btnPass = $('#btnPass');
+    const actionHint = $('#actionHint');
+
+    const authOverlay = $('#authOverlay');
+    const inName = $('#inName'), inTeam = $('#inTeam'), inBattle = $('#inBattle'), inToken = $('#inToken');
+    const btnAuth = $('#btnAuth'), btnCancelAuth = $('#btnCancelAuth');
+
+    /* ────────────────────────────── 유틸 ────────────────────────────── */
+    const nowKST = ()=> new Date().toLocaleTimeString('ko-KR',{hour12:false});
+    function log(message, type='system'){
+      const line = document.createElement('div');
+      line.className = `logline ${type}`;
+      line.innerHTML = `<span class="ts">${nowKST()}</span>${esc(message)}`;
+      logsEl.appendChild(line);
+      logsEl.scrollTop = logsEl.scrollHeight;
+      // 너무 길어지면 앞에서 정리
+      const MAX = 400;
+      while (logsEl.children.length > MAX) logsEl.removeChild(logsEl.firstChild);
+    }
+
+    function pct(cur, max){ max = Math.max(1, +max||100); return Math.max(0, Math.min(100, Math.round((+cur||0) / max * 100))); }
+    function hpbar(iEl, cur, max){ iEl.style.width = pct(cur,max)+'%'; }
+
+    function fillTeamList(){
+      if(!battle) return;
+      const A = (battle.players||[]).filter(p=>p.team==='A');
+      const B = (battle.players||[]).filter(p=>p.team==='B');
+      const make = (p)=>{
+        const el = document.createElement('div'); el.className='member';
+        const hp = pct(p.hp, p.maxHp||100);
+        el.innerHTML = `
+          <div class="pic" style="background-image:url('${esc(p.avatar||'')}')"></div>
+          <div class="meta" style="flex:1">
+            <div class="name">${esc(p.name)} <small style="color:${p.team==='A'?'#7aa2ff':'#ff8f8f'}">(${p.team}팀)</small></div>
+            <div class="bar"><i style="width:${hp}%"></i></div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">HP ${p.hp}/${p.maxHp||100} · 공${p.stats?.attack??'-'} 방${p.stats?.defense??'-'} 민${p.stats?.agility??'-'} 행${p.stats?.luck??'-'}</div>
+          </div>
+        `;
+        return el;
+      };
+      listA.innerHTML = ''; listB.innerHTML = '';
+      if(A.length===0) listA.innerHTML = `<div style="opacity:.6; font-size:12px;">A팀 없음</div>`;
+      if(B.length===0) listB.innerHTML = `<div style="opacity:.6; font-size:12px;">B팀 없음</div>`;
+      A.forEach(p=>listA.appendChild(make(p)));
+      B.forEach(p=>listB.appendChild(make(p)));
+    }
+
+    function setActionEnabled(enable){
+      [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=>b.disabled = !enable);
+    }
+
+    function myTurnState(){
+      if(!battle || !my.id || !my.team) return {myTeam:false, canAct:false, order:[], youIndex:-1, acted:[]};
+      const t = battle.turn || {};
+      const orderTeams = Array.isArray(t.order) ? t.order : ['A','B'];
+      const turnTeam = orderTeams[t.phaseIndex||0] || orderTeams[0];
+      const actedMap = t.acted || {};
+      const actedA = new Set(Array.isArray(actedMap.A)?actedMap.A:actedMap.A?actedMap.A:[]);
+      const actedB = new Set(Array.isArray(actedMap.B)?actedMap.B:actedMap.B?actedMap.B:[]);
+      const myTeamNow = (turnTeam === my.team);
+
+      // 같은 팀 중 생존자 순번 (id 오름차순 → 안정적)
+      const teamLive = (battle.players||[]).filter(p=>p.team===my.team && (p.hp||0)>0).sort((a,b)=>a.name.localeCompare(b.name));
+      const actedSet = (my.team==='A'? actedA: actedB);
+      const yourIdx = teamLive.findIndex(p=>p.id===my.id);
+      const youActed = (yourIdx>-1) && actedSet.has(my.id);
+
+      // 팀 내 아직 행동 안 한 사람 있으면 순번대로
+      const canAct = myTeamNow && !youActed && (battle.status==='active');
+
+      return { myTeam: myTeamNow, canAct, order: teamLive.map(p=>({id:p.id,name:p.name})), youIndex: yourIdx, acted: Array.from(actedSet) };
+    }
+
+    function paintTurnUI(){
+      if(!battle) return;
+
+      const t = battle.turn || {};
+      const orderTeams = Array.isArray(t.order) ? t.order : ['A','B'];
+      const turnTeam = orderTeams[t.phaseIndex||0] || orderTeams[0];
+      const lead = orderTeams[0];
+      const round = t.round || 1;
+
+      // 상단 뱃지
+      leadText.textContent = (lead==='A'?'A팀':'B팀');
+      curTeam.textContent = (turnTeam==='A'?'A팀':'B팀');
+      roundNo.textContent = round;
+
+      leadDot.classList.remove('teamA','teamB');
+      leadDot.classList.add( lead==='A' ? 'teamA' : 'teamB' );
+
+      // 큐(팀 내 순번)
+      queueEl.innerHTML = '';
+      const byTeam = (team)=> (battle.players||[]).filter(p=>p.team===team && (p.hp||0)>0).sort((a,b)=>a.name.localeCompare(b.name));
+      const live = byTeam(turnTeam);
+      const actedSet = new Set(Array.isArray(t.acted?.[turnTeam]) ? t.acted[turnTeam] : []);
+      live.forEach(p=>{
+        const el = document.createElement('span');
+        el.className = 'chip' + (actedSet.has(p.id)?'':' on');
+        el.textContent = p.name;
+        queueEl.appendChild(el);
+      });
+
+      // 중앙 큰 초상화: 팀 내 "다음 행동자" 우선 (행동 안한 첫 사람), 없으면 마지막 사람 표시
+      let portraitTarget = live.find(p=>!actedSet.has(p.id)) || live[live.length-1] || null;
+      if(!portraitTarget){
+        // 팀 전원 행동 완료 → 상대 팀 첫 사람
+        const other = byTeam(turnTeam==='A'?'B':'A');
+        portraitTarget = other.find(Boolean) || null;
+      }
+      const url = portraitTarget?.avatar || '';
+      turnPortrait.style.backgroundImage = url ? `url('${url}')` : 'none';
+
+      // 내 버튼 활성 조건
+      const ts = myTurnState();
+      setActionEnabled(ts.canAct);
+      actionHint.textContent = ts.canAct
+        ? '행동을 선택하세요.'
+        : (battle.status!=='active'
+          ? '전투 시작 대기 중입니다.'
+          : ts.myTeam
+            ? '이번 라운드에 이미 행동 완료.'
+            : '상대 팀의 차례입니다.');
+    }
+
+    function paintMe(){
+      if(!battle || !my.id) return;
+      const p = (battle.players||[]).find(x=>x.id===my.id);
+      if(!p) return;
+      meAvatar.style.backgroundImage = p.avatar ? `url('${p.avatar}')` : 'none';
+      meName.textContent = p.name||'-';
+      meId.textContent = 'ID: ' + (p.id||'-');
+      meTeamLabel.textContent = (p.team ? p.team+'팀' : '-');
+
+      const maxHp = p.maxHp || 100;
+      meHp.textContent = `HP ${p.hp}/${maxHp}`;
+      hpbar(meHpBar, p.hp, maxHp);
+
+      sAtk.textContent = p.stats?.attack ?? '-';
+      sDef.textContent = p.stats?.defense ?? '-';
+      sAgi.textContent = p.stats?.agility ?? '-';
+      sLuk.textContent = p.stats?.luck ?? '-';
+
+      itDit.textContent = p.items?.dittany ?? 0;
+      itAtk.textContent = p.items?.attack_boost ?? 0;
+      itDef.textContent = p.items?.defense_boost ?? 0;
+    }
+
+    function paintHeader(){
+      battleStatus.textContent = battle?.status || '-';
+      leadingTeam.textContent = battle?.leadingTeam ? (battle.leadingTeam==='A'?'A팀':'B팀') : '-';
+    }
+
+    function paintAll(){
+      paintHeader();
+      fillTeamList();
+      paintMe();
+      paintTurnUI();
+    }
+
+    /* ────────────────────────────── 소켓 ────────────────────────────── */
+    function connect(){
+      socket = window.io({ path:'/socket.io', transports:['websocket','polling'] });
+
+      socket.on('connect', ()=>{
+        connText.textContent = '연결됨';
+        connDot.classList.add('ok');
+        log('서버에 연결되었습니다.','system');
+      });
+      socket.on('disconnect', ()=>{
+        connText.textContent = '연결 끊김';
+        connDot.classList.remove('ok');
+        log('서버 연결이 끊어졌습니다.','system');
+      });
+
+      // battle snapshot
+      const onUpdate = (data)=>{
+        battle = data;
+        log(`스냅샷 수신: 상태=${battle.status}, 라운드=${battle.turn?.round ?? 1}, 현재팀=${battle.turn?.order?.[battle.turn?.phaseIndex||0] || '-'}`,'system');
+        if(!battle.leadingTeam && battle.turn?.order?.length===2){
+          battle.leadingTeam = battle.turn.order[0];
+        }
+        paintAll();
+      };
+      socket.on('battleUpdate', onUpdate);
+      socket.on('battle:update', onUpdate);
+
+      // 로그 브로드캐스트
+      socket.on('battleLog', (e)=> log(e?.message||'로그','system'));
+      socket.on('battle:log', (e)=> log(e?.message||'로그','system'));
+
+      // 채팅 수신 (참가자/관전자/관리자 공통)
+      socket.on('chatMessage', (m)=>{
+        const name = m?.name || '익명';
+        const msg = m?.message || '';
+        log(`[채팅] ${name}: ${msg}`,'chat');
+      });
+      socket.on('battle:chat', (m)=>{
+        const name = m?.name || m?.senderName || '익명';
+        const msg = m?.message || '';
+        log(`[채팅] ${name}: ${msg}`,'chat');
+      });
+
+      // 인증 결과
+      socket.on('authSuccess', (r)=>{
+        log('인증 성공. 전투에 참가했습니다.','system');
+        authOverlay.style.display = 'none';
+        layout.style.display = '';
+        // 서버가 스냅샷을 같이 내려줄 수 있음
+        if(r?.battle){ battle = r.battle; }
+        if(r?.playerData){
+          my.id = r.playerId || r.playerData.id;
+          my.name = r.playerData.name;
+          my.team = r.playerData.team;
+        }
+        // 방 참가(업데이트 수신)
+        if(my?.team && r?.battle?.id){
+          socket.emit('join',{ battleId: r.battle.id });
+          log(`방 참가: ${r.battle.id}`,'system');
+        }
+        // 버튼 초기 상태
+        btnReady.disabled = false; // 기본 활성
+        paintAll();
+      });
+      socket.on('authError', (e)=>{
+        log(`인증 실패: ${e?.message || e?.error || 'unknown'}`,'damage');
+        btnAuth.disabled = false;
+      });
+
+      // 액션 응답(서버가 구현한 경우)
+      socket.on('actionSuccess', (e)=>{
+        log(`행동 성공: ${e?.message || e?.type || 'OK'}`,'combat');
+      });
+      socket.on('actionError', (e)=>{
+        log(`행동 실패: ${e?.message || e?.error || 'ERR'}`,'damage');
+        setActionEnabled(true); // 낙관 실패시 다시 활성
+      });
+    }
+
+    /* ────────────────────────────── 인증 흐름 ────────────────────────────── */
+    function qs(name){
+      const u = new URL(location.href);
+      return u.searchParams.get(name);
+    }
+
+    function requireAuth(){
+      // URL로 전달되면 채우기만, "이름"과 "토큰"은 반드시 값 있어야 참가 가능
+      inBattle.value = qs('battle') || '';
+      inToken.value  = qs('token') || qs('otp') || qs('password') || '';
+      inName.value   = qs('name') || '';
+
+      if(!inBattle.value || !inToken.value || !inName.value){
+        authOverlay.style.display = '';
+        layout.style.display = 'none';
+        log('인증 정보 부족: 이름/비밀번호/전투ID가 필요합니다.','system');
+        return;
+      }
+      doAuth();
+    }
+
+    function doAuth(){
+      const name = inName.value.trim();
+      const team = (inTeam.value||'A') === 'B' ? 'B':'A';
+      const battleId = inBattle.value.trim();
+      const token = inToken.value.trim();
+
+      if(!name){ log('이름을 입력하세요.','warn'); inName.focus(); return; }
+      if(!token){ log('비밀번호/토큰을 입력하세요.','warn'); inToken.focus(); return; }
+      if(!battleId){ log('전투 ID를 입력하세요.','warn'); inBattle.focus(); return; }
+
+      my.name = name; my.team = team;
+      log(`인증 시도: 이름=${name}, 팀=${team}, 전투=${battleId}`,'system');
+      btnAuth.disabled = true;
+
+      socket.emit('playerAuth', { battleId, playerName:name, token, password:token, otp:token }, (res)=>{
+        if(res?.ok){
+          log('인증 콜백 수신: ok','system');
+          // 나머지는 authSuccess 핸들러에서 처리
+        }else{
+          btnAuth.disabled = false;
+          log(`인증 실패(콜백): ${res?.message || res?.error || 'ERR'}`,'damage');
+        }
+      });
+    }
+
+    /* ────────────────────────────── 액션 송신 ────────────────────────────── */
+    function sendAction(payload){
+      if(!battle?.id){ log('전투가 없습니다.','damage'); return; }
+      setActionEnabled(false);
+      const data = { battleId:battle.id, playerId: my.id, ...payload };
+      log(`행동 전송: ${JSON.stringify(payload)}`,'system');
+      socket.emit('playerAction', data);
+      socket.emit('player:action', data);
+    }
+
+    /* ────────────────────────────── 이벤트 바인딩 ────────────────────────────── */
+    btnReady.addEventListener('click', ()=>{
+      if(!battle?.id || !my?.id) return;
+      btnReady.disabled = true; // 즉시 비활성(중복 방지)
+      readyHint.textContent = '준비 완료됨';
+      log('준비 완료를 전송했습니다.','system');
+      socket.emit('playerReady', { battleId: battle.id, playerId: my.id, ready: true });
+      socket.emit('player:ready', { battleId: battle.id, playerId: my.id, ready: true });
+    });
+
+    btnAttack.addEventListener('click', ()=>{
+      // 간단 타깃 선택: 적팀 생존자 중 첫 번째
+      const enemy = (battle.players||[]).find(p=>p.team!==my.team && p.hp>0);
+      if(!enemy){ log('공격 대상이 없습니다.','damage'); return; }
+      sendAction({ type:'attack', targetId: enemy.id });
+    });
+    btnDefend.addEventListener('click', ()=> sendAction({ type:'defend' }));
+    btnDodge.addEventListener('click',  ()=> sendAction({ type:'dodge'  }));
+
+    btnItem.addEventListener('click', ()=>{
+      // 간단 선택: 우선 디터니 -> 자기 자신, 없으면 공격 보정기(아무 적), 없으면 방어 보정기
+      const me = (battle.players||[]).find(p=>p.id===my.id);
+      const enemy = (battle.players||[]).find(p=>p.team!==my.team && p.hp>0);
+      if(me?.items?.dittany>0){
+        sendAction({ type:'item', itemType:'dittany', targetId: my.id });
+      }else if(me?.items?.attack_boost>0 && enemy){
+        sendAction({ type:'item', itemType:'attack_boost', targetId: enemy.id });
+      }else if(me?.items?.defense_boost>0){
+        sendAction({ type:'item', itemType:'defense_boost' });
+      }else{
+        log('사용 가능한 아이템이 없습니다.','item');
+      }
+    });
+
+    btnPass.addEventListener('click', ()=> sendAction({ type:'pass' }));
+
+    btnSend.addEventListener('click', ()=>{
+      const m = chatMsg.value.trim();
+      if(!m || !battle?.id) return;
+      socket.emit('chatMessage', { battleId: battle.id, name: my.name || '전투 참가자', message: m });
+      socket.emit('battle:chat', { battleId: battle.id, name: my.name || '전투 참가자', senderName: my.name || '전투 참가자', message: m });
+      chatMsg.value = '';
+    });
+    chatMsg.addEventListener('keydown', (e)=>{ if(e.key==='Enter') btnSend.click(); });
+
+    btnAuth.addEventListener('click', doAuth);
+    btnCancelAuth.addEventListener('click', ()=> history.back());
+
+    /* ────────────────────────────── 타이머 (표시만) ────────────────────────────── */
+    setInterval(()=>{
+      if(!battle) return;
+      // 전투가 active일 때만 표시
+      if(battle.status!=='active'){ teamTimer.textContent='--:--'; return; }
+      const remain = Math.max(0, Math.floor((300000 - (Date.now() - lastTurnTick))/1000)); // 5분
+      const mm = String(Math.floor(remain/60)).padStart(2,'0');
+      const ss = String(remain%60).padStart(2,'0');
+      teamTimer.textContent = `${mm}:${ss}`;
+    }, 500);
+
+    /* ────────────────────────────── 시작 ────────────────────────────── */
+    (function init(){
+      connect();
+      // 초기 인증 요구
+      requireAuth();
+
+      // 스냅샷 없던 상태에서 1회 생성 시각 기록
+      setInterval(()=>{
+        if(!battle?.turn) return;
+        // 팀이 바뀌거나 phaseIndex가 바뀌면 틱 초기화
+        const key = `${battle.turn.order?.[battle.turn.phaseIndex||0] || 'A'}#${battle.turn.round||1}`;
+        if(key !== window.__turnKey){
+          window.__turnKey = key;
+          lastTurnTick = Date.now();
+          log(`턴 전환: 현재팀=${battle.turn.order?.[battle.turn.phaseIndex||0] || '-'}, 라운드=${battle.turn.round||1}`,'system');
+          paintTurnUI();
+        }
+      }, 300);
+    })();
+  </script>
+</body>
+</html>
+
       --panel-2: rgba(255,255,255,0.06);
       --border: rgba(255,255,255,0.1);
       --border-2: rgba(255,255,255,0.18);
