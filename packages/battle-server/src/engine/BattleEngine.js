@@ -1,11 +1,14 @@
 // packages/battle-server/src/engine/BattleEngine.js
-// PYXIS Battle Engine (수정판)
-// - 방어: 곱연산 제거, '다음 피격 1회' 방어력 +2(가산)로 소모
+// PYXIS Battle Engine (수정판 - 방어 보정기 ×2 반영)
+// - 방어: 가산/배수 혼용 금지 → 기본은 단순 방어(곱하기 없음)
+//   · 단, '방어 보정기' 성공 시 "다음 피격 1회" 동안 **방어력 ×2** 로 처리(그 1회 이후 자동 소모)
 // - 아이템: 전부 1회용 (성공/실패 무관 즉시 차감)
 //   · 디터니: +10 HP (본인/아군, 사망자 불가)
-//   · 공격 보정기: 10% 성공 시 그 행동에 한해 공격력 ×2로 즉시 공격
-//   · 방어 보정기: 10% 성공 시 '다음 피격 1회' 방어력 +2 부여
-// - 공격치 = 공격력 + d20 / 회피: (민첩 + d20) ≥ 공격치 → 0 / 치명타: d20 ≥ 20 - luck/2
+//   · 공격 보정기: 10% 성공 시 그 행동 1회에 한해 **공격력 ×2** 로 즉시 보정 공격
+//   · 방어 보정기: 10% 성공 시 "다음 피격 1회" **방어력 ×2** 효과 부여(효과 사용 시 소모)
+// - 공격치 = 공격력 + d20
+// - 회피: (민첩 + d20) ≥ 공격치 → 피해 0
+// - 치명타: d20 ≥ 20 - (luck/2) → 최종 피해 ×2
 
 "use strict";
 
@@ -32,19 +35,20 @@ export class BattleEngine {
   _findAny(id){ return (this.battle.players || []).find(p => p && p.id === id) || null; }
   _findAlive(id){ const p = this._findAny(id); return p && p.hp > 0 ? p : null; }
 
-  // 방어 보정(+2) 소모
-  _defenseFlatAndConsume(defenderId){
+  // 방어 보정기(×2 멀티) 조회 & 소모: 다음 피격 1회만 유효
+  _defenseMultAndConsume(defenderId){
     this._ensureEffects();
-    let flat = 0;
-    for(const fx of this.battle.effects){
+    let mult = 1;
+    for (const fx of this.battle.effects) {
       if (fx && fx.ownerId === defenderId && fx.type === "defenseBoost" && (fx.charges||0) > 0){
-        flat += (fx.flat ?? 2);
-        fx.charges -= 1;
+        mult = Math.max(1, fx.mult || 2);
+        fx.charges -= 1; // 이번 피격에 사용 → 소모
         break;
       }
     }
+    // 잔여 차지 0인 효과 정리
     this.battle.effects = this.battle.effects.filter(e => (e?.charges||0) > 0);
-    return flat;
+    return mult;
   }
 
   _crit(luck, atkRoll){
@@ -73,7 +77,7 @@ export class BattleEngine {
     }
   }
 
-  /* ───────── 행동 처리 ───────── */
+  /* ───────── 기본 공격 처리 ───────── */
   processAction(actor, target, logs, updates) {
     const A = this._readStats(actor);
     const D = this._readStats(target);
@@ -93,8 +97,9 @@ export class BattleEngine {
 
     const isCrit = this._crit(A.luck, atkRoll);
 
-    const defFlat = this._defenseFlatAndConsume(target.id); // 다음 피격 1회 +2 소모
-    const defenseValue = D.defense + defFlat;
+    // 방어 보정기 멀티(×2) 적용 & 소모
+    const defMult = this._defenseMultAndConsume(target.id); // 다음 피격 1회 ×2
+    const defenseValue = Math.floor(D.defense * defMult);
 
     let raw = attackScore - defenseValue;
     if (isCrit) raw *= 2;
@@ -109,17 +114,18 @@ export class BattleEngine {
     if (isCrit) logs.push({ type: "combat", message: `치명타 발생!` });
     logs.push({
       type: "damage",
-      message: `${target.name} 피해 ${actualDamage} (${target.hp}/${target.maxHp})${defFlat? ` / 방어 +${defFlat}`:''}`,
+      message: `${target.name} 피해 ${actualDamage} (${target.hp}/${target.maxHp})${defMult>1? ` / 방어×${defMult}`:''}`,
     });
   }
 
-  /* ───────── 아이템 처리 (전부 1회용) ───────── */
+  /* ───────── 아이템 처리 (모두 1회용) ───────── */
   useItem(player, itemKey, targetId, logs, updates) {
     const key = String(itemKey || "").toLowerCase();
     player.items = player.items || { dittany:0, attack_boost:0, defense_boost:0 };
     const have = (k)=> Number(player.items[k]||0) > 0;
     const consume = (k)=> { player.items[k] = Math.max(0, Number(player.items[k]||0) - 1); };
 
+    // 디터니: +10 HP (본인/아군, 사망자 불가)
     if (key === "dittany") {
       if (!have("dittany")) { logs.push({ type: "system", message: "디터니가 없습니다" }); return; }
       consume("dittany");
@@ -138,6 +144,7 @@ export class BattleEngine {
       return;
     }
 
+    // 방어 보정기: 10% 성공 → 다음 피격 1회 방어력 ×2 부여
     if (key === "defense_boost") {
       if (!have("defense_boost")) { logs.push({ type:"system", message:"방어 보정기가 없습니다" }); return; }
       consume("defense_boost");
@@ -148,16 +155,17 @@ export class BattleEngine {
       this._ensureEffects();
       this.battle.effects.push({
         ownerId: player.id,
-        type: "defenseBoost", // 다음 피격 1회 방어력 +2
-        flat: 2,
+        type: "defenseBoost",  // 다음 피격 1회 방어 ×2
+        mult: 2,
         charges: 1,
         appliedAt: Date.now(),
         source: "item:defense_boost"
       });
-      logs.push({ type:"item", message:`방어 보정기 성공: ${player.name} 다음 피격 시 방어력 +2` });
+      logs.push({ type:"item", message:`방어 보정기 성공: ${player.name} 다음 피격 시 방어력 ×2` });
       return;
     }
 
+    // 공격 보정기: 10% 성공 → 즉시 보정 공격(그 공격만 공격력 ×2)
     if (key === "attack_boost") {
       if (!have("attack_boost")) { logs.push({ type:"system", message:"공격 보정기가 없습니다" }); return; }
       consume("attack_boost");
@@ -187,8 +195,10 @@ export class BattleEngine {
       }
 
       const isCrit = this._crit(A.luck, atkRoll);
-      const defFlat = this._defenseFlatAndConsume(tgt.id);
-      const defenseValue = D.defense + defFlat;
+
+      // 방어 보정기(있는 경우) ×2 적용 & 소모
+      const defMult = this._defenseMultAndConsume(tgt.id);
+      const defenseValue = Math.floor(D.defense * defMult);
 
       let raw = attackScore - defenseValue;
       if (isCrit) raw *= 2;
@@ -201,7 +211,7 @@ export class BattleEngine {
 
       logs.push({
         type:"item",
-        message:`공격 보정기 성공! ${player.name} → ${tgt.name} ${actualDamage} 피해${isCrit?' (치명타)':''}${defFlat? ' / 방어 +'+defFlat:''}`
+        message:`공격 보정기 성공! ${player.name} → ${tgt.name} ${actualDamage} 피해${isCrit?' (치명타)':''}${defMult>1? ' / 방어×'+defMult:''}`
       });
       return;
     }
