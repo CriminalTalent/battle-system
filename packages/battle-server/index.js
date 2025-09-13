@@ -1,4 +1,4 @@
-// packages/battle-server/index.js - PYXIS Battle Server (정적 라우트/관리자/플레이어 분리, 업로드, 호환 이벤트)
+// packages/battle-server/index.js - PYXIS Battle Server
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -7,9 +7,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
-
-// 업로드 라우터
-import uploadRouter from "./src/routes/avatar-upload.js";
+import avatarUploadRouter from "./src/routes/avatar-upload.js";
 
 dotenv.config();
 
@@ -18,7 +16,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
-const SOCKET_PATH = process.env.SOCKET_PATH || "/socket.io";
+const SOCKET_PATH = "/socket.io";
 
 /* ------------------------------ App/IO Setup ------------------------------ */
 const app = express();
@@ -37,7 +35,7 @@ const otpStore = new Map(); // key -> { otp, role, battleId, ... }
 const genId = () => "battle_" + Math.random().toString(36).slice(2, 10);
 
 function genOTP(len = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 헷갈리는 글자 제외
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
   for (let i = 0; i < len; i++) s += chars[(Math.random() * chars.length) | 0];
   return s;
@@ -55,7 +53,7 @@ function emitBattleUpdate(battleId) {
   const b = battles.get(battleId);
   if (!b) return;
   io.to(battleId).emit("battleUpdate", b);
-  io.to(battleId).emit("battle:update", b); // 호환 이벤트
+  io.to(battleId).emit("battle:update", b); // 호환
 }
 
 function pushLog(battleId, type, message, data = {}) {
@@ -78,27 +76,25 @@ app.use(express.urlencoded({ extended: true }));
 const publicDir = path.join(__dirname, "public");
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
-fs.mkdirSync(publicDir, { recursive: true }); // 폴더가 없으면 생성
+fs.mkdirSync(publicDir, { recursive: true });
 
-app.use("/uploads", express.static(uploadsDir));
 app.use(express.static(publicDir));
-console.log("[STATIC] Serving from:", publicDir);
-console.log("[STATIC] Uploads from:", uploadsDir);
+app.use("/uploads", express.static(uploadsDir));
+app.use("/api/upload", avatarUploadRouter); // 아바타 업로드
 
-// 업로드 API (POST /api/upload/avatar)
-app.use("/api/upload", uploadRouter);
+console.log("[STATIC] Serving from:", publicDir);
 
 /** 루트 -> admin.html */
 app.get("/", (req, res) => {
   res.sendFile(path.join(publicDir, "admin.html"));
 });
 
-/** 명시적 파일 라우트 (직접 접근) */
+/** 명시적 파일 라우트 */
 app.get(["/admin.html", "/player.html", "/spectator.html"], (req, res) => {
   res.sendFile(path.join(publicDir, path.basename(req.path)));
 });
 
-/** 캐치올(SPA처럼 동작하게): 나머지 GET은 admin.html 반환 */
+/** 캐치올(SPA 느낌) */
 app.use((req, res, next) => {
   if (req.method === "GET" && req.accepts("html")) {
     return res.sendFile(path.join(publicDir, "admin.html"));
@@ -107,11 +103,11 @@ app.use((req, res, next) => {
 });
 
 /* --------------------------------- APIs ---------------------------------- */
-app.get("/api/health", (req, res) => {
+app.get("/api/health", (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
-/** 전투 생성 (HTTP 폴백용) */
+/** 전투 생성(HTTP 폴백) */
 app.post("/api/battles", (req, res) => {
   try {
     const { mode = "2v2" } = req.body || {};
@@ -137,10 +133,7 @@ app.post("/api/battles", (req, res) => {
   }
 });
 
-/**
- * 관리자: 관전자 OTP + 참가자 자동로그인 링크 생성
- * (관리자 페이지가 먼저 이 엔드포인트를 호출)
- */
+/** 관리자: 관전자 OTP + 참가자 자동로그인 링크 생성 */
 app.post("/api/admin/battles/:id/links", (req, res) => {
   try {
     const battleId = req.params.id;
@@ -149,7 +142,7 @@ app.post("/api/admin/battles/:id/links", (req, res) => {
 
     const base = `${req.protocol}://${req.get("host")}`;
 
-    // 관전자 OTP
+    // 관전자 OTP (30분)
     const spectatorOtp = genOTP(6);
     otpStore.set(`spectator_${battleId}`, {
       otp: spectatorOtp,
@@ -158,7 +151,7 @@ app.post("/api/admin/battles/:id/links", (req, res) => {
       expires: Date.now() + 30 * 60 * 1000,
     });
 
-    // 플레이어 개별 링크
+    // 플레이어 개별 링크 (2시간)
     const links = [];
     (battle.players || []).forEach((p, idx) => {
       const otp = genOTP(6);
@@ -198,7 +191,7 @@ app.post("/api/admin/battles/:id/links", (req, res) => {
   }
 });
 
-/** 호환용(예전 관리자 코드가 /api/battles/:id/links 로 칠 때 대비) */
+/** 호환용 */
 app.post("/api/battles/:id/links", (req, res) =>
   app._router.handle(
     { ...req, url: `/api/admin/battles/${req.params.id}/links`, method: "POST" },
@@ -226,18 +219,15 @@ io.on("connection", (socket) => {
 
   /* 채팅 */
   socket.on("chatMessage", ({ battleId, message, name, role }) => {
-    console.log("[SOCKET] chatMessage <-", { battleId, message, name, role });
     const id = battleId || socket.battleId;
     if (!id || !battles.has(id) || !message) return;
     io.to(id).emit("chatMessage", { message, name: name || "익명", role: role || "user" });
   });
 
-  /* 전투 생성 (소켓 경로) */
+  /* 전투 생성 (소켓) */
   socket.on("createBattle", ({ mode = "2v2" } = {}, cb) => {
-    console.log("[SOCKET] createBattle <-", { mode, sid: socket.id });
     try {
       if (!["1v1", "2v2", "3v3", "4v4"].includes(mode)) {
-        console.log("[SOCKET] createBattle invalid_mode", mode);
         return typeof cb === "function" && cb({ error: "invalid_mode" });
       }
       const id = genId();
@@ -255,7 +245,6 @@ io.on("connection", (socket) => {
       socket.battleId = id;
       pushLog(id, "system", `전투 생성: ${mode}`);
       emitBattleUpdate(id);
-      console.log("[SOCKET] createBattle ok ->", id);
       typeof cb === "function" && cb({ ok: true, battleId: id, battle });
     } catch (e) {
       console.error("createBattle socket error:", e);
@@ -307,7 +296,6 @@ io.on("connection", (socket) => {
 
   /* 참가자 추가/삭제 */
   socket.on("addPlayer", ({ battleId, player }, cb) => {
-    console.log("[SOCKET] addPlayer <-", { battleId, playerName: player?.name, team: player?.team });
     try {
       const id = battleId || socket.battleId;
       const b = battles.get(id);
@@ -330,9 +318,9 @@ io.on("connection", (socket) => {
           luck: Math.max(1, Math.min(5, parseInt(player.stats.luck))),
         },
         items: {
-          ditany: Math.max(0, parseInt(player.items?.ditany || player.items?.dittany || 0)),
-          attackBooster: Math.max(0, parseInt(player.items?.attackBooster || 0)),
-          defenseBooster: Math.max(0, parseInt(player.items?.defenseBooster || 0)),
+          dittany: Math.max(0, parseInt(player.items?.dittany || 0)),
+          attack_boost: Math.max(0, parseInt(player.items?.attack_boost || 0)),
+          defense_boost: Math.max(0, parseInt(player.items?.defense_boost || 0)),
         },
         avatar: player.avatar || null,
         ready: false,
@@ -349,9 +337,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 서버는 deletePlayer를 듣고, 클라는 removePlayer를 쏘는 경우가 있어 둘 다 지원
   socket.on("deletePlayer", ({ battleId, playerId }, cb) => {
-    console.log("[SOCKET] deletePlayer <-", { battleId, playerId });
     const id = battleId || socket.battleId;
     const b = battles.get(id);
     if (!b) return cb && cb({ error: "not_found" });
@@ -365,15 +351,12 @@ io.on("connection", (socket) => {
     cb && cb({ ok: removed });
   });
 
-  // 별칭(호환)
   socket.on("removePlayer", (payload, cb) => {
-    console.log("[SOCKET] removePlayer(alias)->deletePlayer", payload);
     socket.emit("deletePlayer", payload, cb);
   });
 
-  /* 플레이어 자동 로그인(토큰) */
+  /* 플레이어 인증 */
   socket.on("playerAuth", ({ battleId, password, token, otp, playerName }, cb) => {
-    console.log("[SOCKET] playerAuth <-", { battleId, playerName, token: !!(password || token || otp) });
     try {
       const id = battleId || socket.battleId;
       const b = battles.get(id);
@@ -413,7 +396,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // 접속 처리
       socket.join(id);
       socket.battleId = id;
       socket.playerId = player.id;
@@ -440,6 +422,42 @@ io.on("connection", (socket) => {
       cb && cb(err);
       socket.emit("authError", err);
     }
+  });
+
+  /* 관전자 인증 */
+  socket.on("spectatorAuth", ({ battleId, token, otp, name }, cb) => {
+    const id = battleId || socket.battleId;
+    const b = battles.get(id);
+    if (!b) {
+      const err = { ok: false, error: "battle_not_found", message: "전투를 찾을 수 없습니다." };
+      cb && cb(err);
+      socket.emit("authError", err);
+      return;
+    }
+    const authToken = token || otp;
+    const rec = otpStore.get(`spectator_${id}`);
+    if (!rec || rec.otp !== authToken || (rec.expires && Date.now() > rec.expires)) {
+      const err = { ok: false, error: "invalid_token", message: "잘못된 비밀번호입니다." };
+      cb && cb(err);
+      socket.emit("authError", err);
+      return;
+    }
+    socket.join(id);
+    socket.battleId = id;
+    socket.role = "spectator";
+    const result = { ok: true, role: "spectator", battle: b, name: name || "관전자" };
+    socket.emit("authSuccess", result);
+    cb && cb(result);
+    pushLog(id, "system", `관전자 접속: ${name || "관전자"}`);
+    emitBattleUpdate(id);
+  });
+
+  /* 응원 */
+  socket.on("spectator:cheer", (data = {}) => {
+    const id = data.battleId || socket.battleId;
+    if (!id || !battles.has(id)) return;
+    const name = data.name || "관전자";
+    pushLog(id, "info", `[응원] ${name}: ${data.message || ""}`);
   });
 
   /* 호환 이벤트명 */
