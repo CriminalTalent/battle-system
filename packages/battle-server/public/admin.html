@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PYXIS 관리자</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
@@ -21,7 +21,7 @@
     *{ box-sizing:border-box; }
 
     .header{
-      background:var(--glass-3); border-bottom:1px solid var(--border);
+      background:var(--glass-3); border-bottom:var(--border);
       backdrop-filter:var(--blur-medium); position:sticky; top:0; z-index:1000;
     }
     .header-inner{ max-width:1280px; margin:0 auto; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; }
@@ -32,13 +32,14 @@
     .dot.ok{ background:var(--success); border-color:rgba(16,185,129,.5); box-shadow:0 0 8px rgba(16,185,129,.35); }
 
     .container{ max-width:1280px; margin:0 auto; padding:24px 16px; }
+
     .grid{ display:grid; grid-template-columns:340px 1fr 360px; gap:18px; align-items:start; }
     @media (max-width: 1200px){ .grid{ grid-template-columns:1fr 1fr; } }
     @media (max-width: 860px){ .grid{ grid-template-columns:1fr; } }
 
     .card{
       background:var(--glass-2);
-      border:1px solid var(--border);
+      border:var(--border);
       border-radius:var(--radius);
       box-shadow:var(--shadow-soft);
       padding:16px;
@@ -47,7 +48,7 @@
     .card:hover{ transform:translateY(-1px); box-shadow:var(--shadow); border-color:var(--gold-2); }
     .title{
       font-family:Cinzel, serif; font-weight:700; color:var(--gold-bright);
-      border-bottom:1px solid var(--border-subtle); padding-bottom:10px; margin-bottom:14px;
+      border-bottom:var(--border-subtle); padding-bottom:10px; margin-bottom:14px;
       display:flex; align-items:center; justify-content:space-between;
     }
 
@@ -56,7 +57,7 @@
     .row-4{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
     .field label{ display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px; letter-spacing:.02em; }
     input[type="text"],input[type="number"],select, .mono{
-      width:100%; background:var(--glass-1); border:1px solid var(--border);
+      width:100%; background:var(--glass-1); border:var(--border);
       border-radius:10px; color:var(--text); font-size:13px; padding:10px 12px;
       outline:none; transition: border-color .2s, box-shadow .2s;
     }
@@ -75,34 +76,35 @@
     .btn-success{ background:linear-gradient(135deg,var(--success),#059669); color:#fff; border-color:var(--success); }
     .btn-danger{ background:linear-gradient(135deg,var(--danger),#DC2626); color:#fff; border-color:var(--danger); }
 
-    .logs{ height:380px; overflow-y:auto; background:var(--glass-1); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px; }
+    .logs{ height:380px; overflow-y:auto; background:var(--glass-1); border:var(--border); border-radius:var(--radius-sm); padding:8px; }
     .log{ padding:8px 10px; border-bottom:1px dashed var(--border-subtle); font-size:12px; line-height:1.4; }
     .log:last-child{ border-bottom:none; }
     .log .time{ color:var(--text-muted); margin-right:8px; }
     .log.sys{ border-left:3px solid var(--info); background:rgba(59,130,246,.06); }
-    .log.err{ border-left:3px solid var(--danger); background:rgba(239,68,68,.08); }
-    .log.adm{ border-left:3px solid var(--gold-1); background:rgba(212,183,126,.08); }
+    .log.err{ border-left:3px solid var(--danger); background:rgba(239,68,68,.08);}
+    .log.adm{ border-left:3px solid var(--gold-1); background:rgba(212,183,126,.08);}
 
     .lists{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     table{ width:100%; border-collapse:collapse; font-size:12px; }
-    th{ background:var(--glass-1); padding:6px 8px; text-align:left; color:var(--text-muted); border-bottom:1px solid var(--border-subtle); }
+    th{ background:var(--glass-1); padding:6px 8px; text-align:left; color:var(--text-muted); border-bottom:var(--border-subtle); }
     td{ padding:6px 8px; border-bottom:1px dashed var(--border-subtle); }
     tr:last-child td{ border-bottom:none; }
 
     .preview-wrap{ display:flex; align-items:center; gap:8px; }
-    .preview{ width:44px; height:44px; border-radius:8px; background:var(--glass-1); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-muted); background-size:cover; background-position:center; }
+    .preview{ width:44px; height:44px; border-radius:8px; background:var(--glass-1); border:var(--border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-muted); background-size:cover; background-position:center; }
     #pAvatar{ font-size:10px; }
 
     .chat-input{ display:flex; gap:8px; margin-top:8px; }
     .toast{
       position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
-      background:var(--glass-2); border:1px solid var(--border); padding:10px 14px; border-radius:10px;
+      background:var(--glass-2); border:var(--border); padding:10px 14px; border-radius:10px;
       box-shadow:var(--shadow-soft); opacity:0; transition:opacity .2s, transform .2s; pointer-events:none;
     }
     .toast.show{ opacity:1; transform:translateX(-50%) translateY(-4px); }
   </style>
 </head>
 <body>
+  <!-- 헤더 -->
   <header class="header">
     <div class="header-inner">
       <div class="brand">
@@ -192,8 +194,8 @@
 
         <div class="row">
           <div class="field">
-            <label for="pHp">체력(고정 100)</label>
-            <input id="pHp" type="number" min="100" max="100" value="100" readonly />
+            <label for="pHp">체력(최대 100)</label>
+            <input id="pHp" type="number" min="1" max="100" value="100" />
           </div>
           <div class="field">
             <label>이미지</label>
@@ -414,7 +416,7 @@
         return;
       }
 
-      const mode = els.mode.value || '1v1'; // 기본 1v1
+      const mode = els.mode.value || '1v1';
       log('sys', `전투 생성 요청: ${mode}`);
 
       const payload = { mode };
@@ -463,18 +465,34 @@
         if(!res.ok) throw new Error('링크 생성 실패');
 
         const data = await res.json();
-        const links = data.playerLinks || data.links || [];
+        const players = data.players || data.playerLinks || data.links || [];
 
         els.playerLinks.innerHTML = '';
-        links.forEach((ln, i) => {
+        players.forEach((p, i) => {
+          const name = p.name || p.playerName || `참가자${i+1}`;
+          const team = (p.team || 'A').toUpperCase()==='B' ? 'B' : 'A';
+          // otp 확보: 서버가 url만 주는 경우에도 추출
+          let otp = p.otp || p.token || '';
+          if(!otp && p.url){
+            try{ const u = new URL(p.url); otp = u.searchParams.get('otp') || u.searchParams.get('token') || u.searchParams.get('password') || ''; }catch(_){}
+          }
+
+          // 경로 강제: /player.html
+          const u = new URL('/player.html', window.location.origin);
+          u.searchParams.set('battle', battleId);
+          u.searchParams.set('name', name);
+          if(otp) u.searchParams.set('otp', otp);
+          // 팀은 표시용(링크엔 필요 없음). 필요 시 u.searchParams.set('team', team) 가능.
+
           const row = document.createElement('div');
           row.style.display = 'grid';
-          row.style.gridTemplateColumns = '32px 140px 1fr 76px';
+          row.style.gridTemplateColumns = 'minmax(140px, 180px) 1fr 72px';
           row.style.gap = '6px';
           row.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;color:var(--text-muted)">${i+1}</div>
-            <div class="mono" style="display:flex;align-items:center;padding:0 6px;background:var(--glass-1);border:1px solid var(--border);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ln.playerName || '-' } (${ln.team || '-'})</div>
-            <input type="text" class="mono" value="${ln.url||''}" readonly />
+            <div class="mono" style="display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              팀 ${team} · ${name}
+            </div>
+            <input type="text" class="mono" value="${u.toString()}" readonly />
             <button class="btn">복사</button>
           `;
           const input = row.querySelector('input');
@@ -485,7 +503,7 @@
         });
         toast('참가자 링크가 생성되었습니다');
       }catch(e){
-        log('err', '참가자 링크 생성 실패');
+        log('err', `참가자 링크 생성 실패: ${e.message||e}`);
       }
     }
 
@@ -507,7 +525,7 @@
         els.spectatorOtp.value = otp || '';
         toast('관전자 비밀번호가 발급되었습니다');
       }catch(e){
-        log('err', '관전자 비밀번호 발급 실패');
+        log('err', `관전자 비밀번호 발급 실패: ${e.message||e}`);
       }
     }
 
@@ -523,6 +541,7 @@
         return;
       }
 
+      // 관전자 경로 고정
       const url = new URL('/spectator.html', window.location.origin);
       url.searchParams.set('battle', battleId);
       url.searchParams.set('otp', otp);
@@ -552,17 +571,17 @@
       const player = {
         name,
         team: els.pTeam.value || 'A',
-        hp: 100, // 규칙: 100 고정
+        hp: parseInt(els.pHp.value) || 100,
         stats: {
-          attack: clamp(parseInt(els.sAtk.value), 1, 5),
-          defense: clamp(parseInt(els.sDef.value), 1, 5),
-          agility: clamp(parseInt(els.sAgi.value), 1, 5),
-          luck: clamp(parseInt(els.sLuk.value), 1, 5)
+          attack: parseInt(els.sAtk.value) || 1,
+          defense: parseInt(els.sDef.value) || 1,
+          agility: parseInt(els.sAgi.value) || 1,
+          luck: parseInt(els.sLuk.value) || 1
         },
         items: {
-          ditany: clamp(parseInt(els.iDit.value), 0, 99),
-          attackBooster: clamp(parseInt(els.iAtkB.value), 0, 99),
-          defenseBooster: clamp(parseInt(els.iDefB.value), 0, 99)
+          ditany: parseInt(els.iDit.value) || 0,
+          attackBooster: parseInt(els.iAtkB.value) || 0,
+          defenseBooster: parseInt(els.iDefB.value) || 0
         }
       };
 
@@ -571,7 +590,8 @@
           log('err', `참가자 추가 실패: ${ack && ack.error || '응답 없음'}`);
           return;
         }
-        toast('전투 참가자가 추가되었습니다');
+        toast('참가자가 추가되었습니다');
+        // 입력 필드 초기화
         els.pName.value = '';
         els.pHp.value = 100;
         els.sAtk.value = 3;
@@ -586,15 +606,10 @@
       });
     }
 
-    function clamp(n, min, max){
-      n = Number.isFinite(n) ? n : min;
-      return Math.max(min, Math.min(max, n));
-    }
-
     // -------- 아바타 미리보기 --------
     function onPreview(){
       const f = els.pAvatar.files[0];
-      if(!f) { els.preview.style.backgroundImage=''; els.preview.textContent='미리보기'; return; }
+      if(!f) return;
       const r = new FileReader();
       r.onload = () => {
         els.preview.style.backgroundImage = `url('${r.result}')`;
@@ -618,12 +633,14 @@
       if(!text) return;
 
       const payload = { battleId, message: text, role: 'admin', name: '관리자' };
+      
       if(socket && socket.connected){
         socket.emit('chatMessage', payload);
         socket.emit('chat:send', payload);
         socket.emit('battle:chat', payload);
         socket.emit('chat:message', payload);
       }
+      
       chatAppend('관리자', text);
       els.chatMsg.value = '';
     }
@@ -634,6 +651,7 @@
       lastSnap = snap;
       battleId = snap.id || battleId;
 
+      // 버튼 상태 업데이트
       const st = snap.status || 'waiting';
       els.btnStart.disabled = !(st === 'waiting' || st === 'paused');
       els.btnPause.disabled = !(st === 'active');
@@ -646,6 +664,7 @@
       els.btnBuildSpectator.disabled = !linkEnabled;
       els.btnAdd.disabled = !linkEnabled;
 
+      // 팀 목록 업데이트
       renderTeamLists(snap);
     }
 
@@ -674,9 +693,10 @@
         const items = p.items || {};
         const statsText = `${stats.attack||1}/${stats.defense||1}/${stats.agility||1}/${stats.luck||1}`;
         const itemsText = `디${items.ditany||0} 공${items.attackBooster||0} 방${items.defenseBooster||0}`;
+        
         row.innerHTML = `
-          <td>${p.name || '전투 참가자'}</td>
-          <td>${p.hp ?? 100}</td>
+          <td>${p.name || '익명'}</td>
+          <td>${p.hp || 100}</td>
           <td>${statsText}</td>
           <td>${itemsText}</td>
           <td>${p.status || '대기'}</td>
@@ -691,14 +711,14 @@
       els.btnPause.addEventListener('click', () => adminAction('pause'));
       els.btnResume.addEventListener('click', () => adminAction('resume'));
       els.btnEnd.addEventListener('click', () => adminAction('end'));
-
+      
       els.btnGenPlayer.addEventListener('click', genPlayerLinks);
       els.btnGenSpectator.addEventListener('click', genSpectatorOtp);
       els.btnBuildSpectator.addEventListener('click', buildSpectatorUrl);
-
+      
       els.btnAdd.addEventListener('click', addPlayer);
       els.pAvatar.addEventListener('change', onPreview);
-
+      
       els.btnSend.addEventListener('click', sendChat);
       els.chatMsg.addEventListener('keydown', (e) => {
         if(e.key === 'Enter'){
