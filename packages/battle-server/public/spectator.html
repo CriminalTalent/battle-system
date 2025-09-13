@@ -1,3 +1,4 @@
+<!-- packages/battle-server/public/spectator.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -115,6 +116,7 @@
     .log-container::-webkit-scrollbar-track{background:var(--glass-1);border-radius:3px}
     .log-container::-webkit-scrollbar-thumb{background:var(--gold);border-radius:3px}
     .log-container::-webkit-scrollbar-thumb:hover{background:var(--gold-bright)}
+
     .log-entry{margin-bottom:8px;padding:12px;border-radius:var(--radius-small);background:var(--glass-1);border-left:3px solid transparent;transition:all var(--transition-fast);animation:slideInUp .3s ease-out;position:relative;overflow:hidden}
     .log-entry::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(212,183,126,.1),transparent);transition:left .8s ease-out}
     .log-entry.new::before{left:100%}
@@ -130,11 +132,18 @@
     .log-content{font-size:12px;line-height:1.4}
 
     /* 턴 오버레이 */
-    .turn-overlay{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--glass-2);backdrop-filter:var(--blur-medium);
-      border:2px solid var(--gold);border-radius:var(--radius);padding:30px;text-align:center;box-shadow:var(--shadow-deep);z-index:200;min-width:300px}
-    .turn-status{font-size:20px;font-weight:700;color:var(--gold-bright);margin-bottom:12px;text-shadow:0 2px 4px rgba(0,0,0,.3)}
-    .turn-timer{font-size:16px;color:var(--warning);font-weight:600;margin-bottom:20px}
-    .current-character{width:100px;height:100px;border-radius:var(--radius);border:3px solid var(--gold);background:var(--glass-1);margin:0 auto 16px;overflow:hidden;box-shadow:var(--shadow-medium)}
+    .turn-overlay{position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);background:var(--glass-2);backdrop-filter:var(--blur-medium);
+      border:2px solid var(--gold);border-radius:var(--radius);padding:22px 24px;text-align:center;box-shadow:var(--shadow-deep);z-index:200;min-width:320px}
+    .turn-status{font-size:18px;font-weight:700;color:var(--gold-bright);margin-bottom:10px;text-shadow:0 2px 4px rgba(0,0,0,.3)}
+    .turn-timer{font-size:14px;color:var(--warning);font-weight:600;margin-bottom:12px}
+
+    .queue{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0 12px}
+    .q-item{font-size:11px;padding:4px 8px;border:1px solid var(--border-subtle);border-radius:999px;background:var(--glass-1);color:var(--text-muted)}
+    .q-item.alive{color:var(--text)}
+    .q-item.acted{opacity:.45;text-decoration:line-through}
+    .q-item.current{border-color:var(--gold);box-shadow:0 0 10px rgba(220,199,162,.25)}
+
+    .current-character{width:110px;height:110px;border-radius:var(--radius);border:3px solid var(--gold);background:var(--glass-1);margin:0 auto 10px;overflow:hidden;box-shadow:var(--shadow-medium)}
     .current-character img{width:100%;height:100%;object-fit:cover}
     .current-character-name{font-size:16px;font-weight:600;color:var(--text)}
 
@@ -143,8 +152,6 @@
 
     /* 애니메이션 */
     @keyframes slideInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 
     /* 반응형 */
     @media (max-width:1200px){
@@ -239,7 +246,11 @@
     <!-- 턴 오버레이 -->
     <div class="turn-overlay" id="turnOverlay" style="display:none;">
       <div class="turn-status" id="turnStatus">현재 순서팀: A팀</div>
-      <div class="turn-timer" id="turnTimer">팀 제한 시간 3:45</div>
+      <div class="turn-timer" id="turnTimer">팀 제한 시간 -</div>
+
+      <!-- 현재팀 행동 큐 -->
+      <div class="queue" id="queue"></div>
+
       <div class="current-character" id="currentCharacter">
         <img src="" alt="현재 턴 캐릭터" id="currentCharacterImg"/>
       </div>
@@ -249,14 +260,14 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // ===== 전역 변수 =====
+    // ===== 전역 상태 =====
     let socket = null;
     let battleId = null;
     let battleState = null;
     let isAuthenticated = false;
     let spectatorName = '관전자';
 
-    // ===== DOM 요소 =====
+    // ===== DOM =====
     const authCard = document.getElementById('authCard');
     const gameLayout = document.getElementById('gameLayout');
     const passwordInput = document.getElementById('passwordInput');
@@ -270,6 +281,7 @@
     const turnTimer = document.getElementById('turnTimer');
     const currentCharacterImg = document.getElementById('currentCharacterImg');
     const currentCharacterName = document.getElementById('currentCharacterName');
+    const queueEl = document.getElementById('queue');
 
     // ===== 유틸 =====
     function showToast(message, type = 'success') {
@@ -279,276 +291,262 @@
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 3000);
     }
+    const esc = (s)=>String(s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
+    function formatTime(ts){ try{ return new Date(ts).toLocaleTimeString('ko-KR',{hour12:false}); }catch{ return '-'; } }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+    // 로그 분류 + 이펙트
+    function classifyLog(dataOrType, msg=''){
+      const t = (typeof dataOrType==='string'?dataOrType:(dataOrType?.type||'')).toLowerCase();
+      if (t.includes('critical') || /치명타|크리티컬/i.test(msg)) return 'critical';
+      if (t.includes('heal') || /회복|치유|디터니/i.test(msg))   return 'heal';
+      if (t.includes('damage') || /피해|데미지/i.test(msg))      return 'damage';
+      if (t.includes('cheer'))                                   return 'cheer';
+      if (t.includes('chat'))                                    return 'chat';
+      if (t.includes('system'))                                  return 'system';
+      return 'battle';
     }
-
-    function formatTime(timestamp) {
-      const date = new Date(timestamp);
-      return date.toLocaleTimeString('ko-KR', { hour12: false });
-    }
-
-    function addLogEntry(container, message, type = 'system', timestamp = Date.now()) {
+    function addLogEntry(container, message, type='battle', ts=Date.now()){
       const entry = document.createElement('div');
-      entry.className = `log-entry ${type} new`;
-      entry.innerHTML = `
-        <div class="log-timestamp">${formatTime(timestamp)}</div>
-        <div class="log-content">${escapeHtml(message)}</div>
-      `;
+      entry.className = `log-entry ${classifyLog(type, message)} new`;
+      entry.innerHTML = `<div class="log-timestamp">${formatTime(ts)}</div><div class="log-content">${esc(message)}</div>`;
       container.appendChild(entry);
       container.scrollTop = container.scrollHeight;
-      setTimeout(() => entry.classList.remove('new'), 100);
+      setTimeout(()=>entry.classList.remove('new'), 120);
+      if (container.children.length > 500) container.removeChild(container.firstChild);
     }
 
     // ===== 팀 렌더링 =====
-    function createTeamMemberElement(player) {
+    function memberCard(player){
       const div = document.createElement('div');
       div.className = 'team-member';
-
-      const hp = Number(player.hp ?? 100);
-      const maxHp = Number(player.maxHp ?? 100);
-      const hpPercent = Math.max(0, Math.min(100, maxHp ? (hp / maxHp) * 100 : 0));
-
-      const stats = player.stats || {};
-      const attack = stats.attack || stats.공격 || '-';
-      const defense = stats.defense || stats.방어 || '-';
-      const agility = stats.agility || stats.민첩 || '-';
-      const luck = stats.luck || stats.행운 || '-';
-
+      const hp = Number(player.hp ?? 100), max = Number(player.maxHp ?? 100);
+      const pct = Math.max(0, Math.min(100, max ? (hp/max)*100 : 0));
+      const st = player.stats || {};
       div.innerHTML = `
         <div class="member-header">
-          <div class="member-avatar">
-            ${player.avatar ? `<img src="${player.avatar}" alt="${escapeHtml(player.name || '')}">` : ''}
-          </div>
+          <div class="member-avatar">${player.avatar?`<img src="${esc(player.avatar)}" alt="${esc(player.name||'')}"/>`:''}</div>
           <div class="member-info">
-            <div class="member-name">${escapeHtml(player.name || '전투 참가자')}</div>
-            <div class="member-team">팀 ${player.team}</div>
+            <div class="member-name">${esc(player.name||'전투 참가자')}</div>
+            <div class="member-team">팀 ${esc(player.team||'-')}</div>
           </div>
         </div>
         <div class="member-stats">
-          <div class="stat-box"><div class="stat-label">공격</div><div class="stat-value">${attack}</div></div>
-          <div class="stat-box"><div class="stat-label">방어</div><div class="stat-value">${defense}</div></div>
-          <div class="stat-box"><div class="stat-label">민첩</div><div class="stat-value">${agility}</div></div>
-          <div class="stat-box"><div class="stat-label">행운</div><div class="stat-value">${luck}</div></div>
+          <div class="stat-box"><div class="stat-label">공격</div><div class="stat-value">${st.attack ?? '-'}</div></div>
+          <div class="stat-box"><div class="stat-label">방어</div><div class="stat-value">${st.defense ?? '-'}</div></div>
+          <div class="stat-box"><div class="stat-label">민첩</div><div class="stat-value">${st.agility ?? '-'}</div></div>
+          <div class="stat-box"><div class="stat-label">행운</div><div class="stat-value">${st.luck ?? '-'}</div></div>
         </div>
         <div class="member-hp-section">
           <div class="hp-label">체력</div>
-          <div class="hp-display">${hp}/${maxHp}</div>
-          <div class="hp-bar-container"><div class="hp-bar" style="width:${hpPercent}%;"></div></div>
-        </div>
-      `;
+          <div class="hp-display">${hp}/${max}</div>
+          <div class="hp-bar-container"><div class="hp-bar" style="width:${pct}%"></div></div>
+        </div>`;
       return div;
     }
-
-    function updateTeamLists() {
-      if (!battleState || !battleState.players) return;
-
-      const teamA = battleState.players.filter(p => (p.team || 'A') === 'A');
-      const teamB = battleState.players.filter(p => (p.team || 'A') === 'B');
-
-      teamAList.innerHTML = teamA.length
-        ? ''
-        : '<div style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">팀원이 없습니다</div>';
-      teamBList.innerHTML = teamB.length
-        ? ''
-        : '<div style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">팀원이 없습니다</div>';
-
-      teamA.forEach(player => teamAList.appendChild(createTeamMemberElement(player)));
-      teamB.forEach(player => teamBList.appendChild(createTeamMemberElement(player)));
+    function renderTeams(){
+      if (!battleState?.players) return;
+      const A = battleState.players.filter(p => (p.team||'A')==='A');
+      const B = battleState.players.filter(p => (p.team||'A')==='B');
+      teamAList.innerHTML = A.length ? '' : '<div style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">팀원이 없습니다</div>';
+      teamBList.innerHTML = B.length ? '' : '<div style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">팀원이 없습니다</div>';
+      A.forEach(p=>teamAList.appendChild(memberCard(p)));
+      B.forEach(p=>teamBList.appendChild(memberCard(p)));
     }
 
-    // ===== 턴 정보 =====
-    function updateTurnInfo() {
-      if (!battleState) return;
-
-      const currentTeam = battleState.currentTeam || 'A';
-      const teamName = currentTeam === 'A' ? 'A팀' : 'B팀';
-      turnStatus.textContent = `현재 순서팀: ${teamName}`;
-
-      const timeLeft = Number(battleState.timeLeft ?? 300);
-      const minutes = Math.max(0, Math.floor(timeLeft / 60));
-      const seconds = Math.max(0, Math.floor(timeLeft % 60));
-      turnTimer.textContent = `팀 제한 시간 ${minutes}:${String(seconds).padStart(2, '0')}`;
-
-      const currentTeamPlayers = (battleState.players || [])
-        .filter(p => (p.team || 'A') === currentTeam && Number(p.hp || 0) > 0);
-
-      if (currentTeamPlayers.length > 0) {
-        const activePlayer = currentTeamPlayers[0];
-        if (activePlayer.avatar) {
-          currentCharacterImg.src = activePlayer.avatar;
-          currentCharacterImg.style.display = 'block';
-        } else {
-          currentCharacterImg.style.display = 'none';
-        }
-        currentCharacterName.textContent = activePlayer.name || '전투 참가자';
-      } else {
-        currentCharacterImg.style.display = 'none';
-        currentCharacterName.textContent = '준비 중';
+    // ===== 큐/턴 표시 =====
+    function getCurrentTeam(){
+      return battleState?.currentTurn?.currentTeam || battleState?.currentTeam || 'A';
+    }
+    function aliveTeamPlayers(team){
+      const list = (battleState?.players||[]).filter(p => (p.team===team) && Number(p.hp||0) > 0);
+      // 서버에 정렬이 있으면 그대로, 없으면 민첩/행운/이름으로 정렬
+      if (!battleState?.currentTurn?.order){
+        list.sort((a,b)=>{
+          const ag = (b.stats?.agility||0) - (a.stats?.agility||0);
+          if (ag) return ag;
+          const lk = (b.stats?.luck||0) - (a.stats?.luck||0);
+          if (lk) return lk;
+          return String(a.name||'').localeCompare(String(b.name||''));
+        });
       }
-
-      turnOverlay.style.display = battleState.status === 'active' ? 'block' : 'none';
+      return list;
+    }
+    function buildQueue(){
+      const team = getCurrentTeam();
+      const turn = battleState?.currentTurn || {};
+      const acted = turn.playerActions || {};
+      // 우선 서버 order/actor 제공 시 활용
+      let names = Array.isArray(turn.order) ? [...turn.order] : aliveTeamPlayers(team).map(p=>p.name);
+      queueEl.innerHTML = '';
+      names.forEach(n=>{
+        const el = document.createElement('div');
+        el.className = 'q-item alive' + (acted?.[n] ? ' acted' : '') + ((turn.actorName && turn.actorName===n) ? ' current' : '');
+        el.textContent = n || '참가자';
+        queueEl.appendChild(el);
+      });
+    }
+    function currentActor(){
+      const team = getCurrentTeam();
+      const turn = battleState?.currentTurn || {};
+      // 1) actorId/actorName 우선
+      if (turn.actorId || turn.actorName){
+        const byName = (battleState?.players||[]).find(p=>p.name===turn.actorName);
+        const byId   = (battleState?.players||[]).find(p=>(p.id||p._id)===turn.actorId);
+        return byName || byId || null;
+      }
+      // 2) order와 playerActions로 미행동자 찾기
+      const order = Array.isArray(turn.order) ? turn.order : [];
+      const acted = turn.playerActions || {};
+      for (const nm of order){ if (!acted[nm]) return (battleState?.players||[]).find(p=>p.name===nm) || null; }
+      // 3) 대안: 생존자 첫 명
+      return aliveTeamPlayers(team)[0] || null;
+    }
+    function msLeft(){
+      const turn = battleState?.currentTurn || {};
+      // 서버가 남은 초를 직접 주면 사용(timeLeftSec)
+      if (typeof turn.timeLeftSec === 'number') return Math.max(0, turn.timeLeftSec*1000);
+      // startedAt + LIMIT(5분) 계산
+      const start = Number(turn.startedAt || battleState?.turnStartTime || 0);
+      if (!start) return null;
+      const LIMIT = 5*60*1000;
+      return Math.max(0, LIMIT - (Date.now() - start));
+    }
+    let ticker = null;
+    function startTimer(){
+      if (ticker) clearInterval(ticker);
+      const tick = ()=>{
+        const rest = msLeft();
+        if (rest === null) { turnTimer.textContent = '팀 제한 시간 -'; return; }
+        const m = Math.floor(rest/60000), s = Math.floor((rest%60000)/1000);
+        turnTimer.textContent = `팀 제한 시간 ${m}:${String(s).padStart(2,'0')}`;
+      };
+      tick(); ticker = setInterval(tick, 500);
+    }
+    function renderTurn(){
+      const status = battleState?.status || 'waiting';
+      turnOverlay.style.display = (status==='active' || status==='started') ? 'block' : 'none';
+      const team = getCurrentTeam();
+      turnStatus.textContent = `현재 순서팀: ${team==='A'?'A팀':'B팀'}`;
+      // 큐
+      buildQueue();
+      // 현재 배우 표시
+      const actor = currentActor();
+      if (actor?.avatar){ currentCharacterImg.src = actor.avatar; currentCharacterImg.style.display='block'; }
+      else { currentCharacterImg.removeAttribute('src'); currentCharacterImg.style.display='none'; }
+      currentCharacterName.textContent = actor?.name || '대기 중';
+      // 타이머
+      startTimer();
     }
 
-    function updateUI() {
-      updateTeamLists();
-      updateTurnInfo();
+    function renderAll(){
+      renderTeams();
+      renderTurn();
     }
 
-    // ===== 소켓 연결 =====
-    function connectSocket() {
-      socket = io({ transports: ['websocket', 'polling'], withCredentials: true, timeout: 20000 });
+    // ===== 소켓 =====
+    function connect(){
+      socket = io({ path:'/socket.io', transports:['websocket','polling'] });
+      socket.on('connect', ()=> showToast('서버에 연결되었습니다.'));
+      socket.on('disconnect', ()=> showToast('서버 연결이 끊어졌습니다.', 'error'));
 
-      socket.on('connect', () => { showToast('서버에 연결되었습니다.'); });
-      socket.on('disconnect', () => { showToast('서버 연결이 끊어졌습니다.', 'error'); });
+      // 스냅샷/턴 갱신
+      function onBattle(s){ battleState = s; renderAll(); }
+      function onTurn(t){ if (!battleState) battleState = {}; battleState.currentTurn = t; renderTurn(); }
+      socket.on('battleUpdate', onBattle);
+      socket.on('battle:update', onBattle);
+      socket.on('turnUpdate', onTurn);
+      socket.on('turn:update', onTurn);
 
-      socket.on('battleUpdate', data => { battleState = data; updateUI(); });
-      socket.on('battle:update', data => { battleState = data; updateUI(); });
+      // 로그류 (종류별 이펙트)
+      socket.on('battleLog',    d => addLogEntry(battleLog, typeof d==='string'?d : (d.message||''), classifyLog(d, d?.message), Date.now()));
+      socket.on('battle:log',   d => addLogEntry(battleLog, d?.message||'', classifyLog(d, d?.message), Date.now()));
+      socket.on('systemMessage',d => addLogEntry(battleLog, d?.message||'', 'system'));
+      socket.on('chatMessage',  d => addLogEntry(battleLog, `${d?.name||'전투 참가자'}: ${d?.message||''}`, 'chat'));
+      socket.on('battle:chat',  d => addLogEntry(battleLog, `${d?.name||'전투 참가자'}: ${d?.message||''}`, 'chat'));
+      socket.on('cheerMessage', d => addLogEntry(battleLog, `[응원] ${d?.name||'관전자'}: ${d?.message||''}`, 'cheer'));
+      socket.on('spectator:cheer', d => addLogEntry(battleLog, `[응원] ${d?.name||'관전자'}: ${d?.message||''}`, 'cheer'));
 
-      socket.on('battleLog', message => addLogEntry(battleLog, message, 'battle'));
-      socket.on('battle:log', data => addLogEntry(battleLog, data.message || data, 'battle'));
-
-      socket.on('chatMessage', data => {
-        const senderName = data.name || data.senderName || '전투 참가자';
-        addLogEntry(battleLog, `${senderName}: ${data.message}`, 'chat');
-      });
-      socket.on('battle:chat', data => {
-        const senderName = data.name || data.senderName || '전투 참가자';
-        addLogEntry(battleLog, `${senderName}: ${data.message}`, 'chat');
-      });
-
-      socket.on('cheerMessage', data => {
-        const senderName = data.name || '관전자';
-        addLogEntry(battleLog, `[응원] ${senderName}: ${data.message}`, 'cheer');
-      });
-      socket.on('spectator:cheer', data => {
-        const senderName = data.name || '관전자';
-        addLogEntry(battleLog, `[응원] ${senderName}: ${data.message}`, 'cheer');
-      });
-
-      socket.on('playerReady', data => {
-        const senderName = data.name || data.playerName || '전투 참가자';
-        addLogEntry(battleLog, `${senderName}님이 준비 완료했습니다!`, 'system');
-        if (data.allReady) addLogEntry(battleLog, '모든 전투 참가자가 준비 완료되었습니다.', 'battle');
-      });
-      socket.on('player:ready', data => {
-        const senderName = data.name || data.playerName || '전투 참가자';
-        addLogEntry(battleLog, `${senderName}님이 준비 완료했습니다!`, 'system');
-        if (data.allReady) addLogEntry(battleLog, '모든 전투 참가자가 준비 완료되었습니다.', 'battle');
-      });
-
-      socket.on('battleStarted', data => {
-        const firstTeam = data.firstTeam || (data.turn && data.turn.order && data.turn.order[0]) || 'A';
-        const round = (data.turn && data.turn.round) || 1;
-        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
+      // 진행 알림
+      socket.on('battleStarted', d=>{
         addLogEntry(battleLog, '전투가 시작되었습니다.', 'battle');
-        addLogEntry(battleLog, `${round}라운드 - 선공: ${teamName}`, 'critical');
+        const first = d?.firstTeam || getCurrentTeam();
+        addLogEntry(battleLog, `라운드 ${d?.turn?.round||1} 시작 - 선공: ${first==='A'?'A팀':'B팀'}`, 'critical');
       });
-      socket.on('battle:started', data => {
-        const firstTeam = data.firstTeam || (data.turn && data.turn.order && data.turn.order[0]) || 'A';
-        const round = (data.turn && data.turn.round) || 1;
-        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
+      socket.on('battle:started', d=>{
         addLogEntry(battleLog, '전투가 시작되었습니다.', 'battle');
-        addLogEntry(battleLog, `${round}라운드 - 선공: ${teamName}`, 'critical');
+        const first = d?.firstTeam || getCurrentTeam();
+        addLogEntry(battleLog, `라운드 ${d?.turn?.round||1} 시작 - 선공: ${first==='A'?'A팀':'B팀'}`, 'critical');
       });
-
-      socket.on('roundStart', data => {
-        const round = data.round || 1;
-        const firstTeam = data.firstTeam || 'A';
-        const teamName = firstTeam === 'A' ? 'A팀' : 'B팀';
-        addLogEntry(battleLog, `${round}라운드 시작 - 선공: ${teamName}`, 'critical');
+      socket.on('roundStart', d=>{
+        addLogEntry(battleLog, `${d?.round||1}라운드 시작 - 선공: ${(d?.firstTeam||'A')==='A'?'A팀':'B팀'}`, 'critical');
       });
-
-      socket.on('actionSuccess', data => addLogEntry(battleLog, data.message || '액션이 성공했습니다.', 'system'));
-      socket.on('actionError', data => addLogEntry(battleLog, data.message || '액션이 실패했습니다.', 'system'));
-
-      socket.on('battle:ended', data => {
-        const winner = data.winner || '종료';
-        addLogEntry(battleLog, `전투가 종료되었습니다. 승자: ${winner}`, 'system');
+      socket.on('roundEnd', d=>{
+        const r = d?.round ?? '?';
+        const sum = d?.summary ? ` (${d.summary})` : '';
+        addLogEntry(battleLog, `라운드 ${r} 종료${sum}`, 'system');
+      });
+      socket.on('battle:ended', d=>{
+        addLogEntry(battleLog, `전투가 종료되었습니다. 승자: ${d?.winner||'알 수 없음'}`, 'system');
         turnOverlay.style.display = 'none';
       });
     }
 
-    // ===== 인증 처리 =====
-    function authenticate() {
-      const password = (passwordInput?.value || '').trim();
-      const name = (nameInput?.value || '').trim();
+    // ===== 인증 =====
+    function authenticate(){
+      const pwd = (passwordInput.value||'').trim();
+      const nm  = (nameInput.value||'').trim();
+      if (!pwd){ showToast('비밀번호를 입력해주세요.', 'error'); return; }
 
-      if (!password) { showToast('비밀번호를 입력해주세요.', 'error'); return; }
+      const p = new URLSearchParams(location.search);
+      battleId = p.get('battle') || p.get('id');
+      if (!battleId){ showToast('잘못된 전투 링크입니다.', 'error'); return; }
 
-      const urlParams = new URLSearchParams(window.location.search);
-      battleId = urlParams.get('battle');
-      if (!battleId) { showToast('잘못된 전투 링크입니다.', 'error'); return; }
+      spectatorName = nm || spectatorName;
+      authBtn.disabled = true; authBtn.textContent = '인증 중...';
 
-      spectatorName = name || spectatorName;
-      authBtn.disabled = true;
-      authBtn.textContent = '인증 중...';
+      socket.emit('spectatorAuth', { battleId, token: pwd, name: spectatorName });
 
-      socket.emit('spectatorAuth', {
-        battleId: battleId,
-        token: password,
-        name: spectatorName
-      });
-
-      socket.once('authSuccess', (data) => {
+      const onOk = (data)=>{
         isAuthenticated = true;
-        battleState = data.battle;
+        battleState = data?.battle || battleState;
         authCard.style.display = 'none';
         gameLayout.style.display = 'grid';
         showToast(`${spectatorName}님, 관전을 시작합니다.`);
-        updateUI();
-      });
-
-      socket.once('auth:success', (data) => {
-        isAuthenticated = true;
-        battleState = data.battle;
-        authCard.style.display = 'none';
-        gameLayout.style.display = 'grid';
-        showToast(`${spectatorName}님, 관전을 시작합니다.`);
-        updateUI();
-      });
-
-      socket.once('authError', (data) => {
+        if (battleId) socket.emit('join', { battleId });
+        renderAll();
+      };
+      const onErr = (data)=>{
         showToast(data?.message || '인증에 실패했습니다.', 'error');
-        authBtn.disabled = false;
-        authBtn.textContent = '관전 시작';
-      });
+        authBtn.disabled = false; authBtn.textContent = '관전 시작';
+      };
+
+      socket.once('authSuccess', onOk);
+      socket.once('auth:success', onOk);
+      socket.once('authError', onErr);
     }
 
     // ===== 이벤트 바인딩 =====
     authBtn.addEventListener('click', authenticate);
-    passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
-    nameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') authenticate(); });
+    passwordInput.addEventListener('keydown', e=>{ if(e.key==='Enter') authenticate(); });
+    nameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') authenticate(); });
 
-    // 응원 버튼 리스너
-    document.addEventListener('click', (e) => {
-      if (e.target.classList.contains('cheer-btn')) {
-        if (!socket || !battleId || !isAuthenticated) { showToast('먼저 인증을 완료해주세요.', 'error'); return; }
-        const cheerMessage = e.target.dataset.cheer;
-        socket.emit('cheerMessage', { battleId, message: cheerMessage, name: spectatorName });
-        socket.emit('spectator:cheer', { battleId, message: cheerMessage, name: spectatorName });
-        showToast(`${spectatorName}: "${cheerMessage}"`, 'success');
-      }
+    // 응원 버튼
+    document.addEventListener('click', e=>{
+      if (!e.target.classList.contains('cheer-btn')) return;
+      if (!socket || !battleId || !isAuthenticated){ showToast('먼저 인증을 완료해주세요.', 'error'); return; }
+      const msg = e.target.dataset.cheer;
+      socket.emit('cheerMessage', { battleId, message: msg, name: spectatorName });
+      socket.emit('spectator:cheer', { battleId, message: msg, name: spectatorName });
+      showToast(`${spectatorName}: "${msg}"`, 'success');
     });
 
     // ===== 초기화 =====
-    document.addEventListener('DOMContentLoaded', () => {
-      connectSocket();
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const autoPassword =
-        urlParams.get('otp') ||
-        urlParams.get('token') ||
-        urlParams.get('password') ||
-        urlParams.get('pwd') ||
-        urlParams.get('auth');
-
-      if (autoPassword) {
-        passwordInput.value = autoPassword;
-      }
+    document.addEventListener('DOMContentLoaded', ()=>{
+      connect();
+      // URL에서 OTP 자동 채움
+      const p = new URLSearchParams(location.search);
+      const autoPwd = p.get('otp') || p.get('token') || p.get('password') || p.get('pwd') || p.get('auth');
+      if (autoPwd) passwordInput.value = autoPwd;
     });
   </script>
 </body>
