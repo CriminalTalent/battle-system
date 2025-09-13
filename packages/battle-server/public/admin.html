@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PYXIS 관리자</title>
   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- (5) Cinzel 폰트 로딩 추가 -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
+
   <style>
     :root{
       --deep-navy:#0B1117; --dark-navy:#131B24; --mid-navy:#1A242F; --light-navy:#2A3441;
@@ -76,6 +80,9 @@
     .btn-success{ background:linear-gradient(135deg,var(--success),#059669); color:#fff; border-color:var(--success); }
     .btn-danger{ background:linear-gradient(135deg,var(--danger),#DC2626); color:#fff; border-color:var(--danger); }
 
+    /* (2) 삭제 버튼용 작은 크기 */
+    .btn-sm{ padding:6px 8px; font-size:11px; text-transform:none; }
+
     .logs{ height:380px; overflow-y:auto; background:var(--glass-1); border:var(--border); border-radius:var(--radius-sm); padding:8px; }
     .log{ padding:8px 10px; border-bottom:1px dashed var(--border-subtle); font-size:12px; line-height:1.4; }
     .log:last-child{ border-bottom:none; }
@@ -87,7 +94,7 @@
     .lists{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     table{ width:100%; border-collapse:collapse; font-size:12px; }
     th{ background:var(--glass-1); padding:6px 8px; text-align:left; color:var(--text-muted); border-bottom:var(--border-subtle); }
-    td{ padding:6px 8px; border-bottom:1px dashed var(--border-subtle); }
+    td{ padding:6px 8px; border-bottom:1px dashed var(--border-subtle); vertical-align:middle; }
     tr:last-child td{ border-bottom:none; }
 
     .preview-wrap{ display:flex; align-items:center; gap:8px; }
@@ -253,12 +260,13 @@
             <div style="font-size:12px; color:var(--text-muted); margin:6px 0;">A팀</div>
             <table id="listA">
               <thead>
+                <!-- (2) 삭제 열 추가로 헤더 6열화 -->
                 <tr>
-                  <th>이름</th><th>HP</th><th>스탯</th><th>아이템</th><th>상태</th>
+                  <th>이름</th><th>HP</th><th>스탯</th><th>아이템</th><th>상태</th><th>관리</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">없음</td></tr>
+                <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">없음</td></tr>
               </tbody>
             </table>
           </div>
@@ -266,12 +274,13 @@
             <div style="font-size:12px; color:var(--text-muted); margin:6px 0;">B팀</div>
             <table id="listB">
               <thead>
+                <!-- (2) 삭제 열 추가로 헤더 6열화 -->
                 <tr>
-                  <th>이름</th><th>HP</th><th>스탯</th><th>아이템</th><th>상태</th>
+                  <th>이름</th><th>HP</th><th>스탯</th><th>아이템</th><th>상태</th><th>관리</th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">없음</td></tr>
+                <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">없음</td></tr>
               </tbody>
             </table>
           </div>
@@ -346,8 +355,8 @@
     function log(type, msg){
       const time = new Date().toLocaleTimeString();
       const div = document.createElement('div');
-      div.className = `log ${type}`;
-      div.innerHTML = `<span class="time">${time}</span>${msg}`;
+      div.className = \`log \${type}\`;
+      div.innerHTML = \`<span class="time">\${time}</span>\${msg}\`;
       els.logs.appendChild(div);
       els.logs.scrollTop = els.logs.scrollHeight;
     }
@@ -386,24 +395,44 @@
       socket.on('chatMessage', (data) => chatAppend(data.name || '익명', data.message || ''));
     }
 
+    // -------- URL 인증 & 참가 --------
     function autoJoinFromURL(){
       const p = new URLSearchParams(window.location.search);
       const b = p.get('battle');
-      const t = p.get('token') || p.get('otp');
+      const t = p.get('token') || p.get('otp') || p.get('password');
 
       if(!socket || !socket.connected) return;
 
       if(b){
         battleId = b;
         socket.emit('join', { battleId });
-        log('sys', `전투 ${battleId}에 참가합니다`);
+        log('sys', \`전투 \${battleId}에 참가합니다\`);
       }
       if(b && t){
-        socket.emit('adminAuth', { battleId, otp: t, token: t }, (ack) => {
+        // (3) 관리자 인증 이벤트 네임스페이스 폴백 추가
+        const payload = { battleId, otp: t, token: t };
+        // 구버전
+        socket.emit('adminAuth', payload, (ack) => {
           if(ack && ack.error){
-            log('err', `인증 실패: ${ack.error}`);
-          } else {
-            log('sys', '관리자 인증 성공');
+            log('err', \`인증 실패(adminAuth): \${ack.error}\`);
+          } else if (ack) {
+            log('sys', '관리자 인증 성공(adminAuth)');
+          }
+        });
+        // 신버전
+        socket.emit('auth:admin', payload, (ack) => {
+          if(ack && ack.error){
+            log('err', \`인증 실패(auth:admin): \${ack.error}\`);
+          } else if (ack) {
+            log('sys', '관리자 인증 성공(auth:admin)');
+          }
+        });
+        // 추가 호환
+        socket.emit('authAdmin', payload, (ack) => {
+          if(ack && ack.error){
+            log('err', \`인증 실패(authAdmin): \${ack.error}\`);
+          } else if (ack) {
+            log('sys', '관리자 인증 성공(authAdmin)');
           }
         });
       }
@@ -417,12 +446,12 @@
       }
 
       const mode = els.mode.value || '1v1';
-      log('sys', `전투 생성 요청: ${mode}`);
+      log('sys', \`전투 생성 요청: \${mode}\`);
 
       const payload = { mode };
       socket.emit('createBattle', payload, (ack) => {
         if(!ack || ack.error){
-          log('err', `전투 생성 실패: ${ack && ack.error || '응답 없음'}`);
+          log('err', \`전투 생성 실패: \${(ack && ack.error) || '응답 없음'}\`);
           return;
         }
 
@@ -431,7 +460,7 @@
           socket.emit('join', { battleId });
           onBattleUpdate(ack.battle || ack);
           toast('전투가 생성되었습니다');
-          log('sys', `전투 생성 성공: ${battleId}`);
+          log('sys', \`전투 생성 성공: \${battleId}\`);
         }
       });
     }
@@ -446,8 +475,8 @@
         return;
       }
 
-      socket.emit(`${action}Battle`, { battleId });
-      log('sys', `${action} 요청`);
+      socket.emit(\`\${action}Battle\`, { battleId });
+      log('sys', \`\${action} 요청\`);
     }
 
     // -------- 링크 생성 --------
@@ -458,9 +487,9 @@
       }
 
       try{
-        let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+        let res = await fetch(\`/api/admin/battles/\${battleId}/links\`, { method:'POST', credentials:'include' });
         if(!res.ok){
-          res = await fetch(`/api/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+          res = await fetch(\`/api/battles/\${battleId}/links\`, { method:'POST', credentials:'include' });
         }
         if(!res.ok) throw new Error('링크 생성 실패');
 
@@ -469,9 +498,9 @@
 
         els.playerLinks.innerHTML = '';
         players.forEach((p, i) => {
-          const name = p.name || p.playerName || `참가자${i+1}`;
+          const name = p.name || p.playerName || \`참가자\${i+1}\`;
           const team = (p.team || 'A').toUpperCase()==='B' ? 'B' : 'A';
-          // otp 확보: 서버가 url만 주는 경우에도 추출
+          // otp 확보
           let otp = p.otp || p.token || '';
           if(!otp && p.url){
             try{ const u = new URL(p.url); otp = u.searchParams.get('otp') || u.searchParams.get('token') || u.searchParams.get('password') || ''; }catch(_){}
@@ -482,7 +511,6 @@
           u.searchParams.set('battle', battleId);
           u.searchParams.set('name', name);
           if(otp) u.searchParams.set('otp', otp);
-          // 팀은 표시용(링크엔 필요 없음). 필요 시 u.searchParams.set('team', team) 가능.
 
           const row = document.createElement('div');
           row.style.display = 'grid';
@@ -493,17 +521,23 @@
               팀 ${team} · ${name}
             </div>
             <input type="text" class="mono" value="${u.toString()}" readonly />
-            <button class="btn">복사</button>
+            <button class="btn btn-sm">복사</button>
           `;
           const input = row.querySelector('input');
+          // (4) 입력칸 클릭-복사 지원
+          input.addEventListener('click', () => {
+            if(!input.value) return;
+            navigator.clipboard.writeText(input.value).then(() => toast('복사되었습니다'));
+          });
           row.querySelector('button').addEventListener('click', function(){
+            if(!input.value) return;
             navigator.clipboard.writeText(input.value).then(() => toast('복사되었습니다'));
           });
           els.playerLinks.appendChild(row);
         });
         toast('참가자 링크가 생성되었습니다');
       }catch(e){
-        log('err', `참가자 링크 생성 실패: ${e.message||e}`);
+        log('err', \`참가자 링크 생성 실패: \${e.message||e}\`);
       }
     }
 
@@ -514,9 +548,9 @@
       }
 
       try{
-        let res = await fetch(`/api/admin/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+        let res = await fetch(\`/api/admin/battles/\${battleId}/links\`, { method:'POST', credentials:'include' });
         if(!res.ok){
-          res = await fetch(`/api/battles/${battleId}/links`, { method:'POST', credentials:'include' });
+          res = await fetch(\`/api/battles/\${battleId}/links\`, { method:'POST', credentials:'include' });
         }
         if(!res.ok) throw new Error('OTP 발급 실패');
 
@@ -525,7 +559,7 @@
         els.spectatorOtp.value = otp || '';
         toast('관전자 비밀번호가 발급되었습니다');
       }catch(e){
-        log('err', `관전자 비밀번호 발급 실패: ${e.message||e}`);
+        log('err', \`관전자 비밀번호 발급 실패: \${e.message||e}\`);
       }
     }
 
@@ -571,7 +605,7 @@
       const player = {
         name,
         team: els.pTeam.value || 'A',
-        hp: parseInt(els.pHp.value) || 100,
+        hp: parseInt(els.pHp.value) || 100,   // (1) 체력 변동 가능 유지
         stats: {
           attack: parseInt(els.sAtk.value) || 1,
           defense: parseInt(els.sDef.value) || 1,
@@ -587,7 +621,7 @@
 
       socket.emit('addPlayer', { battleId, player }, (ack) => {
         if(!ack || ack.error){
-          log('err', `참가자 추가 실패: ${ack && ack.error || '응답 없음'}`);
+          log('err', \`참가자 추가 실패: \${(ack && ack.error) || '응답 없음'}\`);
           return;
         }
         toast('참가자가 추가되었습니다');
@@ -606,13 +640,32 @@
       });
     }
 
+    // (2) 참가자 삭제
+    function removePlayer(playerId){
+      if(!battleId){
+        toast('전투를 먼저 생성하세요');
+        return;
+      }
+      if(!socket || !socket.connected){
+        toast('서버 연결을 확인하세요');
+        return;
+      }
+      socket.emit('removePlayer', { battleId, playerId }, (ack) => {
+        if(ack && ack.error){
+          log('err', \`참가자 삭제 실패: \${ack.error}\`);
+        }else{
+          toast('참가자를 삭제했습니다');
+        }
+      });
+    }
+
     // -------- 아바타 미리보기 --------
     function onPreview(){
       const f = els.pAvatar.files[0];
       if(!f) return;
       const r = new FileReader();
       r.onload = () => {
-        els.preview.style.backgroundImage = `url('${r.result}')`;
+        els.preview.style.backgroundImage = \`url('\${r.result}')\`;
         els.preview.textContent = '';
       };
       r.readAsDataURL(f);
@@ -623,7 +676,7 @@
       const time = new Date().toLocaleTimeString();
       const div = document.createElement('div');
       div.className = 'log';
-      div.innerHTML = `<span class="time">${time}</span><strong>${name}:</strong> ${msg}`;
+      div.innerHTML = \`<span class="time">\${time}</span><strong>\${name}:</strong> \${msg}\`;
       els.chatLogs.appendChild(div);
       els.chatLogs.scrollTop = els.chatLogs.scrollHeight;
     }
@@ -677,13 +730,14 @@
       renderTeamTable(els.listB, teamB);
     }
 
+    // (2) 삭제 버튼 포함 테이블 렌더
     function renderTeamTable(table, players){
       const tbody = table.querySelector('tbody');
       tbody.innerHTML = '';
 
       if(players.length === 0){
         const row = tbody.insertRow();
-        row.innerHTML = '<td colspan="5" style="text-align:center; color:var(--text-muted);">없음</td>';
+        row.innerHTML = '<td colspan="6" style="text-align:center; color:var(--text-muted);">없음</td>';
         return;
       }
 
@@ -691,16 +745,26 @@
         const row = tbody.insertRow();
         const stats = p.stats || {};
         const items = p.items || {};
-        const statsText = `${stats.attack||1}/${stats.defense||1}/${stats.agility||1}/${stats.luck||1}`;
-        const itemsText = `디${items.ditany||0} 공${items.attackBooster||0} 방${items.defenseBooster||0}`;
+        const statsText = \`\${stats.attack||1}/\${stats.defense||1}/\${stats.agility||1}/\${stats.luck||1}\`;
+        const itemsText = \`디\${items.ditany||0} 공\${items.attackBooster||0} 방\${items.defenseBooster||0}\`;
         
         row.innerHTML = `
           <td>${p.name || '익명'}</td>
-          <td>${p.hp || 100}</td>
+          <td>${p.hp ?? 100}</td>
           <td>${statsText}</td>
           <td>${itemsText}</td>
           <td>${p.status || '대기'}</td>
+          <td><button class="btn btn-danger btn-sm" data-player-id="${p.id || p._id || ''}">삭제</button></td>
         `;
+
+        const delBtn = row.querySelector('button[data-player-id]');
+        const pid = p.id || p._id;
+        if(delBtn && pid){
+          delBtn.addEventListener('click', () => removePlayer(pid));
+        }else if(delBtn){
+          delBtn.disabled = true;
+          delBtn.textContent = '삭제 불가';
+        }
       });
     }
 
@@ -725,6 +789,18 @@
           e.preventDefault();
           sendChat();
         }
+      });
+
+      // (4) 클릭-복사 UX: 관전자 OTP/URL 입력칸도 클릭 시 복사
+      els.spectatorOtp.addEventListener('click', () => {
+        const v = (els.spectatorOtp.value||'').trim();
+        if(!v) return;
+        navigator.clipboard.writeText(v).then(() => toast('복사되었습니다'));
+      });
+      els.spectatorUrl.addEventListener('click', () => {
+        const v = (els.spectatorUrl.value||'').trim();
+        if(!v) return;
+        navigator.clipboard.writeText(v).then(() => toast('복사되었습니다'));
       });
     }
 
