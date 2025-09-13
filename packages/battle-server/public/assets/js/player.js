@@ -8,6 +8,8 @@
 // - 신/구 소켓 이벤트 양쪽 지원(playerAction / player:action 등)
 // - 채팅 Enter 전송 + 기본 발신자 "전투 참가자"
 // - URL ?token= 또는 ?password= 폴백 지원
+// 공격 보정기: 이번 공격 1회 공격력 ×2
+// 방어 보정기: 이번 피격 1회 방어력 ×2
 
 /* ========== DOM 헬퍼 ========== */
 const $  = (q,root=document)=>root.querySelector(q);
