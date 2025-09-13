@@ -23,7 +23,6 @@
     .card{background:var(--glass-2);backdrop-filter:var(--blur-light);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-soft)}
     .title{font-size:20px;font-weight:800;color:var(--gold-bright);margin:6px 0 16px;text-transform:uppercase;letter-spacing:1px}
     .row{display:grid;gap:10px}
-    .row2{grid-template-columns:1fr 1fr}
     .row3{grid-template-columns:1fr 1fr 1fr}
     .field label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
     .field input{width:100%;padding:10px 12px;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;color:var(--text)}
@@ -103,7 +102,6 @@
 <script>
   const $ = (q) => document.querySelector(q);
 
-  // UI refs
   const connDot = $('#connDot');
   const connText = $('#connText');
   const battleMini = $('#battleMini');
@@ -125,7 +123,6 @@
 
   const logs = $('#logs');
 
-  // state
   let socket = null;
   let battleId = null;
   let me = null;
@@ -140,9 +137,10 @@
   }
 
   function addChat(name, message) {
+    const esc = (s)=>String(s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     const el = document.createElement('div');
     el.className = 'chat-entry';
-    el.innerHTML = `<span class="name">${name ? String(name).replace(/[&<>"']/g,s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s])) : '익명'}</span>: ${String(message||'').replace(/[&<>"']/g,s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s]))}`;
+    el.innerHTML = `<span class="name">${esc(name||'익명')}</span>: ${esc(message)}`;
     chatMessages.appendChild(el);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     while (chatMessages.children.length > 200) chatMessages.removeChild(chatMessages.firstChild);
@@ -191,7 +189,6 @@
     socket.on('battle:chat', (d) => addChat(d.name || d.senderName || '익명', d.message || ''));
 
     socket.on('battle:log', (entry) => {
-      // 플레이어에게 필요한 시스템 알림만 간단히 출력
       if (!entry) return;
       if (entry.type === 'system' || entry.type === 'admin') addLog(entry.message || '알림');
     });
@@ -241,8 +238,9 @@
   btnSend.addEventListener('click', () => {
     const msg = chatInput.value.trim();
     if (!msg || !socket || !battleId) return;
-    socket.emit('chatMessage', { battleId, name: (me && me.name) || '플레이어', message: msg });
-    socket.emit('battle:chat', { battleId, name: (me && me.name) || '플레이어', senderName: (me && me.name) || '플레이어', message: msg });
+    const name = (me && me.name) || '플레이어';
+    socket.emit('chatMessage', { battleId, name, message: msg });
+    socket.emit('battle:chat', { battleId, name, senderName: name, message: msg });
     chatInput.value = '';
   });
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') btnSend.click(); });
@@ -260,9 +258,7 @@
 
     connectSocket();
 
-    // 파라미터가 충분하면 자동 인증 시도
     if (b && t) {
-      // 소켓이 연결된 다음 시도하도록 약간 지연
       const tryLater = () => {
         if (socket && socket.connected) {
           socket.emit('join', { battleId });
