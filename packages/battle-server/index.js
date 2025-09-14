@@ -30,7 +30,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const server = createServer(app);
 
-// Socket.IO 설정
+// Socket.IO 설정 - 브로드캐스트 최적화
 const io = new Server(server, {
   path: '/socket.io',
   cors: {
@@ -40,7 +40,20 @@ const io = new Server(server, {
   },
   transports: ['websocket', 'polling'],
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  // 브로드캐스트 최적화
+  connectTimeout: 45000,
+  upgradeTimeout: 10000,
+  allowUpgrades: true,
+  perMessageDeflate: {
+    threshold: 1024,
+    concurrencyLimit: 10,
+    memLevel: 6
+  },
+  httpCompression: {
+    threshold: 1024,
+    memLevel: 6
+  }
 });
 
 // 미들웨어 설정
