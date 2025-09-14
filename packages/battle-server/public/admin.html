@@ -28,7 +28,7 @@
 
     .card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.02)),var(--panel);border:1px solid var(--border);
       border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:260px;overflow:hidden;}
-    .card__header{padding:12px 14px;background:linear-gradient(180deg,rgba(220,199,162,.12),rgba(220,199,162,.05));border-bottom:1px solid var(--border);}
+    .card__header{padding:12px 14px;background:linear-gradient(180deg,rgba(220,199,162,.12),rgba(220,199,162,.05));border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
     .title{font-weight:800;color:var(--gold-2)} .sub{font-size:12px;color:var(--muted)}
     .card__body{padding:14px 16px;flex:1;display:grid;gap:12px;align-content:start}
 
@@ -45,17 +45,19 @@
     .legend{font-size:12px;color:var(--muted);margin-bottom:4px}
     .console{height:240px;overflow:auto;border:1px solid var(--border);background:rgba(255,255,255,.02);border-radius:12px;padding:10px;font-size:13px}
     table{width:100%;border:1px solid var(--border);border-radius:12px;font-size:13px;border-collapse:separate;border-spacing:0;overflow:hidden}
+    .table-wrap{overflow-x:auto}
     thead{background:linear-gradient(180deg,rgba(220,199,162,.12),rgba(220,199,162,.06));position:sticky;top:0;z-index:1}
     th,td{padding:8px 10px;border-bottom:1px solid rgba(220,199,162,.14)} th{text-align:left;color:var(--gold-2);font-weight:700}
     tbody tr:nth-child(odd){background:rgba(255,255,255,.02)} tbody tr:hover{background:rgba(220,199,162,.08)}
     .conn{display:inline-flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)} .dot{width:10px;height:10px;border-radius:50%;background:#aa3333;border:1px solid #441}
+    .hint{font-size:12px;color:#A3A8B0}
   </style>
 </head>
 <body>
   <div class="container">
     <!-- 1) Links / Passwords (Top-Left) -->
     <section id="ctrlLinks" class="card">
-      <div class="card__header"><div class="title">관전자 / 링크</div><div class="sub">비밀번호 발급 · URL 생성/복사 · 참가자 링크</div></div>
+      <div class="card__header"><div><div class="title">관전자 / 링크</div><div class="sub">비밀번호 발급 · URL 생성/복사 · 참가자 링크</div></div><div class="hint">OTP: 관전자 30분</div></div>
       <div class="card__body">
         <div class="fieldset">
           <div class="legend">관전자</div>
@@ -64,7 +66,7 @@
         </div>
         <div class="fieldset">
           <div class="legend">전투 참가자 링크</div>
-          <div class="row"><button id="btnGenPlayer" class="btn">링크 생성</button><span style="font-size:12px;color:#c8cbd2">아래에서 복사</span></div>
+          <div class="row"><button id="btnGenPlayer" class="btn">링크 생성</button><span class="hint">아래에서 복사</span></div>
           <div id="playerLinks" class="card__body" style="padding:0;gap:6px;font-size:12px;color:#ccc"></div>
         </div>
       </div>
@@ -74,7 +76,7 @@
     <section id="ctrl" class="card">
       <div class="card__header"><div class="title">전투 제어</div><div class="sub">모드 · 생성 · 상태 전환</div></div>
       <div class="card__body">
-        <div class="row"><span style="font-size:12px;color:#A3A8B0">모드</span>
+        <div class="row"><span class="hint">모드</span>
           <select id="mode">
             <option value="1v1">1v1</option><option value="2v2" selected>2v2</option><option value="3v3">3v3</option><option value="4v4">4v4</option>
           </select>
@@ -91,33 +93,33 @@
 
     <!-- 3) Player Form (Top-Right) -->
     <section id="rosterForm" class="card">
-      <div class="card__header"><div class="title">참가자 입력</div><div class="sub">기본 정보 · 스탯 · 아이템</div></div>
+      <div class="card__header"><div><div class="title">참가자 입력</div><div class="sub">기본 정보 · 스탯 · 아이템</div></div><div class="hint">권장 1024×1024(최소 720×720)</div></div>
       <div class="card__body">
         <div class="fieldset">
           <div class="legend">기본 정보</div>
-          <div class="row"><span style="font-size:12px;color:#A3A8B0">이름</span><input id="pName" placeholder="이름" style="flex:1"/></div>
-          <div class="row"><span style="font-size:12px;color:#A3A8B0">팀</span>
+          <div class="row"><span class="hint">이름</span><input id="pName" placeholder="이름" style="flex:1"/></div>
+          <div class="row"><span class="hint">팀</span>
             <select id="pTeam"><option value="A">A팀</option><option value="B">B팀</option></select>
-            <span style="font-size:12px;color:#A3A8B0">HP</span><input id="pHp" type="number" value="100" min="1" max="100" style="width:110px"/>
+            <span class="hint">HP</span><input id="pHp" type="number" value="100" min="1" max="100" style="width:110px"/>
           </div>
           <div class="row" style="align-items:center">
-            <span style="font-size:12px;color:#A3A8B0">이미지</span><input id="pAvatar" type="file" accept="image/*"/>
+            <span class="hint">이미지</span><input id="pAvatar" type="file" accept="image/*"/>
             <img id="preview" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid var(--border)" alt="미리보기"/>
           </div>
         </div>
         <div class="fieldset">
           <div class="legend">스탯(1~5)</div>
-          <div class="row"><span style="font-size:12px;color:#A3A8B0">공</span><input id="sAtk" type="number" min="1" max="5" value="3" style="width:90px"/>
-            <span style="font-size:12px;color:#A3A8B0">방</span><input id="sDef" type="number" min="1" max="5" value="3" style="width:90px"/>
-            <span style="font-size:12px;color:#A3A8B0">민</span><input id="sAgi" type="number" min="1" max="5" value="3" style="width:90px"/>
-            <span style="font-size:12px;color:#A3A8B0">행</span><input id="sLuk" type="number" min="1" max="5" value="2" style="width:90px"/>
+          <div class="row"><span class="hint">공</span><input id="sAtk" type="number" min="1" max="5" value="3" style="width:90px"/>
+            <span class="hint">방</span><input id="sDef" type="number" min="1" max="5" value="3" style="width:90px"/>
+            <span class="hint">민</span><input id="sAgi" type="number" min="1" max="5" value="3" style="width:90px"/>
+            <span class="hint">행</span><input id="sLuk" type="number" min="1" max="5" value="2" style="width:90px"/>
           </div>
         </div>
         <div class="fieldset">
           <div class="legend">아이템</div>
-          <div class="row"><span style="font-size:12px;color:#A3A8B0">디터니</span><input id="iDit" type="number" min="0" value="0" style="width:90px"/>
-            <span style="font-size:12px;color:#A3A8B0">공보</span><input id="iAtkB" type="number" min="0" value="0" style="width:90px"/>
-            <span style="font-size:12px;color:#A3A8B0">방보</span><input id="iDefB" type="number" min="0" value="0" style="width:90px"/>
+          <div class="row"><span class="hint">디터니</span><input id="iDit" type="number" min="0" value="0" style="width:90px"/>
+            <span class="hint">공보</span><input id="iAtkB" type="number" min="0" value="0" style="width:90px"/>
+            <span class="hint">방보</span><input id="iDefB" type="number" min="0" value="0" style="width:90px"/>
           </div>
         </div>
         <div class="row" style="justify-content:flex-end"><button id="btnAddPlayer" class="btn">전투 참가자 추가</button></div>
@@ -139,7 +141,7 @@
     <!-- 5) Team A (Bottom-Center) -->
     <section id="teamAcard" class="card">
       <div class="card__header"><div class="title">팀 구성 · A팀</div><div class="sub">스탯/아이템/상태</div></div>
-      <div class="card__body">
+      <div class="card__body table-wrap">
         <table>
           <thead><tr><th>이름</th><th>HP</th><th>스탯(공/방/민/행)</th><th>아이템(디/공/방)</th><th>상태</th><th>삭제</th></tr></thead>
           <tbody id="listA"></tbody>
@@ -150,7 +152,7 @@
     <!-- 6) Team B (Bottom-Right) -->
     <section id="teamBcard" class="card">
       <div class="card__header"><div class="title">팀 구성 · B팀</div><div class="sub">스탯/아이템/상태</div></div>
-      <div class="card__body">
+      <div class="card__body table-wrap">
         <table>
           <thead><tr><th>이름</th><th>HP</th><th>스탯(공/방/민/행)</th><th>아이템(디/공/방)</th><th>상태</th><th>삭제</th></tr></thead>
           <tbody id="listB"></tbody>
@@ -164,6 +166,7 @@
   'use strict';
   const $=s=>document.querySelector(s);
   let socket=null; let battleId=null;
+  let firstTeam=null; let lastAttackerTeam=null;
   const els={
     mode:$('#mode'), btnCreate:$('#btnCreate'), btnStart:$('#btnStart'), btnPause:$('#btnPause'), btnResume:$('#btnResume'), btnEnd:$('#btnEnd'),
     btnGenPlayer:$('#btnGenPlayer'), btnGenSpectator:$('#btnGenSpectator'), btnBuildSpectator:$('#btnBuildSpectator'), spectatorOtp:$('#spectatorOtp'), spectatorUrl:$('#spectatorUrl'), playerLinks:$('#playerLinks'),
@@ -172,8 +175,12 @@
     listA:$('#listA'), listB:$('#listB'), log:$('#log'), chatMsg:$('#chatMsg'), btnSend:$('#btnSend'), connDot:$('#connDot'), connText:$('#connText')
   };
   function setConn(on){ els.connDot.style.background=on?'#2ea44f':'#aa3333'; els.connText.textContent=on?'연결됨':'연결 끊김'; }
-  function escapeHtml(s){ return String(s||'').replace(/[&<>\"']/g,(m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m])); }
-  function appendLog(msg){ const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'}); const d=document.createElement('div'); d.className='entry'; d.innerHTML=`<span class=\"t\">${t}</span>${escapeHtml(msg||'')}`; els.log.appendChild(d); els.log.scrollTop=els.log.scrollHeight; }
+  function escapeHtml(s){ return String(s||'').replace(/[&<>\"']/g,(m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\'':'&#39;'}[m])); }
+  function appendLog(msg){ const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'}); const d=document.createElement('div'); d.className='entry'; d.innerHTML=`<span class=\"t\">${t}</span>${escapeHtml(msg||'')}`; els.log.appendChild(d); els.log.scrollTop=els.log.scrollHeight; while(els.log.children.length>400) els.log.removeChild(els.log.firstChild);}
+
+  // Msg dedupe (battleLog & battle:log)
+  const logDedupe=new Set();
+  function addLogOnce(message){ const key=String(message||'').slice(0,256); if(logDedupe.has(key)) return; logDedupe.add(key); setTimeout(()=>logDedupe.delete(key),2000); appendLog(message); }
 
   // Chat dedupe
   const dedupe=new Set();
@@ -182,16 +189,51 @@
   function connect(){
     if(socket) try{ socket.close(); }catch(_){}
     socket=io();
-    socket.on('connect',()=>{ setConn(true); });
+    socket.on('connect',()=>{ setConn(true); appendLog('서버 연결됨'); });
     ['battleUpdate','battle:update','battleState','state:update'].forEach(ev=>socket.on(ev, onBattleUpdate));
-    socket.on('disconnect',()=>setConn(false));
-    socket.on('battleLog',m=>appendLog(typeof m==='string'?m:(m?.message||'')));
-    socket.on('battle:log',({message})=>appendLog(message||''));
+    socket.on('disconnect',()=>{ setConn(false); appendLog('연결 끊김 · 재연결 시도 중'); });
+    socket.io.on('reconnect',()=>appendLog('재연결됨'));
+    socket.on('battleLog',m=>addLogOnce(typeof m==='string'?m:(m?.message||'')));
+    socket.on('battle:log',({message})=>addLogOnce(message||''));
     socket.on('chatMessage', d=> addChatOnce(d?.name||'익명', d?.message||''));
     socket.on('battle:chat', d=> addChatOnce(d?.name||d?.senderName||'익명', d?.message||''));
+
+    // Track actions for tie-breaker "최근 공격자"
+    socket.on('playerAction', onAction);
+    socket.on('player:action', onAction);
   }
 
-  function onBattleUpdate(b){ if(!b) return; battleId=b.id||battleId; renderTeams(b); }
+  function onAction(a){
+    if(a?.type==='attack'){
+      const pTeam = (a.team || a.playerTeam);
+      if(pTeam==='A' || pTeam==='B') lastAttackerTeam = pTeam;
+    }
+  }
+
+  function onBattleUpdate(b){
+    if(!b) return;
+    battleId=b.id||battleId;
+    if(!firstTeam && b.turn?.round===1) firstTeam = b.currentTeam || b.turn?.order?.[0] || null;
+    renderTeams(b);
+    if(b.status==='ended'){ const result = computeWinner(b); appendLog('승자 결정: '+result); }
+  }
+
+  function computeWinner(b){
+    const aliveA = (b.players||[]).filter(p=>p.team==='A' && p.hp>0).length;
+    const aliveB = (b.players||[]).filter(p=>p.team==='B' && p.hp>0).length;
+    if(aliveA!==aliveB) return aliveA>aliveB?'A팀(생존자 우세)':'B팀(생존자 우세)';
+    const hpA = (b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.hp||0),0);
+    const hpB = (b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.hp||0),0);
+    if(hpA!==hpB) return hpA>hpB?'A팀(체력 합산 우세)':'B팀(체력 합산 우세)';
+    if(lastAttackerTeam) return lastAttackerTeam+'(최근 공격자 우선)';
+    if(b.currentTeam) return (b.currentTeam==='A'?'A팀':'B팀')+'(현재 턴 팀 우선)';
+    if(firstTeam) return (firstTeam==='A'?'A팀':'B팀')+'(선공 팀 우선)';
+    const agiA=(b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.stats?.agility||0),0);
+    const agiB=(b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.stats?.agility||0),0);
+    if(agiA!==agiB) return agiA>agiB?'A팀(민첩 합 우세)':'B팀(민첩 합 우세)';
+    return 'A팀(알파벳 순)';
+  }
+
   function renderTeams(b){
     const toRow=(p)=>`<tr data-id=\"${p.id}\"><td>${escapeHtml(p.name)}</td><td>${p.hp}/${p.maxHp||100}</td><td>${p.stats?.attack}/${p.stats?.defense}/${p.stats?.agility}/${p.stats?.luck}</td><td>${p.items?.dittany??p.items?.ditany||0}/${p.items?.attack_boost||0}/${p.items?.defense_boost||0}</td><td>${p.ready?'준비':'대기'}</td><td><button class=\"rem btn btn--ghost\">삭제</button></td></tr>`;
     els.listA.innerHTML=(b.players||[]).filter(p=>p.team==='A').map(toRow).join('');
@@ -219,7 +261,14 @@
   $('#btnResume').addEventListener('click',()=> socket.emit('resumeBattle',{ battleId }));
   $('#btnEnd').addEventListener('click',()=> socket.emit('endBattle',{ battleId }));
 
-  // Links / OTP
+  // Links / OTP + Clipboard modern API with fallback
+  function copyText(t){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(()=>appendLog('복사 완료')).catch(()=>fallback());
+    }else fallback();
+    function fallback(){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); appendLog('복사 완료'); }
+  }
+
   $('#btnGenPlayer').addEventListener('click',()=>{
     if(!battleId) return appendLog('전투가 없습니다.');
     fetch(`/api/admin/battles/${battleId}/links`,{ method:'POST' })
@@ -227,7 +276,7 @@
         const arr=d?.playerLinks||[];
         els.playerLinks.innerHTML=arr.map(x=>`<div class=\"row\"><input value=\"${x}\" readonly style=\"flex:1\"/><button class=\"btn btn--ghost copy\">복사</button></div>`).join('');
         els.playerLinks.querySelectorAll('.copy').forEach((b)=>{
-          b.onclick=()=>{ const inp=b.previousElementSibling; inp.select(); document.execCommand('copy'); appendLog('복사 완료'); };
+          b.onclick=()=>{ const inp=b.previousElementSibling; copyText(inp.value); };
         });
         if(d?.spectatorOtp) els.spectatorOtp.value=d.spectatorOtp;
       }).catch(e=>appendLog('링크 생성 실패: '+e));
@@ -243,14 +292,15 @@
     if(!battleId) return appendLog('전투가 없습니다.');
     const otp=els.spectatorOtp.value||'';
     const url=`${location.origin}/spectator.html?battle=${encodeURIComponent(battleId)}&otp=${encodeURIComponent(otp)}`;
-    els.spectatorUrl.value=url;
-    const ta=document.createElement('textarea'); ta.value=url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    els.spectatorUrl.value=url; copyText(url);
     appendLog('관전자 URL 복사');
   });
 
-  // Player add
+  // Player add + avatar guard
   $('#pAvatar').addEventListener('change',(e)=>{
     const f=e.target.files?.[0]; if(!f) return;
+    if(!f.type.startsWith('image/')){ appendLog('이미지 파일만 업로드 가능합니다.'); e.target.value=''; return; }
+    if(f.size>2*1024*1024){ appendLog('파일 용량이 큽니다(2MB 초과).'); e.target.value=''; return; }
     const fr=new FileReader(); fr.onload=()=>{ els.preview.src=fr.result; }; fr.readAsDataURL(f);
   });
   $('#btnAddPlayer').addEventListener('click',()=>{
