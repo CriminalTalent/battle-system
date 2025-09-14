@@ -17,9 +17,7 @@ const __dirname  = path.dirname(__filename);
 const AVATAR_DIR  = path.resolve(__dirname, "../../uploads/avatars");
 fs.mkdirSync(AVATAR_DIR, { recursive: true });
 
-const ALLOWED_MIME = new Set([
-  "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"
-]);
+const ALLOWED_MIME = new Set(["image/png","image/jpeg","image/jpg","image/webp","image/gif"]);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, AVATAR_DIR),
