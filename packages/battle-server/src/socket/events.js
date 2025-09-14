@@ -1,6 +1,6 @@
 // packages/battle-server/src/socket/events.js
-// PYXIS WebSocket Event Handlers - 브로드캐스트 강화
-// 실시간 통신 이벤트 처리 + 권한별 룸 관리
+// PYXIS WebSocket Event Handlers - 통합 브로드캐스트
+// 실시간 통신 이벤트 처리 + 기존 broadcast.js 활용
 
 import { 
   handlePlayerAction, 
@@ -12,14 +12,22 @@ import {
   initializeBroadcastManager
 } from '../engine/battle-handlers.js';
 
-// 전역 전투 저장소 (실제 환경에서는 Redis 등 사용)
+import { 
+  broadcastChat, 
+  broadcastSpectatorCount,
+  BroadcastManager 
+} from '../socket/broadcast.js';
+
+import crypto from 'crypto';
+
+// 전역 전투 저장소
 const battles = new Map();
 
 // 브로드캐스트 관리자
 let broadcastManager = null;
 
 /**
- * Socket.IO 이벤트 등록 - 기존 HTML과 호환성 유지 + 브로드캐스트 강화
+ * Socket.IO 이벤트 등록 - 기존 HTML과 호환성 유지 + 통합 브로드캐스트
  */
 export function registerSocketEvents(io) {
   // 브로드캐스트 관리자 초기화
@@ -34,8 +42,6 @@ export function registerSocketEvents(io) {
       timestamp: Date.now(),
       serverVersion: '3.0.2'
     });
-    
-    // 기존 이벤트명들과 신규 이벤트명 모두 지원
     
     // ===== 방 참가 (기존 HTML 호환) =====
     socket.on('join', (data) => handleJoinBattle.call(socket, data));
@@ -65,13 +71,475 @@ export function registerSocketEvents(io) {
     socket.on('updatePlayer', (data) => handleUpdatePlayer.call(socket, data));
     
     // ===== 플레이어 행동 (기존 HTML 호환) =====
-    socket.on('action', (data) => handlePlayerAction.call(socket, data));
-    socket.on('player_action', (data) => handlePlayerAction.call(socket, data));
-    socket.on('playerAction', (data) => handlePlayerAction.call(socket, data));
+    socket.on('action', (data) => handlePlayerActionEvent.call(socket, data));
+    socket.on('player_action', (data) => handlePlayerActionEvent.call(socket, data));
+    socket.on('playerAction', (data) => handlePlayerActionEvent.call(socket, data));
     
     // ===== 채팅 (기존 HTML 호환) =====
     socket.on('chatMessage', (data) => handleChatMessage.call(socket, data));
     socket.on('chat_message', (data) => handleChatMessage.call(socket, data));
+    socket.on('chat:send', (data) => handleChatMessage.call(socket, data));
+    
+    // ===== 관전자 응원 =====
+    socket.on('cheer:send', (data) => handleCheerMessage.call(socket, data));
+    socket.on('cheerMessage', (data) => handleCheerMessage.call(socket, data));
+    socket.on('spectator:cheer', (data) => handleCheerMessage.call(socket, data));
+    
+    // ===== 실시간 상태 요청 =====
+    socket.on('request:battle:state', (data) => handleStateRequest.call(socket, data));
+    socket.on('getBattleState', (data) => handleStateRequest.call(socket, data));
+    
+    // ===== 재연결 처리 =====
+    socket.on('reconnect:restore', (data) => handleReconnectRestore.call(socket, data));
+    
+    // ===== 핑퐁 =====
+    socket.on('ping', () => socket.emit('pong', { ts: Date.now(), socketId: socket.id }));
+    
+    // ===== 연결 해제 =====
+    socket.on('disconnect', () => handleDisconnect.call(socket));
+    
+    // ===== 에러 핸들링 =====
+    socket.on('error', (error) => {
+      console.error(`[SOCKET] Error from ${socket.id}:`, error);
+      socket.emit('socket:error', { error: error.message, timestamp: Date.now() });
+    });
+  });
+  
+  // === 전역 타이머들 ===
+  setInterval(() => checkTurnTimeouts(io), 30000);
+  setInterval(() => synchronizeConnections(io), 60000);
+  setInterval(() => cleanupEmptyRooms(io), 300000);
+}
+
+/**
+ * 전투 참가 처리 - 기존 HTML 호환 + 강화된 룸 관리
+ */
+function handleJoinBattle(data) {
+  const socket = this;
+  
+  let { battleId, playerId, playerType, otp, token, role, name, team } = data;
+  
+  battleId = battleId || data.battleId;
+  otp = otp || token;
+  playerType = playerType || role;
+  
+  try {
+    const battle = battles.get(battleId);
+    if (!battle) {
+      const errorResponse = { error: '전투를 찾을 수 없습니다' };
+      socket.emit('join_error', errorResponse);
+      socket.emit('authError', errorResponse);
+      socket.emit('auth:error', errorResponse);
+      return;
+    }
+    
+    // === 권한별 룸 참가 ===
+    const baseRoom = battleId;
+    const mainRoom = String(battleId);
+    const legacyRoom = `battle-${battleId}`;
+    
+    [baseRoom, mainRoom, legacyRoom].forEach(room => socket.join(room));
+    
+    if (playerType === 'admin') {
+      socket.join(`${battleId}:admin`);
+    } else if (playerType === 'player' && playerId) {
+      socket.join(`${battleId}:player`);
+      socket.join(`${battleId}:player:${playerId}`);
+      
+      const player = battle.players.find(p => p.id === playerId);
+      if (player) {
+        player.socketId = socket.id;
+        player.connected = true;
+        player.lastConnected = Date.now();
+        
+        // 연결 상태 브로드캐스트 (기존 함수 활용)
+        broadcastPlayerConnection(battleId, playerId, true);
+      }
+    } else if (playerType === 'spectator') {
+      socket.join(`${battleId}:spectator`);
+      updateSpectatorCount(battleId);
+    }
+    
+    socket.battleId = battleId;
+    socket.playerId = playerId;
+    socket.playerType = playerType || 'player';
+    socket.playerName = name;
+    socket.team = team;
+    socket.connectedAt = Date.now();
+    
+    // === 성공 응답 (다중 호환) ===
+    const successResponse = { 
+      ok: true,
+      battle: battle, 
+      role: socket.playerType,
+      battleId: battleId,
+      playerId: playerId,
+      timestamp: Date.now()
+    };
+    
+    socket.emit('join_success', successResponse);
+    socket.emit('authSuccess', successResponse);
+    socket.emit('auth:success', successResponse);
+    
+    // === 현재 전투 상태 전송 ===
+    if (broadcastManager) {
+      broadcastManager.sendCurrentState(socket, battleId);
+    } else {
+      socket.emit('battleUpdate', battle);
+      socket.emit('battle:update', battle);
+      socket.emit('battleState', battle);
+    }
+    
+    console.log(`[BATTLE] ${playerType} ${playerId || 'anonymous'} joined battle ${battleId}`);
+    
+  } catch (error) {
+    console.error('[SOCKET] Join battle error:', error);
+    const errorResponse = { error: '전투 참가 중 오류가 발생했습니다' };
+    socket.emit('join_error', errorResponse);
+    socket.emit('authError', errorResponse);
+    socket.emit('auth:error', errorResponse);
+  }
+}
+
+/**
+ * 전투 생성 처리 - 기존 HTML 호환
+ */
+function handleCreateBattle(data, callback) {
+  const socket = this;
+  const { mode, title, options } = data || {};
+  
+  try {
+    const battleId = crypto.randomUUID();
+    const battle = {
+      id: battleId,
+      title: title || `PYXIS ${mode || '2v2'} 전투`,
+      mode: mode || '2v2',
+      status: 'waiting',
+      players: [],
+      effects: [],
+      logs: [],
+      createdAt: Date.now(),
+      createdBy: socket.id,
+      actionCount: 0,
+      criticalHits: 0,
+      itemsUsed: 0,
+      turn: {
+        round: 1,
+        order: ['A', 'B'],
+        phaseIndex: 0,
+        acted: { A: new Set(), B: new Set() },
+        maxTurns: options?.maxTurns || 100,
+        actions: [],
+        lastPhaseStart: Date.now()
+      }
+    };
+    
+    battles.set(battleId, battle);
+    
+    [battleId, String(battleId), `battle-${battleId}`, `${battleId}:admin`].forEach(room => {
+      socket.join(room);
+    });
+    
+    socket.battleId = battleId;
+    socket.playerType = 'admin';
+    socket.connectedAt = Date.now();
+    
+    const result = {
+      ok: true,
+      battleId: battleId,
+      battle: battle,
+      timestamp: Date.now()
+    };
+    
+    if (typeof callback === 'function') callback(result);
+    socket.emit('battle:created', result);
+    socket.emit('battleCreated', result);
+    socket.emit('admin:created', result);
+    
+    if (broadcastManager) {
+      broadcastManager.broadcastSystemLog(battleId, {
+        type: 'system',
+        message: `전투가 생성되었습니다 (모드: ${mode || '2v2'})`
+      });
+    }
+    
+    console.log(`[BATTLE] Created: ${battleId} (${mode || '2v2'}) by ${socket.id}`);
+    
+  } catch (error) {
+    console.error('[SOCKET] Create battle error:', error);
+    const errorResult = { ok: false, error: '전투 생성 중 오류가 발생했습니다' };
+    if (typeof callback === 'function') callback(errorResult);
+    socket.emit('battleError', errorResult);
+    socket.emit('battle:error', errorResult);
+  }
+}
+
+/**
+ * 플레이어 행동 이벤트 처리 - 통합 브로드캐스트
+ */
+function handlePlayerActionEvent(data) {
+  const socket = this;
+  let { battleId, playerId, type, targetId, itemType, action } = data;
+  
+  if (action && typeof action === 'object') {
+    type = type || action.type;
+    targetId = targetId || action.targetId;
+    itemType = itemType || action.itemType;
+  }
+  
+  battleId = battleId || socket.battleId;
+  playerId = playerId || socket.playerId;
+  
+  try {
+    const battle = battles.get(battleId);
+    if (!battle) {
+      socket.emit('action_error', { error: '전투를 찾을 수 없습니다' });
+      socket.emit('action:error', { error: '전투를 찾을 수 없습니다' });
+      return;
+    }
+    
+    const canAct = canPlayerAct(battle, playerId);
+    if (!canAct.canAct) {
+      socket.emit('action_error', { error: canAct.reason });
+      socket.emit('action:error', { error: canAct.reason });
+      return;
+    }
+    
+    if (targetId) {
+      const targetValidation = validateTarget(battle, playerId, targetId, type);
+      if (!targetValidation.valid) {
+        socket.emit('action_error', { error: targetValidation.error });
+        socket.emit('action:error', { error: targetValidation.error });
+        return;
+      }
+    }
+    
+    // 행동 처리 (통합 브로드캐스트 포함)
+    const result = handlePlayerAction(socket.server, battle, {
+      playerId,
+      type,
+      targetId,
+      itemType
+    });
+    
+    if (!result.success) {
+      socket.emit('action_error', { error: result.error });
+      socket.emit('action:error', { error: result.error });
+      return;
+    }
+    
+    socket.emit('action_success', { ok: true, logs: result.logs });
+    socket.emit('action:success', { ok: true, logs: result.logs });
+    
+  } catch (error) {
+    console.error('[SOCKET] Player action error:', error);
+    socket.emit('action_error', { error: '행동 처리 중 오류가 발생했습니다' });
+    socket.emit('action:error', { error: '행동 처리 중 오류가 발생했습니다' });
+  }
+}
+
+/**
+ * 채팅 메시지 처리 - 기존 함수 활용
+ */
+function handleChatMessage(data) {
+  const socket = this;
+  let { battleId, message, name, role, team, senderName } = data;
+  
+  battleId = battleId || socket.battleId;
+  name = name || senderName || socket.playerName || '플레이어';
+  role = role || socket.playerType || 'player';
+  
+  try {
+    const battle = battles.get(battleId);
+    if (!battle) return;
+    
+    const chatData = {
+      name: name,
+      senderName: name,
+      message: message,
+      role: role,
+      team: team,
+      timestamp: Date.now()
+    };
+    
+    // 기존 broadcastChat 함수 활용
+    broadcastChat(socket.server, battleId, chatData);
+    
+  } catch (error) {
+    console.error('[SOCKET] Chat message error:', error);
+  }
+}
+
+/**
+ * 관전자 응원 메시지 처리
+ */
+function handleCheerMessage(data) {
+  const socket = this;
+  const { battleId, message, cheer, name } = data;
+  
+  try {
+    const finalMessage = cheer || message || getRandomSpectatorComment();
+    
+    const cheerData = {
+      type: 'spectator_cheer',
+      message: finalMessage,
+      cheer: finalMessage,
+      name: name || '관전자',
+      timestamp: Date.now()
+    };
+    
+    if (broadcastManager) {
+      broadcastManager.broadcastSpectatorCheer(battleId || socket.battleId, cheerData);
+    } else {
+      socket.server.to(battleId || socket.battleId).emit('spectator:cheer', cheerData);
+      socket.server.to(battleId || socket.battleId).emit('cheerMessage', cheerData);
+    }
+    
+  } catch (error) {
+    console.error('[SOCKET] Cheer message error:', error);
+  }
+}
+
+/**
+ * 관전자 수 업데이트 - 기존 함수 활용
+ */
+function updateSpectatorCount(battleId) {
+  const spectatorRoom = `${battleId}:spectator`;
+  const room = io?.sockets?.adapter?.rooms?.get(spectatorRoom);
+  const count = room ? room.size : 0;
+  
+  broadcastSpectatorCount(io, battleId, count);
+}
+
+/**
+ * 플레이어 연결 상태 브로드캐스트
+ */
+function broadcastPlayerConnection(battleId, playerId, connected) {
+  const broadcast = {
+    type: 'player_connection',
+    battleId: String(battleId),
+    playerId,
+    connected,
+    timestamp: Date.now()
+  };
+  
+  if (broadcastManager) {
+    broadcastManager.io.to(String(battleId)).emit('player_connection', broadcast);
+    broadcastManager.io.to(String(battleId)).emit('playerConnection', broadcast);
+    broadcastManager.io.to(String(battleId)).emit('player:connection', broadcast);
+  }
+}
+
+/**
+ * 턴 타임아웃 체크
+ */
+function checkTurnTimeouts(io) {
+  const now = Date.now();
+  const timeoutDuration = 5 * 60 * 1000; // 5분
+  
+  for (const [battleId, battle] of battles) {
+    if (battle.status === 'active' && battle.turn && battle.turn.lastPhaseStart) {
+      const elapsed = now - battle.turn.lastPhaseStart;
+      
+      if (elapsed >= timeoutDuration) {
+        console.log(`[BATTLE] Turn timeout for battle ${battleId}`);
+        handleTurnTimeout(io, battle);
+        battle.turn.lastPhaseStart = now;
+      }
+    }
+  }
+}
+
+/**
+ * 연결 상태 동기화
+ */
+function synchronizeConnections(io) {
+  for (const [battleId, battle] of battles) {
+    for (const player of battle.players || []) {
+      if (player.socketId) {
+        const socket = io.sockets.sockets.get(player.socketId);
+        const isConnected = socket && socket.connected;
+        
+        if (player.connected !== isConnected) {
+          player.connected = isConnected;
+          broadcastPlayerConnection(battleId, player.id, isConnected);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 빈 방 정리
+ */
+function cleanupEmptyRooms(io) {
+  const now = Date.now();
+  const inactiveThreshold = 30 * 60 * 1000; // 30분
+  
+  for (const [battleId, battle] of battles) {
+    const room = io.sockets.adapter.rooms.get(String(battleId));
+    const socketCount = room ? room.size : 0;
+    const isInactive = (now - (battle.lastActivity || battle.createdAt)) > inactiveThreshold;
+    
+    if (socketCount === 0 && (battle.status === 'ended' || isInactive)) {
+      battles.delete(battleId);
+      console.log(`[CLEANUP] Removed inactive battle: ${battleId}`);
+      
+      if (broadcastManager) {
+        broadcastManager.roomStates.delete(battleId);
+      }
+    }
+  }
+}
+
+// 기존 핸들러 스텁들 (필요시 구현)
+function handleStartBattle(data) {
+  const socket = this;
+  const { battleId } = data || { battleId: socket.battleId };
+  
+  try {
+    const battle = battles.get(battleId);
+    if (!battle) {
+      socket.emit('battleError', { error: '전투를 찾을 수 없습니다' });
+      return;
+    }
+    
+    if (battle.status !== 'waiting') {
+      socket.emit('battleError', { error: '이미 시작된 전투입니다' });
+      return;
+    }
+    
+    // 전투 시작 (통합 브로드캐스트 포함)
+    const startResult = startBattle(socket.server, battle);
+    
+    socket.emit('battleStarted', { ok: true, battle: battle });
+    socket.emit('battle:started', startResult);
+    
+    console.log(`[BATTLE] Started: ${battleId} by ${socket.id}`);
+    
+  } catch (error) {
+    console.error('[SOCKET] Start battle error:', error);
+    socket.emit('battleError', { error: '전투 시작 중 오류가 발생했습니다' });
+  }
+}
+
+function handleEndBattle(data) { /* 구현 생략 */ }
+function handlePauseBattle(data) { /* 구현 생략 */ }
+function handleResumeBattle(data) { /* 구현 생략 */ }
+function handleAddPlayer(data) { /* 구현 생략 */ }
+function handleRemovePlayer(data) { /* 구현 생략 */ }
+function handleUpdatePlayer(data) { /* 구현 생략 */ }
+function handleStateRequest(data) { /* 구현 생략 */ }
+function handleReconnectRestore(data) { /* 구현 생략 */ }
+function handleDisconnect() { /* 구현 생략 */ }
+
+// 전투 저장소 내보내기
+export { battles };
+
+export default {
+  registerSocketEvents,
+  battles
+};chat_message', (data) => handleChatMessage.call(socket, data));
     socket.on('chat:send', (data) => handleChatMessage.call(socket, data));
     
     // ===== 관전자 응원 =====
