@@ -1,134 +1,107 @@
-// packages/battle-server/src/socket/broadcast.js
-'use strict';
 
-/**
- * 브로드캐스트 유틸 모음 (전투 로직 없음)
- * - 신/구 이벤트명을 모두 지원합니다.
- *
- * 사용 예)
- *   import { broadcastBattle, broadcastLog, broadcastEnded } from './broadcast.js';
- *   broadcastBattle(io, battle); // 상태 전체
- *   broadcastLog(io, battle.id, { type:'system', message:'라운드 시작' });
- *   broadcastEnded(io, battle.id, { winner:'A' });
- */
+// broadcast.js
+// Unified broadcaster: emits both legacy and new event names for compatibility.
+export class BroadcastManager {
+  constructor(io){ this.io = io; }
 
-/* =========================
- *  공통: 방(배틀) 단위 송신
- * ========================= */
-function room(io, battleId) {
-  return io.to(String(battleId));
+  _rooms(battle){ 
+    const id = typeof battle === 'string' ? battle : battle?.id;
+    return [`battle-${id}`, id, String(id)];
+  }
+
+  // ---- low-level helpers ----
+  _emitRooms(rooms, evt, payload){
+    rooms.forEach(r => this.io.to(r).emit(evt, payload));
+  }
+
+  // ---- generic ----
+  broadcastBattleUpdate(battle, opts={}){
+    const payload = sanitizeBattle(battle);
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'battleUpdate', payload);
+    this._emitRooms(rooms, 'battle:update', payload);
+    if (opts.immediate) { /* no-op; kept for API parity */ }
+  }
+
+  broadcastSystemLog(battleId, log){
+    const rooms = this._rooms(battleId);
+    this._emitRooms(rooms, 'battleLog', log);
+    this._emitRooms(rooms, 'battle:log', log);
+  }
+
+  broadcastCombatLog(battleId, logs){
+    const rooms = this._rooms(battleId);
+    (logs || []).forEach(l => {
+      this._emitRooms(rooms, 'battleLog', l);
+      this._emitRooms(rooms, 'battle:log', l);
+    });
+  }
+
+  broadcastActionResult(battle, action, result){
+    const payload = { type:'action_result', action, ...result };
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'battle_update', payload);
+    this._emitRooms(rooms, 'actionSuccess', payload);
+  }
+
+  broadcastPhaseComplete(battle, payload){
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'phase_complete', payload);
+  }
+
+  broadcastTurnChange(battle, payload){
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'turn_change', payload);
+  }
+
+  broadcastBattleStart(battle, initiative){
+    const payload = { type:'battle_start', initiative };
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'battle_start', payload);
+    this._emitRooms(rooms, 'battle:started', payload);
+    this._emitRooms(rooms, 'battleStarted', payload);
+  }
+
+  broadcastBattleEnd(battle, endData){
+    const rooms = this._rooms(battle);
+    this._emitRooms(rooms, 'battle_end', endData);
+    this._emitRooms(rooms, 'battle:ended', endData);
+  }
+
+  broadcastChat(battleId, data){
+    const rooms = this._rooms(battleId);
+    this._emitRooms(rooms, 'chatMessage', data);
+    this._emitRooms(rooms, 'battle:chat', data);
+  }
+
+  broadcastSpectatorCount(battleId, count){
+    const rooms = this._rooms(battleId);
+    this._emitRooms(rooms, 'spectator_count', { count });
+  }
 }
 
-/* =========================
- *  상태/진행 브로드캐스트
- * ========================= */
-/**
- * battle 상태 전체 브로드캐스트
- * - 신: "battle:update"
- * - 구: "battleUpdate"
- */
-export function broadcastBattle(io, battle, extra = {}) {
-  if (!io || !battle || !battle.id) return;
-  const payload = { ...battle, ...extra };
-  room(io, battle.id).emit('battle:update', payload);
-  room(io, battle.id).emit('battleUpdate', payload);
-}
-
-/**
- * 관리자 패널 전용 메타/델타
- * - 신: "admin:update"
- */
-export function broadcastAdmin(io, battleId, data) {
-  if (!io || !battleId) return;
-  room(io, battleId).emit('admin:update', data);
-}
-
-/**
- * 전투 종료 알림
- * - 신: "battle:ended"
- */
-export function broadcastEnded(io, battleId, result) {
-  if (!io || !battleId) return;
-  room(io, battleId).emit('battle:ended', result || {});
-}
-
-/* =========================
- *  로그/채팅/관전자 카운트
- * ========================= */
-/**
- * 전투 로그 1건
- * - 신: "battle:log"
- * - 구: "battleLog"
- */
-export function broadcastLog(io, battleId, entry) {
-  if (!io || !battleId || !entry) return;
-  room(io, battleId).emit('battle:log', entry);
-  room(io, battleId).emit('battleLog', entry);
-}
-
-/**
- * 채팅 메시지
- * - 신: "battle:chat"
- * - 구: "chatMessage"
- *  (양쪽 모두 송신해서 socket-manager / 기존 admin.js 둘 다 호환)
- */
-export function broadcastChat(io, battleId, msg) {
-  if (!io || !battleId || !msg || !msg.message) return;
-
-  const payload = {
-    name: msg.name || msg.senderName || '익명',
-    senderName: msg.senderName || msg.name || '익명',
-    message: msg.message,
-    timestamp: msg.timestamp || Date.now()
-  };
-
-  // 새 클라이언트용
-  room(io, battleId).emit('battle:chat', payload);
-  // 레거시 호환
-  room(io, battleId).emit('chatMessage', payload);
-}
-
-/**
- * 관전자 수 갱신
- * - 신: "spectator:count"    ← socket-manager가 청취
- * - 보조: "spectator:count_update", "spectatorCountUpdate" (레거시 호환)
- */
-export function broadcastSpectatorCount(io, battleId, count) {
-  if (!io || !battleId || typeof count !== 'number') return;
-  const payload = { count: Number(count) || 0 };
-  room(io, battleId).emit('spectator:count', payload);           // 신
-  room(io, battleId).emit('spectator:count_update', payload);    // 구(신규 구형 혼재)
-  room(io, battleId).emit('spectatorCountUpdate', payload);      // 구
-}
-
-/* =========================
- *  턴/페이즈 힌트(선택)
- * ========================= */
-/**
- * 현재 턴 시작 힌트
- * - 신: "turn:start"
- */
-export function broadcastTurnStart(io, battleId, data) {
-  if (!io || !battleId) return;
-  room(io, battleId).emit('turn:start', data || {});
-}
-
-/**
- * 턴 종료 힌트
- * - 신: "turn:end"
- */
-export function broadcastTurnEnd(io, battleId, data) {
-  if (!io || !battleId) return;
-  room(io, battleId).emit('turn:end', data || {});
-}
-
-export default {
-  broadcastBattle,
-  broadcastAdmin,
-  broadcastEnded,
-  broadcastLog,
-  broadcastChat,
-  broadcastSpectatorCount,
-  broadcastTurnStart,
-  broadcastTurnEnd
+// Fallback functional APIs (some code imports these directly)
+export const broadcastChat = (io, battleId, data)=> {
+  const mgr = new BroadcastManager(io);
+  mgr.broadcastChat(battleId, data);
 };
+export const broadcastSpectatorCount = (io, battleId, count)=> {
+  const mgr = new BroadcastManager(io);
+  mgr.broadcastSpectatorCount(battleId, count);
+};
+
+function sanitizeBattle(b){
+  // Shallow copy only the fields the clients rely on.
+  if (!b) return {};
+  return {
+    id: b.id,
+    status: b.status,
+    players: b.players,
+    effects: b.effects,
+    currentTeam: b.currentTeam,
+    timeLeft: b.timeLeft,
+    turn: b.turn,
+    currentTurn: b.currentTurn,
+    leadingTeam: b.leadingTeam
+  };
+}
