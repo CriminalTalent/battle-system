@@ -1,4 +1,4 @@
-// packages/battle-server/index.js - PYXIS Battle Server (정적 라우트/자동 로그인/관리자용 링크 생성 + 디버그 로그/호환 이벤트 포함)
+// packages/battle-server/index.js - (채팅 중복 제거/응원-채팅화/턴 자동진행+선후공 교대 추가)
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -32,9 +32,10 @@ const otpStore = new Map(); // key -> { otp, role, battleId, ... }
 
 /* -------------------------------- Helpers -------------------------------- */
 const genId = () => "battle_" + Math.random().toString(36).slice(2, 10);
+const otherTeam = (t) => (t === "A" ? "B" : "A");
 
 function genOTP(len = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 헷갈리는 글자 제외
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
   for (let i = 0; i < len; i++) s += chars[(Math.random() * chars.length) | 0];
   return s;
@@ -65,99 +66,14 @@ function pushLog(battleId, type, message, data = {}) {
   io.to(battleId).emit("battle:log", entry);
 }
 
-/* ---------- 새로 추가된 보조들: 턴/라운드 진행 체크(룰 변경 없음) ---------- */
 function alivePlayersOfTeam(b, team) {
   return (b.players || []).filter((p) => p.team === team && (p.hp ?? 1) > 0);
 }
-
-function otherTeam(team) {
-  return team === "A" ? "B" : "A";
-}
-
-function ensureTurnStruct(b) {
-  // 기존 currentTurn 형태를 보존하면서 확장 필드만 보장
-  b.currentTurn = b.currentTurn || {};
-  if (!b.currentTurn.turnNumber) b.currentTurn.turnNumber = 1;
-  if (!b.currentTurn.currentTeam) b.currentTurn.currentTeam = "A";
-  if (!b.currentTurn.actionsByTeam)
-    b.currentTurn.actionsByTeam = { A: {}, B: {} };
-  if (!b.currentTurn.phaseDone)
-    b.currentTurn.phaseDone = { A: false, B: false };
-  if (!b.turnFirstTeam) b.turnFirstTeam = "A"; // 라운드 시작 팀(라운드마다 교대)
-}
-
-function summarizeRound(b) {
-  // 룰/HP 계산은 기존 로직을 유지하기 위해 변경하지 않고,
-  // 입력된 액션을 집계하여 "라운드 결과"를 로그로 송출
-  const n = b.currentTurn?.turnNumber || 1;
-  const actsA = Object.values(b.currentTurn.actionsByTeam?.A || {}).map(
-    (a) => a?.type
-  );
-  const actsB = Object.values(b.currentTurn.actionsByTeam?.B || {}).map(
-    (a) => a?.type
-  );
-  const msg =
-    `라운드 ${n} 결과 — ` +
-    `선공(${b.turnFirstTeam}) [${actsA.length}개: ${actsA.join(", ") || "-"}], ` +
-    `후공(${otherTeam(b.turnFirstTeam)}) [${actsB.length}개: ${actsB.join(", ") || "-"}]`;
-  return msg;
-}
-
-function startNextRound(battleId) {
-  const b = battles.get(battleId);
-  if (!b) return;
-
-  // 라운드 결과 송출
-  const summary = summarizeRound(b);
-  pushLog(battleId, "battle", summary);
-
-  // 선/후공 교대
-  b.turnFirstTeam = otherTeam(b.turnFirstTeam);
-  b.currentTurn.turnNumber += 1;
-  b.currentTurn.currentTeam = b.turnFirstTeam;
-
-  // 라운드 입력 초기화
-  b.currentTurn.actionsByTeam = { A: {}, B: {} };
-  b.currentTurn.phaseDone = { A: false, B: false };
-
-  pushLog(
-    battleId,
-    "system",
-    `라운드 ${b.currentTurn.turnNumber} 시작 — 선공: ${b.turnFirstTeam}팀`
-  );
-  emitBattleUpdate(battleId);
-}
-
-function maybeProgressPhase(battleId) {
-  const b = battles.get(battleId);
-  if (!b || !b.currentTurn) return;
-
-  ensureTurnStruct(b);
-
-  const team = b.currentTurn.currentTeam;
-  const alive = alivePlayersOfTeam(b, team);
-  const acted = b.currentTurn.actionsByTeam?.[team] || {};
-  const allDone = alive.every((p) => !!acted[p.id]);
-
-  if (!allDone) return; // 아직 현재 팀에서 입력 안 끝남
-
-  // 현재 팀 완료
-  if (!b.currentTurn.phaseDone[team]) {
-    b.currentTurn.phaseDone[team] = true;
-    pushLog(battleId, "system", `${team}팀 행동 입력 완료`);
-  }
-
-  const other = otherTeam(team);
-  if (!b.currentTurn.phaseDone[other]) {
-    // 상대 팀 차례로 전환
-    b.currentTurn.currentTeam = other;
-    pushLog(battleId, "system", `차례 전환 → ${other}팀`);
-    emitBattleUpdate(battleId);
-    return;
-  }
-
-  // 양 팀 모두 완료 → 라운드 종료 및 다음 라운드 시작
-  startNextRound(battleId);
+function teamActionsComplete(b) {
+  const t = b.currentTurn?.currentTeam || "A";
+  const alive = alivePlayersOfTeam(b, t);
+  const actions = b.currentTurn?.playerActions || {};
+  return alive.every((p) => actions[p.id]);
 }
 
 /* -------------------------------- Middleware ------------------------------ */
@@ -170,7 +86,7 @@ app.use(express.urlencoded({ extended: true }));
 const publicDir = path.join(__dirname, "public");
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
-fs.mkdirSync(publicDir, { recursive: true }); // 폴더가 없으면 생성(로그 ENOENT 방지)
+fs.mkdirSync(publicDir, { recursive: true });
 
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadsDir));
@@ -181,12 +97,12 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(publicDir, "admin.html"));
 });
 
-/** 명시적 파일 라우트 (직접 접근) */
+/** 명시적 파일 라우트 */
 app.get(["/admin.html", "/player.html", "/spectator.html"], (req, res) => {
   res.sendFile(path.join(publicDir, path.basename(req.path)));
 });
 
-/** 캐치올(SPA처럼 동작하게): 나머지 GET은 admin.html 반환 */
+/** 캐치올 */
 app.use((req, res, next) => {
   if (req.method === "GET" && req.accepts("html")) {
     return res.sendFile(path.join(publicDir, "admin.html"));
@@ -225,10 +141,7 @@ app.post("/api/battles", (req, res) => {
   }
 });
 
-/**
- * 관리자: 관전자 OTP + 참가자 자동로그인 링크 생성
- * (관리자 페이지가 먼저 이 엔드포인트를 호출)
- */
+/** 관리자: OTP/링크 생성 */
 app.post("/api/admin/battles/:id/links", (req, res) => {
   try {
     const battleId = req.params.id;
@@ -286,7 +199,7 @@ app.post("/api/admin/battles/:id/links", (req, res) => {
   }
 });
 
-/** 호환용(예전 관리자 코드가 /api/battles/:id/links 로 칠 때 대비) */
+/** 호환용 */
 app.post("/api/battles/:id/links", (req, res) =>
   app._router.handle(
     { ...req, url: `/api/admin/battles/${req.params.id}/links`, method: "POST" },
@@ -312,20 +225,23 @@ io.on("connection", (socket) => {
     socket.emit("battleUpdate", battles.get(battleId));
   });
 
-  /* 채팅 */
+  /* 채팅 (중복 방지: 서버는 'chatMessage'만 브로드캐스트) */
   socket.on("chatMessage", ({ battleId, message, name, role }) => {
-    console.log("[SOCKET] chatMessage <-", { battleId, message, name, role });
     const id = battleId || socket.battleId;
     if (!id || !battles.has(id) || !message) return;
-    io.to(id).emit("chatMessage", { message, name: name || "익명", role: role || "user" });
+    io.to(id).emit("chatMessage", {
+      message,
+      name: name || "익명",
+      role: role || "user",
+    });
   });
+  // 호환 입력만 받고 내부적으로 chatMessage로 변환
+  socket.on("battle:chat", (payload) => socket.emit("chatMessage", payload));
 
   /* 전투 생성 (소켓 경로) */
   socket.on("createBattle", ({ mode = "2v2" } = {}, cb) => {
-    console.log("[SOCKET] createBattle <-", { mode, sid: socket.id });
     try {
       if (!["1v1", "2v2", "3v3", "4v4"].includes(mode)) {
-        console.log("[SOCKET] createBattle invalid_mode", mode);
         return typeof cb === "function" && cb({ error: "invalid_mode" });
       }
       const id = genId();
@@ -341,13 +257,12 @@ io.on("connection", (socket) => {
       battles.set(id, battle);
       socket.join(id);
       socket.battleId = id;
-      pushLog(id, "system", `전투 생성: ${mode}`);
+      pushLog(id, "system", `전투가 생성되었습니다. 모드: ${mode}`);
       emitBattleUpdate(id);
-      console.log("[SOCKET] createBattle ok ->", id);
       typeof cb === "function" && cb({ ok: true, battleId: id, battle });
     } catch (e) {
-      console.error("createBattle socket error:", e);
-      typeof cb === "function" && cb({ error: "create_failed", detail: String(e?.message || e) });
+      typeof cb === "function" &&
+        cb({ error: "create_failed", detail: String(e?.message || e) });
     }
   });
 
@@ -356,15 +271,17 @@ io.on("connection", (socket) => {
     const id = battleId || socket.battleId;
     const b = battles.get(id);
     if (!b) return cb && cb({ error: "not_found" });
-
     b.status = "active";
-    // 기존 필드 유지 + 확장 필드 보장
-    b.currentTurn = { turnNumber: 1, currentTeam: "A", playerActions: {} };
-    b.turnFirstTeam = "A"; // 선공(A)로 시작, 라운드마다 교대
-    b.currentTurn.actionsByTeam = { A: {}, B: {} };
-    b.currentTurn.phaseDone = { A: false, B: false };
-
-    pushLog(id, "admin", "전투 시작");
+    // 최초 선공 팀(기존 로직 유지: 기본 A). 필요 시 사전에 정해둔 값을 사용.
+    const starter = b.currentTurn?.currentTeam || "A";
+    b.currentTurn = {
+      turnNumber: 1,
+      currentTeam: starter,
+      playerActions: {},
+      phase: "first",       // 선공 단계
+      starterTeam: starter, // 이번 라운드 선공
+    };
+    pushLog(id, "admin", `전투 시작 · 선공: ${starter}팀`);
     emitBattleUpdate(id);
     cb && cb({ ok: true });
   });
@@ -399,9 +316,8 @@ io.on("connection", (socket) => {
     cb && cb({ ok: true });
   });
 
-  /* 참가자 추가/삭제 */
+  /* 참가자 추가/삭제 (기존 그대로) */
   socket.on("addPlayer", ({ battleId, player }, cb) => {
-    console.log("[SOCKET] addPlayer <-", { battleId, playerName: player?.name, team: player?.team });
     try {
       const id = battleId || socket.battleId;
       const b = battles.get(id);
@@ -409,7 +325,6 @@ io.on("connection", (socket) => {
       if (!player?.name || !validStats(player.stats)) {
         return cb && cb({ error: "invalid_player" });
       }
-
       const pid = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const p = {
         id: pid,
@@ -432,20 +347,16 @@ io.on("connection", (socket) => {
         ready: false,
         joinedAt: Date.now(),
       };
-
       b.players.push(p);
-      pushLog(id, "admin", `참가자 추가: ${p.name} (${p.team})`);
+      pushLog(id, "admin", `참가자 추가: ${p.name} (${p.team}팀)`);
       emitBattleUpdate(id);
       cb && cb({ ok: true, player: p });
     } catch (e) {
-      console.error("addPlayer error:", e);
       cb && cb({ error: "add_failed" });
     }
   });
 
-  // 서버는 deletePlayer를 듣고, 클라는 removePlayer를 쏘는 경우가 있어 둘 다 지원
   socket.on("deletePlayer", ({ battleId, playerId }, cb) => {
-    console.log("[SOCKET] deletePlayer <-", { battleId, playerId });
     const id = battleId || socket.battleId;
     const b = battles.get(id);
     if (!b) return cb && cb({ error: "not_found" });
@@ -458,16 +369,12 @@ io.on("connection", (socket) => {
     }
     cb && cb({ ok: removed });
   });
-
-  // 별칭(호환)
-  socket.on("removePlayer", (payload, cb) => {
-    console.log("[SOCKET] removePlayer(alias)->deletePlayer", payload);
-    socket.emit("deletePlayer", payload, cb);
-  });
+  socket.on("removePlayer", (payload, cb) =>
+    socket.emit("deletePlayer", payload, cb)
+  );
 
   /* 플레이어 자동 로그인(토큰) */
   socket.on("playerAuth", ({ battleId, password, token, otp, playerName }, cb) => {
-    console.log("[SOCKET] playerAuth <-", { battleId, playerName, token: !!(password || token || otp) });
     try {
       const id = battleId || socket.battleId;
       const b = battles.get(id);
@@ -477,37 +384,25 @@ io.on("connection", (socket) => {
         socket.emit("authError", err);
         return;
       }
-
       const authToken = password || token || otp;
       let rec = null;
-
       for (const [key, r] of otpStore.entries()) {
         if (key.startsWith(`player_${id}_`) && r.otp === authToken) {
           if (r.expires && Date.now() > r.expires) {
-            otpStore.delete(key);
-            continue;
+            otpStore.delete(key); continue;
           }
-          rec = r;
-          break;
+          rec = r; break;
         }
       }
-
       if (!rec) {
         const err = { ok: false, error: "invalid_token", message: "잘못된 비밀번호입니다." };
-        cb && cb(err);
-        socket.emit("authError", err);
-        return;
+        cb && cb(err); socket.emit("authError", err); return;
       }
-
       const player = b.players.find((p) => p.id === rec.playerId);
       if (!player) {
         const err = { ok: false, error: "player_not_found", message: "플레이어를 찾을 수 없습니다." };
-        cb && cb(err);
-        socket.emit("authError", err);
-        return;
+        cb && cb(err); socket.emit("authError", err); return;
       }
-
-      // 접속 처리
       socket.join(id);
       socket.battleId = id;
       socket.playerId = player.id;
@@ -521,7 +416,6 @@ io.on("connection", (socket) => {
         message: "인증 성공! 전투에 참가했습니다.",
         success: true,
       };
-
       socket.emit("authSuccess", result);
       socket.emit("auth:success", result);
       cb && cb(result);
@@ -529,20 +423,13 @@ io.on("connection", (socket) => {
       pushLog(id, "system", `${player.name} 님이 접속했습니다.`);
       emitBattleUpdate(id);
     } catch (e) {
-      console.error("playerAuth error:", e);
       const err = { ok: false, error: "auth_failed", message: "인증 중 오류가 발생했습니다." };
-      cb && cb(err);
-      socket.emit("authError", err);
+      cb && cb(err); socket.emit("authError", err);
     }
   });
-
-  /* 호환 이벤트명 */
   socket.on("player:auth", (...args) => socket.emit("playerAuth", ...args));
-  socket.on("battle:chat", (payload) => socket.emit("chatMessage", payload));
 
-  /* ──────────────────────── 준비/액션/응원 핸들러 (기존 로직 유지) ──────────────────────── */
-
-  // 준비 완료
+  /* 준비 완료(브로드캐스트/로그 그대로) */
   socket.on("playerReady", ({ battleId, playerId }, cb) => {
     const id = battleId || socket.battleId;
     const b = battles.get(id);
@@ -554,46 +441,76 @@ io.on("connection", (socket) => {
     emitBattleUpdate(id);
     cb && cb({ ok: true });
   });
-  // 호환 별칭
   socket.on("player:ready", (payload, cb) => socket.emit("playerReady", payload, cb));
 
-  // 플레이어 액션 (입력 기록 + 즉시 진행 체크)
+  /* ▶ 플레이어 액션: 선택 누적 → 팀 전원 선택 시 다음 단계/라운드 자동 전진 */
   socket.on("playerAction", ({ battleId, playerId, action }, cb) => {
     const id = battleId || socket.battleId;
     const b = battles.get(id);
-    if (!b) return cb && cb({ error: "not_found" });
+    if (!b || b.status !== "active") return cb && cb({ error: "not_active" });
     const p = b.players.find((x) => x.id === playerId);
     if (!p) return cb && cb({ error: "player_not_found" });
 
-    ensureTurnStruct(b);
-    const aType = action?.type || "action";
-    // 기록(기존 playerActions 유지 + 팀별 기록 추가)
+    // 현재 팀이 아닌 경우 무시(자신의 턴만 허용)
+    if ((b.currentTurn?.currentTeam || "A") !== p.team) {
+      return cb && cb({ error: "not_your_turn" });
+    }
+
+    b.currentTurn = b.currentTurn || {
+      turnNumber: 1,
+      currentTeam: "A",
+      playerActions: {},
+      phase: "first",
+      starterTeam: "A",
+    };
+
     b.currentTurn.playerActions = b.currentTurn.playerActions || {};
-    b.currentTurn.playerActions[playerId] = action || { type: aType };
-    b.currentTurn.actionsByTeam[p.team] = b.currentTurn.actionsByTeam[p.team] || {};
-    b.currentTurn.actionsByTeam[p.team][playerId] = action || { type: aType };
+    b.currentTurn.playerActions[playerId] = action || { type: "action" };
 
-    pushLog(id, "battle", `[행동] ${p.name}: ${aType}`);
+    pushLog(id, "battle", `[행동 선택] ${p.name} · ${action?.type || "action"}`);
+
+    // 모든 생존 구성원이 선택했으면 진행
+    if (teamActionsComplete(b)) {
+      const curTeam = b.currentTurn.currentTeam;
+      const nextTeam = otherTeam(curTeam);
+
+      if (b.currentTurn.phase === "first") {
+        // 후공으로 전환
+        b.currentTurn.currentTeam = nextTeam;
+        b.currentTurn.phase = "second";
+        b.currentTurn.playerActions = {};
+        pushLog(id, "system", `${curTeam}팀 선택 완료 → ${nextTeam}팀 차례로 전환`);
+      } else {
+        // 라운드 종료 → 선후공 교대
+        const round = b.currentTurn.turnNumber;
+        pushLog(id, "system", `라운드 ${round} 종료`);
+        // 다음 라운드: 선후공 교대
+        const newStarter = otherTeam(b.currentTurn.starterTeam || "A");
+        b.currentTurn = {
+          turnNumber: round + 1,
+          currentTeam: newStarter,
+          playerActions: {},
+          phase: "first",
+          starterTeam: newStarter,
+        };
+        pushLog(id, "system", `라운드 ${round + 1} 시작 · 선공: ${newStarter}팀`);
+      }
+      emitBattleUpdate(id);
+    }
+
     io.to(id).emit("actionSuccess", { playerId, action });
-    io.to(id).emit("player:action:success", { playerId, action }); // 호환
-    emitBattleUpdate(id);
-
-    // 모두 선택시 즉시 진행
-    maybeProgressPhase(id);
-
+    io.to(id).emit("player:action:success", { playerId, action });
     cb && cb({ ok: true });
   });
-  // 호환 별칭
   socket.on("player:action", (payload, cb) => socket.emit("playerAction", payload, cb));
 
-  // 관전자 응원 (브로드캐스트 + 로그)
+  /* ▶ 관전자 응원: 채팅으로만 중계 (로그 남기지 않음) */
   socket.on("spectator:cheer", ({ battleId, name, message }) => {
     const id = battleId || socket.battleId;
     if (!battles.has(id)) return;
     io.to(id).emit("cheerMessage", { name: name || "관전자", message });
-    pushLog(id, "info", `[응원] ${name || "관전자"}: ${message}`);
+    // 이전: pushLog 로 남기던 것 제거 (요청사항)
   });
-  // 호환 별칭
   socket.on("cheerMessage", (payload) => socket.emit("spectator:cheer", payload));
 });
 
