@@ -1,61 +1,40 @@
 {
-  "name": "pyxis-battle-system",
+  "name": "pyxis-battle-server",
   "version": "3.0.2",
-  "private": true,
-  "description": "PYXIS 실시간 턴제 전투 시스템 - 우아한 디자인의 멀티플레이어 게임",
-  "main": "packages/battle-server/index.js",
+  "description": "PYXIS Battle System - 실시간 턴제 전투 서버",
+  "main": "index.js",
   "type": "module",
+  
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development nodemon index.js",
+    "start": "cross-env NODE_ENV=production node index.js",
+    "debug": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js",
+    "test": "echo 'Tests not implemented yet' && exit 0"
+  },
+  
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.5",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "compression": "^1.7.4",
+    "multer": "^1.4.5-lts.1"
+  },
+  
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "cross-env": "^7.0.3"
+  },
   
   "engines": {
     "node": ">=18.17.0",
     "npm": ">=9.0.0"
   },
   
-  "scripts": {
-    "preinstall": "mkdir -p logs uploads packages/battle-server/public/uploads/avatars",
-    
-    "dev": "cross-env NODE_ENV=development nodemon packages/battle-server/index.js --watch packages/battle-server --ext js,json",
-    "start": "cross-env NODE_ENV=production node packages/battle-server/index.js",
-    "debug": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 packages/battle-server/index.js",
-    
-    "pm2:start": "pm2 start ecosystem.config.js --env production",
-    "pm2:dev": "pm2 start ecosystem.config.js --env development --watch",
-    "pm2:reload": "pm2 reload pyxis-battle-system --update-env",
-    "pm2:restart": "pm2 restart pyxis-battle-system",
-    "pm2:stop": "pm2 stop pyxis-battle-system",
-    "pm2:delete": "pm2 delete pyxis-battle-system",
-    "pm2:logs": "pm2 logs pyxis-battle-system --lines 50",
-    "pm2:monit": "pm2 monit",
-    "pm2:save": "pm2 save",
-    "pm2:startup": "pm2 startup",
-    "pm2:flush": "pm2 flush",
-    
-    "install:all": "npm install && cd packages/battle-server && npm install",
-    "clean:all": "rm -rf node_modules package-lock.json packages/battle-server/node_modules packages/battle-server/package-lock.json",
-    "clean:logs": "rm -rf logs/* uploads/*",
-    
-    "health": "curl -fsS http://127.0.0.1:3001/api/health || echo 'Server not responding'",
-    "test": "echo 'Tests not implemented yet' && exit 0",
-    
-    "lint": "eslint packages/battle-server --ext .js",
-    "lint:fix": "eslint packages/battle-server --ext .js --fix",
-    "format": "prettier --write packages/battle-server/**/*.js"
-  },
-  
-  "keywords": [
-    "turn-based",
-    "battle-system", 
-    "realtime",
-    "multiplayer",
-    "pyxis",
-    "socket.io",
-    "game"
-  ],
-  
   "author": {
     "name": "CriminalTalent",
-    "email": "rntjdrud1@gmail.com",
-    "url": "https://github.com/CriminalTalent"
+    "email": "rntjdrud1@gmail.com"
   },
   
   "license": "MIT",
@@ -64,65 +43,13 @@
     "url": "https://github.com/CriminalTalent/battle-system.git"
   },
   
-  "bugs": {
-    "url": "https://github.com/CriminalTalent/battle-system/issues"
-  },
-  
-  "homepage": "https://pyxisbattlesystem.monster",
-  
-  "workspaces": [
-    "packages/*"
-  ],
-  
-  "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5", 
-    "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1",
-    "socket.io": "^4.7.4"
-  },
-  
-  "devDependencies": {
-    "cross-env": "^7.0.3",
-    "eslint": "^8.57.0",
-    "nodemon": "^3.0.3",
-    "pm2": "^5.3.0",
-    "prettier": "^3.2.5"
-  },
-  
-  "nodemonConfig": {
-    "watch": [
-      "packages/battle-server/src",
-      "packages/battle-server/public",
-      "packages/battle-server/index.js"
-    ],
-    "ext": "js,json,html,css",
-    "ignore": [
-      "node_modules",
-      "logs",
-      "uploads",
-      "*.log"
-    ],
-    "delay": "200ms",
-    "verbose": true
-  },
-  
-  "eslintConfig": {
-    "env": {
-      "node": true,
-      "es2022": true
-    },
-    "extends": ["eslint:recommended"],
-    "parserOptions": {
-      "ecmaVersion": "latest",
-      "sourceType": "module"
-    },
-    "rules": {
-      "no-unused-vars": "warn",
-      "no-console": "off",
-      "indent": ["error", 2],
-      "quotes": ["error", "single"],
-      "semi": ["error", "always"]
-    }
-  }
+  "keywords": [
+    "pyxis",
+    "battle-system",
+    "realtime",
+    "turn-based",
+    "multiplayer",
+    "socket.io",
+    "game"
+  ]
 }
