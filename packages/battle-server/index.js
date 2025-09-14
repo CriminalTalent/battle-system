@@ -7,6 +7,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
+import avatarUploadRouter from "./src/routes/avatar-upload.js"; // ← [추가] 업로드 라우터
 
 dotenv.config();
 
@@ -75,10 +76,12 @@ app.use(express.urlencoded({ extended: true }));
 const publicDir = path.join(__dirname, "public");
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(path.join(uploadsDir, "avatars"), { recursive: true }); // ← [추가] 아바타 폴더 보장
 fs.mkdirSync(publicDir, { recursive: true }); // 폴더가 없으면 생성(로그 ENOENT 방지)
 
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadsDir));
+app.use("/api/upload", avatarUploadRouter); // ← [추가] 업로드 라우터 마운트
 console.log("[STATIC] Serving from:", publicDir);
 
 /** 루트 -> admin.html */
