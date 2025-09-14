@@ -28,6 +28,7 @@
     .auth{width:100%;max-width:420px;background:#111;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
     .field{margin-bottom:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}.field input{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#0b0b0b;color:#fff}
     .btn{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:linear-gradient(135deg,var(--gold),var(--gold2));font-weight:700;cursor:pointer;width:100%}
+    .hint{font-size:12px;color:#A3A8B0;text-align:center}
   </style>
 </head>
 <body>
@@ -35,7 +36,7 @@
     <div class="auth">
       <div class="title">관전 인증</div>
       <div class="field"><label>이름</label><input id="nameInput" type="text" placeholder="관전자 이름"></div>
-      <div class="field"><label>비밀번호</label><input id="passwordInput" type="password" placeholder="관전자 비밀번호"></div>
+      <div class="field"><label>비밀번호 <span class="hint">(OTP 30분)</span></label><input id="passwordInput" type="password" placeholder="관전자 비밀번호"></div>
       <button id="authBtn" class="btn" disabled>관전 시작</button>
     </div>
   </div>
@@ -48,7 +49,7 @@
 
     <section id="center" class="card">
       <div class="title">현재 차례 · 데스매치 · 무승부 없음</div>
-      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px">
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;flex-wrap:wrap">
         <div class="title" style="border:none;margin:0;padding:0;color:#fff;font-weight:600">라운드 <span id="round">1</span></div>
         <div class="title" style="border:none;margin:0;padding:0;color:#fff;font-weight:600"><span id="turnTeam">-팀</span> 차례</div>
         <div class="title" style="border:none;margin:0;padding:0;color:#fff;font-weight:600">남은 시간 <span id="turnTimer">--:--</span></div>
@@ -86,6 +87,7 @@
 
   <script>
     const $ = s=>document.querySelector(s);
+    const escapeHtml=(t)=>String(t).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const q = new URLSearchParams(location.search);
     const battleId = q.get('battle') || '';
     const urlOtp   = q.get('otp') || q.get('token') || q.get('password') || q.get('pwd') || q.get('auth') || '';
@@ -94,7 +96,8 @@
     const teamAList=$('#teamAList'), teamBList=$('#teamBList'), battleLog=$('#battleLog'), chatView=$('#chatView');
     const turnTeamEl=$('#turnTeam'), roundEl=$('#round'), turnTimer=$('#turnTimer'), curPortrait=$('#curPortrait');
 
-    let socket=null, spectatorName='', snapshot=null;
+    let socket=null, spectatorName='', snapshot=null, firstTeam=null, lastAttackerTeam=null;
+    let timerInt=null, timerLeft=0;
 
     const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="100%" height="100%" fill="#0b0b0b"/><circle cx="80" cy="58" r="30" fill="#2b2b2b"/><rect x="35" y="100" width="90" height="45" rx="12" fill="#2b2b2b"/></svg>');
 
@@ -102,19 +105,19 @@
       const d=document.createElement('div');
       const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
       d.className='entry '+(type||'');
-      d.innerHTML = `<span class="t">${t}</span>${String(msg||'')}`;
+      d.innerHTML = `<span class="t">${t}</span>${escapeHtml(msg||'')}`;
       battleLog.appendChild(d); battleLog.scrollTop=battleLog.scrollHeight;
       while(battleLog.children.length>300) battleLog.removeChild(battleLog.firstChild);
     }
     function addChat(name,msg){
       const key = `${name||''}__${msg||''}`.slice(0,256);
-      if(addChat._set?.has(key)) return;
       addChat._set = addChat._set || new Set();
+      if(addChat._set.has(key)) return;
       addChat._set.add(key); setTimeout(()=>addChat._set.delete(key), 2000);
 
       const d=document.createElement('div');
       const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
-      d.innerHTML = `<b>${name||'익명'}</b>: ${msg||''} <span style="color:#888;font-size:10px;margin-left:6px">${t}</span>`;
+      d.innerHTML = `<b>${escapeHtml(name||'익명')}</b>: ${escapeHtml(msg||'')} <span style="color:#888;font-size:10px;margin-left:6px">${t}</span>`;
       chatView.appendChild(d); chatView.scrollTop=chatView.scrollHeight;
       while(chatView.children.length>300) chatView.removeChild(chatView.firstChild);
     }
@@ -124,23 +127,42 @@
       if(!snapshot) return;
       const A=(snapshot.players||[]).filter(p=>p.team==='A');
       const B=(snapshot.players||[]).filter(p=>p.team==='B');
-      const item = (p)=>`<div class="item"><img src="${p.avatar||DEFAULT_AVATAR}" alt="${p.name}"><div><div class="nm">${p.name}</div><div class="hp">HP ${p.hp}/${p.maxHp||100}</div></div></div>`;
+      const item = (p)=>`<div class="item"><img src="${p.avatar||DEFAULT_AVATAR}" alt="${escapeHtml(p.name)}"><div><div class="nm">${escapeHtml(p.name)}</div><div class="hp">HP ${p.hp}/${p.maxHp||100}</div></div></div>`;
       teamAList.innerHTML = A.map(item).join('');
       teamBList.innerHTML = B.map(item).join('');
     }
     function renderTurn(){
       if(!snapshot) return;
+      if(!firstTeam && snapshot.turn?.round===1) firstTeam = snapshot.currentTeam || snapshot.turn?.order?.[0] || null;
       roundEl.textContent = snapshot.turn?.round || 1;
       turnTeamEl.textContent = (snapshot.currentTeam==='A'?'A':'B')+'팀';
       const curId = snapshot.turn?.currentPlayerId;
       const cur   = (snapshot.players||[]).find(p=>p.id===curId);
       setImg(curPortrait, cur?.avatar);
+      syncTimer(snapshot);
+    }
+
+    function syncTimer(b){
+      clearInterval(timerInt); timerInt=null;
+      if(b?.status!=='active'){ turnTimer.textContent='--:--'; return; }
+      timerLeft = Math.max(0, Number(b.timeLeft||0));
+      updateTimerText();
+      timerInt = setInterval(()=>{
+        timerLeft = Math.max(0, timerLeft-1);
+        updateTimerText();
+        if(timerLeft<=0){ clearInterval(timerInt); timerInt=null; }
+      }, 1000);
+    }
+    function updateTimerText(){
+      const m = Math.floor(timerLeft/60).toString().padStart(2,'0');
+      const s = Math.floor(timerLeft%60).toString().padStart(2,'0');
+      turnTimer.textContent = `${m}:${s}`;
     }
 
     function validateAuth(){
       const hasName = !!nameInput.value.trim();
-      const hasPwd  = !!pwdInput.value.trim();
-      authBtn.disabled = !hasName || (!hasPwd && !urlOtp);
+      const hasPwd  = !!pwdInput.value.trim() || !!urlOtp;
+      authBtn.disabled = !hasName || !hasPwd;
     }
 
     function connect(){
@@ -150,6 +172,9 @@
         if(!battleId){ addLog('battle 파라미터가 없습니다.','sys'); return; }
         socket.emit('join',{ battleId });
       });
+      socket.on('disconnect', ()=> addLog('연결 끊김 · 재연결 시도 중','sys'));
+      socket.io.on('reconnect', ()=> addLog('재연결됨','sys'));
+
       const onUpdate=(b)=>{ snapshot=b; renderTeams(); renderTurn(); };
       socket.on('battleUpdate', onUpdate);
       socket.on('battle:update', onUpdate);
@@ -157,8 +182,14 @@
       socket.on('battle:log', ev=> addLog(ev?.message||'로그','sys'));
       socket.on('chatMessage', d=> addChat(d?.name||'익명', d?.message||''));
       socket.on('battle:chat', d=> addChat(d?.name||d?.senderName||'익명', d?.message||''));
-      socket.on('cheerMessage', d=> addLog(`[응원] ${d?.name||'관전자'}: ${d?.message||''}`,'cheer'));
-      socket.on('spectator:cheer', d=> addLog(`[응원] ${d?.name||'관전자'}: ${d?.message||''}`,'cheer'));
+      socket.on('cheerMessage', d=> addLog(`[응원] ${escapeHtml(d?.name||'관전자')}: ${escapeHtml(d?.message||'')}`,'cheer'));
+      socket.on('spectator:cheer', d=> addLog(`[응원] ${escapeHtml(d?.name||'관전자')}: ${escapeHtml(d?.message||'')}`,'cheer'));
+
+      // track last attacker for tie-breaker
+      socket.on('playerAction', a=>{ if(a?.type==='attack'){ lastAttackerTeam = a.team || a.playerTeam || lastAttackerTeam; } });
+      socket.on('player:action', a=>{ if(a?.type==='attack'){ lastAttackerTeam = a.team || a.playerTeam || lastAttackerTeam; } });
+
+      socket.on('battle:ended', (b)=>{ const result = computeWinner(b||snapshot); addLog('승자 결정: '+result,'sys'); });
     }
 
     document.addEventListener('input', (e)=>{ if(e.target===nameInput||e.target===pwdInput) validateAuth(); });
@@ -181,8 +212,25 @@
       if(!socket || !battleId) return;
       const msg = btn.getAttribute('data-msg') || '';
       socket.emit('spectator:cheer', { battleId, name: spectatorName, message: msg });
-      addLog(`[응원 전송] ${spectatorName}: ${msg}`,'cheer');
+      addLog(`[응원 전송] ${escapeHtml(spectatorName)}: ${escapeHtml(msg)}`,'cheer');
     });
+
+    function computeWinner(b){
+      if(!b) return '판정 불가';
+      const aliveA = (b.players||[]).filter(p=>p.team==='A' && p.hp>0).length;
+      const aliveB = (b.players||[]).filter(p=>p.team==='B' && p.hp>0).length;
+      if(aliveA!==aliveB) return aliveA>aliveB?'A팀(생존자 우세)':'B팀(생존자 우세)';
+      const hpA = (b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.hp||0),0);
+      const hpB = (b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.hp||0),0);
+      if(hpA!==hpB) return hpA>hpB?'A팀(체력 합산 우세)':'B팀(체력 합산 우세)';
+      if(lastAttackerTeam) return lastAttackerTeam+'(최근 공격자 우선)';
+      if(b.currentTeam) return (b.currentTeam==='A'?'A팀':'B팀')+'(현재 턴 팀 우선)';
+      if(firstTeam) return (firstTeam==='A'?'A팀':'B팀')+'(선공 팀 우선)';
+      const agiA=(b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.stats?.agility||0),0);
+      const agiB=(b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.stats?.agility||0),0);
+      if(agiA!==agiB) return agiA>agiB?'A팀(민첩 합 우세)':'B팀(민첩 합 우세)';
+      return 'A팀(알파벳 순)';
+    }
 
     validateAuth();
     connect();
