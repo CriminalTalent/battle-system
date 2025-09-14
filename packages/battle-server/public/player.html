@@ -79,9 +79,19 @@
     .meta{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;justify-content:center}
     .pill{font-size:12px;border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px}
 
+    /* 액션 버튼 - 금색 글자 + 골드 테두리로 활성감 강조 */
     .actions{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%}
-    .act{padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--glass-1);cursor:pointer;text-align:center}
-    .act:disabled{opacity:.4;cursor:not-allowed}
+    .act{
+      padding:12px;border-radius:10px;
+      border:2px solid var(--gold2);
+      background:var(--glass-1);
+      color:var(--gold2);
+      cursor:pointer;text-align:center;font-weight:700;
+      transition:transform .05s ease, background .2s ease, opacity .2s ease;
+    }
+    .act:hover{transform:translateY(-1px);background:rgba(255,255,255,.08)}
+    .act:active{transform:translateY(0)}
+    .act:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.2)}
 
     /* 우: 로그 / 좌하단: 채팅 */
     .log{height:240px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
@@ -93,7 +103,7 @@
     .entry .t{color:var(--muted);margin-right:6px;font-size:10px}
     .entry.rule{background:var(--gold2);color:#111;padding:4px 6px;border-radius:8px}
 
-    /* grid-area 붙이기 */
+    /* grid-area */
     .area-teamA{grid-area:teamA}
     .area-center{grid-area:center}
     .area-teamB{grid-area:teamB}
@@ -109,7 +119,7 @@
       <div id="allyList"></div>
     </section>
 
-    <!-- 가운데: 내 정보(축약) + 현재 턴 + 액션 (세로 두 칸 span) -->
+    <!-- 가운데: 내 정보(축약) + 현재 턴 + 액션 -->
     <section class="card center area-center">
       <div class="title">전투</div>
 
@@ -180,7 +190,7 @@
   </div>
 
   <script>
-    /* ===== 공통 유틸 ===== */
+    /* ===== 유틸 ===== */
     const $ = s => document.querySelector(s);
     const escapeHtml = (t)=>String(t).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const q = new URLSearchParams(location.search);
@@ -199,10 +209,11 @@
 
     const isRuleText = (m)=>['선공','턴','라운드','치명타','회피','공격','방어','라운드 결과','D20','주사위'].some(k=>String(m||'').includes(k));
 
-    /* ===== 상태/엘리먼트 ===== */
+    /* ===== 상태 ===== */
     let socket=null, me=null, snapshot=null;
     let lastTurnKey=null, timerInt=null, timerLeft=300;
 
+    /* ===== 엘리먼트 ===== */
     const meAvatar = $('#meAvatar');
     const meNameEl = $('#meName');
     const meTeamEl = $('#meTeam');
@@ -317,7 +328,7 @@
 
     /* ===== 소켓 ===== */
     function bindSocket(){
-      const socketPath = '/socket.io'; // 고정
+      const socketPath = '/socket.io';
       socket = io({ path: socketPath });
 
       socket.on('connect', ()=>{
@@ -352,12 +363,36 @@
       socket.on('chatMessage', (d)=> addChat(d?.name||'익명', d?.message||''));
       socket.on('battle:chat',  (d)=> addChat(d?.name||d?.senderName||'익명', d?.message||''));
 
-      // 응원도 수신(표시만)
+      // 응원 수신
       socket.on('cheerMessage', (d)=> addLog(`[응원] ${d?.name||'관전자'}: ${d?.message||''}`));
       socket.on('spectator:cheer', (d)=> addLog(`[응원] ${d?.name||'관전자'}: ${d?.message||''}`));
     }
 
     /* ===== 인터랙션 ===== */
+    function sendReady(){
+      if(!socket || !battleId || !me?.id) return;
+      // 호환 위해 둘 다 송신 (playerReady / player:ready)
+      socket.emit('playerReady', { battleId, playerId: me.id, ready:true });
+      socket.emit('player:ready', { battleId, playerId: me.id, ready:true });
+      addLog('내 상태: 준비 완료');
+    }
+
+    function sendAction(type){
+      if(!socket || !battleId || !me?.id) return;
+      const payload = { battleId, playerId: me.id, action:{ type } };
+      // 호환 위해 둘 다 송신 (playerAction / player:action)
+      socket.emit('playerAction', payload);
+      socket.emit('player:action', payload);
+      addLog(`액션 선택: ${type}`);
+      // 내 버튼은 선택 후 비활성화(중복 방지) – 서버가 턴 진행/재활성화 브로드캐스트함
+      setActionButtonsDisabled(true);
+    }
+
+    function setActionButtonsDisabled(v){
+      [btnAttack,btnDefend,btnDodge,btnItem,btnPass].forEach(b=>b.disabled=!!v);
+    }
+
+    // 채팅
     btnSend.addEventListener('click', ()=>{
       const m = chatMsg.value.trim();
       if(!m || !socket || !battleId) return;
@@ -368,21 +403,19 @@
     });
     chatMsg.addEventListener('keydown', (e)=>{ if(e.key==='Enter') btnSend.click(); });
 
+    // 준비
     btnReady.addEventListener('click', ()=>{
       btnReady.disabled = true;
       btnReady.textContent = '준비 완료됨';
-      addLog('내 상태: 준비 완료');
-      if(socket && battleId && me?.id){
-        socket.emit('player:ready', { battleId, playerId: me.id, ready:true });
-      }
+      sendReady();
     });
 
-    // 행동 버튼(룰/브로드캐스트 훅 유지 – 필요 시 서버 룰엔진 연결)
-    btnAttack.addEventListener('click', ()=> addLog('액션: 공격 선택'));
-    btnDefend.addEventListener('click', ()=> addLog('액션: 방어 선택'));
-    btnDodge .addEventListener('click', ()=> addLog('액션: 회피 선택'));
-    btnItem  .addEventListener('click', ()=> addLog('액션: 아이템 선택'));
-    btnPass  .addEventListener('click', ()=> addLog('액션: 패스 선택'));
+    // 액션
+    btnAttack.addEventListener('click', ()=> sendAction('attack'));
+    btnDefend.addEventListener('click', ()=> sendAction('defend'));
+    btnDodge .addEventListener('click', ()=> sendAction('dodge'));
+    btnItem  .addEventListener('click', ()=> sendAction('item'));
+    btnPass  .addEventListener('click', ()=> sendAction('pass'));
 
     // 시작
     document.addEventListener('DOMContentLoaded', bindSocket);
