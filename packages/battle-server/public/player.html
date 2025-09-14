@@ -19,7 +19,7 @@
     .bar{height:10px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;border:1px solid var(--border);margin-top:6px}
     .bar>span{display:block;height:100%;background:linear-gradient(90deg,#b58d52,#e6d2a8)}
     .stats,.items{display:grid;gap:8px}.stats{grid-template-columns:repeat(4,1fr)}.items{grid-template-columns:repeat(3,1fr)}
-    #centerCard{grid-area:center}.turnBar{display:flex;gap:8px;margin-bottom:12px}.pill{border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px;font-size:12px}
+    #centerCard{grid-area:center}.turnBar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.pill{border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px;font-size:12px}
     .portrait{display:block;width:320px;height:320px;object-fit:cover;border-radius:16px;border:1px solid var(--border);background:#0b0b0b;margin:0 auto}
     #logCard{grid-area:log}.log{height:260px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
     .entry{font-size:12px;margin-bottom:6px}.entry .t{color:var(--muted);margin-right:6px;font-size:10px}.entry.sys{color:var(--accent)}.entry.hit{color:#e0b562}
@@ -34,12 +34,13 @@
     #chatCard{grid-area:chat}.chatView{height:190px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:10px;background:rgba(0,0,0,.25);margin-bottom:8px}
     .chatRow{display:flex;gap:8px}.chatRow input{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0b0b0b;color:var(--text)}
     .chatRow button{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:linear-gradient(135deg,var(--gold),var(--gold2));font-weight:700;cursor:pointer}
+    .hint{font-size:12px;color:#A3A8B0}
   </style>
 </head>
 <body>
   <div class="wrap">
     <section id="meCard" class="card">
-      <div class="title">전투 참가자</div>
+      <div class="title">전투 참가자 <span class="hint">OTP 30분</span></div>
       <div class="me">
         <img id="meAvatar" alt="아바타">
         <div>
@@ -131,7 +132,8 @@
 
     const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="100%" height="100%" fill="#0b0b0b"/><circle cx="48" cy="36" r="18" fill="#2b2b2b"/><rect x="20" y="60" width="56" height="26" rx="8" fill="#2b2b2b"/></svg>');
 
-    let socket=null, me=null, snapshot=null;
+    let socket=null, me=null, snapshot=null, firstTeam=null, lastAttackerTeam=null;
+    let timerInt=null, timerLeft=0;
 
     function setImg(img, url){ img.src = url ? url : DEFAULT_AVATAR; }
     function addLog(msg, type='sys'){
@@ -171,11 +173,9 @@
 
     function renderTeams(){
       if(!snapshot) return;
-      const allies=(snapshot.players||[]).filter(p=>p.team==='A');
-      const enemies=(snapshot.players||[]).filter(p=>p.team==='B');
-      const mineTeam = me?.team || allies.find(p=>p.id===me?.id)?.team || 'A';
+      const mineTeam = me?.team || 'A';
       const myAllies = (snapshot.players||[]).filter(p=>p.team===mineTeam);
-      const myEnemies= (snapshot.players||[]).filter(p=>p.team!==(mineTeam));
+      const myEnemies= (snapshot.players||[]).filter(p=>p.team!==mineTeam);
       function item(p){return `<div class="mini" data-id="${p.id}"><img src="${p.avatar||DEFAULT_AVATAR}" alt="${escapeHtml(p.name)}"><div><div class="nm">${escapeHtml(p.name)}</div><div class="hp">HP ${p.hp}/${p.maxHp||100}</div></div></div>`}
       allyList.innerHTML = myAllies.map(item).join('');
       enemyList.innerHTML= myEnemies.map(item).join('');
@@ -183,11 +183,30 @@
 
     function renderTurn(){
       if(!snapshot) return;
+      if(!firstTeam && snapshot.turn?.round===1) firstTeam = snapshot.currentTeam || snapshot.turn?.order?.[0] || null;
       roundEl.textContent = snapshot.turn?.round || 1;
       turnTeamEl.textContent = (snapshot.currentTeam==='A'?'A':'B')+'팀';
       const curId=snapshot.turn?.currentPlayerId;
       const cur=(snapshot.players||[]).find(p=>p.id===curId);
       setImg(turnPortrait, cur?.avatar);
+      syncTimer(snapshot);
+    }
+
+    function syncTimer(b){
+      clearInterval(timerInt); timerInt=null;
+      if(b?.status!=='active'){ turnTimer.textContent='--:--'; return; }
+      timerLeft = Math.max(0, Number(b.timeLeft||0));
+      updateTimerText();
+      timerInt = setInterval(()=>{
+        timerLeft = Math.max(0, timerLeft-1);
+        updateTimerText();
+        if(timerLeft<=0){ clearInterval(timerInt); timerInt=null; }
+      }, 1000);
+    }
+    function updateTimerText(){
+      const m = Math.floor(timerLeft/60).toString().padStart(2,'0');
+      const s = Math.floor(timerLeft%60).toString().padStart(2,'0');
+      turnTimer.textContent = `${m}:${s}`;
     }
 
     function findMeIn(b){
@@ -208,6 +227,8 @@
           renderMe(); renderTeams(); renderTurn();
         });
       });
+      socket.on('disconnect', ()=> addLog('연결 끊김 · 재연결 시도 중','sys'));
+      socket.io.on('reconnect', ()=> addLog('재연결됨','sys'));
 
       const onUpdate = (b)=>{ snapshot=b; renderMe(); renderTeams(); renderTurn(); };
       socket.on('battleUpdate', onUpdate);
@@ -217,6 +238,12 @@
       socket.on('battle:log', (ev)=> addLog(ev?.message||'로그','sys'));
       socket.on('chatMessage', d=> addChat(d?.name||'익명', d?.message||''));
       socket.on('battle:chat', d=> addChat(d?.name||d?.senderName||'익명', d?.message||''));
+
+      // Track actions for tie-breaker "최근 공격자"
+      socket.on('playerAction', a=>{ if(a?.type==='attack'){ lastAttackerTeam = a.team || a.playerTeam || lastAttackerTeam; } });
+      socket.on('player:action', a=>{ if(a?.type==='attack'){ lastAttackerTeam = a.team || a.playerTeam || lastAttackerTeam; } });
+
+      socket.on('battle:ended', (b)=>{ const result = computeWinner(b||snapshot); addLog('승자 결정: '+result,'sys'); });
     }
 
     function canAct(){
@@ -275,6 +302,24 @@
     }
     btnSend.addEventListener('click', (e)=>{ e.preventDefault(); sendChat(); });
     chatMsg.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
+
+    // Tie-breaker (for client display only; final decision is server)
+    function computeWinner(b){
+      if(!b) return '판정 불가';
+      const aliveA = (b.players||[]).filter(p=>p.team==='A' && p.hp>0).length;
+      const aliveB = (b.players||[]).filter(p=>p.team==='B' && p.hp>0).length;
+      if(aliveA!==aliveB) return aliveA>aliveB?'A팀(생존자 우세)':'B팀(생존자 우세)';
+      const hpA = (b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.hp||0),0);
+      const hpB = (b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.hp||0),0);
+      if(hpA!==hpB) return hpA>hpB?'A팀(체력 합산 우세)':'B팀(체력 합산 우세)';
+      if(lastAttackerTeam) return lastAttackerTeam+'(최근 공격자 우선)';
+      if(b.currentTeam) return (b.currentTeam==='A'?'A팀':'B팀')+'(현재 턴 팀 우선)';
+      if(firstTeam) return (firstTeam==='A'?'A팀':'B팀')+'(선공 팀 우선)';
+      const agiA=(b.players||[]).filter(p=>p.team==='A').reduce((s,p)=>s+(p.stats?.agility||0),0);
+      const agiB=(b.players||[]).filter(p=>p.team==='B').reduce((s,p)=>s+(p.stats?.agility||0),0);
+      if(agiA!==agiB) return agiA>agiB?'A팀(민첩 합 우세)':'B팀(민첩 합 우세)';
+      return 'A팀(알파벳 순)';
+    }
 
     document.addEventListener('DOMContentLoaded', bindSocket);
   </script>
