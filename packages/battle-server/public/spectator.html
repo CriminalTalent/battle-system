@@ -21,22 +21,56 @@
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{min-height:100vh;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--text);font-family:var(--serif)}
-    .wrap{max-width:1400px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 1fr 420px;gap:16px;align-items:start}
-    @media (max-width:1200px){.wrap{grid-template-columns:1fr;gap:12px}}
+
+    /* 전체 2행 그리드
+       1행: A팀 | 중앙(턴/초상화) | B팀
+       2행: 채팅 | 응원 | 로그
+    */
+    .wrap{
+      max-width:1400px;margin:0 auto;padding:20px;
+      display:grid;gap:16px;align-items:start;
+      grid-template-columns: 1fr 1.1fr 1fr;
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "teamA center teamB"
+        "chat  cheers log";
+    }
+    @media (max-width:1200px){
+      .wrap{
+        grid-template-columns:1fr;
+        grid-template-areas:
+          "center"
+          "teamA"
+          "teamB"
+          "cheers"
+          "chat"
+          "log";
+      }
+    }
 
     .card{background:var(--glass-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
     .title{font-weight:700;color:var(--gold2);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:12px;letter-spacing:.5px}
 
     /* 팀 리스트 */
+    .teamCol{ }
     .teamCol .name{color:var(--muted);font-size:13px;margin-bottom:8px}
     .mini{display:flex;gap:8px;align-items:center;margin-bottom:8px;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:8px}
     .mini img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#0b0b0b;border:1px solid var(--border)}
     .mini .nm{font-size:12px}
     .mini .hp{font-size:11px;color:var(--muted)}
 
-    /* 우측: 로그/채팅 분리 */
-    .log{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
-    .chatView{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:10px}
+    /* 중앙(턴/초상화) */
+    .center{ }
+    .turnBar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .pill{font-size:12px;border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px}
+    .currentPortrait{
+      width:100%;max-width:340px;aspect-ratio:1/1;border-radius:14px;
+      border:2px solid var(--border);object-fit:cover;background:#0b0b0b;margin:0 auto 6px auto;display:block
+    }
+
+    /* 로그/채팅 */
+    .log{height:240px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
+    .chatView{height:240px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
     .entry{font-size:12px;margin-bottom:6px}
     .entry .t{color:var(--muted);margin-right:6px;font-size:10px}
     .entry.sys{color:var(--accent)}
@@ -44,8 +78,16 @@
 
     /* 응원 버튼 */
     .cheers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-    .cheer{padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--glass-1);cursor:pointer}
+    .cheer{padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--glass-1);cursor:pointer}
     .cheer:disabled{opacity:.4;cursor:not-allowed}
+
+    /* 영역 배치 */
+    #colA{grid-area:teamA}
+    #center{grid-area:center}
+    #colB{grid-area:teamB}
+    #chatCard{grid-area:chat}
+    #cheerCard{grid-area:cheers}
+    #logCard{grid-area:log}
 
     /* 인증 오버레이 */
     .overlay{
@@ -65,13 +107,6 @@
       background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;font-weight:700
     }
     .btn:disabled{background:#111;color:#555;border:1px solid #222;cursor:not-allowed}
-
-    /* 현재 턴 간단 표시 */
-    .turnBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-    .pill{font-size:12px;border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px}
-
-    /* 이미지(폴백) 공통 */
-    .currentPortrait{width:100%;max-width:220px;aspect-ratio:1/1;border-radius:14px;border:2px solid var(--border);object-fit:cover;background:#0b0b0b;margin-bottom:10px}
   </style>
 </head>
 <body>
@@ -93,25 +128,37 @@
 
   <div class="wrap" id="layout" style="display:none">
     <!-- 좌: A팀 -->
-    <section class="card teamCol">
+    <section id="colA" class="card teamCol">
       <div class="title">A팀</div>
-      <div class="turnBar">
-        <img id="curPortrait" class="currentPortrait" alt="현재 턴 초상화"/>
-      </div>
       <div id="teamAList"></div>
     </section>
 
-    <!-- 중: B팀 + 응원 버튼 -->
-    <section class="card teamCol">
-      <div class="title">B팀</div>
+    <!-- 중앙: 현재 턴/초상화 -->
+    <section id="center" class="card center">
+      <div class="title">전투 상황</div>
       <div class="turnBar">
         <div class="pill">라운드 <span id="round">1</span></div>
         <div class="pill"><span id="turnTeam">-팀</span> 차례</div>
         <div class="pill">남은 시간 <span id="turnTimer">--:--</span></div>
       </div>
-      <div id="teamBList" style="margin-bottom:12px"></div>
+      <img id="curPortrait" class="currentPortrait" alt="현재 턴 초상화"/>
+    </section>
 
-      <div class="title" style="margin-top:8px">응원</div>
+    <!-- 우: B팀 -->
+    <section id="colB" class="card teamCol">
+      <div class="title">B팀</div>
+      <div id="teamBList"></div>
+    </section>
+
+    <!-- 하단 좌: 채팅(보기 전용) -->
+    <section id="chatCard" class="card">
+      <div class="title">채팅 보기</div>
+      <div id="chatView" class="chatView"></div>
+    </section>
+
+    <!-- 하단 중: 응원 버튼 -->
+    <section id="cheerCard" class="card">
+      <div class="title">응원</div>
       <div class="cheers">
         <button class="cheer" data-msg="멋지다!">멋지다!</button>
         <button class="cheer" data-msg="이겨라!">이겨라!</button>
@@ -122,13 +169,10 @@
       </div>
     </section>
 
-    <!-- 우: 로그(위) + 채팅(아래) -->
-    <section class="card">
+    <!-- 하단 우: 로그 -->
+    <section id="logCard" class="card">
       <div class="title">실시간 로그</div>
       <div id="battleLog" class="log"></div>
-
-      <div class="title" style="margin-top:12px">채팅 보기</div>
-      <div id="chatView" class="chatView"></div>
     </section>
   </div>
 
@@ -157,7 +201,6 @@
     let spectatorName='';
     let snapshot=null;
 
-    // 기본 아바타(데이터 URI) – 플레이어 페이지와 동일 폴백
     const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,'+encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">
         <rect width="100%" height="100%" fill="#0b0b0b"/>
@@ -165,12 +208,26 @@
         <rect x="35" y="100" width="90" height="45" rx="12" fill="#2b2b2b"/>
       </svg>`
     );
+
+    // (초상화 경로 보정: 파일명만 올 때 /uploads/avatars/ 붙이기)
+    function normalizeAvatar(u){
+      if(!u) return '';
+      const s=String(u).trim();
+      if(!s) return '';
+      if(s.startsWith('http://')||s.startsWith('https://')||s.startsWith('data:')||s.startsWith('blob:')) return s;
+      if(s.startsWith('/uploads/')) return s;
+      if(s.startsWith('/')) return s;
+      return '/uploads/avatars/'+s;
+    }
     function setImg(el, url){
       if(!el) return;
+      const fixed = normalizeAvatar(url);
       el.onerror=null;
-      el.src = url || DEFAULT_AVATAR;
+      el.src = fixed || DEFAULT_AVATAR;
       el.onerror = ()=>{ el.onerror=null; el.src = DEFAULT_AVATAR; };
     }
+
+    function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
     function addLog(msg, type='sys'){
       const d=document.createElement('div');
@@ -188,7 +245,6 @@
       chatView.appendChild(d); chatView.scrollTop=chatView.scrollHeight;
       while(chatView.children.length>400) chatView.removeChild(chatView.firstChild);
     }
-    function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
     function renderTeams(){
       if(!snapshot) return;
@@ -210,7 +266,6 @@
       roundEl.textContent = snapshot.currentTurn?.turnNumber || snapshot.turn?.round || 1;
       turnTeamEl.textContent = (snapshot.currentTurn?.currentTeam || snapshot.currentTeam || '-') + '팀';
       const cur = snapshot.currentTurn?.currentPlayer || null;
-      // 현재 턴 초상화(가능한 id로 찾기 → url 폴백)
       const curPlayer = cur?.avatar ? cur : (snapshot.players||[]).find(p=>p.id===cur?.id);
       setImg(curPortrait, curPlayer?.avatar);
     }
@@ -220,7 +275,7 @@
       socket.on('connect', ()=>{
         addLog('서버 연결됨','sys');
         if(!battleId){ addLog('battle 파라미터가 없습니다.','sys'); return; }
-        // 관전은 방 참여만으로 스냅샷 수신(원본 호환)
+        // 관전은 방 참여(원본 호환)
         socket.emit('join',{ battleId });
       });
 
@@ -251,8 +306,6 @@
 
     nameInput.addEventListener('input', validateAuth);
     pwdInput.addEventListener('input', validateAuth);
-
-    // URL otp 자동 채움
     if(urlOtp){ pwdInput.value = urlOtp; }
 
     authBtn.addEventListener('click', ()=>{
@@ -261,18 +314,16 @@
       overlay.style.display='none';
       layout.style.display='grid';
       addLog(`관전자 입장: ${spectatorName}`,'sys');
-      // 연결/구독 시작
       bindSocket();
     });
 
-    // 응원 버튼 (버튼만, 입력란 없음)
+    // 응원 버튼 (입력란 없음)
     document.addEventListener('click', (e)=>{
       const btn = e.target.closest('.cheer');
       if(!btn) return;
       if(!spectatorName){ addLog('이름이 필요합니다.','sys'); return; }
       if(!socket || !battleId) return;
       const msg = btn.getAttribute('data-msg') || '';
-      // 둘 다 브로드캐스트(호환)
       socket.emit('spectator:cheer', { battleId, name: spectatorName, message: msg });
       socket.emit('cheerMessage',    { battleId, name: spectatorName, message: msg });
       addLog(`[응원 전송] ${spectatorName}: ${msg}`,'cheer');
