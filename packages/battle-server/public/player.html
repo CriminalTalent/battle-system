@@ -238,11 +238,23 @@
       </svg>`
     );
 
-    // [추가] 이미지 안전 세팅(빈 값/오류 시 기본 아바타)
+    // [추가] 파일명만 온 경우 업로드 경로로 보정
+    function normalizeAvatar(u){
+      if(!u) return '';
+      const s = String(u).trim();
+      if(!s) return '';
+      if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:') || s.startsWith('blob:')) return s;
+      if (s.startsWith('/uploads/')) return s;
+      if (s.startsWith('/')) return s;
+      return '/uploads/avatars/' + s; // 파일명만 온 경우
+    }
+
+    // [변경] 이미지 안전 세팅(빈 값/오류 시 기본 아바타 + 경로 보정)
     function setImg(el, url){
       if(!el) return;
-      el.onerror = null; // 안전 초기화
-      el.src = url || DEFAULT_AVATAR;
+      const fixed = normalizeAvatar(url);
+      el.onerror = null;
+      el.src = fixed || DEFAULT_AVATAR;
       el.onerror = ()=>{ el.onerror=null; el.src = DEFAULT_AVATAR; };
     }
 
@@ -311,7 +323,7 @@
       iAtkB.textContent = me.items?.attack_boost ?? me.items?.attackBooster ?? 0;
       iDefB.textContent = me.items?.defense_boost ?? me.items?.defenseBooster ?? 0;
 
-      // [변경] 내 초상화: 폴백 보장
+      // 내 초상화
       setImg(meAvatar, me.avatar);
     }
 
@@ -322,7 +334,6 @@
         const row = document.createElement('div');
         row.className='mini';
         const img=document.createElement('img');
-        // [변경] 팀 리스트 초상화도 폴백 보장
         setImg(img, p.avatar);
         const box=document.createElement('div');
         box.innerHTML = `<div class="nm">${escapeHtml(p.name||'-')}</div><div class="hp">HP ${p.hp||0}/${p.maxHp||100}</div>`;
@@ -339,7 +350,7 @@
       const cur = snapshot.currentTurn?.currentPlayer || null;
       roundEl.textContent = snapshot.currentTurn?.turnNumber || snapshot.turn?.round || 1;
       turnTeamEl.textContent = (snapshot.currentTurn?.currentTeam || snapshot.currentTeam || '-') + '팀';
-      // [변경] 현재 턴 초상화 폴백
+      // 현재 턴 초상화
       setImg(turnPortrait, cur?.avatar || findPlayer(cur?.id)?.avatar);
     }
 
@@ -366,7 +377,6 @@
           addLog('인증 성공 · 전투 참가 완료','sys');
           me = res.playerData || null;
           snapshot = res.battle || null;
-          // [변경] 내 초상화 즉시 폴백 세팅
           renderMe(); renderTeams(); renderTurn();
         });
       });
