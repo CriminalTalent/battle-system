@@ -9,8 +9,7 @@
 <style>
   :root{
     --bg1:#0e0e0e; --bg2:#121212;
-    --glass-1:rgba(255,255,255,.06);
-    --glass-2:rgba(255,255,255,.10);
+    --glass-1:rgba(255,255,255,.06); --glass-2:rgba(255,255,255,.10);
     --border:rgba(255,255,255,.12);
     --text:#F8F9FA; --muted:#A9AFB6;
     --gold:#DCC7A2; --gold2:#E6D2A8;
@@ -19,76 +18,84 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100vh;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--text);font-family:var(--serif)}
-  .wrap{max-width:1400px;margin:0 auto;padding:18px;display:grid;grid-template-columns:1fr 1fr 420px;gap:14px;align-items:start}
-  @media (max-width:1200px){.wrap{grid-template-columns:1fr;gap:12px}}
+
+  /* 레이아웃: A | CENTER(2행 고정) | B  +  아래 logs */
+  .wrap{
+    max-width:1400px;margin:0 auto;padding:18px;
+    display:grid;grid-template-columns:1fr 520px 1fr;grid-template-rows:auto auto auto;
+    grid-template-areas:
+      "A CENTER B"
+      "A CENTER B"
+      "LOG LOG LOG";
+    gap:14px;align-items:start
+  }
+  @media (max-width:1200px){
+    .wrap{grid-template-columns:1fr;grid-template-areas:"CENTER" "A" "B" "LOG"}
+  }
+
   .card{background:var(--glass-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
   .title{font-weight:700;color:var(--gold2);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:12px}
 
   .teamCol .name{color:var(--muted);font-size:13px;margin-bottom:8px}
   .mini{display:flex;gap:8px;align-items:center;margin-bottom:8px;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:8px}
   .mini img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#0b0b0b;border:1px solid var(--border)}
-  .mini .nm{font-size:12px}
-  .mini .hp{font-size:11px;color:var(--muted)}
+  .mini .nm{font-size:12px} .mini .hp{font-size:11px;color:var(--muted)}
 
-  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);z-index:10}
-  .auth{width:100%;max-width:420px;background:#0f0f0f;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
-  .field{margin-bottom:12px}
-  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-  .field input{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#0b0b0b;color:var(--text)}
-  .btn{width:100%;padding:12px;border:none;border-radius:10px;cursor:pointer;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;font-weight:700}
-  .btn:disabled{background:#171717;color:#666;border:1px solid #222;cursor:not-allowed}
+  .center{grid-area:CENTER}
+  .left{grid-area:A}
+  .right{grid-area:B}
+  .logs{grid-area:LOG}
 
-  .currentPortrait{width:100%;max-width:220px;aspect-ratio:1/1;border-radius:14px;border:2px solid var(--border);object-fit:cover;background:#0b0b0b;margin-bottom:10px}
-  .turnBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .currentPortrait{width:100%;aspect-ratio:1/1;border-radius:14px;border:2px solid var(--border);object-fit:cover;background:#0b0b0b;margin-bottom:10px}
+  .turnBar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
   .pill{font-size:12px;border:1px solid var(--border);background:var(--glass-1);padding:6px 10px;border-radius:999px}
 
-  .log{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
-  .chatView{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:10px}
+  /* 응원 버튼(골드 테두리) */
+  .cheers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .cheer{padding:10px;border-radius:10px;border:2px solid #c7af7b;background:var(--glass-1);color:#e6d2a8;font-weight:700;cursor:pointer}
+  .cheer:disabled{opacity:.4;cursor:not-allowed}
 
+  /* 로그/채팅 분리 (아래 한 블록에 위아래) */
+  .log{height:240px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
+  .chatView{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:10px}
   .entry{font-size:12px;margin-bottom:6px}
   .entry .t{color:var(--muted);margin-right:6px;font-size:10px}
-
-  .cheers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-  .cheer{padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--glass-1);cursor:pointer}
-  .cheer:disabled{opacity:.4;cursor:not-allowed}
+  .entry.rule{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;border-radius:8px;padding:6px}
 </style>
 </head>
 <body>
-  <!-- 인증 -->
-  <div id="overlay" class="overlay">
-    <div class="auth">
+  <!-- 인증 오버레이 -->
+  <div id="overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);z-index:10">
+    <div class="card" style="width:100%;max-width:420px">
       <div class="title">관전 입장</div>
-      <div class="field">
-        <label for="nameInput">관전자 이름 (필수)</label>
-        <input id="nameInput" type="text" maxlength="20" placeholder="이름 입력"/>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:#A9AFB6;margin-bottom:6px">관전자 이름 (필수)</div>
+        <input id="nameInput" type="text" maxlength="20" placeholder="이름 입력" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#0b0b0b;color:var(--text)"/>
       </div>
-      <div class="field">
-        <label for="passwordInput">관전자 비밀번호</label>
-        <input id="passwordInput" type="text" maxlength="12" placeholder="관리자 발급 비밀번호"/>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:#A9AFB6;margin-bottom:6px">관전자 비밀번호</div>
+        <input id="passwordInput" type="text" maxlength="12" placeholder="관리자 발급 비밀번호" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#0b0b0b;color:var(--text)"/>
       </div>
-      <button id="authBtn" class="btn" disabled>관전 시작</button>
+      <button id="authBtn" class="cheer" disabled>관전 시작</button>
     </div>
   </div>
 
   <div class="wrap" id="layout" style="display:none">
-    <!-- 좌: A팀 + 현재 턴 초상화 -->
-    <section class="card teamCol">
+    <!-- 좌: A팀 -->
+    <section class="card left">
       <div class="title">A팀</div>
-      <img id="curPortrait" class="currentPortrait" alt="현재 턴 초상화"/>
       <div id="teamAList"></div>
     </section>
 
-    <!-- 중: B팀 + 턴 정보 + 응원 -->
-    <section class="card teamCol">
-      <div class="title">B팀</div>
+    <!-- 가운데: 초상화 + 턴 정보 + 응원(세로로 길게) -->
+    <section class="card center">
+      <img id="curPortrait" class="currentPortrait" alt="현재 턴 초상화"/>
       <div class="turnBar">
         <div class="pill">라운드 <span id="round">1</span></div>
         <div class="pill"><span id="turnTeam">-팀</span> 차례</div>
         <div class="pill">남은 시간 <span id="turnTimer">--:--</span></div>
       </div>
-      <div id="teamBList" style="margin-bottom:12px"></div>
-
-      <div class="title" style="margin-top:8px">응원</div>
+      <div class="title" style="border:none;padding:0;margin:8px 0 6px 0;color:#e6d2a8">응원</div>
       <div class="cheers">
         <button class="cheer" data-msg="멋지다!">멋지다!</button>
         <button class="cheer" data-msg="이겨라!">이겨라!</button>
@@ -99,13 +106,21 @@
       </div>
     </section>
 
-    <!-- 우: 로그(위) + 채팅(아래) -->
-    <section class="card">
-      <div class="title">실시간 로그</div>
-      <div id="battleLog" class="log"></div>
+    <!-- 우: B팀 -->
+    <section class="card right">
+      <div class="title">B팀</div>
+      <div id="teamBList"></div>
+    </section>
 
-      <div class="title" style="margin-top:12px">채팅 보기</div>
-      <div id="chatView" class="chatView"></div>
+    <!-- 아래: 로그 + 채팅 -->
+    <section class="logs">
+      <div class="card">
+        <div class="title">실시간 로그</div>
+        <div id="battleLog" class="log"></div>
+
+        <div class="title" style="margin-top:12px">채팅 보기</div>
+        <div id="chatView" class="chatView"></div>
+      </div>
     </section>
   </div>
 
@@ -117,7 +132,6 @@
 
   const nameInput=$('#nameInput'); const pwdInput=$('#passwordInput'); const authBtn=$('#authBtn');
   const overlay=$('#overlay'); const layout=$('#layout');
-
   const teamAList=$('#teamAList'), teamBList=$('#teamBList');
   const battleLog=$('#battleLog'), chatView=$('#chatView');
   const turnTeamEl=$('#turnTeam'), roundEl=$('#round'), turnTimer=$('#turnTimer'), curPortrait=$('#curPortrait');
@@ -134,9 +148,20 @@
   function setImg(el, url){ if(!el) return; el.onerror=null; el.src=url||DEFAULT_AVATAR; el.onerror=()=>{el.onerror=null; el.src=DEFAULT_AVATAR;} }
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
   function ts(){return new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'})}
+  const mmss = (sec)=> (typeof sec!=="number"||sec<0) ? "--:--" : `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
 
-  function addLog(msg){ const d=document.createElement('div'); d.className='entry'; d.innerHTML=`<span class="t">${ts()}</span>${escapeHtml(msg)}`; battleLog.appendChild(d); battleLog.scrollTop=battleLog.scrollHeight; while(battleLog.children.length>500) battleLog.removeChild(battleLog.firstChild); }
-  function addChat(name,msg){ const d=document.createElement('div'); d.className='entry'; d.innerHTML=`<span class="t">${ts()}</span><b>${escapeHtml(name||'익명')}</b>: ${escapeHtml(msg||'')}`; chatView.appendChild(d); chatView.scrollTop=chatView.scrollHeight; while(chatView.children.length>500) chatView.removeChild(chatView.firstChild); }
+  function addLog(msg, rule=false){
+    const d=document.createElement('div'); d.className='entry'+(rule?' rule':'');
+    d.innerHTML=`<span class="t">${ts()}</span>${escapeHtml(msg)}`;
+    battleLog.appendChild(d); battleLog.scrollTop=battleLog.scrollHeight;
+    while(battleLog.children.length>500) battleLog.removeChild(battleLog.firstChild);
+  }
+  function addChat(name,msg){
+    const d=document.createElement('div'); d.className='entry';
+    d.innerHTML=`<span class="t">${ts()}</span><b>${escapeHtml(name||'익명')}</b>: ${escapeHtml(msg||'')}`;
+    chatView.appendChild(d); chatView.scrollTop=chatView.scrollHeight;
+    while(chatView.children.length>500) chatView.removeChild(chatView.firstChild);
+  }
 
   function renderTeams(){
     if(!snapshot) return; teamAList.innerHTML=''; teamBList.innerHTML='';
@@ -148,8 +173,9 @@
   }
   function renderTurn(){
     if(!snapshot) return;
-    roundEl.textContent = snapshot.currentTurn?.turnNumber || snapshot.turn?.round || 1;
-    turnTeamEl.textContent = (snapshot.currentTurn?.currentTeam || snapshot.currentTeam || '-') + '팀';
+    roundEl.textContent = snapshot.currentTurn?.turnNumber || 1;
+    turnTeamEl.textContent = (snapshot.currentTurn?.currentTeam || '-') + '팀';
+    turnTimer.textContent = mmss(snapshot.currentTurn?.timeLeftSec);
     const cur = snapshot.currentTurn?.currentPlayer || null;
     const curP = cur?.avatar ? cur : (snapshot.players||[]).find(p=>p.id===cur?.id);
     setImg(curPortrait, curP?.avatar);
@@ -158,36 +184,41 @@
 
   function bindSocket(){
     socket=io();
-    socket.on('connect', ()=>{ addLog('서버 연결됨'); if(!battleId){ addLog('battle 파라미터가 없습니다.'); return; } socket.emit('join',{battleId}); });
+    socket.on('connect', ()=>{ addLog('서버 연결됨', true); if(!battleId){ addLog('battle 파라미터가 없습니다.', true); return; } socket.emit('join',{battleId}); });
     socket.on('battleUpdate', onUpdate);
     socket.on('battle:update', onUpdate);
 
-    // 로그
-    const onLog=(ev)=> addLog(ev?.message||'로그');
+    // 룰/시스템 로그는 골드 바탕
+    const onLog=(ev)=>{
+      const msg = ev?.message || '';
+      const type = ev?.type || 'system';
+      const rule = (type==='rule'||type==='system'||type==='battle'||/전투|라운드|선공|차례|종료/.test(msg));
+      addLog(msg, rule);
+    };
     socket.on('battleLog', onLog);
     socket.on('battle:log', onLog);
 
-    // 채팅/응원 → 채팅창에만
-    socket.on('chatMessage', (d)=> addChat(d?.name||'익명', d?.message||''));   // 일반 채팅
-    socket.on('cheerMessage', (d)=> addChat(d?.name||'관전자', d?.message||'')); // 응원
+    // 채팅/응원 → 채팅창에만 (로컬 에코 금지)
+    socket.on('chatMessage',   (d)=> addChat(d?.name||'익명', d?.message||''));   // 일반 채팅
+    socket.on('cheerMessage',  (d)=> addChat(d?.name||'관전자', d?.message||'')); // 응원
   }
 
   function validate(){ const hasName=!!nameInput.value.trim(); const hasPwd=!!pwdInput.value.trim() || !!urlOtp; authBtn.disabled=!hasName || !hasPwd; }
   nameInput.addEventListener('input', validate);
+  const pwdInput = $('#passwordInput');
   pwdInput.addEventListener('input', validate);
   if(urlOtp) pwdInput.value=urlOtp;
 
   authBtn.addEventListener('click', ()=>{
     spectatorName = nameInput.value.trim(); if(!spectatorName) return;
-    overlay.style.display='none'; layout.style.display='grid'; addLog(`관전자 입장: ${spectatorName}`);
+    overlay.style.display='none'; layout.style.display='grid'; addLog(`관전자 입장: ${spectatorName}`, true);
     bindSocket();
-    // 응원 버튼
+
+    // 응원 버튼(서버 브로드캐스트만, 로컬 에코 제거)
     document.addEventListener('click', (e)=>{
       const btn=e.target.closest('.cheer'); if(!btn || !socket || !battleId) return;
       const msg=btn.getAttribute('data-msg')||''; socket.emit('spectator:cheer',{battleId,name:spectatorName,message:msg});
-      // 로컬 미러(채팅창에만)
-      addChat(spectatorName, msg);
-    }, { once:false });
+    });
   });
 
   validate();
