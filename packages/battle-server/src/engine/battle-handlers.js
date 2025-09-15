@@ -4,8 +4,12 @@ export function makeBattleHandlers({ battles, io }) {
   function emitUpdate(bid) {
     const b = battles.snapshot(bid);
     if (!b) return;
+    // 남은 시간 보강: 엔진 timers.turnDeadline 사용
+    const raw = battles.get(bid);
+    const dl = raw && raw.timers && raw.timers.turnDeadline ? raw.timers.turnDeadline : (raw?.currentTurn?.turnDeadline || null);
+    b.currentTurn = b.currentTurn || {};
+    b.currentTurn.timeLeftSec = dl ? Math.max(0, Math.floor((dl - Date.now())/1000)) : null;
     io.to(bid).emit('battleUpdate', b);
-    io.to(bid).emit('battle:update', b);
   }
   function pushLog(bid, type, message, extra = {}) {
     const b = battles.get(bid);
