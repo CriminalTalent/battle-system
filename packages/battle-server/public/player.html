@@ -163,8 +163,6 @@
   const battleId = q.get('battle') || '';
   const myName   = q.get('name') || '';
   const token    = q.get('password') || q.get('token') || q.get('otp') || '';
-  const playerId = q.get('playerId') || q.get('pid') || '';
-  const team     = q.get('team') || '';
 
   const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,'+encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">
@@ -235,8 +233,7 @@
       const box=document.createElement('div'); box.className='box';
       const hpRatio = Math.max(0, Math.min(100, Math.round((p.hp||0)/(p.maxHp||100)*100)));
       box.innerHTML=`<div class="nm">${escapeHtml(p.name||'-')}</div>
-                     <div class="hp"><span style="width:${hpRatio}%"></span></div>
-                     <div style="font-size:11px;color:var(--muted);margin-top:2px">공 ${p.stats?.attack ?? '-'} / 방 ${p.stats?.defense ?? '-'} / 민 ${p.stats?.agility ?? '-'} / 행 ${p.stats?.luck ?? '-'}</div>`;
+                     <div class="hp"><span style="width:${hpRatio}%"></span></div>`;
       row.appendChild(img); row.appendChild(box);
       (p.team===myTeam?my:opp).push(row);
     });
@@ -269,7 +266,7 @@
   }
   function onUpdate(b){
     snapshot=b;
-    if(snapshot && me && me.id){ const found=(snapshot.players||[]).find(pp=>pp.id===me.id); if(found) me=found; }
+    if(me && snapshot){ me =(snapshot.players||[]).find(p=>p.id===me.id) || me; }
     renderMe(); renderTeams(); renderTurn();
   }
 
@@ -278,7 +275,7 @@
     socket.on('connect', ()=>{
       addLog('서버 연결됨','rule');
       if(!battleId){ addLog('battle 파라미터가 없습니다.','err'); return; }
-      socket.emit('playerAuth',{ battleId, token, password:token, otp:token, playerId, playerName:myName, team }, (res)=>{
+      socket.emit('playerAuth',{ battleId, token, password:token, otp:token, playerName:myName }, (res)=>{
         if(!res?.ok){ addLog('인증 실패: '+(res?.message||res?.error||'오류'),'err'); return; }
         addLog('인증 성공 · 전투 참가','rule');
         me = res.playerData; snapshot = res.battle;
@@ -309,19 +306,17 @@
   // 채팅(중복 전송 금지: 하나만 발신)
   btnSend.addEventListener('click', ()=>{
     const m = chatMsg.value.trim(); if(!m || !socket || !battleId) return;
-    socket.emit('chatMessage', { battleId, name: (me?.name||myName||'전투 참가자'), message: m });
+    socket.emit('chatMessage', { battleId, name: myName||'전투 참가자', message: m });
     chatMsg.value='';
   });
   chatMsg.addEventListener('keydown', e=>{ if(e.key==='Enter') btnSend.click(); });
 
   // 준비 완료(모든 페이지로 송신 서버에서 브로드캐스트)
   btnReady.addEventListener('click', ()=>{
-      btnReady.disabled = true;
-      if(!me||!me.id) return;
-      socket.emit('playerReady', { battleId, playerId: me.id }, (res)=>{
-        if(!res?.ok){ addLog('준비 전송 실패: '+(res?.error||'오류'),'err'); btnReady.disabled=false; }
-      });
-    });
+    if(!socket || !battleId || !me?.id) return;
+    btnReady.disabled = true; btnReady.textContent = '준비 완료됨';
+    addLog('내 상태: 준비 완료','rule');
+    socket.emit('player:ready', { battleId, playerId: me.id, ready:true });
   });
 
   // 타깃 선택 오버레이
