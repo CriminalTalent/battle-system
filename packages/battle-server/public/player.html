@@ -7,10 +7,19 @@
 <script src="/socket.io/socket.io.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg1:#0e0e0e;--bg2:#141414;--glass-1:rgba(255,255,255,.06);--glass-2:rgba(255,255,255,.10);--border:rgba(255,255,255,.14);--text:#F8F9FA;--muted:#A9AFB6;--gold:#DCC7A2;--gold2:#E6D2A8;--radius:14px;--shadow:0 8px 24px rgba(0,0,0,.35);--serif:"Cinzel",serif}
+  :root{
+    --bg1:#0e0e0e; --bg2:#141414;
+    --glass-1:rgba(255,255,255,.06); --glass-2:rgba(255,255,255,.10);
+    --border:rgba(255,255,255,.14);
+    --text:#F8F9FA; --muted:#A9AFB6;
+    --gold:#DCC7A2; --gold2:#E6D2A8;
+    --radius:14px;
+    --shadow:0 8px 24px rgba(0,0,0,.35);
+    --serif:"Cinzel",serif;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{min-height:100vh;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--text);font-family:var(--serif)}
-  .wrap{max-width:1400px;margin:0 auto;padding:18px;display:grid;grid-template-columns:1fr 520px 1fr;gap:14px;align-items:start}
+  .wrap{max-width:1400px;margin:0 auto;padding:18px;display:grid;grid-template-columns:1fr 520px 1fr;gap:14px;align-items:start;}
   @media (max-width:1200px){.wrap{grid-template-columns:1fr;gap:12px}}
   .card{background:var(--glass-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
   .title{font-weight:700;color:var(--gold2);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px}
@@ -26,7 +35,8 @@
   .k{color:#c7af7b}.v{color:#e6d2a8}
   .mini{display:flex;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px}
   .mini img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#0b0b0b;border:1px solid var(--border)}
-  .mini .box{flex:1}.mini .nm{font-size:12px}
+  .mini .box{flex:1}
+  .mini .nm{font-size:12px}
   .mini .hp{height:8px;border-radius:6px;background:rgba(255,255,255,.12);border:1px solid var(--border);overflow:hidden;margin-top:4px}
   .mini .hp span{display:block;height:100%;background:linear-gradient(90deg,#b58d52,#e6d2a8)}
   .portrait{width:100%;aspect-ratio:1/1;border-radius:14px;border:1px solid var(--border);object-fit:cover;background:#0b0b0b;margin-bottom:10px}
@@ -121,6 +131,7 @@
 </div>
 
 <script>
+  // 유틸
   function $(s,r=document){ return r.querySelector(s); }
   function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[c])); }
   function fmt(ts){ const d=new Date(ts||Date.now()); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
@@ -135,11 +146,6 @@
   const allyList=$('#allyList'), enemyList=$('#enemyList'), logEl=$('#log'), chatView=$('#chatView'), chatMsg=$('#chatMsg'), btnSend=$('#btnSend');
   const overlay=$('#overlay'), targetList=$('#targetList'), btnCancelTarget=$('#btnCancelTarget');
 
-  // 상태
-  let socket=null, battleId='', me=null, myTeam='A', snapshot=null;
-  let _timerStartAt=0, _timerBaseSec=null, _timerHandle=null;
-  let __lastLogKey=null;
-
   function addLog(msg, cls=''){
     if(!msg) return;
     const div=document.createElement('div');
@@ -147,6 +153,11 @@
     div.innerHTML=`<span class="t">${fmt(Date.now())}</span>${escapeHtml(msg)}`;
     logEl.appendChild(div); logEl.scrollTop=logEl.scrollHeight;
   }
+
+  // 상태
+  let socket=null, battleId='', me=null, myTeam='A', snapshot=null;
+  let _timerStartAt=0, _timerBaseSec=null, _timerHandle=null;
+  let __lastLogKey=null;
 
   function renderMe(){
     if(!me) return;
@@ -182,14 +193,16 @@
     const my=[], opp=[];
     (snapshot.players||[]).forEach(p=> (p.team===myTeam?my:opp).push(rowFor(p)) );
     allyList.innerHTML=''; enemyList.innerHTML='';
-    my.forEach(n=>allyList.appendChild(n)); opp.forEach(n=>enemyList.appendChild(n));
+    my.forEach(n=>allyList.appendChild(n));
+    opp.forEach(n=>enemyList.appendChild(n));
   }
 
   function renderTimer(){
     if(_timerBaseSec==null){ turnTimerEl.textContent='--:--'; return; }
     const passed=Math.floor((Date.now()-_timerStartAt)/1000);
     const left=Math.max(0,_timerBaseSec-passed);
-    const m=String(Math.floor(left/60)).padStart(2,'0'), s=String(left%60).padStart(2,'0');
+    const m=String(Math.floor(left/60)).padStart(2,'0');
+    const s=String(left%60).padStart(2,'0');
     turnTimerEl.textContent = `${m}:${s}`;
   }
 
@@ -227,24 +240,22 @@
 
   function onLog(entry){
     const msg = entry?.message || '';
-    // 디버그 패턴(예: " · attack (...)") 제거, 나머지는 유지
+    // 디버그 패턴 숨김 (예: "444 · attack (...)" )
     if (/·\s*attack\s*\(/i.test(msg)) return;
-    const key = String(entry?.ts||'')+':'+msg;
-    if (__lastLogKey===key) return;
-    __lastLogKey = key;
+    const key = String(entry?.ts||'')+':'+msg; if (__lastLogKey===key) return; __lastLogKey=key;
     const cls = (entry?.type==='battle') ? 'rule' : '';
     addLog(msg, cls);
   }
 
+  // 연결/인증
   function bindSocket(){
     const q = new URLSearchParams(location.search);
     battleId = q.get('battle') || '';
-    const myName   = q.get('name') || '';
-    const token    = q.get('password') || q.get('token') || q.get('otp') || '';
+    const myName = q.get('name') || '';
+    const token  = q.get('password') || q.get('token') || q.get('otp') || '';
     const playerId = q.get('playerId') || q.get('pid') || '';
 
-    const ioOpts = { path:'/socket.io' };
-    window.socket = socket = io(ioOpts);
+    socket = io({ path:'/socket.io' });
 
     socket.on('connect', ()=>{
       if(!battleId){ addLog('battle 파라미터가 없습니다.','err'); return; }
