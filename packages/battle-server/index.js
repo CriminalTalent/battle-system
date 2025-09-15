@@ -1,5 +1,5 @@
 // packages/battle-server/index.js
-// 포트/소켓 경로: 3001 / /socket.io  (불변)
+// 포트/소켓 경로 고정: 3001 / /socket.io
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -8,17 +8,19 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
+
 import avatarUploadRouter from "./src/routes/avatar-upload.js";
 
 dotenv.config();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const HOST = process.env.HOST || "0.0.0.0";
-const PORT = Number(process.env.PORT || 3001);
+const HOST        = process.env.HOST || "0.0.0.0";
+const PORT        = Number(process.env.PORT || 3001);
 const SOCKET_PATH = "/socket.io";
 
-// 디렉토리
+// 정적 경로
 const publicDir  = path.join(__dirname, "public");
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(path.join(uploadsDir, "avatars"), { recursive: true });
@@ -28,7 +30,7 @@ const app    = express();
 const server = http.createServer(app);
 const io     = new IOServer(server, { path: SOCKET_PATH, cors: { origin: "*", methods: ["GET","POST"] } });
 
-// 미들웨어/정적
+// 미들웨어
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -38,7 +40,7 @@ app.use("/api/upload", avatarUploadRouter); // 불변
 
 // 인메모리 상태
 const battles    = new Map(); // battleId -> battle
-const tokenStore = new Map(); // token -> { type:'player'|'spectator', battleId, playerId, expires }
+const tokenStore = new Map(); // token    -> { type:'player'|'spectator', battleId, playerId|null, expires }
 
 // 유틸
 const now   = () => Date.now();
@@ -51,22 +53,25 @@ function firstAliveId(b, team){
   return p ? p.id : null;
 }
 
+// 로그: 보낼 때는 1회만
 function pushLog(battleId, type, message){
   const b = battles.get(battleId); if(!b) return;
   const entry = { ts: now(), type, message };
   b.logs.push(entry);
-  // 원칙: 보낼 때는 1회
   io.to(battleId).emit("battle:log", entry);
 }
 
+// 스냅샷 브로드캐스트(보낼 때는 1회만)
 function emitBattleUpdate(battleId){
   const b = battles.get(battleId); if(!b) return;
   const payload = clone(b);
+
   // 남은 시간
   const dl = b.currentTurn?.turnDeadline || null;
   payload.currentTurn = payload.currentTurn || {};
   payload.currentTurn.timeLeftSec = dl ? Math.max(0, Math.floor((dl - now())/1000)) : null;
-  // 현재 진행자 객체 포함
+
+  // 현재 진행자(아이디/아바타)
   const cpid = b.currentTurn?.currentPlayerId || null;
   payload.currentTurn.currentPlayerId = cpid;
   if (cpid) {
@@ -75,38 +80,39 @@ function emitBattleUpdate(battleId){
   } else {
     payload.currentTurn.currentPlayer = null;
   }
-  // 원칙: 보낼 때는 1회
+
   io.to(battleId).emit("battleUpdate", payload);
 }
 
-// API (불변)
+// --- API (불변) ---
 app.get("/api/health", (_req,res)=> res.json({ ok:true, uptime:process.uptime(), battles: battles.size }) );
 
 app.post("/api/battles", (req,res)=>{
-  const mode = String(req.body?.mode || "1v1");
   const id   = genId();
+  const mode = String(req.body?.mode || "1v1");
   const battle = {
-    id, mode, status: "waiting", createdAt: now(),
+    id, mode, status:"waiting", createdAt: now(),
     players: [], logs: [],
-    currentTurn: { turnNumber: 0, currentTeam: null, currentPlayer: null, currentPlayerId: null, turnDeadline: null }
+    currentTurn: { turnNumber:0, currentTeam:null, currentPlayer:null, currentPlayerId:null, turnDeadline:null }
   };
   battles.set(id, battle);
   pushLog(id, "system", `전투 생성 (${mode})`);
   res.json({ ok:true, battleId:id, battle: clone(battle) });
 });
 
-// 링크 발급 (관리자) + 호환 경로
+// 링크 발급(관리자) + 호환 경로
 app.post(["/api/admin/battles/:id/links", "/api/battles/:id/links"], (req,res)=>{
   const id = String(req.params.id||"");
   const b  = battles.get(id);
   if(!b) return res.status(404).json({ ok:false, error:"not_found" });
 
   const base = req.headers["x-base-url"] || `${req.protocol}://${req.get("host")}`;
+
   // 관전자 OTP
   const specOTP = genId();
   tokenStore.set(specOTP, { type:"spectator", battleId:id, playerId:null, expires: now()+24*60*60*1000 });
 
-  // 전투 참가자 개별 링크 (token + playerId)
+  // 전투 참가자 개별 링크(token + playerId)
   const players = b.players.map(p=>{
     const t = genId()+genId();
     tokenStore.set(t, { type:"player", battleId:id, playerId:p.id, expires: now()+24*60*60*1000 });
@@ -123,15 +129,16 @@ app.post(["/api/admin/battles/:id/links", "/api/battles/:id/links"], (req,res)=>
   });
 });
 
-// 소켓
+// --- 소켓 ---
 io.on("connection", (socket)=>{
+
   socket.on("join", ({ battleId })=>{
     if(!battleId) return;
     socket.join(String(battleId));
     emitBattleUpdate(String(battleId));
   });
 
-  // 전투 참가자 자동 로그인 (호환: token|password|otp|playerId|playerName)
+  // 전투 참가자 자동 로그인 (토큰/ID/이름 호환 + 콜백 ack 지원)
   socket.on("playerAuth", ({ battleId, password, token, otp, playerId, playerName }, cb = ()=>{})=>{
     const id = String(battleId||"");
     const b  = battles.get(id);
@@ -141,6 +148,8 @@ io.on("connection", (socket)=>{
     }
 
     let p = null;
+
+    // 1) 토큰 매칭
     const t = password || token || otp || "";
     if (t && tokenStore.has(t)) {
       const rec = tokenStore.get(t);
@@ -148,6 +157,7 @@ io.on("connection", (socket)=>{
         p = b.players.find(x=>x.id===rec.playerId) || null;
       }
     }
+    // 2) 실패 시 playerId → playerName
     if (!p && playerId)   p = b.players.find(x=>x.id===playerId) || null;
     if (!p && playerName) p = b.players.find(x=>x.name===playerName) || null;
 
@@ -170,13 +180,11 @@ io.on("connection", (socket)=>{
     emitBattleUpdate(id);
   });
 
-  // 준비 완료 (emit은 player:ready 또는 playerReady 아무거나 → 둘 다 수신)
+  // 준비 완료 (emit은 player:ready 또는 playerReady 중 하나, 서버는 둘 다 수신)
   function handleReady({ battleId, playerId }, cb){
     const id = battleId || socket.battleId;
-    const b  = battles.get(id);
-    if(!b) return cb && cb({ ok:false, error:"not_found" });
-    const p = b.players.find(x=>x.id===playerId);
-    if(!p)  return cb && cb({ ok:false, error:"player_not_found" });
+    const b  = battles.get(id); if(!b) return cb && cb({ ok:false, error:"not_found" });
+    const p  = b.players.find(x=>x.id===playerId); if(!p) return cb && cb({ ok:false, error:"player_not_found" });
     p.ready = true;
     pushLog(id, "battle", `${p.name} 준비 완료`);
     emitBattleUpdate(id);
@@ -185,7 +193,7 @@ io.on("connection", (socket)=>{
   socket.on("player:ready", handleReady);
   socket.on("playerReady",  handleReady);
 
-  // 전투 생성/제어(불변)
+  // 전투 생성/제어
   socket.on("createBattle", ({ mode }, cb=()=>{})=>{
     const id = genId();
     const b  = { id, mode:String(mode||"1v1"), status:"waiting", createdAt:now(),
@@ -197,6 +205,7 @@ io.on("connection", (socket)=>{
     const id = battleId || socket.battleId;
     const b  = battles.get(id); if(!b) return cb({ ok:false, error:"not_found" });
 
+    // 선공: 팀 민첩 합 + D20 (동점 재굴림)
     const sum = (team)=> (b.players||[]).filter(p=>p.team===team).reduce((s,p)=>s+(p.stats?.agility||0),0);
     const aS=sum("A"), bS=sum("B"), rA=d20(), rB=d20();
     let first = (aS+rA) > (bS+rB) ? "A" : (aS+rA) < (bS+rB) ? "B" : (d20()>=d20()?"A":"B");
@@ -225,7 +234,7 @@ io.on("connection", (socket)=>{
     const id = battleId || socket.battleId;
     const b  = battles.get(id); if(!b) return cb({ ok:false, error:"not_found" });
     b.status="active";
-    if(b.currentTurn) b.currentTurn.turnDeadline = now()+5*60*1000;
+    if (b.currentTurn) b.currentTurn.turnDeadline = now()+5*60*1000;
     emitBattleUpdate(id); cb({ ok:true });
   });
 
@@ -245,13 +254,13 @@ io.on("connection", (socket)=>{
       team: (player?.team==="B" ? "B" : "A"),
       hp:100, maxHp:100,
       stats: {
-        attack: Number(player?.stats?.attack || 1),
+        attack:  Number(player?.stats?.attack  || 1),
         defense: Number(player?.stats?.defense || 1),
         agility: Number(player?.stats?.agility || 1),
-        luck:   Number(player?.stats?.luck   || 1),
+        luck:    Number(player?.stats?.luck    || 1),
       },
       items: {
-        dittany: Number(player?.items?.dittany || player?.items?.ditany || 0),
+        dittany:        Number(player?.items?.dittany        || player?.items?.ditany        || 0),
         attackBooster:  Number(player?.items?.attackBooster  || player?.items?.attack_boost  || 0),
         defenseBooster: Number(player?.items?.defenseBooster || player?.items?.defense_boost || 0),
       },
@@ -275,27 +284,27 @@ io.on("connection", (socket)=>{
   socket.on("deletePlayer", removePlayerInternal);
   socket.on("removePlayer", removePlayerInternal); // 호환
 
-  // 채팅: emit 1회만, 수신은 호환
+  // 채팅: 보낼 때 1회, 수신은 호환
   socket.on("chatMessage", ({ battleId, name, message })=>{
     const id = battleId || socket.battleId; if(!id) return;
     const payload = { name: String(name||"전투 참가자"), message: String(message||"").slice(0,500) };
     io.to(id).emit("chatMessage", payload);
   });
 
-  // 응원: 채팅에만, 로그 X (emit 1회만)
+  // 응원: 채팅에만(로그 X) / 구호환 수신 변환
   socket.on("spectator:cheer", ({ battleId, name, message })=>{
     const id = battleId || socket.battleId; if(!id) return;
     const payload = { name: String(name||"관전자"), message: `[응원] ${String(message||"").slice(0,200)}` };
     io.to(id).emit("chatMessage", payload);
   });
-  socket.on("cheerMessage", (p)=> socket.emit("spectator:cheer", p)); // 구호환 수신
+  socket.on("cheerMessage", (p)=> socket.emit("spectator:cheer", p));
 });
 
 // SPA 라우팅
-app.get("/",           (_req,res)=> res.sendFile(path.join(publicDir,"admin.html")));
-app.get("/admin",      (_req,res)=> res.sendFile(path.join(publicDir,"admin.html")));
-app.get("/player",     (_req,res)=> res.sendFile(path.join(publicDir,"player.html")));
-app.get("/spectator",  (_req,res)=> res.sendFile(path.join(publicDir,"spectator.html")));
+app.get("/",          (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
+app.get("/admin",     (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
+app.get("/player",    (_req,res)=> res.sendFile(path.join(publicDir, "player.html")));
+app.get("/spectator", (_req,res)=> res.sendFile(path.join(publicDir, "spectator.html")));
 
 app.use((err,_req,res,_next)=>{ console.error(err); res.status(500).json({ ok:false, error:"internal" }); });
 
