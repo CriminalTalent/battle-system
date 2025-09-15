@@ -551,13 +551,7 @@
         role: 'admin', 
         name: '관리자' 
       });
-      socket.emit('chat:send', { 
-        battleId, 
-        message: text, 
-        role: 'admin', 
-        name: '관리자' 
-      });
-    }
+}
     
     els.chatMsg.value = '';
   }
