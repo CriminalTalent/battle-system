@@ -255,8 +255,7 @@
       };
       if (!payload.battleId || !payload.message) return;
       // 구/신 이벤트 동시 전송
-      this.socket.emit("chat:send", payload);
-      this.socket.emit("chatMessage", payload);
+this.socket.emit("chatMessage", payload);
     }
 
     sendCheer(cheer, opt = {}) {
@@ -400,21 +399,8 @@
       if (!this.socket) return;
       const id = battleId || this.ctx.battleId; if (!id || !playerId || !action) return;
 
-      // 신규
-      this.socket.emit("player:action", { battleId: id, playerId, action });
-
-      // 레거시 페이로드도 함께
-      // - 공격: { type:'attack', targetId }
-      // - 방어/회피/패스: { type:'defend'|'dodge'|'pass' }
-      // - 아이템: { type:'item', itemType:'attack_boost'|'defense_boost'|'dittany', targetId? }
-      const legacy = { battleId: id, actorId: playerId };
-      if (action && typeof action === "object") {
-        if (action.type) legacy.type = action.type;
-        if (action.targetId != null) legacy.targetId = action.targetId;
-        if (action.itemType) legacy.itemType = action.itemType;
-      }
-      this.socket.emit("playerAction", legacy);
-    }
+      // 신규this.socket.emit("player:action", { battleId: id, playerId, action });
+}
 
     /* -----------------------------
      * 관전자
