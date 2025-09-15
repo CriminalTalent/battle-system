@@ -22,7 +22,8 @@
     btnEnd: document.getElementById('btnEnd'),
     
     // 링크 생성
-    btnGenPlayer: document.getElementById('btnGenPlayer'),
+    btnGenLinks: document.getElementById('btnGenLinks'),
+    btnGenPlayer: document.getElementById('btnGenLinks'),
     btnGenSpectator: document.getElementById('btnGenSpectator'),
     btnBuildSpectator: document.getElementById('btnBuildSpectator'),
     spectatorOtp: document.getElementById('spectatorOtp'),
@@ -551,7 +552,13 @@
         role: 'admin', 
         name: '관리자' 
       });
-}
+      socket.emit('chat:send', { 
+        battleId, 
+        message: text, 
+        role: 'admin', 
+        name: '관리자' 
+      });
+    }
     
     els.chatMsg.value = '';
   }
