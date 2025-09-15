@@ -67,7 +67,7 @@ function emitBattleUpdate(battleId){
   const payload = clone(b);
 
   // 남은 시간
-  const dl = b.currentTurn?.turnDeadline || null;
+  const dl = (b.currentTurn && b.currentTurn.turnDeadline) ? b.currentTurn.turnDeadline : (b.timers && b.timers.turnDeadline ? b.timers.turnDeadline : null);
   payload.currentTurn = payload.currentTurn || {};
   payload.currentTurn.timeLeftSec = dl ? Math.max(0, Math.floor((dl - now())/1000)) : null;
 
