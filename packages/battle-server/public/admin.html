@@ -22,7 +22,6 @@
     html,body{min-height:100vh;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:var(--text);font-family:var(--serif)}
     .wrap{max-width:1400px;margin:0 auto;padding:18px;display:grid;grid-template-columns:340px 1fr 400px;gap:14px;align-items:start}
     @media (max-width:1200px){.wrap{grid-template-columns:1fr;gap:12px}}
-
     .card{background:var(--glass-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
     .title{font-weight:700;color:var(--gold2);border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:12px;letter-spacing:.5px}
 
@@ -57,7 +56,7 @@
       <div class="title">전투 제어</div>
 
       <div class="field" style="margin-top:10px">
-        <label for="mode">모드</label>
+        <label for="mode">전투 모드</label>
         <select id="mode">
           <option value="1v1">1v1</option>
           <option value="2v2">2v2</option>
@@ -98,7 +97,7 @@
       <div class="row">
         <div class="field">
           <label for="pName">이름</label>
-          <input id="pName" type="text" placeholder="이름 입력">
+          <input id="pName" type="text" placeholder="전투 참가자 이름">
         </div>
         <div class="field" style="max-width:120px">
           <label for="pTeam">팀</label>
@@ -164,7 +163,7 @@
   </div>
 
   <script>
-    // ===== helpers =====
+    /* --- 유틸 --- */
     const $ = s => document.querySelector(s);
     const escapeHtml = (t)=>String(t).replace(/[&<>\"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m]));
     const ts = ()=>new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
@@ -183,21 +182,27 @@
       chatView.appendChild(el); chatView.scrollTop=chatView.scrollHeight;
       while(chatView.children.length>400) chatView.removeChild(chatView.firstChild);
     }
-    const get = (obj, pathArr) => {
-      for (const p of pathArr){
-        let v = obj;
-        for (const key of p.split('.')){
-          if(v && Object.prototype.hasOwnProperty.call(v, key)) v=v[key]; else { v=undefined; break; }
-        }
-        if(v!==undefined && v!==null && v!=='') return v;
-      }
-      return '';
-    };
 
-    // ===== state =====
+    // 깊은 탐색(대소문자 무관, 여러 후보 키 지원)
+    function deepFind(obj, matchers){
+      const stack=[obj];
+      while(stack.length){
+        const cur = stack.pop();
+        if(cur && typeof cur === 'object'){
+          for(const [k,v] of Object.entries(cur)){
+            for(const m of matchers){
+              if(m.test(k)) return v;
+            }
+            if(v && typeof v==='object') stack.push(v);
+          }
+        }
+      }
+      return undefined;
+    }
+
+    // ===== 상태/참조 =====
     let socket=null, battleId=null, snapshot=null;
 
-    // ===== refs =====
     const modeSel=$('#mode');
     const btnCreate=$('#btnCreate'), btnStart=$('#btnStart'), btnPause=$('#btnPause'), btnResume=$('#btnResume'), btnEnd=$('#btnEnd');
     const btnGenLinks=$('#btnGenLinks'), spectatorOtp=$('#spectatorOtp'), spectatorUrl=$('#spectatorUrl'), playerLinks=$('#playerLinks');
@@ -207,7 +212,7 @@
     const listA=$('#listA'), listB=$('#listB');
     const logs=$('#logs'), chatView=$('#chatView'), chatMsg=$('#chatMsg'), btnSend=$('#btnSend');
 
-    // ===== socket =====
+    /* --- 소켓 --- */
     function bindSocket(){
       socket = io({ path:'/socket.io' });
       socket.on('connect', ()=>{
@@ -241,7 +246,7 @@
       });
     }
 
-    // ===== actions =====
+    /* --- 전투 제어 --- */
     btnCreate.addEventListener('click', ()=>{
       socket.emit('createBattle', { mode: modeSel.value }, (res)=>{
         if(res?.ok){ battleId=res.battleId; socket.emit('join',{battleId}); addLog('전투 생성 완료'); }
@@ -253,11 +258,11 @@
     btnResume.addEventListener('click',()=>{ if(battleId) socket.emit('resumeBattle',{ battleId }, (r)=> addLog(r?.ok?'재개':'재개 실패')); });
     btnEnd.addEventListener('click',   ()=>{ if(battleId) socket.emit('endBattle',   { battleId }, (r)=> addLog(r?.ok?'전투 종료':'전투 종료 실패')); });
 
-    // 링크/비밀번호 생성 (**모든 스펙 호환 파서**)
+    /* --- 링크/비밀번호 생성: 초강력 호환 + 자동 대체 생성 --- */
     btnGenLinks.addEventListener('click', async ()=>{
       if(!battleId){ addLog('전투 ID 없음'); return; }
       async function call(url){
-        const r=await fetch(url,{method:'POST',headers:{'Accept':'application/json'}});
+        const r=await fetch(url,{method:'POST',headers:{'Accept':'application/json','X-Base-Url':location.origin}});
         const t=await r.text(); let j=null; try{ j=JSON.parse(t);}catch(_){ j=null; }
         if(!r.ok || !j) throw new Error('HTTP '+r.status);
         return j;
@@ -267,32 +272,36 @@
         try { data = await call(`/api/admin/battles/${battleId}/links`); }
         catch(_){ data = await call(`/api/battles/${battleId}/links`); }
 
-        // --- 관전자 OTP/URL 다양한 키 지원 ---
-        const otp = get(data, [
-          'spectator.otp','spectatorOtp','otp','viewerOtp','viewerOTP','pass','password'
-        ]);
-        const url = get(data, [
-          'spectator.url','spectatorUrl','url','viewerUrl','link'
-        ]);
-        spectatorOtp.value = otp || '';
-        spectatorUrl.value = url || '';
+        // 관전자 OTP / URL (키 패턴 대소문자 무관)
+        const otpVal = deepFind(data, [/^spectator.?otp$/i, /^viewer.?otp$/i, /^otp$/i, /^pass(word)?$/i]);
+        const urlVal = deepFind(data, [/^spectator.?url$/i, /^viewer.?url$/i, /^url$/i, /^link$/i]);
 
-        // --- 참가자 링크 다양한 키 지원 ---
-        // 1) { playerLinks:[{playerName,team,otp,url}] }
-        let list = get(data, ['playerLinks']) || [];
-        if(!Array.isArray(list) || !list.length){
-          // 2) { players:[{name,team,token,url}...] }
-          const players = get(data, ['players','links.players']) || [];
-          if(Array.isArray(players)){
-            list = players.map(p=>({
-              playerName: p.playerName || p.name || '-',
-              team: p.team || '-',
-              otp: p.otp || p.token || p.pass || '',
-              url: p.url || p.link || ''
-            }));
-          }
+        spectatorOtp.value = (typeof otpVal==='string'||typeof otpVal==='number') ? String(otpVal) : '';
+        spectatorUrl.value = (typeof urlVal==='string') ? urlVal : '';
+
+        // 플레이어 링크 배열
+        let list = [];
+        const raw1 = deepFind(data, [/^player.?links$/i]);
+        const raw2 = deepFind(data, [/^players$/i, /^links$/i]);
+        if(Array.isArray(raw1)) list = raw1;
+        else if(Array.isArray(raw2)) {
+          list = raw2.map(p=>({
+            playerName: p.playerName || p.name || '-',
+            team: p.team || '-',
+            otp: p.otp || p.token || p.pass || '',
+            url: p.url || p.link || ''
+          }));
         }
-        if(!Array.isArray(list)) list = [];
+
+        // 만약 서버가 링크를 안 줬으면, 스냅샷 기반 “최소 링크” 생성 (토큰 없어도 이름/팀으로 자동 로그인)
+        if(!Array.isArray(list) || list.length===0){
+          const base = location.origin;
+          list = (snapshot?.players||[]).map(p=>({
+            playerName: p.name, team: p.team, otp: '',
+            url: `${base}/player.html?battle=${battleId}&playerId=${encodeURIComponent(p.id)}&name=${encodeURIComponent(p.name)}&team=${p.team}`
+          }));
+          addLog('서버 응답에 플레이어 링크가 없어 스냅샷으로 대체 생성');
+        }
 
         // 렌더
         playerLinks.innerHTML = '';
@@ -313,12 +322,13 @@
         });
 
         addLog('링크/비밀번호 생성 완료');
+        console.debug('[links raw]', data); // 개발용
       }catch(e){
         addLog('링크 생성 실패: '+(e?.message||e));
       }
     });
 
-    // 업로드
+    /* --- 업로드/추가/삭제/복사/채팅 --- */
     pAvatar.addEventListener('change', async (e)=>{
       const f = e.target.files?.[0]; if(!f) return;
       preview.src = URL.createObjectURL(f);
@@ -331,7 +341,6 @@
       }catch(err){ addLog('초상화 업로드 실패: '+(err?.message||err)); }
     });
 
-    // 참가자 추가
     btnAdd.addEventListener('click', ()=>{
       if(!battleId) return addLog('전투 ID 없음');
       const name = pName.value.trim(); if(!name) return addLog('이름을 입력하세요');
@@ -358,7 +367,6 @@
       });
     });
 
-    // 삭제/복사
     document.addEventListener('click', (e)=>{
       const del = e.target.closest('[data-del]'); const cpy=e.target.closest('[data-copy]');
       if(del && battleId){
@@ -371,7 +379,6 @@
       }
     });
 
-    // 채팅
     btnSend.addEventListener('click', ()=>{ const m=chatMsg.value.trim(); if(!m||!battleId) return; socket.emit('chatMessage',{battleId,name:'관리자',message:m}); chatMsg.value=''; });
     chatMsg.addEventListener('keydown', (e)=>{ if(e.key==='Enter') btnSend.click(); });
 
