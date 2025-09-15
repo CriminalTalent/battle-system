@@ -225,8 +225,7 @@
     const m = (chatMsg.value||"").trim();
     if (!m || !socket || !battleId) return;
     socket.emit("chatMessage", { battleId, name: myName || "전투 참가자", message: m });
-    socket.emit("battle:chat",  { battleId, name: myName || "전투 참가자", senderName: myName || "전투 참가자", message: m });
-    chatMsg.value = "";
+chatMsg.value = "";
   });
   chatMsg && chatMsg.addEventListener("keydown", (e)=>{ if(e.key==="Enter") btnSend.click(); });
 
@@ -244,9 +243,7 @@
   function sendAction(type, targetId=null) {
     if (!socket || !battleId || !me?.id) return;
     const action = targetId ? { type, targetId } : { type };
-    socket.emit("playerAction", { battleId, playerId: me.id, action }, (ack) => {
-      if (!ack?.ok) addLog("행동 전송 실패", "hit");
-    });
+});
     socket.emit("player:action", { battleId, playerId: me.id, action }); // 호환
   }
   btnAttack && btnAttack.addEventListener("click", ()=> sendAction("attack"));
