@@ -163,6 +163,8 @@
   const battleId = q.get('battle') || '';
   const myName   = q.get('name') || '';
   const token    = q.get('password') || q.get('token') || q.get('otp') || '';
+  const playerId = q.get('playerId') || q.get('pid') || '';
+  const team     = q.get('team') || '';
 
   const DEFAULT_AVATAR = 'data:image/svg+xml;utf8,'+encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">
@@ -276,7 +278,7 @@
     socket.on('connect', ()=>{
       addLog('서버 연결됨','rule');
       if(!battleId){ addLog('battle 파라미터가 없습니다.','err'); return; }
-      socket.emit('playerAuth',{ battleId, token, password:token, otp:token, playerName:myName }, (res)=>{
+      socket.emit('playerAuth',{ battleId, token, password:token, otp:token, playerId, playerName:myName, team }, (res)=>{
         if(!res?.ok){ addLog('인증 실패: '+(res?.message||res?.error||'오류'),'err'); return; }
         addLog('인증 성공 · 전투 참가','rule');
         me = res.playerData; snapshot = res.battle;
@@ -359,4 +361,3 @@
 </script>
 </body>
 </html>
- 
