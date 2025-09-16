@@ -66,7 +66,7 @@
   </div>
 </div>
 
-<div class="wrap" aria-hidden="true" id="main">
+<div class="wrap" style="display:none" id="main">
   <!-- 좌: A팀 + 로그 -->
   <section class="card">
     <div class="title">A팀</div>
@@ -79,7 +79,7 @@
   <!-- 중앙: 현재 상태 + 응원 6개 고정 -->
   <section class="card">
     <div class="title">현재 상태</div>
-    <img id="curPor" class="portrait" alt="현재 턴 초상화" onerror="this.src='/uploads/avatars/default.svg'">
+    <img id="curPor" class="portrait" alt="현재 턴 초상화" onerror="this.src='/uploads/avatars/default.png'">
     <div class="meta">
       <span id="turnInfo" class="pill">라운드 - / 팀 -</span>
       <span id="timer" class="pill">남은 시간 --:--</span>
@@ -113,3 +113,91 @@
   const socket = io({ path:'/socket.io' });
 
   let myName = '';
+  let snapshot = null;
+
+  const teamA = $("#teamA"), teamB = $("#teamB");
+  const battleLog = $("#battleLog"), chatView = $("#chatView");
+  const curPor = $("#curPor"), turnInfo = $("#turnInfo"), timer=$("#timer");
+
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+  function mmss(sec){ if(typeof sec!=="number"||sec<0) return "--:--"; const m=Math.floor(sec/60), s=sec%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }
+
+  function addLog(msg, type=''){
+    const d=document.createElement('div'); d.className='entry '+(type||'');
+    const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
+    d.innerHTML = `<span class="t">${t}</span>${escapeHtml(msg)}`;
+    battleLog.appendChild(d); battleLog.scrollTop=battleLog.scrollHeight;
+    while(battleLog.children.length>400) battleLog.removeChild(battleLog.firstChild);
+  }
+
+  function addChat(name,msg){
+    const d=document.createElement('div'); d.className='entry';
+    const t=new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
+    d.innerHTML = `<span class="t">${t}</span><b>${escapeHtml(name)}:</b> ${escapeHtml(msg)}`;
+    chatView.appendChild(d); chatView.scrollTop=chatView.scrollHeight;
+    while(chatView.children.length>400) chatView.removeChild(chatView.firstChild);
+  }
+
+  function setImg(img,url){ img.src = url||'/uploads/avatars/default.png'; img.onerror=()=>{img.onerror=null; img.src='/uploads/avatars/default.png';}; }
+
+  function renderTeams(players){
+    const renderOne = (p)=>{
+      const box = document.createElement('div'); box.className='row'; box.style.marginBottom='8px';
+      const img = document.createElement('img'); img.className='por'; setImg(img,p.avatar);
+      const mid = document.createElement('div'); mid.style.flex='1';
+      const name = document.createElement('div'); name.textContent = p.name||'-';
+      const hp = document.createElement('div'); hp.className='hp'; const fill = document.createElement('span');
+      const maxHp = p.maxHp||100, curHp=p.hp||0; fill.style.width = Math.max(0, Math.min(100, Math.round(curHp/maxHp*100)))+'%';
+      hp.appendChild(fill);
+      const stat = document.createElement('div'); stat.className='stat';
+      const s = p.stats||{}; stat.textContent = `공:${s.attack||1} 방:${s.defense||1} 민:${s.agility||1} 행:${s.luck||1}`;
+      mid.appendChild(name); mid.appendChild(hp); mid.appendChild(stat);
+      box.appendChild(img); box.appendChild(mid);
+      return box;
+    };
+    teamA.innerHTML=''; teamB.innerHTML='';
+    players.filter(p=>p.team==='A').forEach(p=> teamA.appendChild(renderOne(p)));
+    players.filter(p=>p.team==='B').forEach(p=> teamB.appendChild(renderOne(p)));
+  }
+
+  function updateCenter(){
+    const ct = snapshot?.currentTurn || {};
+    const cur = ct.currentPlayer?.id ? (snapshot.players||[]).find(p=>p.id===ct.currentPlayer.id) : null;
+    setImg(curPor, cur?.avatar || null);
+    turnInfo.textContent = `라운드 ${ct.turnNumber||0} / ${ct.currentTeam||'-'}팀`;
+    timer.textContent = `남은 시간 ${mmss(ct.timeLeftSec)}`;
+  }
+
+  // 소켓
+  socket.on('battleUpdate', (data)=>{ snapshot=data; renderTeams(snapshot.players||[]); updateCenter(); });
+  const onLog = (e)=>{ if(e?.message) addLog(e.message, e.type==='battle'?'rule':''); };
+  socket.on('battle:log', onLog); socket.on('battleLog', onLog);
+  const onChat = (p)=>{ const m=p?.message||p?.text||''; if(m) addChat(p?.name||'익명',m); };
+  socket.on('chatMessage', onChat); socket.on('battle:chat', onChat);
+
+  // 입장
+  $("#btnEnter").addEventListener('click', ()=>{
+    const name = ($("#nick").value||'').trim();
+    if(!name){ alert('이름을 입력해 주세요.'); return; }
+    myName = name;
+    $("#overlay").style.display='none';
+    $("#main").style.display='grid';
+    socket.emit('join', { battleId });
+    console.log('입장:', { battleId, name: myName });
+  });
+
+  // 응원 6개 고정
+  document.querySelectorAll('.cheer').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if(!myName){ alert('먼저 이름을 입력해 주세요.'); return; }
+      socket.emit('spectator:cheer', { battleId, name: myName, message: btn.dataset.msg });
+    });
+  });
+
+  // 자동 접속 시도
+  if(battleId){
+    socket.emit('join', { battleId });
+  }
+</script>
+</body>
+</html>
