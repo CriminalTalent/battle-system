@@ -584,26 +584,15 @@ io.on("connection", (socket)=>{
     
     const playerId = `p_${Math.random().toString(36).slice(2,8)}`;
     
-    // 팀 자동 할당 로직 개선
-    let assignedTeam = player?.team || "A"; // 기본값 A
+    // player 객체에서 team 값을 정확히 추출
+    const selectedTeam = String(player?.team || "A"); // 명시적으로 문자열 변환
     
-    // 만약 명시적으로 팀이 지정되지 않았다면, 밸런스를 맞춰서 배치
-    if(!player?.team) {
-      const teamACounts = b.players.filter(p => p.team === "A").length;
-      const teamBCounts = b.players.filter(p => p.team === "B").length;
-      
-      // 더 적은 팀에 배치
-      if(teamBCounts < teamACounts) {
-        assignedTeam = "B";
-      } else {
-        assignedTeam = "A";
-      }
-    }
+    console.log(`[DEBUG] addPlayer - Selected team: ${selectedTeam}, Player data:`, player); // 디버깅
     
     const newPlayer = {
       id: playerId,
       name: String(player?.name||"전투 참가자"),
-      team: assignedTeam, // 수정된 팀 할당
+      team: selectedTeam, // 선택된 팀 그대로 사용
       hp: Number(player?.hp) || 100,
       maxHp: 100,
       stats: {
