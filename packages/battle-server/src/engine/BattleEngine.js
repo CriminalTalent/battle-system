@@ -1,5 +1,5 @@
 // packages/battle-server/src/engine/BattleEngine.js
-// In-memory battle store + rules engine (D20 기반)
+// In-memory battle store + rules engine (D10 기반)
 export function createBattleStore() {
   const _battles = new Map();
 
@@ -59,7 +59,7 @@ export function createBattleStore() {
       ready: false,
       joinedAt: Date.now(),
       _acted: false, // 현재 팀 라운드에서 행동했는지
-      _defenseBuff: 0, // 이번 피격에 적용할 방어 D20 보정
+      _defenseBuff: 0, // 이번 피격에 적용할 방어 D10 보정
       _defenseDouble: false,
       _attackDouble: false,
     };
@@ -104,6 +104,35 @@ export function createBattleStore() {
     return b.players.find(p => p.id === pid) || null;
   }
 
+  // ===== 순서/유틸 =====
+  function byAgilityThenNameDescKo(a, b) {
+    const ag = (b.stats?.agility || 1) - (a.stats?.agility || 1); // 민첩 내림차순
+    if (ag !== 0) return ag;
+    // 이름 오름차순 (ko-KR)
+    return String(a.name || '').localeCompare(String(b.name || ''), 'ko-KR');
+  }
+  function teamOrder(b, team) {
+    return b.players
+      .filter(p => p.team === team && p.hp > 0)
+      .sort(byAgilityThenNameDescKo);
+  }
+  function nextUnacted(b, team) {
+    const ord = teamOrder(b, team);
+    return ord.find(p => !p._acted) || null;
+  }
+  function setCurrentPlayer(b, player) {
+    if (!player) {
+      b.currentTurn.currentPlayer = null;
+      return;
+    }
+    b.currentTurn.currentPlayer = {
+      id: player.id,
+      name: player.name,
+      avatar: player.avatar || null,
+      team: player.team
+    };
+  }
+
   // Initiative & turn
   function start(id) {
     const b = get(id); if (!b) return null;
@@ -111,14 +140,14 @@ export function createBattleStore() {
 
     const sumA = sumStat(b, 'A', 'agility');
     const sumB = sumStat(b, 'B', 'agility');
-    const rA = d20(); const rB = d20();
+    const rA = d10(); const rB = d10();
     const totalA = sumA + rA, totalB = sumB + rB;
 
     let first = 'A';
     if (totalB > totalA) first = 'B';
     if (totalA === totalB) {
-      // 재굴림
-      first = d20() >= d20() ? 'A' : 'B';
+      // 재굴림 (D10)
+      first = d10() >= d10() ? 'A' : 'B';
     }
 
     b.status = 'active';
@@ -127,6 +156,10 @@ export function createBattleStore() {
     b.round.firstTeam = first;
     b.timers.turnDeadline = Date.now() + 5 * 60 * 1000; // 5분
     resetRoundFlags(b);
+
+    // 선공팀의 첫 플레이어 지정
+    setCurrentPlayer(b, nextUnacted(b, first));
+
     return { b, sumA, sumB, rA, rB, totalA, totalB, first };
   }
 
@@ -141,21 +174,26 @@ export function createBattleStore() {
     const result = resolveAction(b, actor, action);
     actor._acted = true;
 
-    // 팀이 모두 행동했는지 확인 → 팀 전환 또는 라운드 종료
-    const teamPlayers = b.players.filter(p => p.team === actor.team && p.hp > 0);
+    // 현재 팀에서 다음 unacted 플레이어를 우선 지정
+    let phase = 'team';
+    const team = actor.team;
+    const teamPlayers = b.players.filter(p => p.team === team && p.hp > 0);
     const actedCount = teamPlayers.filter(p => p._acted).length;
 
-    let phase = 'team';
-    if (actedCount >= teamPlayers.length) {
-      // 상대 팀으로 전환 또는 라운드 종료
+    if (actedCount < teamPlayers.length) {
+      // 같은 팀 내 다음 플레이어
+      setCurrentPlayer(b, nextUnacted(b, team));
+    } else {
+      // 팀 모두 행동 → 팀 전환 또는 라운드 종료
       if (b.currentTurn.currentTeam === 'A') {
-        // A가 끝났음 → B 차례
+        // A 종료 → B 차례
         b.currentTurn.currentTeam = 'B';
         resetTeamFlags(b, 'B');
         b.timers.turnDeadline = Date.now() + 5*60*1000;
+        setCurrentPlayer(b, nextUnacted(b, 'B'));
         phase = 'switch';
       } else {
-        // B까지 끝 → 라운드 종료
+        // B 종료 → 라운드 종료
         endRound(b);
         phase = 'roundEnd';
       }
@@ -172,6 +210,9 @@ export function createBattleStore() {
     b.round.firstTeam = b.currentTurn.currentTeam;
     resetRoundFlags(b);
     b.timers.turnDeadline = Date.now() + 5*60*1000;
+
+    // 다음 라운드 선공팀의 첫 플레이어 지정
+    setCurrentPlayer(b, nextUnacted(b, b.currentTurn.currentTeam));
   }
 
   function end(id) {
@@ -180,12 +221,13 @@ export function createBattleStore() {
     return b;
   }
 
+  // ===== Utils =====
   function clamp(n, lo, hi) {
     n = Number(n||0);
     if (Number.isNaN(n)) n = lo;
     return Math.max(lo, Math.min(hi, n));
   }
-  function d20() { return Math.floor(Math.random()*20)+1; }
+  function d10() { return Math.floor(Math.random()*10)+1; }
   function sumStat(b, team, key) {
     return b.players.filter(p=>p.team===team).reduce((s,p)=>s+(p.stats?.[key]||0),0);
   }
@@ -206,14 +248,14 @@ export function createBattleStore() {
     }
 
     if (type === 'defend') {
-      // 다음 1회 피격 방어 D20 추가 적용
-      const roll = d20();
+      // 다음 1회 피격 방어 D10 추가 적용
+      const roll = d10();
       actor._defenseBuff = roll;
-      return { type, roll, message: `${actor.name} 방어 태세 (보정 D20=${roll})` };
+      return { type, roll, message: `${actor.name} 방어 태세 (보정 D10=${roll})` };
     }
 
     if (type === 'dodge') {
-      // 민첩 + D20 ≥ 상대 공격이면 완전 회피
+      // 민첩 + D10 ≥ 상대 공격이면 완전 회피 (실제 판정은 공격 단계에서 수행)
       return { type, message: `${actor.name} 회피 준비` };
     }
 
@@ -254,9 +296,9 @@ export function createBattleStore() {
       if (target.team === actor.team) throw new Error('cannot attack ally');
       if (target.hp <= 0) throw new Error('target down');
 
-      // 명중: 행운 + D20 vs 상대 회피(민첩 + D20)
-      const rollHit = d20();
-      const rollDodge = d20();
+      // 명중: 행운 + D10 vs 상대 회피(민첩 + D10)
+      const rollHit = d10();
+      const rollDodge = d10();
       const hitScore = (actor.stats.luck||0) + rollHit;
       const dodgeScore = (target.stats.agility||0) + rollDodge;
 
@@ -264,14 +306,14 @@ export function createBattleStore() {
         return { type, miss: true, rollHit, rollDodge, message: `${actor.name}의 공격 → ${target.name} 회피 성공 (무피해)` };
       }
 
-      // 치명타: D20 ≥ (20 - 행운/2)
-      const rollCrit = d20();
-      const critThresh = 20 - Math.floor((actor.stats.luck||0)/2);
+      // 치명타: D10 ≥ (10 - 행운/2)
+      const rollCrit = d10();
+      const critThresh = 10 - Math.floor((actor.stats.luck||0)/2);
       const isCrit = rollCrit >= critThresh;
 
-      // 방어태세 대상: 방어 + D20 추가, 보정 2배면 방어×2
-      const rollAtk = d20();
-      const rollDef = d20();
+      // 방어태세 대상: 방어 + D10 추가, 보정 2배면 방어×2
+      const rollAtk = d10();
+      const rollDef = d10();
       let defenseVal = (target.stats.defense||0) + rollDef + (target._defenseBuff||0);
       if (target._defenseDouble) defenseVal *= 2;
 
