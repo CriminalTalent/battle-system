@@ -578,6 +578,9 @@ io.on("connection", (socket)=>{
     b.currentTurn.turnNumber = 1;
     b.currentTurn.currentTeam = first;
     b.round.phaseTeam = first;
+    // ⬇️ 1라운드용 행동 순서(민첩→이름 ABC) 세팅
+    b.round.order = { A: firstAliveOrder(b,"A"), B: firstAliveOrder(b,"B") };
+
     b.currentTurn.currentPlayerId = nextUnactedPlayerId(b, first);
     hydrateCurrentPlayer(b);
     b.currentTurn.turnDeadline = now() + 5*60*1000;
@@ -828,11 +831,15 @@ io.on("connection", (socket)=>{
     hydrateCurrentPlayer(b);
 
     if(!b.currentTurn.currentPlayerId){
-      if(b.round.phaseTeam==="A"){
-        startPhase(b,"B");
-        pushLog(battleId, "battle", "A팀 선택 완료 - B팀 선택 시작");
-        pushLog(battleId, "notice", `[알림] B팀 턴입니다.`);
-      }else{
+      // ⬇️ 선공팀 → 후공팀 → 결과 로 일관되게 진행
+      const otherTeam = (b.round.phaseTeam === "A") ? "B" : "A";
+      if (b.round.phaseTeam === b.firstTeam) {
+        // 선공팀의 선택이 끝났으므로 후공팀으로 전환
+        startPhase(b, otherTeam);
+        pushLog(battleId, "battle", `${otherTeam}팀 선택 시작`);
+        pushLog(battleId, "notice", `[알림] ${otherTeam}팀 턴입니다.`);
+      } else {
+        // 후공팀까지 끝났으므로 결과 처리
         pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 선택 완료`);
         resolveRound(b);
       }
