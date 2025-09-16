@@ -265,7 +265,7 @@
 
     // ===== 유틸 =====
     const esc = (t)=> String(t||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const hpPct = (hp,max)=> { const m=Number(max||100); const h=Math.max(0,Number(h||0)); return Math.max(0,Math.min(100,(h/m)*100)); };
+    const hpPct = (hp,max)=> { const m=Number(max||100); const h=Math.max(0,Number(hp||0)); return Math.max(0,Math.min(100,(h/m)*100)); };
 
     function addLog(msg, type='info'){
       const logs=document.getElementById('logs'); if(!logs) return;
@@ -446,31 +446,42 @@
       }
     });
 
-    // ===== 참가자 추가 (양식 호환: top-level + player 중첩 동시 전송) =====
+    // ===== 참가자 추가 (이미지 업로드 수정) =====
     document.getElementById('btnAddPlayer').addEventListener('click', async ()=>{
       if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
       const name = document.getElementById('playerName').value.trim();
       if(!name){ addLog('이름을 입력해주세요','error'); return; }
 
       // 1) 아바타 업로드 (있으면)
-      let avatar = null;
+      let avatarUrl = null;
       const file = document.getElementById('avatarFile').files[0];
       if(file){
         try{
-          const fd=new FormData(); fd.append('avatar', file);
+          const fd=new FormData(); 
+          fd.append('avatar', file);
           const up = await fetch('/api/upload/avatar',{ method:'POST', body:fd });
           const jd = await up.json();
-          if(jd?.ok && jd?.url){ avatar = jd.url; }
-          else addLog('이미지 업로드 실패(기본 이미지로 진행)','error');
-        }catch(err){ console.error(err); addLog('이미지 업로드 실패','error'); }
+          console.log('Upload response:', jd); // 디버깅용
+          if(jd?.ok && jd?.url){ 
+            avatarUrl = jd.url; 
+            addLog('이미지 업로드 성공: ' + avatarUrl);
+          } else { 
+            addLog('이미지 업로드 실패(기본 이미지로 진행)','error');
+            console.error('Upload failed:', jd);
+          }
+        }catch(err){ 
+          console.error('Upload error:', err); 
+          addLog('이미지 업로드 오류','error'); 
+        }
       }
 
-      // 공통 데이터
-      const playerCore = {
+      // 2) addPlayer 송신 - avatar 필드에 URL 직접 전달
+      const payload = {
+        battleId,
         name,
         team: document.getElementById('playerTeam').value,
         hp: Number(document.getElementById('playerHp').value),
-        avatar,
+        avatar: avatarUrl, // 이미지 URL 직접 전달
         stats: {
           attack : Number(document.getElementById('playerAttack').value),
           defense: Number(document.getElementById('playerDefense').value),
@@ -484,14 +495,10 @@
         }
       };
 
-      // 2) addPlayer 송신 (서버 호환: top-level + player)
-      const payload = {
-        battleId,
-        ...playerCore,           // 구서버(상위 필드) 호환
-        player: { ...playerCore } // 신서버({player}) 호환
-      };
+      console.log('Sending addPlayer:', payload); // 디버깅용
 
       socket.emit('addPlayer', payload, (res)=>{
+        console.log('addPlayer response:', res); // 디버깅용
         if(res?.ok){
           addLog('참가자 추가 완료');
           // 폼 리셋(선택 팀은 유지)
@@ -507,7 +514,7 @@
           document.getElementById('avatarFile').value='';
           document.getElementById('avatarPreview').src='/uploads/avatars/default.svg';
         }else{
-          addLog('참가자 추가 실패','error');
+          addLog('참가자 추가 실패: ' + (res?.error || 'Unknown error'),'error');
         }
       });
     });
