@@ -1,20 +1,20 @@
 // packages/battle-server/src/engine/rules.js
-import { d20 } from "./dice.js";
+import { d20 } from "./dice.js"; // d20()는 이제 D10을 반환
 
 /**
- * 치명타 판정: D20 >= (20 - luck/2)
+ * 치명타 판정: D10 >= (10 - luck/2) // D20에서 D10으로 변경
  */
 export function rollCrit(luck = 0) {
-  const roll = d20();
-  const need = Math.max(1, Math.floor(20 - (luck || 0) / 2));
+  const roll = d20(); // 실제로는 D10
+  const need = Math.max(1, Math.floor(10 - (luck || 0) / 2)); // 10으로 변경
   return { crit: roll >= need, roll, need };
 }
 
 /**
- * 회피 판정: (민첩 + D20) >= 공격수치
+ * 회피 판정: (민첩 + D10) >= 공격수치 // D20에서 D10으로 변경
  */
 export function checkEvade(targetAgi, atkScore) {
-  const roll = d20();
+  const roll = d20(); // 실제로는 D10
   const evadeScore = (targetAgi || 0) + roll;
   return { evaded: evadeScore >= atkScore, roll, evadeScore };
 }
@@ -22,10 +22,10 @@ export function checkEvade(targetAgi, atkScore) {
 /**
  * 공격 처리
  * 규칙:
- * - 공격수치 = 공격 + D20
- * - 방어태세면 방어 = 방어 + D20, 아니면 방어 = 방어
+ * - 공격수치 = 공격 + D10 (D20에서 변경)
+ * - 방어태세면 방어 = 방어 + D10, 아니면 방어 = 방어
  * - 방어보정 활성화면 방어 2배
- * - 회피 태세면 (민첩 + D20)로 회피 판정 → 성공시 피해 0
+ * - 회피 태세면 (민첩 + D10)로 회피 판정 → 성공시 피해 0
  * - 치명타 시 최종 피해 2배
  * - 공격보정 활성화 시 최종 피해 2배 (1회성, 사용 후 해제)
  * - 최소 피해: 방어태세면 0, 아니면 1
@@ -36,7 +36,7 @@ export function resolveAttack(attacker, defender) {
   const aState = attacker.state || {};
   const dState = defender.state || {};
 
-  const atkRoll = d20();
+  const atkRoll = d20(); // 실제로는 D10
   const atkScore = (aStats.attack || 0) + atkRoll;
 
   // 회피 우선
@@ -56,7 +56,7 @@ export function resolveAttack(attacker, defender) {
   let defense = (dStats.defense || 0);
   let minDamage = 1;
   if (dState.defending) {
-    defRoll = d20();
+    defRoll = d20(); // 실제로는 D10
     defense += defRoll;
     minDamage = 0;
     defender.state.defending = false; // 1회성
