@@ -45,10 +45,22 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(uploadsDir));
 app.use("/api/upload", avatarUploadRouter);
 
+// -----------------------------------------------
 // SPA 엔드포인트(불변) - 정적 파일보다 먼저
-app.get("/admin",     (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
-app.get("/player",    (_req,res)=> res.sendFile(path.join(publicDir, "player.html")));
-app.get("/spectator", (_req,res)=> res.sendFile(path.join(publicDir, "spectator.html")));
+// 파일이 존재하면 보내고, 없으면 .html로 리다이렉트 (500 방지)
+// -----------------------------------------------
+function safeSendFile(res, absPath, fallback) {
+  if (fs.existsSync(absPath)) {
+    res.sendFile(absPath);
+  } else if (fallback) {
+    res.redirect(fallback);
+  } else {
+    res.status(404).send("Not Found");
+  }
+}
+app.get("/admin",     (_req,res)=> safeSendFile(res, path.join(publicDir, "admin.html"), "/admin.html"));
+app.get("/player",    (_req,res)=> safeSendFile(res, path.join(publicDir, "player.html"), "/player.html"));
+app.get("/spectator", (_req,res)=> safeSendFile(res, path.join(publicDir, "spectator.html"), "/spectator.html"));
 
 // 정적 파일 제공 - SPA 라우트 이후에 배치
 app.use("/", express.static(publicDir));
@@ -155,7 +167,7 @@ function emitUpdate(battleId){
       turnNumber: b.currentTurn?.turnNumber || 1,
       currentTeam: b.currentTurn?.currentTeam || "A",
       currentPlayer: b.currentTurn?.currentPlayer || null,
-      turnDeadline: b.currentTurn?.turnDeadline || null, // ⬅ 추가: 클라 실시간 타이머용
+      turnDeadline: b.currentTurn?.turnDeadline || null, // ⬅ 클라 실시간 타이머용
       timeLeftSec: Math.max(0, Math.floor((b.currentTurn?.turnDeadline - now())/1000))
     },
     logs: b.logs.slice(-100) // 최근 100개만
@@ -428,7 +440,6 @@ function resolveRound(b){
       
       // 치명타 확률 D10 기반
       const critRoll = d10();
-      the:
       const critThreshold = 10 - Math.floor((a.stats?.luck||1)/2);
       const isCrit = critRoll >= critThreshold;
       const finalDmg = isCrit ? dmg*2 : dmg;
@@ -801,7 +812,6 @@ io.on("connection", (socket)=>{
         rec.item = it;
         if(it==="dittany" || it==="ditany") {
           rec.targetId = String(action?.targetId||p.id);
-          const tgt = b.players.find(x=>x.id===rec.targetId) || p;
           pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [아이템:디터니]를 사용합니다.`);
         }
         if(it==="attackBooster" || it==="attack_boost") {
@@ -833,7 +843,7 @@ io.on("connection", (socket)=>{
     hydrateCurrentPlayer(b);
 
     if(!b.currentTurn.currentPlayerId){
-      // ✅ 라운드 전환 판정: 이번 라운드에서 '상대 팀'이 행동했는지로 결정
+      // 이번 라운드에서 상대 팀이 행동했는지 여부로 판정
       const otherTeam = (b.round.phaseTeam === "A") ? "B" : "A";
       const otherHasAnyAction = Object.keys(b.round.selections[otherTeam] || {}).length > 0;
 
@@ -883,10 +893,10 @@ io.on("connection", (socket)=>{
 // -----------------------------------------------
 // SPA 라우트
 // -----------------------------------------------
-app.get("/",            (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
-app.get("/admin.html",  (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
-app.get("/player.html", (_req,res)=> res.sendFile(path.join(publicDir, "player.html")));
-app.get("/spectator.html",(_req,res)=> res.sendFile(path.join(publicDir, "spectator.html")));
+app.get("/",            (_req,res)=> safeSendFile(res, path.join(publicDir, "admin.html"), "/admin.html"));
+app.get("/admin.html",  (_req,res)=> safeSendFile(res, path.join(publicDir, "admin.html")));
+app.get("/player.html", (_req,res)=> safeSendFile(res, path.join(publicDir, "player.html")));
+app.get("/spectator.html",(_req,res)=> safeSendFile(res, path.join(publicDir, "spectator.html")));
 
 // -----------------------------------------------
 // 에러 핸들러
