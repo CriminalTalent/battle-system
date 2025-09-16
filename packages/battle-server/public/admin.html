@@ -142,13 +142,12 @@
   (()=>{
     // ===== 유틸 =====
     const $ = s => document.querySelector(s);
-    const qs = s => Array.from(document.querySelectorAll(s));
-    const escapeHtml = t => String(t??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',\"'\":'&#39;' }[m]));
+    const escapeHtml = t => String(t??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const addLog = (msg, cls='')=>{
       const el = document.createElement('div');
       el.className = 'log '+cls;
       el.textContent = msg;
-      const logs = $('#logs');
+      const logs = document.getElementById('logs');
       logs.appendChild(el);
       logs.scrollTop = logs.scrollHeight;
     };
@@ -159,16 +158,11 @@
     const battleId = (sp.get('battle')||'').trim();
     let socket = io({ path: '/socket.io' });
 
-    socket.on('connect', ()=>{ $('#connState').textContent='연결됨'; if(battleId) socket.emit('join', { battleId }); });
-    socket.on('disconnect', ()=>{ $('#connState').textContent='연결 끊김'; });
+    socket.on('connect', ()=>{ document.getElementById('connState').textContent='연결됨'; if(battleId) socket.emit('join', { battleId }); });
+    socket.on('disconnect', ()=>{ document.getElementById('connState').textContent='연결 끊김'; });
 
     // ===== 서버 이벤트 수신 (호환) =====
-    const once = (fn)=>{ let called=false; return (...a)=>{ if(called) return; called=true; fn(...a);} };
-
-    const onBattleUpdate = (snap)=>{
-      // 필요 시 관리자 화면 요소 갱신 (간단 표기만)
-      // addLog('스냅샷 수신', '');  // 디버그는 표시하지 않음
-    };
+    const onBattleUpdate = (snap)=>{};
     socket.on('battleUpdate', onBattleUpdate);
     socket.on('battle:update', onBattleUpdate);
 
@@ -181,7 +175,6 @@
     socket.on('battleLog', onBattleLog);
 
     // 채팅(수신은 호환, 표시는 1회)
-    let lastChatId = null;
     const onChat = (payload)=>{
       const msg = payload?.message || payload?.text || '';
       const name = payload?.name || payload?.playerName || '익명';
@@ -192,9 +185,9 @@
     socket.on('battle:chat', onChat);
 
     // ===== 전투 제어 버튼 =====
-    $('#btnCreate').addEventListener('click', async ()=>{
+    document.getElementById('btnCreate').addEventListener('click', async ()=>{
       try{
-        const mode = $('#battleMode').value;
+        const mode = document.getElementById('battleMode').value;
         const res = await fetch('/api/battles', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ mode })
@@ -216,12 +209,12 @@
       }catch(e){ addLog('전투 생성 실패', 'error'); }
     });
 
-    $('#btnStart').addEventListener('click', ()=>{ if(battleId) socket.emit('startBattle', { battleId }, r=> addLog(r?.ok?'전투 시작':'전투 시작 실패')); });
-    $('#btnPause').addEventListener('click', ()=>{ if(battleId) socket.emit('pauseBattle', { battleId }, r=> addLog(r?.ok?'일시정지':'일시정지 실패')); });
-    $('#btnResume').addEventListener('click',()=>{ if(battleId) socket.emit('resumeBattle',{ battleId }, r=> addLog(r?.ok?'재개':'재개 실패')); });
-    $('#btnEnd').addEventListener('click',   ()=>{ if(battleId) socket.emit('endBattle',   { battleId }, r=> addLog(r?.ok?'전투 종료':'전투 종료 실패')); });
+    document.getElementById('btnStart').addEventListener('click', ()=>{ if(battleId) socket.emit('startBattle', { battleId }, r=> addLog(r?.ok?'전투 시작':'전투 시작 실패')); });
+    document.getElementById('btnPause').addEventListener('click', ()=>{ if(battleId) socket.emit('pauseBattle', { battleId }, r=> addLog(r?.ok?'일시정지':'일시정지 실패')); });
+    document.getElementById('btnResume').addEventListener('click',()=>{ if(battleId) socket.emit('resumeBattle',{ battleId }, r=> addLog(r?.ok?'재개':'재개 실패')); });
+    document.getElementById('btnEnd').addEventListener('click',   ()=>{ if(battleId) socket.emit('endBattle',   { battleId }, r=> addLog(r?.ok?'전투 종료':'전투 종료 실패')); });
 
-    // ===== 링크/비밀번호 생성 (신/구/변형 키 모두 수용) =====
+    // ===== 링크/비밀번호 생성 (신/구/변형 키 모두 수용 + 폴백 URL) =====
     function pick(obj, ...paths){
       for(const p of paths){
         const v = p.split('.').reduce((acc,key)=> (acc && acc[key]!=null) ? acc[key] : undefined, obj);
@@ -257,13 +250,16 @@
 
       const otp = pick(data, 'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
       let url = pick(data, 'spectator.url','spectatorUrl','url') || '';
-      if(!url && otp){ url = `${location.origin}/spectator.html?battle=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}`; addLog('관전자 URL(폴백) 생성됨'); }
-      $('#spectatorOtp').value = otp;
-      $('#spectatorUrl').value = url;
+      if(!url && otp){
+        url = `${location.origin}/spectator.html?battle=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}`;
+        addLog('관전자 URL(폴백) 생성됨');
+      }
+      document.getElementById('spectatorOtp').value = otp;
+      document.getElementById('spectatorUrl').value = url;
 
       const list = unifyPlayers(data);
       const base = location.origin;
-      const box = $('#playerLinks'); box.innerHTML='';
+      const box = document.getElementById('playerLinks'); box.innerHTML='';
       list.forEach(p=>{
         const link = p.url || `${base}/player.html?battle=${encodeURIComponent(id)}&playerId=${encodeURIComponent(p.playerId||'')}&name=${encodeURIComponent(p.name||'')}&team=${p.team||''}`;
         const row = document.createElement('div');
@@ -281,45 +277,45 @@
       if(otp) addLog('관전자 비밀번호 설정됨: '+otp);
       if(url) addLog('관전자 URL 설정됨: '+url);
     }
-    $('#btnGenLinks').addEventListener('click', (ev)=>{ ev.stopImmediatePropagation?.(); onGeneratePlayerLinks(); });
+    document.getElementById('btnGenLinks').addEventListener('click', (ev)=>{ ev.stopImmediatePropagation?.(); onGeneratePlayerLinks(); });
     document.addEventListener('click', (e)=>{
       const t = e.target;
       if(t && t.matches('[data-copy]')){ copy(t.getAttribute('data-copy')||''); addLog('복사됨'); }
     });
 
     // ===== 아바타 업로드 =====
-    $('#avatarFile').addEventListener('change', async (e)=>{
+    document.getElementById('avatarFile').addEventListener('change', async (e)=>{
       const f = e.target.files?.[0]; if(!f) return;
       const fd = new FormData(); fd.append('avatar', f);
       try{
         const res = await fetch('/api/upload/avatar', { method:'POST', body: fd });
         const data = await res.json();
         const url = data?.url || data?.filepath || data?.path;
-        if(url){ $('#avatarPreview').src = url; $('#avatarPreview').onerror = ()=>{ $('#avatarPreview').src='' }; }
+        if(url){ document.getElementById('avatarPreview').src = url; document.getElementById('avatarPreview').onerror = ()=>{ document.getElementById('avatarPreview').src='' }; }
         addLog(url ? '아바타 업로드 완료' : '아바타 업로드 실패', url?'':'error');
       }catch{ addLog('아바타 업로드 실패','error'); }
     });
 
     // ===== 참가자 추가/삭제 =====
-    $('#btnAddPlayer').addEventListener('click', ()=>{
+    document.getElementById('btnAddPlayer').addEventListener('click', ()=>{
       const id = (new URL(location.href)).searchParams.get('battle') || '';
       if(!id){ addLog('전투 ID가 없습니다','error'); return; }
       const payload = {
         battleId:id,
-        name: $('#playerName').value.trim(),
-        team: $('#playerTeam').value,
-        hp: Number($('#playerHp').value||100),
-        avatar: $('#avatarPreview').getAttribute('src') || null,
+        name: document.getElementById('playerName').value.trim(),
+        team: document.getElementById('playerTeam').value,
+        hp: Number(document.getElementById('playerHp').value||100),
+        avatar: document.getElementById('avatarPreview').getAttribute('src') || null,
         stats: {
-          attack: Number($('#statAttack').value||1),
-          defense: Number($('#statDefense').value||1),
-          agility: Number($('#statAgility').value||1),
-          luck: Number($('#statLuck').value||1),
+          attack:  Number(document.getElementById('statAttack').value||1),
+          defense: Number(document.getElementById('statDefense').value||1),
+          agility: Number(document.getElementById('statAgility').value||1),
+          luck:    Number(document.getElementById('statLuck').value||1),
         },
         items: {
-          dittany: Number($('#itemDittany').value||0),
-          attackBooster: Number($('#itemAtkBoost').value||0),
-          defenseBooster: Number($('#itemDefBoost').value||0),
+          dittany:       Number(document.getElementById('itemDittany').value||0),
+          attackBooster: Number(document.getElementById('itemAtkBoost').value||0),
+          defenseBooster:Number(document.getElementById('itemDefBoost').value||0),
         }
       };
       socket.emit('addPlayer', payload, (res)=>{
@@ -340,13 +336,17 @@
     // ===== 채팅 송신 (emit은 chatMessage 단일) =====
     const sendChat = ()=>{
       const id = (new URL(location.href)).searchParams.get('battle') || '';
-      const m = $('#chatMsg').value.trim(); if(!m || !id) return;
+      const m = document.getElementById('chatMsg').value.trim(); if(!m || !id) return;
       socket.emit('chatMessage', { battleId:id, name:'관리자', message:m });
-      $('#chatMsg').value='';
+      document.getElementById('chatMsg').value='';
     };
-    $('#btnSend').addEventListener('click', sendChat);
-    $('#chatMsg').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
+    document.getElementById('btnSend').addEventListener('click', sendChat);
+    document.getElementById('chatMsg').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
   })();
   </script>
+
+  <!-- (선택) 핫픽스 v2 스크립트 병행 사용 시 아래 주석 해제
+  <script src="/assets/js/admin-links-hotfix-v2.js"></script>
+  -->
 </body>
 </html>
