@@ -1,5 +1,4 @@
 // packages/battle-server/index.js
-// 포트/소켓 경로 고정: 3001 / /socket.io
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -9,14 +8,10 @@ import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { Server as IOServer } from "socket.io";
 
-// 업로드 라우터(불변)
 import avatarUploadRouter from "./src/routes/avatar-upload.js";
 
 dotenv.config();
 
-// -----------------------------------------------
-// 경로/서버 기본
-// -----------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 const rootDir    = path.resolve(__dirname);
@@ -49,9 +44,6 @@ app.use("/", express.static(publicDir));
 
 app.get("/api/health", (_req,res)=> res.json({ ok:true, status:"healthy" }));
 
-// -----------------------------------------------
-// 유틸/상태
-// -----------------------------------------------
 const now   = () => Date.now();
 const d20   = () => Math.floor(Math.random()*20)+1;
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -84,7 +76,8 @@ function makeBattle(mode="2v2"){
       order: { A:[], B:[] },
       defendToken: {},
       dodgeToken: {},
-    }
+    },
+    firstTeam: null // 최초 선공팀
   };
 }
 
@@ -158,12 +151,14 @@ function resolveRound(b){
 
   const attacks = [];
   const heals   = [];
+  
+  // 피해 먼저 계산
   for(const side of ["A","B"]){
     for(const {pid, sel} of seq(side)){
       if(!sel) continue;
       const me = byId[pid]; if(!me || me.hp<=0) continue;
       if(sel.type==="attack"){
-        attacks.push({ attacker: me, target: byId[sel.targetId] || null, side });
+        attacks.push({ attacker: me, target: byId[sel.targetId] || null });
       }else if(sel.type==="defend"){
         b.round.defendToken[pid] = true;
       }else if(sel.type==="dodge"){
@@ -174,18 +169,22 @@ function resolveRound(b){
     }
   }
 
+  // 피해 적용
   for(const act of attacks){
     const a = act.attacker, t = act.target;
     if(!t || a.hp<=0 || t.hp<=0) continue;
+    
     const atkRoll = (a.stats?.attack||1) + d20();
     const tgtDodgeBase = (t.stats?.agility||1);
     const dodgeBonus = b.round.dodgeToken[t.id] ? d20() : 0;
     const dodgeRoll = tgtDodgeBase + d20() + (dodgeBonus>0 ? Math.floor(dodgeBonus/2) : 0);
+    
     if(atkRoll < dodgeRoll){
-      dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격(빗나감)`);
+      dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격 빗나감 ▶ ${t.name} HP ${t.hp}`);
       if(b.round.dodgeToken[t.id]) delete b.round.dodgeToken[t.id];
       continue;
     }
+    
     const critThreshold = Math.max(2, 20 - Math.floor((a.stats?.luck||1)/2));
     const isCrit = d20() >= critThreshold;
     const baseAtk = (a.stats?.attack||1) + d20();
@@ -194,17 +193,22 @@ function resolveRound(b){
     if(b.round.defendToken[t.id]){ defendExtra = d20(); delete b.round.defendToken[t.id]; }
     let dmg = Math.max( (baseAtk - (baseDef + defendExtra)), 1 );
     if(isCrit) dmg *= 2;
+    
+    const finalDmg = dmg;
     t.hp = Math.max(0, t.hp - dmg);
-    dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격`);
+    dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격 (피해 ${finalDmg}) ▶ ${t.name} HP ${t.hp}`);
   }
 
+  // 회복 적용
   for(const h of heals){
     const target = h.target;
-    if(!target || target.hp<=0) continue;
+    if(!target) continue;
+    const beforeHp = target.hp;
     target.hp = Math.min(target.maxHp||100, (target.hp||0) + 10);
-    healLogs.push(`${h.who.name}이(가) ${target.name}을(를) 치유(+10)`);
+    healLogs.push(`${h.who.name}이(가) ${target.name}을(를) 치유 (+10) ▶ ${target.name} HP ${target.hp}`);
   }
 
+  // 로그 출력 (피해 먼저, 회복 나중)
   if(dmgLogs.length===0 && healLogs.length===0){
     pushLog(b.id, "battle", "라운드 결과 없음");
   }else{
@@ -212,8 +216,12 @@ function resolveRound(b){
     for(const L of healLogs) pushLog(b.id, "battle", L);
   }
 
+  // 라운드 종료 후 선후공 교대
   b.currentTurn.turnNumber = (b.currentTurn.turnNumber||0) + 1;
-  b.currentTurn.currentTeam  = (b.currentTurn.currentTeam==="A") ? "B" : "A";
+  
+  // 선후공 교대 로직: 홀수 라운드는 최초 선공팀, 짝수 라운드는 후공팀
+  const nextTeam = (b.currentTurn.turnNumber % 2 === 1) ? b.firstTeam : (b.firstTeam === "A" ? "B" : "A");
+  b.currentTurn.currentTeam = nextTeam;
 
   b.round = {
     phaseTeam: b.currentTurn.currentTeam,
@@ -226,9 +234,7 @@ function resolveRound(b){
   b.currentTurn.turnDeadline = now() + 5*60*1000;
 }
 
-// -----------------------------------------------
 // HTTP
-// -----------------------------------------------
 app.post("/api/battles", (req,res)=>{
   const mode = String(req.body?.mode || "2v2");
   const b = makeBattle(mode);
@@ -275,9 +281,7 @@ async function buildLinksResponse(req,res){
 app.post("/api/admin/battles/:id/links", buildLinksResponse);
 app.post("/api/battles/:id/links",      buildLinksResponse);
 
-// -----------------------------------------------
 // 소켓
-// -----------------------------------------------
 io.on("connection", (socket)=>{
   console.log("[SOCKET] Connected:", socket.id);
 
@@ -378,9 +382,18 @@ io.on("connection", (socket)=>{
 
   function decideFirst(b){
     const sum = t=>b.players.filter(p=>p.team===t).reduce((s,p)=>s+(p.stats?.agility||1),0);
-    let a = sum("A")+d20(), bb = sum("B")+d20();
-    while(a===bb){ a = sum("A")+d20(); bb = sum("B")+d20(); }
-    return (a>bb) ? "A" : "B";
+    let aSum = sum("A"), bSum = sum("B");
+    let aRoll = d20(), bRoll = d20();
+    let aTotal = aSum + aRoll, bTotal = bSum + bRoll;
+    
+    while(aTotal === bTotal){ 
+      aRoll = d20(); bRoll = d20();
+      aTotal = aSum + aRoll; bTotal = bSum + bRoll;
+    }
+    
+    const winner = (aTotal > bTotal) ? "A" : "B";
+    pushLog(b.id, "battle", `선공 A팀 (${aTotal}) vs B팀 (${bTotal}) ▶ 선공 ${winner}팀`);
+    return winner;
   }
 
   socket.on("startBattle", ({ battleId }, cb=()=>{})=>{
@@ -390,7 +403,7 @@ io.on("connection", (socket)=>{
     b.status = "active";
     if(b.currentTurn.turnNumber===0){
       const first = decideFirst(b);
-      pushLog(battleId, "battle", `선공 판정: ${first}팀`);
+      b.firstTeam = first;
       b.currentTurn.turnNumber = 1;
       startPhase(b, first);
     }else{
@@ -436,6 +449,7 @@ io.on("connection", (socket)=>{
         startPhase(b,"B"); emitUpdate(battleId); cb({ ok:true, timeout:true }); return;
       }else{
         pushLog(battleId, "battle", "B팀 타임아웃 - 라운드 종료");
+        pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 선택 완료`);
         resolveRound(b); emitUpdate(battleId); cb({ ok:true, timeout:true }); return;
       }
     }
@@ -468,8 +482,8 @@ io.on("connection", (socket)=>{
         startPhase(b,"B");
         pushLog(battleId, "battle", "A팀 선택 완료 - B팀 선택 시작");
       }else{
+        pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 선택 완료`);
         resolveRound(b);
-        pushLog(battleId, "battle", "라운드 종료 - 다음 라운드 시작");
       }
     }
 
