@@ -123,6 +123,65 @@
     text-align:center;
     padding:20px;
   }
+  
+  .name-overlay{
+    position:fixed;
+    top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,.95);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:3000;
+  }
+  
+  .name-input-box{
+    background:var(--glass-1);
+    border:2px solid var(--gold);
+    border-radius:16px;
+    padding:30px;
+    text-align:center;
+  }
+  
+  .name-input-box h2{
+    color:var(--gold);
+    font-family:Cinzel,serif;
+    margin-bottom:20px;
+    font-size:24px;
+  }
+  
+  .name-input-box input{
+    width:300px;
+    padding:12px;
+    border:1px solid var(--border);
+    background:var(--bg1);
+    color:var(--text);
+    border-radius:8px;
+    font-size:16px;
+    margin-bottom:20px;
+  }
+  
+  .name-input-box input:focus{
+    outline:none;
+    border-color:var(--gold);
+    box-shadow:0 0 0 2px rgba(220,199,162,.2);
+  }
+  
+  .name-input-box button{
+    padding:12px 30px;
+    background:var(--gold);
+    color:#000;
+    border:none;
+    border-radius:8px;
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    transition:all .2s;
+  }
+  
+  .name-input-box button:hover{
+    transform:translateY(-2px);
+    box-shadow:0 4px 12px rgba(220,199,162,.4);
+  }
 </style>
 </head>
 <body>
@@ -180,6 +239,16 @@
   <div>게임이 종료되었습니다</div>
 </div>
 
+<!-- 이름 입력 오버레이 -->
+<div id="nameOverlay" class="name-overlay">
+  <div class="name-input-box">
+    <h2>PYXIS 관전</h2>
+    <input type="text" id="nameInput" placeholder="관전자 이름을 입력하세요" maxlength="20"/>
+    <br>
+    <button onclick="submitName()">입장</button>
+  </div>
+</div>
+
 <script>
 const socket = io({path:'/socket.io'});
 const params = new URLSearchParams(location.search);
@@ -189,14 +258,24 @@ let spectatorName = null;
 let battleState = null;
 let timerInterval = null;
 
-// 이름 입력
-spectatorName = prompt('관전자 이름을 입력하세요:');
-if(!spectatorName || spectatorName.trim()===''){
-  spectatorName = '관전자' + Math.floor(Math.random()*1000);
+// 이름 입력 함수
+function submitName(){
+  const input = document.getElementById('nameInput').value.trim();
+  if(!input){
+    alert('이름을 입력해주세요');
+    return;
+  }
+  spectatorName = input;
+  document.getElementById('nameOverlay').style.display = 'none';
+  
+  // 입장
+  socket.emit('join', {battleId});
 }
 
-// 입장
-socket.emit('join', {battleId});
+// Enter 키 처리
+document.getElementById('nameInput').addEventListener('keypress', (e)=>{
+  if(e.key === 'Enter') submitName();
+});
 
 // 전투 상태 업데이트
 socket.on('battleUpdate', (snap)=>{ battleState = snap; render(); });
