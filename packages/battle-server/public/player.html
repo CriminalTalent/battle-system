@@ -109,7 +109,6 @@
     opacity:0.3;
     cursor:not-allowed;
   }
-  /* 실제 disabled 속성 대응 */
   .act:disabled{
     opacity:0.3;
     cursor:not-allowed;
@@ -271,7 +270,9 @@
         <div class="title">현재 턴</div>
         <img id="currentPortrait" class="center-portrait" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22250%22 height=%22250%22><rect fill=%22%23222%22 width=%22250%22 height=%22250%22/><text x=%22125%22 y=%22125%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22 font-size=%2220%22>대기중</text></svg>'">
         <div style="font-size:14px;margin-bottom:4px" id="turnInfo">대기 중...</div>
-        <div style="color:var(--gold);font-size:20px;margin-bottom:12px" id="timerDisplay">5:00</div>
+        <div style="color:var(--gold);font-size:20px;margin-bottom:6px" id="timerDisplay">5:00</div>
+        <!-- ⬇ 추가: 초 단위 표시 -->
+        <div class="muted" id="timerSeconds" style="font-size:12px;margin-bottom:12px">300초</div>
         
         <!-- 액션 버튼 -->
         <div class="actions">
@@ -353,10 +354,10 @@ socket.on('battleUpdate', (snap)=>{ battleState = snap; render(); });
 socket.on('battle:update', (snap)=>{ battleState = snap; render(); });
 
 // 로그
-socket.on('battle:log', addLog);  // 하나만 사용
+socket.on('battle:log', addLog);
 
 // 채팅
-socket.on('chatMessage', addChat);  // 하나만 사용
+socket.on('chatMessage', addChat);
 
 // 행동 성공
 socket.on('actionSuccess', ()=>{ disableActions(); });
@@ -460,7 +461,7 @@ function render(){
       const left = Math.max(0, lastTimeLeft - elapsed);
       setTimerDisplay(left);
       if(left === 0){ clearInterval(timerInterval); }
-    }, 250);
+    }, 1000); // ⬅ 초 단위 갱신
   }
   
   // 내 상태 업데이트
@@ -482,6 +483,8 @@ function setTimerDisplay(sec){
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  // ⬇ 초 단위 숫자도 함께 표기
+  document.getElementById('timerSeconds').textContent = `${sec}초`;
 }
 
 function renderTeam(team, container){
