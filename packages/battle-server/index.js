@@ -1,3 +1,4 @@
+// packages/battle-server/index.js
 // 포트/소켓 경로 고정: 3001 / /socket.io
 import path from "path";
 import fs from "fs";
@@ -66,13 +67,8 @@ const byAgilityThenName = (a,b)=>{
   if (ag !== 0) return ag;
   return String(a.name||"").localeCompare(String(b.name||""), "ko-KR");
 };
-
-function firstAliveOrder(b, team){
-  return (b.players||[])
-    .filter(p=>p.team===team && p.hp>0)
-    .sort(byAgilityThenName)
-    .map(p=>p.id);
-}
+const firstAliveOrder = (b, team) =>
+  (b.players||[]).filter(p=>p.team===team && p.hp>0).sort(byAgilityThenName).map(p=>p.id);
 
 function makeBattle(mode="2v2"){
   return {
@@ -90,9 +86,9 @@ function makeBattle(mode="2v2"){
     round: {
       phaseTeam: null,              // "A"|"B"
       selections: { A:{}, B:{} },   // playerId -> { type, targetId, item }
-      order: { A:[], B:[] },        // 행동 순서(민첩 정렬)
-      defendToken: {},              // playerId -> true(이번 라운드 첫 피격에 방어+D20)
-      dodgeToken: {},               // playerId -> true(이번 라운드 첫 피격에 회피 가산)
+      order: { A:[], B:[] },
+      defendToken: {},
+      dodgeToken: {},
     }
   };
 }
@@ -120,15 +116,14 @@ function hydrateCurrentPlayer(b){
 function emitUpdate(battleId){
   const b = BATTLES.get(battleId); if(!b) return;
   const snap = clone(b);
-  // timeLeftSec
   snap.currentTurn = snap.currentTurn || {};
   snap.currentTurn.timeLeftSec = b.currentTurn?.turnDeadline ? mmssLeft(b.currentTurn.turnDeadline) : null;
-  hydrateCurrentPlayer(snap); // 동일 필드 유지
+  hydrateCurrentPlayer(snap);
   io.to(battleId).emit("battleUpdate", snap);
 }
 
 // -----------------------------------------------
-// 라운드/턴 제어
+// 라운드/턴 제어 (필요 최소만)
 // -----------------------------------------------
 function startPhase(b, team){
   b.round.phaseTeam = team;
@@ -138,7 +133,6 @@ function startPhase(b, team){
   hydrateCurrentPlayer(b);
   b.currentTurn.turnDeadline = now() + 5*60*1000; // 팀 제한 5분
 }
-
 function nextUnactedPlayerId(b, team){
   const order = b.round.order[team] || [];
   for(const pid of order){
@@ -146,12 +140,10 @@ function nextUnactedPlayerId(b, team){
   }
   return null;
 }
-
 function completeTeamIfTimeout(b){
   if(b.status!=="active") return false;
   const dl = b.currentTurn?.turnDeadline;
   if(!dl || now() <= dl) return false;
-  // 마감: 아직 선택 안 한 인원은 자동 패스
   const team = b.round.phaseTeam;
   const order = b.round.order[team] || [];
   for(const pid of order){
@@ -161,26 +153,16 @@ function completeTeamIfTimeout(b){
   }
   return true;
 }
-
 function resolveRound(b){
-  // 피해 먼저 → 치유 나중
   const dmgLogs = [];
   const healLogs = [];
-
-  // 방어/회피 토큰 초기화
   b.round.defendToken = {};
   b.round.dodgeToken  = {};
-
-  // 대상 편의
   const byId = Object.fromEntries(b.players.map(p=>[p.id,p]));
-
-  // 한 팀의 선택을 집계 순서대로 가져오기
   const seq = (team)=> (b.round.order[team]||[]).map(pid => ({ pid, sel: b.round.selections[team][pid] || {type:"pass"} }));
 
   const attacks = [];
   const heals   = [];
-
-  // 분리: 공격/방어/회피/아이템(디터니)
   for(const side of ["A","B"]){
     for(const {pid, sel} of seq(side)){
       if(!sel) continue;
@@ -188,52 +170,39 @@ function resolveRound(b){
       if(sel.type==="attack"){
         attacks.push({ attacker: me, target: byId[sel.targetId] || null, side });
       }else if(sel.type==="defend"){
-        b.round.defendToken[pid] = true; // 첫 피격에 방어+D20 적용
+        b.round.defendToken[pid] = true;
       }else if(sel.type==="dodge"){
-        b.round.dodgeToken[pid] = true;  // 첫 피격에 회피 가산
+        b.round.dodgeToken[pid] = true;
       }else if(sel.type==="item" && (sel.item==="dittany" || sel.item==="ditany")){
-        heals.push({ who: me, target: byId[sel.targetId] || me }); // 자기/아군 대상
-      } // 공격/방어 보정기는 룰 엔진 확장 시후 처리(여기선 로깅만)
+        heals.push({ who: me, target: byId[sel.targetId] || me });
+      }
     }
   }
 
-  // 피해 적용(공격)
   for(const act of attacks){
     const a = act.attacker, t = act.target;
     if(!t || a.hp<=0 || t.hp<=0) continue;
-
-    // 공격/회피 판정
     const atkRoll = (a.stats?.attack||1) + d20();
     const tgtDodgeBase = (t.stats?.agility||1);
     const dodgeBonus = b.round.dodgeToken[t.id] ? d20() : 0;
-    const dodgeRoll = tgtDodgeBase + d20() + (dodgeBonus>0 ? Math.floor(dodgeBonus/2) : 0); // 회피 선택 시 가산
-
+    const dodgeRoll = tgtDodgeBase + d20() + (dodgeBonus>0 ? Math.floor(dodgeBonus/2) : 0);
     if(atkRoll < dodgeRoll){
       dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격(빗나감)`);
-      // 회피/방어 토큰 1회 소모 관례 없음(회피는 시도 자체로 소모 처리)
       if(b.round.dodgeToken[t.id]) delete b.round.dodgeToken[t.id];
       continue;
     }
-
-    // 치명(20 - 행운/2) 판정
     const critThreshold = Math.max(2, 20 - Math.floor((a.stats?.luck||1)/2));
     const isCrit = d20() >= critThreshold;
-
-    // 방어 수식
     const baseAtk = (a.stats?.attack||1) + d20();
     const baseDef = (t.stats?.defense||1);
     let defendExtra = 0;
     if(b.round.defendToken[t.id]){ defendExtra = d20(); delete b.round.defendToken[t.id]; }
-
     let dmg = Math.max( (baseAtk - (baseDef + defendExtra)), 1 );
     if(isCrit) dmg *= 2;
-
     t.hp = Math.max(0, t.hp - dmg);
-
     dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격`);
   }
 
-  // 치유 적용(디터니)
   for(const h of heals){
     const target = h.target;
     if(!target || target.hp<=0) continue;
@@ -241,19 +210,16 @@ function resolveRound(b){
     healLogs.push(`${h.who.name}이(가) ${target.name}을(를) 치유(+10)`);
   }
 
-  // 라운드 종료/로그
   if(dmgLogs.length===0 && healLogs.length===0){
     pushLog(b.id, "battle", "라운드 결과 없음");
   }else{
-    for(const L of dmgLogs) pushLog(b.id, "battle", L); // 간결 로그만
+    for(const L of dmgLogs) pushLog(b.id, "battle", L);
     for(const L of healLogs) pushLog(b.id, "battle", L);
   }
 
-  // 선/후공 교대
   b.currentTurn.turnNumber = (b.currentTurn.turnNumber||0) + 1;
   b.currentTurn.currentTeam  = (b.currentTurn.currentTeam==="A") ? "B" : "A";
 
-  // 라운드 리셋
   b.round = {
     phaseTeam: b.currentTurn.currentTeam,
     selections: { A:{}, B:{} },
@@ -266,7 +232,18 @@ function resolveRound(b){
 }
 
 // -----------------------------------------------
-// 링크 발급 (신/구 호환)
+// HTTP: 전투 생성 (HTTP 폴백용 - 불변)
+// -----------------------------------------------
+app.post("/api/battles", (req,res)=>{
+  const mode = String(req.body?.mode || "2v2");
+  const b = makeBattle(mode);
+  BATTLES.set(b.id, b);
+  console.log("[HTTP] create battle ->", b.id, "mode:", mode);
+  return res.json({ ok:true, id:b.id, battleId:b.id, battle: clone(b) });
+});
+
+// -----------------------------------------------
+// HTTP: 링크 발급 (신·구 동시 제공 - 불변)
 // -----------------------------------------------
 function makeOtp(len=6){ return Array.from({length:len}, ()=>Math.floor(Math.random()*10)).join(""); }
 function baseUrlFrom(req){ return process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get("host")}`; }
@@ -290,6 +267,7 @@ async function buildLinksResponse(req,res){
       return { playerId:p.id, name:p.name, team:p.team, token:p.token, url };
     });
 
+    console.log("[HTTP] links for", battleId, "players:", players.length);
     return res.json({
       ok:true,
       spectator: { otp: spectatorOtp, url: spectatorUrl },
@@ -309,15 +287,21 @@ app.post("/api/battles/:id/links",      buildLinksResponse);
 // 소켓
 // -----------------------------------------------
 io.on("connection", (socket)=>{
+  console.log("[SOCKET] Connected:", socket.id);
+
+  socket.on("disconnect", ()=> console.log("[SOCKET] Disconnected:", socket.id));
+
   socket.on("join", ({ battleId })=>{
     if(!battleId) return;
     socket.join(battleId);
+    console.log("[SOCKET] join <-", { battleId, sid: socket.id });
     emitUpdate(battleId);
   });
 
   socket.on("createBattle", ({ mode }, cb=()=>{})=>{
     const b = makeBattle(String(mode||"2v2"));
     BATTLES.set(b.id, b);
+    console.log("[SOCKET] createBattle <-", { mode, sid: socket.id });
     pushLog(b.id, "system", `전투 생성 (${b.mode})`);
     emitUpdate(b.id);
     cb({ ok:true, battleId:b.id, battle: clone(b) });
@@ -364,7 +348,7 @@ io.on("connection", (socket)=>{
   socket.on("deletePlayer", _removePlayer);
   socket.on("removePlayer", _removePlayer);
 
-  // 자동 로그인(이름/토큰)
+  // 자동 로그인(이름/토큰/ID)
   socket.on("playerAuth", ({ battleId, token, password, otp, playerId, playerName }, cb=()=>{})=>{
     const b = BATTLES.get(String(battleId));
     if(!b){ const e={ ok:false, error:"battle_not_found"}; cb(e); socket.emit("authError", e); return; }
@@ -444,14 +428,12 @@ io.on("connection", (socket)=>{
     b.status = "ended"; emitUpdate(battleId); cb({ ok:true });
   });
 
-  // 행동 수신(호환: player:action / playerAction)
+  // 행동 수신(호환)
   function onAction({ battleId, playerId, action }, cb=()=>{}){
     const b = BATTLES.get(String(battleId)); if(!b) { cb({ ok:false }); return; }
     if(b.status!=="active"){ cb({ ok:false, error:"NOT_ACTIVE" }); return; }
 
-    // 팀 타임아웃 자동 마감 체크
     if(completeTeamIfTimeout(b)){
-      // 타임아웃으로 팀 마감되었으면 진행
       if(b.round.phaseTeam==="A"){
         startPhase(b,"B"); emitUpdate(battleId); cb({ ok:true, timeout:true }); return;
       }else{
@@ -465,7 +447,6 @@ io.on("connection", (socket)=>{
       cb({ ok:false, error:"NOT_YOUR_SLOT" }); return;
     }
 
-    // 기록(타입/대상)
     const t = String(action?.type||"pass");
     const rec = { type:t };
     if(t==="attack") rec.targetId = String(action?.targetId||"");
@@ -473,24 +454,22 @@ io.on("connection", (socket)=>{
       const it = action?.item;
       if(it==="dittany" || it==="ditany" || it==="attackBooster" || it==="attack_boost" || it==="defenseBooster" || it==="defense_boost"){
         rec.item = it;
-        if(it==="dittany" || it==="ditany") rec.targetId = String(action?.targetId||p.id); // 자기/아군 치유
+        if(it==="dittany" || it==="ditany") rec.targetId = String(action?.targetId||p.id);
       }else{
         rec.item = "unknown";
       }
     }
     b.round.selections[p.team][playerId] = rec;
 
-    // 다음 슬롯으로 이동
     b.currentTurn.currentPlayerId = nextUnactedPlayerId(b, p.team);
     hydrateCurrentPlayer(b);
 
-    // 팀이 모두 선택 완료 → 즉시 다음 단계
     if(!b.currentTurn.currentPlayerId){
       if(b.round.phaseTeam === "A"){
-        startPhase(b,"B"); // 후공으로 즉시 전환
+        startPhase(b,"B");
         pushLog(battleId, "battle", "후공 선택 시작");
       }else{
-        resolveRound(b);   // 라운드 일괄 적용/중계
+        resolveRound(b);
       }
     }
 
@@ -513,10 +492,10 @@ io.on("connection", (socket)=>{
   });
 });
 
-// 기본 라우팅
-app.get("/",          (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
-app.get("/admin.html",(_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
-app.get("/player.html",(_req,res)=> res.sendFile(path.join(publicDir, "player.html")));
+// 기본 라우팅(직접 접근도 허용)
+app.get("/",            (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
+app.get("/admin.html",  (_req,res)=> res.sendFile(path.join(publicDir, "admin.html")));
+app.get("/player.html", (_req,res)=> res.sendFile(path.join(publicDir, "player.html")));
 app.get("/spectator.html",(_req,res)=> res.sendFile(path.join(publicDir, "spectator.html")));
 
 app.use((err,_req,res,_next)=>{ console.error(err); res.status(500).json({ ok:false, error:"internal" }); });
