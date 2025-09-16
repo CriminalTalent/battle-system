@@ -584,15 +584,11 @@ io.on("connection", (socket)=>{
     
     const playerId = `p_${Math.random().toString(36).slice(2,8)}`;
     
-    // player 객체에서 team 값을 정확히 추출
-    const selectedTeam = String(player?.team || "A"); // 명시적으로 문자열 변환
-    
-    console.log(`[DEBUG] addPlayer - Selected team: ${selectedTeam}, Player data:`, player); // 디버깅
-    
+    // player 객체의 team 값을 그대로 사용 (admin.html에서 정확히 전달됨)
     const newPlayer = {
       id: playerId,
       name: String(player?.name||"전투 참가자"),
-      team: selectedTeam, // 선택된 팀 그대로 사용
+      team: player?.team || "A", // admin.html에서 선택한 팀 값 사용
       hp: Number(player?.hp) || 100,
       maxHp: 100,
       stats: {
