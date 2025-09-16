@@ -55,6 +55,9 @@
   .target{display:flex;gap:8px;align-items:center;background:var(--glass-2);border:1px solid var(--border);border-radius:10px;padding:8px;margin-bottom:8px;cursor:pointer}
   .target img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#0b0b0b;border:1px solid var(--border)}
   .ov-actions{display:flex;gap:8px;margin-top:8px}
+
+  /* 내 정보 강조 */
+  .me-highlight{border:2px solid var(--gold);box-shadow:0 0 10px rgba(220,199,162,.3)}
 </style>
 </head>
 <body>
@@ -72,7 +75,7 @@
     <div class="meta">
       <span id="turnInfo" class="pill">라운드 - / 팀 -</span>
       <span id="timer" class="pill">남은 시간 --:--</span>
-      <span id="meInfo" class="pill">내 이름 -</span>
+      <span id="meInfo" class="pill" style="background:var(--gold);color:#000;font-weight:700">나: -</span>
     </div>
     <div id="orderRow" class="row" style="overflow:auto;padding-bottom:8px"></div>
     <div class="actions" style="margin-top:8px">
@@ -82,6 +85,7 @@
       <button id="btnItem"   class="act" disabled>아이템</button>
       <button id="btnPass"   class="act" disabled>패스</button>
     </div>
+    <button id="btnReady" class="act enabled" style="margin-top:12px;width:100%;grid-column:1/-1">준비 완료</button>
   </section>
 
   <!-- 오른쪽: 팀 B 요약 + 로그/채팅 -->
@@ -123,9 +127,9 @@
   const playerIdParam = q.get('playerId') || '';
   const socket = io({ path: '/socket.io' });
 
-  let me = null;           // {id, name, team, avatar}
-  let snapshot = null;     // 최신 스냅샷
-  let currentActionLock = null; // 내 턴에 한 번만
+  let me = null;
+  let snapshot = null;
+  let currentActionLock = null;
 
   // DOM
   const teamA = $("#teamA"), teamB = $("#teamB");
@@ -137,9 +141,10 @@
   const logView  = $("#log");
   const chatView = $("#chatView");
   const btnAttack=$("#btnAttack"), btnDefend=$("#btnDefend"), btnDodge=$("#btnDodge"), btnItem=$("#btnItem"), btnPass=$("#btnPass");
+  const btnReady = $("#btnReady");
 
   const overlay = $("#overlay"), targetList = $("#targetList"), btnCancelTarget = $("#btnCancelTarget"), ovTitle = $("#ovTitle");
-  let overlayMode = null; // 'attack' | 'dittany'
+  let overlayMode = null;
 
   // 공통
   function addLog(message, type=''){
@@ -163,9 +168,10 @@
   function renderTeams(players){
     const renderOne = (p)=>{
       const box = document.createElement('div'); box.className='row'; box.style.marginBottom='8px';
+      if(me && p.id === me.id) box.classList.add('me-highlight');
       const img = document.createElement('img'); img.className='por'; setImg(img, p.avatar);
       const mid = document.createElement('div'); mid.style.flex='1';
-      const name = document.createElement('div'); name.textContent = p.name||'-';
+      const name = document.createElement('div'); name.textContent = (me && p.id === me.id ? '★ ' : '') + (p.name||'-');
       const hp = document.createElement('div'); hp.className='hp'; const fill = document.createElement('span');
       const maxHp = p.maxHp||100, curHp=p.hp||0; fill.style.width = Math.max(0, Math.min(100, Math.round(curHp/maxHp*100)))+'%';
       hp.appendChild(fill);
@@ -249,8 +255,9 @@
     }, (res)=>{
       if(res?.ok){
         me = { id: res.playerId, name: res.name, team: res.team, avatar: res.avatar||null };
-        $("#meInfo").textContent = `내 이름 ${me.name||'-'}`;
+        meInfo.textContent = `나: ${me.name||'-'} (${me.team}팀)`;
         addLog('인증 성공');
+        renderTeams(snapshot?.players || []);
       }else{
         addLog('인증 실패','err');
       }
@@ -263,20 +270,17 @@
     socket.emit('chatMessage', { battleId, name: (me?.name||myName||'전투 참가자'), message: msg });
     $("#chatMsg").value='';
   });
+  $("#chatMsg").addEventListener('keydown', (e)=>{
+    if(e.key==='Enter') $("#btnSend").click();
+  });
 
   // 준비 완료
-  const btnReadyOnce = document.createElement('button');
-  btnReadyOnce.textContent='준비 완료';
-  btnReadyOnce.className='act enabled';
-  btnReadyOnce.style.marginTop='8px';
-  btnReadyOnce.addEventListener('click', ()=>{
+  btnReady.addEventListener('click', ()=>{
     if(!me?.id) return;
-    btnReadyOnce.disabled = true; btnReadyOnce.textContent='준비 완료됨';
+    btnReady.disabled = true; btnReady.textContent='준비 완료됨'; btnReady.style.opacity='0.5';
     addLog('내 상태: 준비 완료','rule');
     socket.emit('player:ready', { battleId, playerId: me.id, ready:true });
   });
-  // 준비 버튼을 액션 영역 하단에만 1회 삽입
-  document.querySelector('.actions').after(btnReadyOnce);
 
   // 오버레이
   function openOverlay(mode){
