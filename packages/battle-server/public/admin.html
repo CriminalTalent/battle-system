@@ -143,7 +143,7 @@
     // ===== 유틸 =====
     const $ = s => document.querySelector(s);
     const qs = s => Array.from(document.querySelectorAll(s));
-    const escapeHtml = t => String(t??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const escapeHtml = t => String(t??'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',\"'\":'&#39;' }[m]));
     const addLog = (msg, cls='')=>{
       const el = document.createElement('div');
       el.className = 'log '+cls;
@@ -256,7 +256,8 @@
       console.log('[LINKS_RAW]', data);
 
       const otp = pick(data, 'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
-      const url = pick(data, 'spectator.url','spectatorUrl','url') || '';
+      let url = pick(data, 'spectator.url','spectatorUrl','url') || '';
+      if(!url && otp){ url = `${location.origin}/spectator.html?battle=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}`; addLog('관전자 URL(폴백) 생성됨'); }
       $('#spectatorOtp').value = otp;
       $('#spectatorUrl').value = url;
 
