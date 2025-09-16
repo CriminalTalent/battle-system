@@ -29,7 +29,6 @@
   .muted{color:var(--muted);font-size:12px}
   img.por{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#0b0b0b;border:1px solid var(--border)}
 
-  /* 가운데: 현재 턴 + 액션 */
   .center .portrait{width:100%;aspect-ratio:1/1;border-radius:14px;border:1px solid var(--border);object-fit:cover;background:#0b0b0b;margin-bottom:10px}
   .meta{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
   .actions{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
@@ -37,10 +36,9 @@
   .act.enabled{border-color:#c7af7b;color:#e6d2a8;font-weight:700}
   .act:disabled{opacity:.45;cursor:not-allowed}
 
-  /* 오른쪽 아래: 로그 + 채팅 (위/아래) */
   .log{height:220px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px}
   .entry{font-size:12px;margin-bottom:6px}
-  .entry .t{color:#000;margin-right:6px;font-size:10px} /* 시간은 검정색 */
+  .entry .t{color:#000;margin-right:6px;font-size:10px}
   .entry.rule{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;border-radius:8px;padding:6px}
   .entry.err{background:#000;border:1px solid #e6d2a8;color:#e6d2a8;border-radius:8px;padding:6px}
   .chatView{height:180px;overflow:auto;background:var(--glass-1);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:10px}
@@ -48,7 +46,6 @@
   .chatRow input{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0b0b0b;color:#fff}
   .chatRow button{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:linear-gradient(135deg,var(--gold),var(--gold2));font-weight:700;cursor:pointer}
 
-  /* 타깃/아이템 선택 오버레이 */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:20}
   .ov-card{width:100%;max-width:460px;background:#0f0f0f;border:1px solid var(--border);border-radius:14px;padding:14px}
   .ov-title{font-weight:700;color:var(--gold2);margin-bottom:10px}
@@ -56,22 +53,19 @@
   .target img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#0b0b0b;border:1px solid var(--border)}
   .ov-actions{display:flex;gap:8px;margin-top:8px}
 
-  /* 내 정보 강조 */
   .me-highlight{border:2px solid var(--gold);box-shadow:0 0 10px rgba(220,199,162,.3)}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <!-- 왼쪽: 팀 A 요약 -->
   <section class="card">
     <div class="title">A팀</div>
     <div id="teamA"></div>
   </section>
 
-  <!-- 가운데: 현재 턴 / 액션 -->
   <section class="card center">
     <div class="title">현재 턴</div>
-    <img id="curPor" class="portrait" alt="현재 턴 초상화" onerror="this.src='/uploads/avatars/default.svg'">
+    <img id="curPor" class="portrait" alt="현재 턴 초상화" onerror="this.src='/uploads/avatars/default.png'">
     <div class="meta">
       <span id="turnInfo" class="pill">라운드 - / 팀 -</span>
       <span id="timer" class="pill">남은 시간 --:--</span>
@@ -88,7 +82,6 @@
     <button id="btnReady" class="act enabled" style="margin-top:12px;width:100%;grid-column:1/-1">준비 완료</button>
   </section>
 
-  <!-- 오른쪽: 팀 B 요약 + 로그/채팅 -->
   <section class="card">
     <div class="title">B팀</div>
     <div id="teamB"></div>
@@ -105,7 +98,6 @@
   </section>
 </div>
 
-<!-- 공격/아이템(디터니 대상) 선택 오버레이 -->
 <div id="overlay" class="overlay" role="dialog" aria-modal="true">
   <div class="ov-card">
     <div id="ovTitle" class="ov-title">대상 선택</div>
@@ -131,7 +123,6 @@
   let snapshot = null;
   let currentActionLock = null;
 
-  // DOM
   const teamA = $("#teamA"), teamB = $("#teamB");
   const curPor = $("#curPor");
   const orderRow = $("#orderRow");
@@ -146,7 +137,6 @@
   const overlay = $("#overlay"), targetList = $("#targetList"), btnCancelTarget = $("#btnCancelTarget"), ovTitle = $("#ovTitle");
   let overlayMode = null;
 
-  // 공통
   function addLog(message, type=''){
     const t = new Date().toLocaleTimeString('ko-KR',{hour12:false,hour:'2-digit',minute:'2-digit'});
     const d = document.createElement('div'); d.className='entry '+(type||'');
@@ -161,7 +151,7 @@
     chatView.appendChild(d); chatView.scrollTop = chatView.scrollHeight;
     while(chatView.children.length>400) chatView.removeChild(chatView.firstChild);
   }
-  function setImg(img,url){ img.src = url||'/uploads/avatars/default.svg'; img.onerror=()=>{img.onerror=null; img.src='/uploads/avatars/default.svg';}; }
+  function setImg(img,url){ img.src = url||'/uploads/avatars/default.png'; img.onerror=()=>{img.onerror=null; img.src='/uploads/avatars/default.png';}; }
 
   function mmss(sec){ if(typeof sec!=="number"||sec<0) return "--:--"; const m=Math.floor(sec/60), s=sec%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }
 
@@ -230,12 +220,22 @@
     }
   }
 
-  // 소켓 바인딩
   function bindSocket(){
     socket.emit('join', { battleId });
 
     socket.on('battleUpdate', (data)=>{
-      snapshot = data; updateCenter(); renderTeams(snapshot.players||[]); renderOrderRow(); enableActions();
+      const prevTurn = snapshot?.currentTurn?.turnNumber || 0;
+      const newTurn = data?.currentTurn?.turnNumber || 0;
+      
+      if(newTurn > prevTurn) {
+        currentActionLock = false;
+      }
+      
+      snapshot = data; 
+      updateCenter(); 
+      renderTeams(snapshot.players||[]); 
+      renderOrderRow(); 
+      enableActions();
     });
 
     const onLog = (e)=>{ if(e?.message) addLog(e.message, e.type==='battle'?'rule':''); };
@@ -246,7 +246,6 @@
     socket.on('chatMessage', onChat);
     socket.on('battle:chat', onChat);
 
-    // 인증(링크 파라미터 기반)
     socket.emit('playerAuth', {
       battleId,
       token,
@@ -264,7 +263,6 @@
     });
   }
 
-  // 채팅 송신
   $("#btnSend").addEventListener('click', ()=>{
     const msg = $("#chatMsg").value.trim(); if(!msg) return;
     socket.emit('chatMessage', { battleId, name: (me?.name||myName||'전투 참가자'), message: msg });
@@ -274,7 +272,6 @@
     if(e.key==='Enter') $("#btnSend").click();
   });
 
-  // 준비 완료
   btnReady.addEventListener('click', ()=>{
     if(!me?.id) return;
     btnReady.disabled = true; btnReady.textContent='준비 완료됨'; btnReady.style.opacity='0.5';
@@ -282,7 +279,6 @@
     socket.emit('player:ready', { battleId, playerId: me.id, ready:true });
   });
 
-  // 오버레이
   function openOverlay(mode){
     overlayMode = mode;
     targetList.innerHTML='';
