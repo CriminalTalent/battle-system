@@ -28,8 +28,7 @@ const SOCKET_PATH = "/socket.io"; // 불변
 
 // 디렉토리 보장
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-if (!fs.existsSync(path.join(uploadsDir, "avatars"))) fs.mkdirSync(path.join(uploadsDir, "avatars"), { recursive: true });
-
+if (!fs.existsSync(path.join(uploadsDir, "avatars"))) fs.mkdirSync(path.join(uploadsDir, "avatars"), { recursive: true >
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, {
@@ -114,6 +113,8 @@ function snapshot(battleId){
   const dl = b.timers?.turnDeadline || b.currentTurn?.turnDeadline || null;
   snap.currentTurn = snap.currentTurn || {};
   snap.currentTurn.timeLeftSec = dl ? Math.max(0, Math.floor((dl-now())/1000)) : null;
+  snap.currentTurn = snap.currentTurn || {};
+  snap.currentTurn.timeLeftSec = dl ? Math.max(0, Math.floor((dl-now())/1000)) : null;
   return snap;
 }
 
@@ -152,13 +153,11 @@ async function buildLinksResponse(req, res){
     if(!b.spectator) b.spectator = {};
     if(!b.spectator.otp) b.spectator.otp = makeOtp();
     const spectatorOtp = b.spectator.otp;
-    const spectatorUrl = `${base}/spectator.html?battle=${encodeURIComponent(battleId)}&otp=${encodeURIComponent(spectatorOtp)}`;
-
+    const spectatorUrl = `${base}/spectator?battle=${encodeURIComponent(battleId)}&otp=${encodeURIComponent(spectatorOt>
     // 전투 참가자 링크
     const players = (b.players||[]).map(p=>{
       if(!p.token) p.token = makeOtp();
-      const url = `${base}/player.html?battle=${encodeURIComponent(battleId)}&playerId=${encodeURIComponent(p.id)}&name=${encodeURIComponent(p.name)}&team=${p.team}&token=${encodeURIComponent(p.token)}`;
-      return { playerId:p.id, name:p.name, team:p.team, token:p.token, url };
+      const url = `${base}/player?battle=${encodeURIComponent(battleId)}&playerId=${encodeURIComponent(p.id)}&name=${en>      return { playerId:p.id, name:p.name, team:p.team, token:p.token, url };
     });
 
     // 신·구 동시 제공(불변)
@@ -169,7 +168,6 @@ async function buildLinksResponse(req, res){
       spectatorOtp: spectatorOtp,
       spectatorUrl: spectatorUrl,
       playerLinks: players.map(pl=>({ playerName:pl.name, team:pl.team, otp:pl.token, url:pl.url })),
-    };
     return res.json(payload);
   }catch(e){
     console.error("links error", e);
@@ -228,6 +226,7 @@ io.on("connection", (socket)=>{
     };
     b.players.push(p);
     pushLog(battleId, "admin", `전투 참가자 추가: ${p.name} (${p.team}팀)`);
+    };
     emitUpdate(battleId);
     cb?.({ ok:true, player:p });
   });
@@ -342,13 +341,10 @@ io.on("connection", (socket)=>{
     }else if(action?.type==="item"){
       const item = action?.item;
       if(item==="dittany" || item==="ditany"){
-        if(p.items.dittany>0){ p.items.dittany--; p.hp = Math.min(p.maxHp, p.hp+10); msg = `${p.name} 디터니 사용(+10)`; }
-        else msg = `${p.name} 디터니 없음`;
+        if(p.items.dittany>0){ p.items.dittany--; p.hp = Math.min(p.maxHp, p.hp+10); msg = `${p.name} 디터니 사용(+10)`>        else msg = `${p.name} 디터니 없음`;
       }else if(item==="attackBooster" || item==="attack_boost"){
-        if(p.items.attackBooster>0){ p.items.attackBooster--; msg = `${p.name} 공격 보정기 사용`;} else msg = `${p.name} 공격 보정기 없음`;
-      }else if(item==="defenseBooster" || item==="defense_boost"){
-        if(p.items.defenseBooster>0){ p.items.defenseBooster--; msg = `${p.name} 방어 보정기 사용`;} else msg = `${p.name} 방어 보정기 없음`;
-      }else{
+        if(p.items.attackBooster>0){ p.items.attackBooster--; msg = `${p.name} 공격 보정기 사용`;} else msg = `${p.name>      }else if(item==="defenseBooster" || item==="defense_boost"){
+        if(p.items.defenseBooster>0){ p.items.defenseBooster--; msg = `${p.name} 방어 보정기 사용`;} else msg = `${p.na>      }else{
         msg = `${p.name} 아이템 사용 실패`;
       }
     }else{
@@ -398,3 +394,5 @@ server.listen(PORT, HOST, ()=>{
   console.log(`Uploads: ${uploadsDir}`);
   console.log("======================================");
 });
+
+
