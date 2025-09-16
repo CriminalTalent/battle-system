@@ -109,6 +109,11 @@
     opacity:0.3;
     cursor:not-allowed;
   }
+  /* 실제 disabled 속성 대응 */
+  .act:disabled{
+    opacity:0.3;
+    cursor:not-allowed;
+  }
   .act.enabled:hover{background:rgba(220,199,162,.15);transform:translateY(-1px)}
   
   .ready-btn{
@@ -154,6 +159,7 @@
   .log-time{color:#666;margin-right:4px}
   .log-type-battle{color:#DCC7A2}
   .log-type-error{color:#ef4444}
+  .log-type-notice{color:#E6D2A8;font-weight:600}
   
   .chat-input{
     width:100%;
@@ -318,6 +324,10 @@ let battleState = null;
 let selectedAction = null;
 let timerInterval = null;
 
+// 로컬 타이머 상태 (timeLeftSec을 기반으로만 카운트다운)
+let lastTimeLeft = 0;
+let lastSyncAt = 0;
+
 // 인증
 socket.emit('playerAuth', {battleId, token}, (res)=>{
   if(!res?.ok) {
@@ -344,11 +354,9 @@ socket.on('battle:update', (snap)=>{ battleState = snap; render(); });
 
 // 로그
 socket.on('battle:log', addLog);  // 하나만 사용
-// socket.on('battleLog', addLog);  // 제거
 
 // 채팅
 socket.on('chatMessage', addChat);  // 하나만 사용
-// socket.on('battle:chat', addChat);  // 제거
 
 // 행동 성공
 socket.on('actionSuccess', ()=>{ disableActions(); });
@@ -408,6 +416,16 @@ function updateMyStats(){
   document.getElementById('myItems').textContent = items.length ? items.join(' ') : '아이템 없음';
 }
 
+function isMyTurnNow(){
+  return (
+    battleState &&
+    myPlayer &&
+    battleState.status === 'active' &&
+    battleState.currentTurn?.currentTeam === myPlayer.team &&
+    battleState.currentTurn?.currentPlayer?.id === myPlayer.id
+  );
+}
+
 function render(){
   if(!battleState || !myPlayer) return;
   
@@ -430,23 +448,19 @@ function render(){
   const playerName = cur?.name || '대기중';
   document.getElementById('turnInfo').textContent = `${turnNum}라운드 - ${team}팀 (${playerName})`;
   
-  // 타이머
-  const timeLeft = battleState.currentTurn?.timeLeftSec || 0;
-  const min = Math.floor(timeLeft / 60);
-  const sec = timeLeft % 60;
-  document.getElementById('timerDisplay').textContent = `${min}:${sec.toString().padStart(2,'0')}`;
-  
-  // 실시간 카운트다운
+  // 타이머: timeLeftSec 기반으로만 표시 및 로컬 카운트다운
+  const timeLeft = Math.max(0, battleState.currentTurn?.timeLeftSec || 0);
+  lastTimeLeft = timeLeft;
+  lastSyncAt = Date.now();
+  setTimerDisplay(timeLeft);
   if(timerInterval) clearInterval(timerInterval);
   if(battleState.status === 'active'){
     timerInterval = setInterval(()=>{
-      const now = Math.floor(Date.now()/1000);
-      const deadline = Math.floor(battleState.currentTurn?.turnDeadline/1000 || 0);
-      const left = Math.max(0, deadline - now);
-      const m = Math.floor(left / 60);
-      const s = left % 60;
-      document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
-    }, 1000);
+      const elapsed = Math.floor((Date.now() - lastSyncAt)/1000);
+      const left = Math.max(0, lastTimeLeft - elapsed);
+      setTimerDisplay(left);
+      if(left === 0){ clearInterval(timerInterval); }
+    }, 250);
   }
   
   // 내 상태 업데이트
@@ -462,6 +476,12 @@ function render(){
   
   // 액션 버튼 활성화
   updateActionButtons();
+}
+
+function setTimerDisplay(sec){
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
 }
 
 function renderTeam(team, container){
@@ -492,20 +512,21 @@ function renderTeam(team, container){
 function updateActionButtons(){
   if(!battleState || !myPlayer) return;
   
-  const isMyTurn = battleState.status === 'active' && 
-                   battleState.currentTurn?.currentTeam === myPlayer.team &&
-                   battleState.currentTurn?.currentPlayer?.id === myPlayer.id;
-  
+  const myTurn = isMyTurnNow();
   const isDead = (myPlayer.hp || 0) <= 0;
-  
+  const shouldEnable = (!isDead && myTurn && battleState.status === 'active');
+
   const btns = ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'];
   btns.forEach(id=>{
     const btn = document.getElementById(id);
-    if(isDead || !isMyTurn || battleState.status !== 'active'){
-      btn.className = 'act disabled';
-      btn.style.cursor = 'not-allowed';
-    }else{
+    if(shouldEnable){
       btn.className = 'act enabled';
+      btn.disabled = false;
+      btn.setAttribute('aria-disabled','false');
+    }else{
+      btn.className = 'act disabled';
+      btn.disabled = true;
+      btn.setAttribute('aria-disabled','true');
     }
   });
 }
@@ -515,12 +536,14 @@ function disableActions(){
   btns.forEach(id=>{
     const btn = document.getElementById(id);
     btn.className = 'act disabled';
-    btn.style.opacity = '0.3';
-    btn.style.cursor = 'not-allowed';
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled','true');
   });
 }
 
 function selectAction(type){
+  // 내 턴/생존 여부 최우선 체크 (오버레이 열림 방지)
+  if(!isMyTurnNow()) return;
   if(!battleState || !myPlayer) return;
   const isDead = (myPlayer.hp || 0) <= 0;
   if(isDead) return;
@@ -626,9 +649,14 @@ function getTeamTargets(){
 }
 
 function sendAction(action){
+  // 내 턴이 아닐 때/사망 시 방어
+  if(!isMyTurnNow()) return;
+  if((myPlayer.hp||0) <= 0) return;
+
   socket.emit('player:action', {battleId, playerId: myPlayer?.id, action}, (res)=>{
     if(res?.ok){
       disableActions();
+      closeOverlay();
     }else{
       alert('행동 전송 실패: ' + (res?.error||'알 수 없는 오류'));
     }
@@ -644,6 +672,7 @@ function addLog(log){
   let typeClass = '';
   if(log.type === 'battle') typeClass = 'log-type-battle';
   if(log.type === 'error') typeClass = 'log-type-error';
+  if(log.type === 'notice') typeClass = 'log-type-notice';
   
   div.innerHTML = `<span class="log-time">[${time}]</span><span class="${typeClass}">${log.message}</span>`;
   panel.appendChild(div);
