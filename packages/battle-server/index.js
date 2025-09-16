@@ -106,12 +106,14 @@ function startPhase(b,team){
   b.currentTurn.currentPlayerId = nextUnactedPlayerId(b, team);
   hydrateCurrentPlayer(b);
   b.currentTurn.turnDeadline = now() + 5*60*1000;
+
+  // === 중계 강화: 턴 시작 알림 ===
+  pushLog(b.id, "notice", `[알림] ${team}팀 턴입니다.`);
 }
 
 function pushLog(battleId, typ, msg, data){
   const b = BATTLES.get(battleId); if(!b) return;
-  const log = { ts: now(), type: typ||"info", message: String(msg||"") };
-  if(data) log.data=data;
+  const log = { ts: now(), type: typ||"info", message: String(msg||""), ...(data?{data}: {}) };
   b.logs.push(log);
   if(b.logs.length>500) b.logs.shift();
   io.to(battleId).emit("battle:log", log);  // 하나만 emit
@@ -195,7 +197,8 @@ function startNextRound(battleId){
   const nextTeam = (b.currentTurn.turnNumber % 2 === 1) ? b.firstTeam : (b.firstTeam === "A" ? "B" : "A");
   
   pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 시작 - ${nextTeam}팀 선공`);
-  
+  pushLog(battleId, "notice", `[알림] 선공 ${nextTeam} 팀 턴입니다.`);
+
   b.round = {
     phaseTeam: nextTeam,
     selections: { A:{}, B:{} },
@@ -218,7 +221,8 @@ function resolveRound(b){
   
   // 라운드 시작 선언
   pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 결과 처리 시작`);
-  
+  pushLog(battleId, "notice", `[알림] ${b.currentTurn.turnNumber}라운드 종료 및 결과 알림`);
+
   b.round.defendToken = b.round.defendToken || {};
   b.round.dodgeToken  = b.round.dodgeToken || {};
   b.round.attackBoosters = b.round.attackBoosters || {};
@@ -243,21 +247,25 @@ function resolveRound(b){
       const target = byId[sel.targetId];
       if(target) {
         pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}을(를) 공격`);
+        pushLog(battleId, "notice", `[알림] ${me.name}(이)가 ${target.name}(을)를 [공격]합니다.`);
         aTeamHasAction = true;
       }
       attacks.push({ attacker: me, target: target || null, side: "A" });
     }else if(sel.type==="defend"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 태세`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [방어] 합니다.`);
       b.round.defendToken[pid] = true;
       aTeamHasAction = true;
     }else if(sel.type==="dodge"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 회피 태세`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [회피] 합니다.`);
       b.round.dodgeToken[pid] = true;
       aTeamHasAction = true;
     }else if(sel.type==="item"){
       if(sel.item==="dittany" || sel.item==="ditany"){
         const target = byId[sel.targetId] || me;
         pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}에게 디터니 사용`);
+        pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:디터니]를 사용합니다.`);
         heals.push({ who: me, target: target });
         aTeamHasAction = true;
       }else if(sel.item==="attackBooster" || sel.item==="attack_boost"){
@@ -266,8 +274,10 @@ function resolveRound(b){
           b.round.attackBoosters[pid] = sel.targetId;
           const target = byId[sel.targetId];
           pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:공격 보정기] 사용 성공!`);
         }else{
           pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 실패`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:공격 보정기] 사용 실패`);
         }
         if(me.items.attackBooster > 0) me.items.attackBooster--;
         if(me.items.attack_boost > 0) me.items.attack_boost--;
@@ -278,8 +288,10 @@ function resolveRound(b){
         if(success){
           b.round.defenseBoosters[sel.targetId] = true;
           pushLog(battleId, "battle", `→ ${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:방어 보정기] 사용 성공!`);
         }else{
           pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 보정기 사용 실패`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:방어 보정기] 사용 실패`);
         }
         if(me.items.defenseBooster > 0) me.items.defenseBooster--;
         if(me.items.defense_boost > 0) me.items.defense_boost--;
@@ -287,6 +299,7 @@ function resolveRound(b){
       }
     }else if(sel.type==="pass"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 행동 패스`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [패스] 합니다.`);
       aTeamHasAction = true;
     }
   }
@@ -308,21 +321,25 @@ function resolveRound(b){
       const target = byId[sel.targetId];
       if(target) {
         pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}을(를) 공격`);
+        pushLog(battleId, "notice", `[알림] ${me.name}(이)가 ${target.name}(을)를 [공격]합니다.`);
         bTeamHasAction = true;
       }
       attacks.push({ attacker: me, target: target || null, side: "B" });
     }else if(sel.type==="defend"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 태세`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [방어] 합니다.`);
       b.round.defendToken[pid] = true;
       bTeamHasAction = true;
     }else if(sel.type==="dodge"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 회피 태세`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [회피] 합니다.`);
       b.round.dodgeToken[pid] = true;
       bTeamHasAction = true;
     }else if(sel.type==="item"){
       if(sel.item==="dittany" || sel.item==="ditany"){
         const target = byId[sel.targetId] || me;
         pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}에게 디터니 사용`);
+        pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:디터니]를 사용합니다.`);
         heals.push({ who: me, target: target });
         bTeamHasAction = true;
       }else if(sel.item==="attackBooster" || sel.item==="attack_boost"){
@@ -331,8 +348,10 @@ function resolveRound(b){
           b.round.attackBoosters[pid] = sel.targetId;
           const target = byId[sel.targetId];
           pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:공격 보정기] 사용 성공!`);
         }else{
           pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 실패`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:공격 보정기] 사용 실패`);
         }
         if(me.items.attackBooster > 0) me.items.attackBooster--;
         if(me.items.attack_boost > 0) me.items.attack_boost--;
@@ -343,8 +362,10 @@ function resolveRound(b){
         if(success){
           b.round.defenseBoosters[sel.targetId] = true;
           pushLog(battleId, "battle", `→ ${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:방어 보정기] 사용 성공!`);
         }else{
           pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 보정기 사용 실패`);
+          pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [아이템:방어 보정기] 사용 실패`);
         }
         if(me.items.defenseBooster > 0) me.items.defenseBooster--;
         if(me.items.defense_boost > 0) me.items.defense_boost--;
@@ -352,6 +373,7 @@ function resolveRound(b){
       }
     }else if(sel.type==="pass"){
       pushLog(battleId, "battle", `→ ${me.name}이(가) 행동 패스`);
+      pushLog(battleId, "notice", `[알림] ${me.name}(이)가 [패스] 합니다.`);
       bTeamHasAction = true;
     }
   }
@@ -387,6 +409,7 @@ function resolveRound(b){
 
       if(dodgeRoll >= atkRoll){
         pushLog(battleId, "battle", `→ ${a.name}의 ${boosted?'강화된 ':''}공격이 ${t.name}에게 빗나감 (HP ${t.hp})`);
+        pushLog(battleId, "notice", `${a.name}(이)가 ${t.name}(을)를 공격했지만 빗나갔습니다. (상대 HP ${t.hp})`);
         continue;
       }
 
@@ -408,8 +431,16 @@ function resolveRound(b){
       const isCrit = critRoll >= critThreshold;
       const finalDmg = isCrit ? dmg*2 : dmg;
 
+      const before = t.hp;
       t.hp = Math.max(0, t.hp - finalDmg);
       
+      // 중계 요약 한 줄
+      pushLog(
+        battleId,
+        "notice",
+        `${a.name}(이)가 ${t.name}(을)를 공격, 공격력 ${atkRoll} vs ${t.name}의 방어력 ${defRoll}, 데미지 (${finalDmg})${isCrit?" [치명타]":""}`
+      );
+
       // 즉시 사망 처리
       if(t.hp === 0){
         deadPlayers.add(t.id);
@@ -428,6 +459,7 @@ function resolveRound(b){
       const t = h.target;
       if(!t || deadPlayers.has(t.id)){
         pushLog(battleId, "battle", `→ ${h.who.name}의 ${t?.name}에게 디터니 사용 실패 (사망자)`);
+        pushLog(battleId, "notice", `${h.who.name}(이)가 [아이템:디터니] 사용 실패 (대상 사망)`);
         // 아이템 소모
         if(h.who.items.dittany > 0) h.who.items.dittany--;
         if(h.who.items.ditany > 0) h.who.items.ditany--;
@@ -436,7 +468,9 @@ function resolveRound(b){
       
       const before = t.hp;
       t.hp = Math.min(t.maxHp || 100, t.hp + 10);
-      pushLog(battleId, "battle", `→ ${h.who.name}이(가) ${t.name} 치유 (+${t.hp - before}) → HP ${t.hp}`);
+      const healed = t.hp - before;
+      pushLog(battleId, "battle", `→ ${h.who.name}이(가) ${t.name} 치유 (+${healed}) → HP ${t.hp}`);
+      pushLog(battleId, "notice", `${h.who.name}(이)가 [아이템:디터니] 사용으로 [+${healed}] 회복, 현재 HP ${t.hp}`);
       
       // 아이템 소모
       if(h.who.items.dittany > 0) h.who.items.dittany--;
@@ -448,6 +482,7 @@ function resolveRound(b){
 
   // 5초 후 다음 라운드
   pushLog(battleId, "battle", "5초 후 다음 라운드 시작...");
+  pushLog(battleId, "notice", `[알림] 5초 이후 ${b.currentTurn.turnNumber+1}라운드가 이어집니다....`);
   setTimeout(()=> {
     startNextRound(battleId);
   }, 5000);
@@ -549,7 +584,9 @@ io.on("connection", (socket)=>{
 
     pushLog(battleId, "battle", `전투 시작`);
     pushLog(battleId, "battle", `${first}팀 선공 (민첩 합계 + 주사위: A팀 ${totalA}, B팀 ${totalB})`);
-    
+    // === 중계 강화: 선공 알림 ===
+    pushLog(battleId, "notice", `[알림] A팀 ${totalA} vs B팀 ${totalB}, 선공 ${first}`);
+
     emitUpdate(battleId);
     cb({ ok:true });
   });
@@ -692,7 +729,6 @@ io.on("connection", (socket)=>{
 
   // 전투자 연결 해제 감지
   socket.on("disconnect", ()=>{
-    // 모든 전투를 확인하여 해당 소켓이 전투 참가자인지 확인
     for(const [battleId, b] of BATTLES.entries()){
       if(b.status === "active"){
         const player = b.players.find(p => p.socketId === socket.id);
@@ -748,6 +784,10 @@ io.on("connection", (socket)=>{
     
     if(t==="attack") {
       rec.targetId = String(action?.targetId||"");
+      const tgt = b.players.find(x=>x.id===rec.targetId);
+      if(tgt){
+        pushLog(battleId, "notice", `[알림] ${p.name}(이)가 ${tgt.name}(을)를 [공격]합니다.`);
+      }
     }
     
     if(t==="item"){
@@ -756,16 +796,30 @@ io.on("connection", (socket)=>{
         rec.item = it;
         if(it==="dittany" || it==="ditany") {
           rec.targetId = String(action?.targetId||p.id);
+          const tgt = b.players.find(x=>x.id===rec.targetId) || p;
+          pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [아이템:디터니]를 사용합니다.`);
         }
         if(it==="attackBooster" || it==="attack_boost") {
           rec.targetId = String(action?.targetId||""); // 상대팀 1인 지정
+          pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [아이템:공격 보정기]를 사용합니다.`);
         }
         if(it==="defenseBooster" || it==="defense_boost") {
           rec.targetId = String(action?.targetId||""); // 아군 1인 지정
+          pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [아이템:방어 보정기]를 사용합니다.`);
         }
       }else{
         rec.item = "unknown";
       }
+    }
+
+    if(t==="defend"){
+      pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [방어] 합니다.`);
+    }
+    if(t==="dodge"){
+      pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [회피] 합니다.`);
+    }
+    if(t==="pass"){
+      pushLog(battleId, "notice", `[알림] ${p.name}(이)가 [패스] 합니다.`);
     }
     
     b.round.selections[p.team][playerId] = rec;
@@ -777,6 +831,7 @@ io.on("connection", (socket)=>{
       if(b.round.phaseTeam==="A"){
         startPhase(b,"B");
         pushLog(battleId, "battle", "A팀 선택 완료 - B팀 선택 시작");
+        pushLog(battleId, "notice", `[알림] B팀 턴입니다.`);
       }else{
         pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 선택 완료`);
         resolveRound(b);
