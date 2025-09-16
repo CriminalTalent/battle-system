@@ -332,11 +332,21 @@
       if(!msg) return;
       addLog(msg, type==='battle' ? 'battle' : type);
     }
-    socket.on('battle:log', onBattleLog);
-    socket.on('battleLog',  onBattleLog);
+    socket.on('battle:log', onBattleLog);  // 하나만 사용
+    // socket.on('battleLog', onBattleLog);  // 제거
 
-    socket.on('chatMessage', addChat);
-    socket.on('battle:chat', addChat);
+    function onChat(payload){
+      const msg = payload?.message || payload?.text || '';
+      const name= payload?.name || payload?.playerName || '익명';
+      if(!msg) return;
+      const box=document.getElementById('chat');
+      const el=document.createElement('div');
+      el.className='chat-entry';
+      el.textContent = `[${name}] ${msg}`;
+      box.appendChild(el); box.scrollTop=box.scrollHeight;
+    }
+    socket.on('chatMessage', onChat);  // 하나만 사용
+    // socket.on('battle:chat', onChat);  // 제거
 
     // ===== 전투 생성 =====
     document.getElementById('btnCreate').addEventListener('click', async ()=>{
