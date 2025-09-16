@@ -155,6 +155,7 @@ function emitUpdate(battleId){
       turnNumber: b.currentTurn?.turnNumber || 1,
       currentTeam: b.currentTurn?.currentTeam || "A",
       currentPlayer: b.currentTurn?.currentPlayer || null,
+      turnDeadline: b.currentTurn?.turnDeadline || null, // ⬅ 추가: 클라 실시간 타이머용
       timeLeftSec: Math.max(0, Math.floor((b.currentTurn?.turnDeadline - now())/1000))
     },
     logs: b.logs.slice(-100) // 최근 100개만
@@ -427,6 +428,7 @@ function resolveRound(b){
       
       // 치명타 확률 D10 기반
       const critRoll = d10();
+      the:
       const critThreshold = 10 - Math.floor((a.stats?.luck||1)/2);
       const isCrit = critRoll >= critThreshold;
       const finalDmg = isCrit ? dmg*2 : dmg;
@@ -831,15 +833,17 @@ io.on("connection", (socket)=>{
     hydrateCurrentPlayer(b);
 
     if(!b.currentTurn.currentPlayerId){
-      // ⬇️ 선공팀 → 후공팀 → 결과 로 일관되게 진행
+      // ✅ 라운드 전환 판정: 이번 라운드에서 '상대 팀'이 행동했는지로 결정
       const otherTeam = (b.round.phaseTeam === "A") ? "B" : "A";
-      if (b.round.phaseTeam === b.firstTeam) {
-        // 선공팀의 선택이 끝났으므로 후공팀으로 전환
+      const otherHasAnyAction = Object.keys(b.round.selections[otherTeam] || {}).length > 0;
+
+      if (!otherHasAnyAction) {
+        // 아직 상대 팀 차례를 진행하지 않음 → 턴 전환
         startPhase(b, otherTeam);
         pushLog(battleId, "battle", `${otherTeam}팀 선택 시작`);
         pushLog(battleId, "notice", `[알림] ${otherTeam}팀 턴입니다.`);
       } else {
-        // 후공팀까지 끝났으므로 결과 처리
+        // 양 팀 모두 선택 완료 → 결과 처리
         pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 선택 완료`);
         resolveRound(b);
       }
