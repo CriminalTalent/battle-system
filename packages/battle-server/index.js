@@ -583,10 +583,27 @@ io.on("connection", (socket)=>{
     if(!b){ cb({ok:false, error:"NOT_FOUND"}); return; }
     
     const playerId = `p_${Math.random().toString(36).slice(2,8)}`;
+    
+    // 팀 자동 할당 로직 개선
+    let assignedTeam = player?.team || "A"; // 기본값 A
+    
+    // 만약 명시적으로 팀이 지정되지 않았다면, 밸런스를 맞춰서 배치
+    if(!player?.team) {
+      const teamACounts = b.players.filter(p => p.team === "A").length;
+      const teamBCounts = b.players.filter(p => p.team === "B").length;
+      
+      // 더 적은 팀에 배치
+      if(teamBCounts < teamACounts) {
+        assignedTeam = "B";
+      } else {
+        assignedTeam = "A";
+      }
+    }
+    
     const newPlayer = {
       id: playerId,
       name: String(player?.name||"전투 참가자"),
-      team: player?.team || "A",
+      team: assignedTeam, // 수정된 팀 할당
       hp: Number(player?.hp) || 100,
       maxHp: 100,
       stats: {
