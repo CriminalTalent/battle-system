@@ -451,21 +451,6 @@ function resolveRound(b){
   setTimeout(()=> {
     startNextRound(battleId);
   }, 5000);
-} 0) h.who.items.ditany--;
-  }
-
-  // 4단계: 모든 결과 로그 출력
-  for(const l of dmgLogs) pushLog(battleId, "battle", l);
-  for(const l of healLogs) pushLog(battleId, "battle", l);
-  
-  pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 종료`);
-
-  // 5초 후 다음 라운드
-  pushLog(battleId, "battle", "5초 후 다음 라운드 시작...");
-  setTimeout(()=> {
-    startNextRound(battleId);
-  }, 5000);
-}
 }
 
 // -----------------------------------------------
