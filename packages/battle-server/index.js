@@ -216,8 +216,14 @@ function startNextRound(battleId){
 
 function resolveRound(b){
   const battleId = b.id;
+  
+  // 라운드 시작 선언
+  pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 결과 처리 시작`);
+  
   const dmgLogs = [];
   const healLogs = [];
+  const actionLogs = []; // 행동 로그 추가
+  
   b.round.defendToken = b.round.defendToken || {};
   b.round.dodgeToken  = b.round.dodgeToken || {};
   b.round.attackBoosters = b.round.attackBoosters || {};
@@ -230,53 +236,136 @@ function resolveRound(b){
   const heals   = [];
   const deadPlayers = new Set(); // 사망자 추적
   
-  // 1단계: 행동 수집
-  for(const side of ["A","B"]){
-    for(const {pid, sel} of seq(side)){
-      if(!sel) continue;
-      const me = byId[pid]; 
-      if(!me || me.hp<=0) continue;
-      
-      if(sel.type==="attack"){
-        attacks.push({ attacker: me, target: byId[sel.targetId] || null, side });
-      }else if(sel.type==="defend"){
-        b.round.defendToken[pid] = true;
-      }else if(sel.type==="dodge"){
-        b.round.dodgeToken[pid] = true;
-      }else if(sel.type==="item"){
-        if(sel.item==="dittany" || sel.item==="ditany"){
-          heals.push({ who: me, target: byId[sel.targetId] || me });
-        }else if(sel.item==="attackBooster" || sel.item==="attack_boost"){
-          // 공격 보정기 10% 확률로 성공
-          const success = d10() === 10; // 10% 확률
-          if(success){
-            b.round.attackBoosters[pid] = sel.targetId; // 대상 저장
-            pushLog(battleId, "battle", `${me.name}이(가) 공격 보정기 사용 성공!`);
-          }else{
-            pushLog(battleId, "battle", `${me.name}이(가) 공격 보정기 사용 실패`);
-          }
-          // 아이템 소모 (성공/실패 무관)
-          if(me.items.attackBooster > 0) me.items.attackBooster--;
-          if(me.items.attack_boost > 0) me.items.attack_boost--;
-        }else if(sel.item==="defenseBooster" || sel.item==="defense_boost"){
-          // 방어 보정기 10% 확률로 성공
-          const success = d10() === 10; // 10% 확률
-          if(success){
-            b.round.defenseBoosters[sel.targetId] = true; // 아군 대상
-            const target = byId[sel.targetId];
-            pushLog(battleId, "battle", `${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
-          }else{
-            pushLog(battleId, "battle", `${me.name}이(가) 방어 보정기 사용 실패`);
-          }
-          // 아이템 소모 (성공/실패 무관)
-          if(me.items.defenseBooster > 0) me.items.defenseBooster--;
-          if(me.items.defense_boost > 0) me.items.defense_boost--;
-        }
+  // 1단계: A팀 행동 수집 및 로깅
+  pushLog(battleId, "battle", "=== A팀 행동 ===");
+  for(const {pid, sel} of seq("A")){
+    if(!sel) continue;
+    const me = byId[pid]; 
+    if(!me || me.hp<=0) continue;
+    
+    if(sel.type==="attack"){
+      const target = byId[sel.targetId];
+      if(target) {
+        actionLogs.push(`${me.name}이(가) ${target.name}을(를) 공격`);
+        pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}을(를) 공격`);
       }
+      attacks.push({ attacker: me, target: target || null, side: "A" });
+    }else if(sel.type==="defend"){
+      actionLogs.push(`${me.name}이(가) 방어 태세`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 태세`);
+      b.round.defendToken[pid] = true;
+    }else if(sel.type==="dodge"){
+      actionLogs.push(`${me.name}이(가) 회피 태세`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 회피 태세`);
+      b.round.dodgeToken[pid] = true;
+    }else if(sel.type==="item"){
+      if(sel.item==="dittany" || sel.item==="ditany"){
+        const target = byId[sel.targetId] || me;
+        actionLogs.push(`${me.name}이(가) ${target.name}에게 디터니 사용`);
+        pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}에게 디터니 사용`);
+        heals.push({ who: me, target: target });
+      }else if(sel.item==="attackBooster" || sel.item==="attack_boost"){
+        const success = d10() === 10; // 10% 확률
+        if(success){
+          b.round.attackBoosters[pid] = sel.targetId;
+          const target = byId[sel.targetId];
+          actionLogs.push(`${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+        }else{
+          actionLogs.push(`${me.name}이(가) 공격 보정기 사용 실패`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 실패`);
+        }
+        if(me.items.attackBooster > 0) me.items.attackBooster--;
+        if(me.items.attack_boost > 0) me.items.attack_boost--;
+      }else if(sel.item==="defenseBooster" || sel.item==="defense_boost"){
+        const success = d10() === 10; // 10% 확률
+        const target = byId[sel.targetId];
+        if(success){
+          b.round.defenseBoosters[sel.targetId] = true;
+          actionLogs.push(`${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+        }else{
+          actionLogs.push(`${me.name}이(가) 방어 보정기 사용 실패`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 보정기 사용 실패`);
+        }
+        if(me.items.defenseBooster > 0) me.items.defenseBooster--;
+        if(me.items.defense_boost > 0) me.items.defense_boost--;
+      }
+    }else if(sel.type==="pass"){
+      actionLogs.push(`${me.name}이(가) 행동 패스`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 행동 패스`);
     }
   }
-
-  // 2단계: 공격 처리 (즉시 사망 처리)
+  
+  pushLog(battleId, "battle", "A팀 선택 완료");
+  
+  // B팀 행동 수집 및 로깅
+  pushLog(battleId, "battle", "=== B팀 행동 ===");
+  for(const {pid, sel} of seq("B")){
+    if(!sel) continue;
+    const me = byId[pid]; 
+    if(!me || me.hp<=0) continue;
+    
+    if(sel.type==="attack"){
+      const target = byId[sel.targetId];
+      if(target) {
+        actionLogs.push(`${me.name}이(가) ${target.name}을(를) 공격`);
+        pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}을(를) 공격`);
+      }
+      attacks.push({ attacker: me, target: target || null, side: "B" });
+    }else if(sel.type==="defend"){
+      actionLogs.push(`${me.name}이(가) 방어 태세`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 태세`);
+      b.round.defendToken[pid] = true;
+    }else if(sel.type==="dodge"){
+      actionLogs.push(`${me.name}이(가) 회피 태세`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 회피 태세`);
+      b.round.dodgeToken[pid] = true;
+    }else if(sel.type==="item"){
+      if(sel.item==="dittany" || sel.item==="ditany"){
+        const target = byId[sel.targetId] || me;
+        actionLogs.push(`${me.name}이(가) ${target.name}에게 디터니 사용`);
+        pushLog(battleId, "battle", `→ ${me.name}이(가) ${target.name}에게 디터니 사용`);
+        heals.push({ who: me, target: target });
+      }else if(sel.item==="attackBooster" || sel.item==="attack_boost"){
+        const success = d10() === 10; // 10% 확률
+        if(success){
+          b.round.attackBoosters[pid] = sel.targetId;
+          const target = byId[sel.targetId];
+          actionLogs.push(`${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 성공! (대상: ${target?.name})`);
+        }else{
+          actionLogs.push(`${me.name}이(가) 공격 보정기 사용 실패`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 공격 보정기 사용 실패`);
+        }
+        if(me.items.attackBooster > 0) me.items.attackBooster--;
+        if(me.items.attack_boost > 0) me.items.attack_boost--;
+      }else if(sel.item==="defenseBooster" || sel.item==="defense_boost"){
+        const success = d10() === 10; // 10% 확률
+        const target = byId[sel.targetId];
+        if(success){
+          b.round.defenseBoosters[sel.targetId] = true;
+          actionLogs.push(`${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) ${target?.name}에게 방어 보정기 사용 성공!`);
+        }else{
+          actionLogs.push(`${me.name}이(가) 방어 보정기 사용 실패`);
+          pushLog(battleId, "battle", `→ ${me.name}이(가) 방어 보정기 사용 실패`);
+        }
+        if(me.items.defenseBooster > 0) me.items.defenseBooster--;
+        if(me.items.defense_boost > 0) me.items.defense_boost--;
+      }
+    }else if(sel.type==="pass"){
+      actionLogs.push(`${me.name}이(가) 행동 패스`);
+      pushLog(battleId, "battle", `→ ${me.name}이(가) 행동 패스`);
+    }
+  }
+  
+  pushLog(battleId, "battle", "B팀 선택 완료");
+  
+  // 2단계: 결과 계산 로그
+  pushLog(battleId, "battle", "=== 라운드 결과 ===");
+  
+  // 공격 처리 (즉시 사망 처리)
   for(const act of attacks){
     const a = act.attacker, t = act.target;
     if(!t || a.hp<=0 || t.hp<=0 || deadPlayers.has(t.id)) continue;
@@ -284,9 +373,10 @@ function resolveRound(b){
     let atkRoll = (a.stats?.attack||1) + d10(); // D10으로 변경
     
     // 공격 보정기 확인
+    let boosted = false;
     if(b.round.attackBoosters[a.id] === t.id){
       atkRoll *= 2;
-      pushLog(battleId, "battle", `${a.name}의 공격이 2배로 강화됨!`);
+      boosted = true;
     }
     
     const tgtDodgeBase = (t.stats?.agility||1);
@@ -294,7 +384,7 @@ function resolveRound(b){
     const dodgeRoll = tgtDodgeBase + d10() + (dodgeBonus>0 ? d10() : 0); // D10으로 변경
 
     if(dodgeRoll >= atkRoll){
-      dmgLogs.push(`${a.name}이(가) ${t.name}에게 공격 빗나감 ▶ ${t.name} HP ${t.hp}`);
+      dmgLogs.push(`${a.name}의 ${boosted?'강화된 ':''}공격이 ${t.name}에게 빗나감 (HP ${t.hp})`);
       continue;
     }
 
@@ -306,7 +396,6 @@ function resolveRound(b){
     // 방어 보정기 확인
     if(b.round.defenseBoosters[t.id]){
       defRoll *= 2;
-      pushLog(battleId, "battle", `${t.name}의 방어가 2배로 강화됨!`);
     }
 
     const dmg = Math.max(0, atkRoll - defRoll);
@@ -322,9 +411,9 @@ function resolveRound(b){
     // 즉시 사망 처리
     if(t.hp === 0){
       deadPlayers.add(t.id);
-      dmgLogs.push(`${a.name}이(가) ${t.name}에게 ${isCrit?"치명타 ":""}공격 (피해 ${finalDmg}) ▶ ${t.name} 사망!`);
+      dmgLogs.push(`${a.name}의 ${boosted?'강화된 ':''}${isCrit?"치명타 ":""}공격으로 ${t.name} 사망! (피해 ${finalDmg})`);
     }else{
-      dmgLogs.push(`${a.name}이(가) ${t.name}에게 ${isCrit?"치명타 ":""}공격 (피해 ${finalDmg}) ▶ ${t.name} HP ${t.hp}`);
+      dmgLogs.push(`${a.name}이(가) ${t.name}에게 ${boosted?'강화된 ':''}${isCrit?"치명타 ":""}공격 (피해 ${finalDmg}) → HP ${t.hp}`);
     }
   }
 
@@ -332,7 +421,7 @@ function resolveRound(b){
   for(const h of heals){
     const t = h.target;
     if(!t || deadPlayers.has(t.id)){
-      healLogs.push(`${h.who.name}이(가) ${t?.name}에게 치유 시도했으나 무효화됨 (사망)`);
+      healLogs.push(`${h.who.name}의 ${t?.name}에게 디터니 사용 실패 (사망자)`);
       // 아이템 소모
       if(h.who.items.dittany > 0) h.who.items.dittany--;
       if(h.who.items.ditany > 0) h.who.items.ditany--;
@@ -341,16 +430,18 @@ function resolveRound(b){
     
     const before = t.hp;
     t.hp = Math.min(t.maxHp || 100, t.hp + 10);
-    healLogs.push(`${h.who.name}이(가) ${t.name}을(를) 치유 (+${t.hp - before}) ▶ ${t.name} HP ${t.hp}`);
+    healLogs.push(`${h.who.name}이(가) ${t.name} 치유 (+${t.hp - before}) → HP ${t.hp}`);
     
     // 아이템 소모
     if(h.who.items.dittany > 0) h.who.items.dittany--;
     if(h.who.items.ditany > 0) h.who.items.ditany--;
   }
 
-  // 4단계: 로그 출력
+  // 4단계: 모든 결과 로그 출력
   for(const l of dmgLogs) pushLog(battleId, "battle", l);
   for(const l of healLogs) pushLog(battleId, "battle", l);
+  
+  pushLog(battleId, "battle", `${b.currentTurn.turnNumber}라운드 종료`);
 
   // 5초 후 다음 라운드 (2초 → 5초)
   setTimeout(()=>{
