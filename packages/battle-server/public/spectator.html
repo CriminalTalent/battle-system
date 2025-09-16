@@ -207,7 +207,9 @@
       <div class="title">전투 상태</div>
       <img id="currentPortrait" class="center-portrait" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22250%22 height=%22250%22><rect fill=%22%23222%22 width=%22250%22 height=%22250%22/><text x=%22125%22 y=%22125%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22 font-size=%2220%22>대기중</text></svg>'">
       <div style="font-size:14px;margin-bottom:4px" id="turnInfo">대기 중...</div>
-      <div style="color:var(--gold);font-size:20px;margin-bottom:12px" id="timerDisplay">5:00</div>
+      <div style="color:var(--gold);font-size:20px;margin-bottom:6px" id="timerDisplay">5:00</div>
+      <!-- ⬇ 추가: 초 단위 표시 -->
+      <div class="muted" id="timerSeconds" style="font-size:12px;margin-bottom:12px">300초</div>
       
       <div class="title" style="margin-top:16px">응원하기</div>
       <div class="cheer-grid">
@@ -257,6 +259,10 @@ const otp = params.get('otp');
 let spectatorName = null;
 let battleState = null;
 let timerInterval = null;
+
+// 로컬 타이머 상태 (timeLeftSec 기반)
+let lastTimeLeft = 0;
+let lastSyncAt = 0;
 
 // 이름 입력 함수
 function submitName(){
@@ -310,28 +316,32 @@ function render(){
   const playerName = cur?.name || '대기중';
   document.getElementById('turnInfo').textContent = `${turnNum}라운드 - ${team}팀 (${playerName})`;
   
-  // 타이머
-  const timeLeft = battleState.currentTurn?.timeLeftSec || 0;
-  const min = Math.floor(timeLeft / 60);
-  const sec = timeLeft % 60;
-  document.getElementById('timerDisplay').textContent = `${min}:${sec.toString().padStart(2,'0')}`;
-  
-  // 실시간 카운트다운
+  // 타이머: timeLeftSec만 사용해서 로컬 카운트다운
+  const timeLeft = Math.max(0, battleState.currentTurn?.timeLeftSec || 0);
+  lastTimeLeft = timeLeft;
+  lastSyncAt = Date.now();
+  setTimerDisplay(timeLeft);
+
   if(timerInterval) clearInterval(timerInterval);
   if(battleState.status === 'active'){
     timerInterval = setInterval(()=>{
-      const now = Math.floor(Date.now()/1000);
-      const deadline = Math.floor(battleState.currentTurn?.turnDeadline/1000 || 0);
-      const left = Math.max(0, deadline - now);
-      const m = Math.floor(left / 60);
-      const s = left % 60;
-      document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
-    }, 1000);
+      const elapsed = Math.floor((Date.now() - lastSyncAt)/1000);
+      const left = Math.max(0, lastTimeLeft - elapsed);
+      setTimerDisplay(left);
+      if(left === 0){ clearInterval(timerInterval); }
+    }, 1000); // 초 단위 갱신
   }
   
   // 팀 렌더링
   renderTeam('A', document.getElementById('teamA'));
   renderTeam('B', document.getElementById('teamB'));
+}
+
+function setTimerDisplay(sec){
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  document.getElementById('timerDisplay').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  document.getElementById('timerSeconds').textContent = `${sec}초`;
 }
 
 function renderTeam(team, container){
