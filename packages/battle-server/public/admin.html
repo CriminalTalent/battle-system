@@ -278,46 +278,16 @@
     socket.io.on('error', (e)=> addLog('소켓 에러(io): '+(e?.message||e), 'error'));
     socket.on('connect_error', (e)=> addLog('소켓 연결 오류: '+(e?.message||e), 'error'));
 
-    // ===== 스냅샷 갱신 =====
-    const onUpdate = (snap)=>{ if(!snap) return; renderTeams(snap.players||[]); };
-    socket.on('battleUpdate', onUpdate);
-    socket.on('battle:update', onUpdate);
-
-    // ===== 로그 수신(중복 이벤트 대응) =====
-    function onBattleLog(payload){
-      const msg = payload?.message || '';
-      const type = payload?.type || 'info';
-      const key  = (payload?.ts||'')+'|'+msg;
-      if(dedupe(seenLog, key)) return;
-      addLog(msg, type==='battle' ? 'battle' : type);
-    }
-    socket.on('battle:log', onBattleLog);
-    socket.on('importantLog', onBattleLog);
-
-    // ===== 채팅/응원 수신(이벤트명 다양성 대응) =====
-    function onAnyChat(payload){
-      const name = payload?.senderName || payload?.name || '익명';
-      const text = payload?.content || payload?.message || payload?.cheer || '';
-      const ts   = payload?.timestamp || Date.now();
-      const key  = name+'|'+text+'|'+ts;
-      if(dedupe(seenChat, key)) return;
-      addChatLine(name, text);
-    }
-    socket.on('chatMessage', onAnyChat);
-    socket.on('battle:chat', onAnyChat);
-    socket.on('spectator:cheer', onAnyChat);
-    socket.on('cheerMessage', onAnyChat);
-
     // ===== 팀 목록 렌더 =====
     function renderTeams(players){
-      const A = players.filter(p=>p.team==='A');
-      const B = players.filter(p=>p.team==='B');
+      const A = (players||[]).filter(p=>p.team==='A');
+      const B = (players||[]).filter(p=>p.team==='B');
       const aBox=document.getElementById('teamA'); const bBox=document.getElementById('teamB');
       aBox.innerHTML=''; bBox.innerHTML='';
 
       function row(p){
         const hp = Number(p.hp||0), max=Number(p.maxHp||100);
-        const pct = Math.max(0,Math.min(100,(hp/max)*100));
+        const pct = Math.max(0,Math.min(100,(max>0? (hp/max)*100:0)));
         const wrap=document.createElement('div');
         wrap.className='player-card';
         wrap.innerHTML = `
@@ -337,6 +307,127 @@
       A.forEach(p=>aBox.appendChild(row(p)));
       B.forEach(p=>bBox.appendChild(row(p)));
     }
+
+    // ===== 스냅샷/브로드캐스트 통합 처리 =====
+    let lastSnap = null;
+    let countdownTimer = null;
+    let countdownDeadline = 0;
+    let lastTimerShown = null;
+
+    const SNAPSHOT_EVENTS = ['battleUpdate','battle:update','battle:state','state','snapshot','game:update'];
+    const LOG_EVENTS = ['battle:log','importantLog','log','game:log','round:start','round:end','turn:start','turn:end','phase:start','phase:end'];
+    const TIMER_EVENTS = ['timer:tick','battle:tick','countdown','tick'];
+
+    function fmtMMSS(sec){
+      const s = Math.max(0, Math.floor(sec||0));
+      const m = Math.floor(s/60);
+      const r = s%60;
+      return (m<10?'0':'')+m+':'+(r<10?'0':'')+r;
+    }
+
+    function ensureTimerLine(){
+      const box = document.getElementById('logs'); if(!box) return null;
+      let line = document.getElementById('timer-line');
+      if(!line){
+        line = document.createElement('div');
+        line.id='timer-line';
+        line.className='log';
+        box.appendChild(line);
+      }
+      return line;
+    }
+
+    function setCountdownBySeconds(seconds, meta){
+      if(!Number.isFinite(seconds)) return;
+      countdownDeadline = Date.now() + Math.max(0, seconds*1000);
+      // 즉시 1회 갱신
+      updateTimerLine(meta);
+      // 인터벌 재설정
+      if(countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(()=> updateTimerLine(meta), 1000);
+    }
+
+    function updateTimerLine(meta){
+      const remainSec = Math.max(0, Math.floor((countdownDeadline - Date.now())/1000));
+      // 동일 값이면 불필요 갱신 방지
+      if(lastTimerShown === remainSec) return;
+      lastTimerShown = remainSec;
+
+      const line = ensureTimerLine();
+      if(!line) return;
+
+      const who = meta?.playerName ? ` | 현재 턴: ${esc(meta.playerName)}${meta.team?`(${esc(meta.team)}팀)`:''}` : '';
+      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${who}`;
+      line.className = 'log';
+      // 0초면 인터벌 종료
+      if(remainSec <= 0 && countdownTimer){ clearInterval(countdownTimer); countdownTimer=null; }
+    }
+
+    function handleSnapshot(snap){
+      if(!snap) return;
+      // 기본 렌더
+      renderTeams(snap.players||[]);
+
+      // 룰 변화점 로그(중복 방지: 이전 스냅샷과 비교)
+      const prev = lastSnap || {};
+      const prevTurn = prev.currentTurn || {};
+      const curTurn  = snap.currentTurn || {};
+
+      if(prev.status !== snap.status){
+        if(snap.status==='active') addLog('전투 진행 상태: active', 'battle');
+        else if(snap.status==='paused') addLog('전투 진행 상태: paused', 'battle');
+        else if(snap.status==='ended') addLog('전투 진행 상태: ended', 'battle');
+        else if(snap.status==='waiting') addLog('전투 대기 상태', 'battle');
+      }
+
+      if((prevTurn.turnNumber||0) !== (curTurn.turnNumber||0) && (curTurn.turnNumber||0) > 0){
+        addLog(`${curTurn.turnNumber}라운드 시작`, 'battle');
+      }
+
+      const prevPlayerId = prevTurn.currentPlayer?.id || null;
+      const curPlayer    = curTurn.currentPlayer || null;
+      if(prevPlayerId !== (curPlayer?.id||null) && curPlayer){
+        addLog(`턴 시작: ${curPlayer.name} (${curPlayer.team}팀)`, 'battle');
+      }
+
+      // 타이머 동기화
+      const secs = Number(curTurn.timeLeftSec);
+      if(Number.isFinite(secs)){
+        setCountdownBySeconds(secs, { playerName: curPlayer?.name, team: curPlayer?.team });
+      }
+
+      lastSnap = snap;
+    }
+
+    // 표준/레거시 스냅샷 모두 수신
+    const onUpdate = (snap)=> handleSnapshot(snap);
+    SNAPSHOT_EVENTS.forEach(ev=> socket.on(ev, onUpdate));
+
+    // 서버 로그 통합 수신(중복 제거)
+    function onBattleLog(payload){
+      const msg = payload?.message || payload?.msg || '';
+      const type = payload?.type || 'info';
+      const ts = payload?.ts || payload?.timestamp || payload?.time || '';
+      const key = (ts? String(ts):'')+'|'+msg;
+      if(dedupe(seenLog, key)) return;
+      addLog(msg, type==='battle' ? 'battle' : type);
+    }
+    LOG_EVENTS.forEach(ev=> socket.on(ev, onBattleLog));
+
+    // 타이머 브로드캐스트 수신 시 즉시 보정
+    function onTimer(payload){
+      const s = Number(
+        payload?.secondsLeft ?? payload?.sec ?? payload?.timeLeftSec ?? payload?.remain ?? 0
+      );
+      if(Number.isFinite(s)){
+        const meta = {
+          playerName: payload?.player?.name || payload?.playerName || lastSnap?.currentTurn?.currentPlayer?.name,
+          team: payload?.player?.team || payload?.team || lastSnap?.currentTurn?.currentPlayer?.team
+        };
+        setCountdownBySeconds(s, meta);
+      }
+    }
+    TIMER_EVENTS.forEach(ev=> socket.on(ev, onTimer));
 
     // ===== 전투 생성 =====
     document.getElementById('btnCreate').addEventListener('click', async ()=>{
