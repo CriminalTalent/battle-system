@@ -337,42 +337,48 @@
       return line;
     }
 
+    const phaseLabel = (ph)=>{
+      switch(ph){
+        case 'A_select': return 'A팀 선택';
+        case 'B_select': return 'B팀 선택';
+        case 'resolve' : return '라운드 해석';
+        case 'inter'   : return '다음 라운드 준비';
+        default        : return '-';
+      }
+    };
+
     function setCountdownBySeconds(seconds, meta){
       if(!Number.isFinite(seconds)) return;
       countdownDeadline = Date.now() + Math.max(0, seconds*1000);
-      // 즉시 1회 갱신
-      updateTimerLine(meta);
-      // 인터벌 재설정
+      updateTimerLine(meta); // 즉시 1회
       if(countdownTimer) clearInterval(countdownTimer);
       countdownTimer = setInterval(()=> updateTimerLine(meta), 1000);
     }
 
     function updateTimerLine(meta){
       const remainSec = Math.max(0, Math.floor((countdownDeadline - Date.now())/1000));
-      // 동일 값이면 불필요 갱신 방지
       if(lastTimerShown === remainSec) return;
       lastTimerShown = remainSec;
 
       const line = ensureTimerLine();
       if(!line) return;
 
-      const who = meta?.playerName ? ` | 현재 턴: ${esc(meta.playerName)}${meta.team?`(${esc(meta.team)}팀)`:''}` : '';
-      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${who}`;
+      const phaseTxt = meta?.phase ? ` | 페이즈: ${esc(phaseLabel(meta.phase))}` : '';
+      const teamTxt  = meta?.team  ? ` | 팀: ${esc(meta.team)}` : '';
+      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${phaseTxt}${teamTxt}`;
       line.className = 'log';
-      // 0초면 인터벌 종료
       if(remainSec <= 0 && countdownTimer){ clearInterval(countdownTimer); countdownTimer=null; }
     }
 
     function handleSnapshot(snap){
       if(!snap) return;
-      // 기본 렌더
       renderTeams(snap.players||[]);
 
-      // 룰 변화점 로그(중복 방지: 이전 스냅샷과 비교)
       const prev = lastSnap || {};
       const prevTurn = prev.currentTurn || {};
       const curTurn  = snap.currentTurn || {};
 
+      // 상태 변화 로그
       if(prev.status !== snap.status){
         if(snap.status==='active') addLog('전투 진행 상태: active', 'battle');
         else if(snap.status==='paused') addLog('전투 진행 상태: paused', 'battle');
@@ -380,20 +386,22 @@
         else if(snap.status==='waiting') addLog('전투 대기 상태', 'battle');
       }
 
+      // 라운드 시작
       if((prevTurn.turnNumber||0) !== (curTurn.turnNumber||0) && (curTurn.turnNumber||0) > 0){
         addLog(`${curTurn.turnNumber}라운드 시작`, 'battle');
       }
 
-      const prevPlayerId = prevTurn.currentPlayer?.id || null;
-      const curPlayer    = curTurn.currentPlayer || null;
-      if(prevPlayerId !== (curPlayer?.id||null) && curPlayer){
-        addLog(`턴 시작: ${curPlayer.name} (${curPlayer.team}팀)`, 'battle');
+      // 페이즈 전환 로그 (phase/currentTeam 기반)
+      if(prev.phase !== snap.phase){
+        addLog(`페이즈 전환: ${phaseLabel(snap.phase)}${snap.currentTeam?` (${snap.currentTeam}팀)`:''}`, 'battle');
+      } else if(prev.currentTeam !== snap.currentTeam && (snap.phase==='A_select' || snap.phase==='B_select')){
+        addLog(`팀 전환: ${snap.currentTeam}팀 선택 페이즈`, 'battle');
       }
 
-      // 타이머 동기화
+      // 타이머 동기화 (팀 선택/인터/해석 등 모든 페이즈에서 timeLeftSec 제공)
       const secs = Number(curTurn.timeLeftSec);
       if(Number.isFinite(secs)){
-        setCountdownBySeconds(secs, { playerName: curPlayer?.name, team: curPlayer?.team });
+        setCountdownBySeconds(secs, { phase: snap.phase, team: snap.currentTeam });
       }
 
       lastSnap = snap;
@@ -421,8 +429,8 @@
       );
       if(Number.isFinite(s)){
         const meta = {
-          playerName: payload?.player?.name || payload?.playerName || lastSnap?.currentTurn?.currentPlayer?.name,
-          team: payload?.player?.team || payload?.team || lastSnap?.currentTurn?.currentPlayer?.team
+          phase: payload?.phase || lastSnap?.phase,
+          team : payload?.team  || lastSnap?.currentTeam
         };
         setCountdownBySeconds(s, meta);
       }
