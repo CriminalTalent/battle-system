@@ -1,41 +1,69 @@
-
 /* admin-links-hotfix.js
  * - Robust link/OTP population for 관리자 페이지
  * - Keeps design/IDs intact, only augments behavior
  */
 (function(){
   const $ = s => document.querySelector(s);
-  const escapeHtml = (t)=>String(t??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  const esc = (t)=>String(t??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   function addLog(msg, cls=''){ try{ const logs = $('#logs'); if(!logs) return; const el=document.createElement('div'); el.className='log '+(cls||''); el.textContent = msg; logs.appendChild(el); logs.scrollTop=logs.scrollHeight; }catch(_){} }
   function copyText(text){ try{ navigator.clipboard?.writeText(text); }catch(_){} }
 
   function resolveBattleId(){
-    // 우선 전역 상태 or URL 파라미터에서 획득
     const sp = new URL(window.location.href).searchParams;
     return (window.battleId || sp.get('battle') || '').trim();
   }
 
-  async function postJson(url){
-    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+  async function postJson(url, body = {}){
+    const res = await fetch(url, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        // 서버가 절대 URL을 조합할 수 있게 힌트 (있어도/없어도 동작)
+        'x-base-url': window.location.origin
+      },
+      body: JSON.stringify(body)
+    });
     if(!res.ok) throw new Error('HTTP '+res.status);
     return res.json();
   }
 
-  function pick(val, ...keys){
-    for(const k of keys){
-      const v = k.split('.').reduce((acc, cur)=> (acc && acc[cur]!==undefined) ? acc[cur] : undefined, val);
+  function pick(val, ...paths){
+    for(const p of paths){
+      const v = p.split('.').reduce((acc, k)=> (acc && acc[k]!==undefined) ? acc[k] : undefined, val);
       if(v!==undefined && v!==null) return v;
     }
     return undefined;
   }
 
+  function absolutize(url){
+    if(!url) return '';
+    try{
+      // 이미 절대경로면 그대로, 아니면 origin 기준으로 변환
+      return new URL(url, window.location.origin).toString();
+    }catch(_){ return String(url); }
+  }
+
   function unifyPlayers(payload){
-    const list = Array.isArray(payload?.players) ? payload.players : (
-      Array.isArray(payload?.playerLinks) ? payload.playerLinks.map(pl=>({ 
-        playerId: pl.playerId || pl.id, name: pl.playerName || pl.name, team: pl.team, token: pl.otp, url: pl.url 
-      })) : []
-    );
-    return list;
+    // players 또는 playerLinks 모두 수용 + token(otp/token) 통합
+    if (Array.isArray(payload?.players)) {
+      return payload.players.map(p=>({
+        playerId: p.playerId || p.id,
+        name    : p.playerName || p.name,
+        team    : p.team,
+        token   : p.otp || p.token || '',
+        url     : p.url ? absolutize(p.url) : ''
+      }));
+    }
+    if (Array.isArray(payload?.playerLinks)) {
+      return payload.playerLinks.map(pl=>({
+        playerId: pl.playerId || pl.id,
+        name    : pl.playerName || pl.name,
+        team    : pl.team,
+        token   : pl.otp || pl.token || '',
+        url     : pl.url ? absolutize(pl.url) : ''
+      }));
+    }
+    return [];
   }
 
   async function handleGenerate(){
@@ -44,51 +72,67 @@
 
     let data;
     try {
-      data = await postJson(`/api/admin/battles/${id}/links`);
+      data = await postJson(`/api/admin/battles/${id}/links`, {});
     } catch(_) {
-      data = await postJson(`/api/battles/${id}/links`);
+      data = await postJson(`/api/battles/${id}/links`, {});
     }
     console.log('[LINKS_RAW]', data);
 
-    const spectatorOtp = $('#spectatorOtp');
-    const spectatorUrl = $('#spectatorUrl');
-    const playerLinks = $('#playerLinks');
+    const spectatorOtpEl = $('#spectatorOtp');
+    const spectatorUrlEl = $('#spectatorUrl');
+    const playerLinksEl  = $('#playerLinks');
 
     // spectator
-    const otp = pick(data, 'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
-    const url = pick(data, 'spectator.url','spectatorUrl','url') || '';
-    if(spectatorOtp) spectatorOtp.value = otp;
-    if(spectatorUrl) spectatorUrl.value = url;
+    const otpRaw = pick(data, 'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
+    let   urlRaw = pick(data, 'spectator.url','spectatorUrl','url') || '';
+    let   otp = String(otpRaw||'').trim();
+    let   surl = String(urlRaw||'').trim();
+
+    if(!surl && otp){
+      // 폴백: otp만 내려오면 URL 합성
+      surl = `${window.location.origin}/spectator?battle=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}`;
+      addLog('관전자 URL(폴백) 생성됨');
+    }
+    if(spectatorOtpEl) spectatorOtpEl.value = otp;
+    if(spectatorUrlEl) spectatorUrlEl.value = surl;
 
     // players
-    if(playerLinks){ playerLinks.innerHTML=''; }
+    if(playerLinksEl){ playerLinksEl.innerHTML=''; }
     const base = window.location.origin;
     const list = unifyPlayers(data);
+
     list.forEach(p=>{
-      const name = p.name || '';
-      const team = p.team || '';
-      const link = p.url || `${base}/player.html?battle=${encodeURIComponent(id)}&playerId=${encodeURIComponent(p.playerId||'')}&name=${encodeURIComponent(name)}&team=${team}`;
+      const name  = p.name || '';
+      const team  = p.team || '';
+      const token = p.token || '';
+      // 서버가 완성 URL을 주면 사용, 아니면 폴백 조합 (token 포함!)
+      const link  = p.url && p.url.length
+        ? p.url
+        : `${base}/player?battle=${encodeURIComponent(id)}&playerId=${encodeURIComponent(p.playerId||'')}&name=${encodeURIComponent(name)}&team=${encodeURIComponent(team)}&token=${encodeURIComponent(token)}`;
+
       const row = document.createElement('div');
       row.className = 'field';
       row.innerHTML = `
-        <div class="row" style="justify-content:space-between;gap:8px">
-          <div><strong>${escapeHtml(name)}</strong> <span class="pill">${escapeHtml(team)}</span></div>
-          <button class="btn ghost" data-copy="${escapeHtml(link)}">URL복사</button>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+          <div>
+            <strong>${esc(name)}</strong>
+            <span style="background:var(--gold);color:#000;padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700">${esc(team)}</span>
+          </div>
+          <button class="btn ghost" data-copy="${esc(link)}">URL복사</button>
         </div>
-        <input type="text" readonly value="${escapeHtml(link)}">
+        <input type="text" readonly value="${esc(link)}">
       `;
-      playerLinks?.appendChild(row);
+      playerLinksEl?.appendChild(row);
     });
 
     addLog('링크/비밀번호 생성 완료');
     if(otp) addLog('관전자 비밀번호 설정됨: '+otp);
-    if(url) addLog('관전자 URL 설정됨: '+url);
+    if(surl) addLog('관전자 URL 설정됨: '+surl);
   }
 
   function install(){
     const btn = $('#btnGenLinks');
     if(!btn) return;
-    // 기존 핸들러가 있어도 같이 동작해도 무방. 다만 중복 요청 방지.
     btn.addEventListener('click', (ev)=>{
       ev.stopImmediatePropagation?.();
       handleGenerate();
