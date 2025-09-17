@@ -1,19 +1,23 @@
-/* packages/battle-server/index.js (ESM) */
-
-import http from 'node:http';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+// packages/battle-server/index.js
+// PYXIS Battle Server (ESM)
+// - 단일 이벤트명으로 통일: addPlayer / deletePlayer / chatMessage / battleUpdate / battle:log
+// - HTML 캐시 무효화(정적 서빙 시 no-store) → 브라우저 구버전 표시 방지
+// - 링크 생성 시 /admin, /player, /spectator 별칭 지원(.html 없이도 접속 가능)
+// - 아이템 효과는 "사용 턴"에만 적용, 기본 확률: 성공 90% (표시: 실패확률 10%)
+// - 회피 미선택 시 자동 방어나 회피 적용하지 않음 (공격만 적용)
 
 import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
 import cors from 'cors';
 import compression from 'compression';
 import multer from 'multer';
-import { Server as IOServer } from 'socket.io';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-/* ─────────────────────────── 기본 설정 ─────────────────────────── */
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3001);
@@ -24,714 +28,506 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || '*')
 
 const app = express();
 const server = http.createServer(app);
-const io = new IOServer(server, {
+const io = new Server(server, {
   path: '/socket.io',
-  cors: { origin: CORS_ORIGIN, methods: ['GET', 'POST'] }
+  cors: { origin: CORS_ORIGIN, methods: ['GET','POST'] },
+  serveClient: true
 });
 
-app.disable('x-powered-by');
+// ──────────────────────────────────────────────────────────────
+// 미들웨어
+// ──────────────────────────────────────────────────────────────
 app.use(compression());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false }));
 
-/* ───────────────────── 정적 라우팅 + 별칭 (/admin 등) ───────────────────── */
-const PUBLIC_DIR = path.resolve(__dirname, 'public');
-
-app.use(express.static(PUBLIC_DIR, {
-  extensions: ['html'],
-  setHeaders(res, filePath) {
+// 정적 파일: HTML은 무조건 no-store, 나머지는 캐시 허용
+const publicDir = path.join(__dirname, 'public');
+app.use((req, res, next) => {
+  res.setHeader('x-pyxis-server', 'battle');
+  next();
+});
+app.use(express.static(publicDir, {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     } else {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     }
   }
 }));
 
-const send = file => (req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
-app.get('/', send('admin.html'));          // 루트 → 관리자
-app.get('/admin', send('admin.html'));
-app.get('/player', send('player.html'));
-app.get('/spectator', send('spectator.html'));
+// 별칭 라우팅: /admin, /player, /spectator → 각 html
+app.get(['/','/admin'], (req,res)=> res.sendFile(path.join(publicDir,'admin.html')));
+app.get('/player', (req,res)=> res.sendFile(path.join(publicDir,'player.html')));
+app.get('/spectator', (req,res)=> res.sendFile(path.join(publicDir,'spectator.html')));
 
-/* ─────────────────────────── 공용 유틸 ─────────────────────────── */
-const battles = new Map(); // id -> battle state
-
-const now = () => Date.now();
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-const d10 = () => randInt(1, 10);
-const d100 = () => randInt(1, 100);
-const uid = (p = '') => `${p}${Math.random().toString(16).slice(2, 10)}`;
-
-const turnSeconds = 30;
-const interRoundSeconds = 5;
-
-/* ────────────────── 업로드 (아바타) : /api/upload/avatar ────────────────── */
-const uploadDir = path.join(PUBLIC_DIR, 'uploads', 'avatars');
-fs.mkdirSync(uploadDir, { recursive: true });
-
+// 업로드 준비
+const uploadBase = path.join(publicDir, 'uploads', 'avatars');
+fs.mkdirSync(uploadBase, { recursive: true });
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || '.png') || '.png';
-    cb(null, `${Date.now()}_${uid('')}${ext}`);
+  destination: (_req, _file, cb)=> cb(null, uploadBase),
+  filename: (_req, file, cb)=>{
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+    cb(null, `${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`);
   }
 });
 const upload = multer({ storage });
 
-app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
-  if (!req.file) return res.status(400).json({ ok: false, error: 'NO_FILE' });
+// 헬스체크
+app.get('/api/health', (_req, res)=> res.json({ ok:true, time: new Date().toISOString() }));
+
+// 아바타 업로드
+app.post('/api/upload/avatar', upload.single('avatar'), (req, res)=>{
+  if(!req.file){
+    return res.status(400).json({ ok:false, error:'NO_FILE' });
+  }
+  // 정적 루트 기준 URL
   const rel = `/uploads/avatars/${req.file.filename}`;
-  res.json({ ok: true, url: rel });
+  res.json({ ok:true, url: rel });
 });
 
-/* ─────────────────────────── 전송 헬퍼 ─────────────────────────── */
-function emitUpdate(battle) {
-  const payload = publicBattle(battle);
-  io.to(battle.id).emit('battle:update', payload);
-  io.to(battle.id).emit('battleUpdate', payload); // 레거시 병행
-}
-function emitLog(battle, message, type = 'battle') {
-  const log = { ts: now(), type, message };
-  io.to(battle.id).emit('battle:log', log);
-  // 라운드 요약 수집용(결과 탭에서 사용)
-  battle.roundEvents.push(log);
-}
-function emitChat(battleId, msg) {
-  io.to(battleId).emit('chatMessage', msg);
-}
+// ──────────────────────────────────────────────────────────────
+// 배틀 상태 (메모리)
+// ──────────────────────────────────────────────────────────────
+const battles = new Map(); // battleId -> Battle
+const randId  = (p='p') => `${p}_${Math.random().toString(16).slice(2,10)}`;
+const d10     = () => Math.floor(Math.random()*10)+1;
 
-/* ───────────────────────── 상태 스냅샷 ───────────────────────── */
-function publicBattle(b) {
-  return {
-    id: b.id,
-    mode: b.mode,
-    status: b.status,
-    players: b.players.map(p => ({
-      id: p.id, team: p.team, name: p.name, avatar: p.avatar || '/uploads/avatars/default.svg',
-      hp: p.hp, maxHp: p.maxHp,
-      stats: p.stats, items: { ...p.items },
-      ready: !!p.ready
-    })),
-    currentTurn: {
-      turnNumber: b.turnNumber,
-      currentTeam: b.currentTeam,
-      currentPlayer: b.currentPlayer ? {
-        id: b.currentPlayer.id, name: b.currentPlayer.name, avatar: b.currentPlayer.avatar, team: b.currentPlayer.team
-      } : null,
-      timeLeftSec: Math.max(0, Math.floor((b.turnDeadline - now()) / 1000))
-    }
-  };
-}
+const DEF_TURN_SECONDS = 30;
+const ITEM_SUCCESS_RATE = 0.9; // 90%
 
-/* ───────────────────────── 배틀 생성/조회 ───────────────────────── */
-function createBattle(mode = '2v2') {
-  const id = `battle_${Date.now()}_${uid('')}`;
+/**
+ * Battle 구조:
+ * {
+ *   id, mode, status: 'waiting'|'active'|'paused'|'ended',
+ *   players: [ { id, team:'A'|'B', name, avatar, hp, maxHp, stats{attack,defense,agility,luck}, items{...}, token, ready, stance } ],
+ *   currentTurn: { turnNumber, currentTeam:'A'|'B'|null, currentPlayer: {id,name,avatar,team}|null, timeLeftSec },
+ *   turnTimer: NodeJS.Timer|null,
+ *   attackerIdx: number, // 현재 턴인 플레이어 index
+ * }
+ */
+
+// 유틸
+const cloneBattleForClient = (b) => ({
+  id: b.id,
+  mode: b.mode,
+  status: b.status,
+  players: b.players.map(p => ({
+    id: p.id, team: p.team, name: p.name,
+    avatar: p.avatar || '/uploads/avatars/default.svg',
+    hp: p.hp, maxHp: p.maxHp,
+    stats: p.stats,
+    items: { ...p.items },
+    ready: !!p.ready
+  })),
+  currentTurn: b.currentTurn ? {
+    turnNumber: b.currentTurn.turnNumber,
+    currentTeam: b.currentTurn.currentTeam,
+    currentPlayer: b.currentTurn.currentPlayer ? {
+      id: b.currentTurn.currentPlayer.id,
+      name: b.currentTurn.currentPlayer.name,
+      team: b.currentTurn.currentPlayer.team,
+      avatar: b.currentTurn.currentPlayer.avatar || '/uploads/avatars/default.svg'
+    } : null,
+    timeLeftSec: b.currentTurn.timeLeftSec|0
+  } : { turnNumber: 1, currentTeam: null, currentPlayer: null, timeLeftSec: 0 }
+});
+
+const emitBattle = (b) => {
+  io.to(b.id).emit('battleUpdate', cloneBattleForClient(b));
+};
+const logBattle = (b, type, message) => {
+  io.to(b.id).emit('battle:log', { type, message, ts: Date.now() });
+  // 콘솔에도 가볍게
+  if (type === 'error') {
+    console.error(`[battle ${b.id}] ${message}`);
+  } else {
+    console.log(`[battle ${b.id}] ${message}`);
+  }
+};
+
+// ──────────────────────────────────────────────────────────────
+// 전투 API
+// ──────────────────────────────────────────────────────────────
+app.post('/api/battles', (req, res)=>{
+  const mode = String(req.body?.mode || '2v2');
+  const id = `battle_${Date.now()}_${Math.random().toString(16).slice(2,8)}`;
   const battle = {
     id, mode,
     status: 'waiting',
     players: [],
-    turnNumber: 1,
-    currentTeam: null,
-    currentPlayer: null,
-    turnDeadline: 0,
-    turnOrder: [],
-    turnIndex: 0,
-    roundEvents: [],
-    _timer: null,
-    spectatorOtp: uid('').slice(0, 8)
+    currentTurn: { turnNumber: 1, currentTeam: null, currentPlayer: null, timeLeftSec: 0 },
+    turnTimer: null,
+    attackerIdx: 0
   };
   battles.set(id, battle);
-  startTick(battle);
-  return battle;
-}
-
-function getBattle(id) {
-  const b = battles.get(id);
-  if (!b) throw new Error('NOT_FOUND');
-  return b;
-}
-
-/* ────────────────────────── 라운드/턴 제어 ────────────────────────── */
-function livingPlayers(battle, team = null) {
-  return battle.players.filter(p => p.hp > 0 && (!team || p.team === team));
-}
-
-function buildTurnOrder(battle, firstTeam) {
-  const A = livingPlayers(battle, 'A');
-  const B = livingPlayers(battle, 'B');
-  const order = [];
-  const longer = Math.max(A.length, B.length);
-  for (let i = 0; i < longer; i++) {
-    if (firstTeam === 'A') {
-      if (A[i]) order.push(A[i]);
-      if (B[i]) order.push(B[i]);
-    } else {
-      if (B[i]) order.push(B[i]);
-      if (A[i]) order.push(A[i]);
-    }
-  }
-  battle.turnOrder = order;
-  battle.turnIndex = 0;
-}
-
-function advanceTurn(battle, opts = { newRoundIfNeeded: true }) {
-  // 다음 유효 플레이어로 이동
-  do {
-    battle.turnIndex += 1;
-    if (battle.turnIndex >= battle.turnOrder.length) {
-      if (!opts.newRoundIfNeeded) {
-        battle.currentPlayer = null;
-        battle.currentTeam = null;
-        return;
-      }
-      // 라운드 종료 → 결과 요약 + 다음 라운드 5초 예고
-      emitLog(battle, '=== 라운드 결과 ===', 'battle');
-      // 결과 요약: roundEvents 안의 공격/치유/사망 메시지 등은 이미 실시간으로 기록됨
-      emitLog(battle, `${battle.turnNumber}라운드 종료`, 'battle');
-      emitLog(battle, '5초 후 다음 라운드 시작...', 'notice');
-
-      battle.status = 'active';
-      battle.turnNumber += 1;
-      battle.currentPlayer = null;
-      battle.currentTeam = null;
-      battle.turnDeadline = now() + interRoundSeconds * 1000;
-      emitUpdate(battle);
-
-      // 5초 후 새 라운드 시작
-      setTimeout(() => {
-        startRound(battle);
-      }, interRoundSeconds * 1000);
-      return;
-    }
-    battle.currentPlayer = battle.turnOrder[battle.turnIndex] || null;
-  } while (!battle.currentPlayer || battle.currentPlayer.hp <= 0);
-
-  battle.currentTeam = battle.currentPlayer.team;
-  battle.turnDeadline = now() + turnSeconds * 1000;
-
-  // 플레이어가 이전 턴에 설정한 일시적 상태(보정기 사용, 방어/회피 지속)는
-  // "자신이 새로운 턴을 시작하면" 해제된다.
-  clearEphemeralOnTurnStart(battle.currentPlayer);
-
-  // 팀별 행동 헤더 표시(첫 액션 전에 1회)
-  const headerKey = `header_${battle.currentTeam}_${battle.turnNumber}`;
-  if (!battle[headerKey]) {
-    battle[headerKey] = true;
-    emitLog(battle, `=== ${battle.currentTeam}팀 행동 ===`, 'battle');
-  }
-
-  emitUpdate(battle);
-}
-
-function startRound(battle) {
-  if (battle.status !== 'active') battle.status = 'active';
-
-  // 선공은 라운드마다 교대
-  const firstTeam = battle.turnNumber % 2 === 1 ? battle._startingTeam : (battle._startingTeam === 'A' ? 'B' : 'A');
-  buildTurnOrder(battle, firstTeam);
-
-  // 라운드 시작 시 팀 헤더 리셋용 플래그 초기화
-  battle[`header_A_${battle.turnNumber}`] = false;
-  battle[`header_B_${battle.turnNumber}`] = false;
-
-  // 라운드 이벤트 버퍼 초기화
-  battle.roundEvents = [];
-
-  // 첫 턴으로 이동
-  battle.currentPlayer = null;
-  battle.currentTeam = null;
-  battle.turnIndex = -1;
-  advanceTurn(battle);
-}
-
-function startBattle(battle) {
-  if (battle.status === 'active') return;
-
-  // 선공 결정 로그(주사위 1~10)
-  const aRoll1 = d10(), aRoll2 = d10();
-  const bRoll1 = d10(), bRoll2 = d10();
-  const aSum = aRoll1 + aRoll2;
-  const bSum = bRoll1 + bRoll2;
-
-  emitLog(battle, `선공 결정: A팀(${aRoll1}+${aRoll2}=${aSum}) vs B팀(${bRoll1}+${bRoll2}=${bSum})`, 'notice');
-
-  battle._startingTeam = aSum >= bSum ? 'A' : 'B';
-  emitLog(battle, `${battle._startingTeam}팀이 선공입니다!`, 'notice');
-  battle.status = 'active';
-  emitLog(battle, '전투가 시작되었습니다!', 'notice');
-
-  battle.turnNumber = 1;
-  startRound(battle);
-}
-
-function endBattle(battle, winner = null) {
-  battle.status = 'ended';
-  emitLog(battle, '게임이 종료되었습니다', 'result');
-  if (winner) emitLog(battle, `${winner}팀 승리!`, 'result');
-  battle.currentPlayer = null;
-  battle.currentTeam = null;
-  battle.turnDeadline = now();
-  emitUpdate(battle);
-}
-
-function startTick(battle) {
-  if (battle._timer) clearInterval(battle._timer);
-  battle._timer = setInterval(() => {
-    if (battle.status !== 'active') return;
-    if (!battle.turnDeadline) return;
-
-    const left = Math.max(0, Math.floor((battle.turnDeadline - now()) / 1000));
-    if (left === 0) {
-      // 시간 초과 → 기본 행동: 공격(랜덤 대상)
-      if (battle.currentPlayer && battle.currentPlayer.hp > 0) {
-        const target = pickRandomEnemy(battle, battle.currentPlayer.team);
-        resolveAction(battle, battle.currentPlayer, { type: 'attack', targetId: target?.id, auto: true });
-      } else {
-        advanceTurn(battle);
-      }
-    } else {
-      // 매초 UI에 남은 시간 반영
-      emitUpdate(battle);
-    }
-  }, 1000);
-}
-
-/* ───────────────────────── 행동 처리(룰) ───────────────────────── */
-function clearEphemeralOnTurnStart(p) {
-  // 자신의 턴이 시작되면 이전 턴에 선택한 방어/회피/보정 사용 상태는 초기화
-  p.stance = 'none';
-  p.temp = {}; // { attackBoost:bool, defenseBoost:bool, lastUsed:'attackBooster'|'defenseBooster'|'dittany' }
-}
-
-function pickRandomEnemy(battle, myTeam) {
-  const enemies = livingPlayers(battle, myTeam === 'A' ? 'B' : 'A');
-  if (!enemies.length) return null;
-  return enemies[randInt(0, enemies.length - 1)];
-}
-
-function resolveAction(battle, actor, payload) {
-  if (!actor || actor.hp <= 0) {
-    advanceTurn(battle);
-    return;
-  }
-  const type = payload?.type || 'attack';
-  const enemyTeam = actor.team === 'A' ? 'B' : 'A';
-
-  const logLine = (txt) => emitLog(battle, `→ ${txt}`, 'battle');
-
-  // 아이템 성공 확률(90%)
-  const itemSucceeds = () => d100() <= 90;
-
-  // 최종 공격력(치명타 플래그 포함) 계산
-  const rollFinalAttack = (attacker) => {
-    const atkStat = Number(attacker.stats?.attack || 1);
-    const coeff = attacker?.temp?.attackBoost ? 2 : 1; // 보정기 사용 시 x2
-    const base = atkStat * coeff + d10();
-    const crit = (d10() >= (10 - Math.floor((attacker.stats?.luck || 0) / 2)));
-    return { final: crit ? base * 2 : base, crit };
-  };
-
-  // 방어값 계산
-  const rollDefense = (defender) => {
-    const defStat = Number(defender.stats?.defense || 1);
-    const coeff = defender?.temp?.defenseBoost ? 2 : 1;
-    return defStat * coeff + d10();
-  };
-
-  // 회피 판정
-  const checkDodge = (defender, attackerFinal) => {
-    const agi = Number(defender.stats?.agility || 1);
-    return (agi + d10()) >= attackerFinal; // 성공 시 완전 회피
-  };
-
-  // 피해 적용
-  const applyDamage = (defender, dmg, attacker, isCrit) => {
-    const before = defender.hp;
-    defender.hp = clamp(defender.hp - Math.max(0, Math.floor(dmg)), 0, defender.maxHp);
-    const after = defender.hp;
-
-    if (defender.hp <= 0) {
-      logLine(`${attacker.name}의 ${isCrit ? '강화된 ' : ''}치명타 공격으로 ${defender.name} 사망! (피해 ${before})`);
-    } else {
-      logLine(`${attacker.name}이(가) ${defender.name}에게 ${isCrit ? '강화된 공격 ' : '공격 '} (피해 ${before - after}) → HP ${after}`);
-    }
-  };
-
-  // 팀 행동 라인
-  const teamHeaderKey = `header_${actor.team}_${battle.turnNumber}`;
-  if (!battle[teamHeaderKey]) {
-    battle[teamHeaderKey] = true;
-    emitLog(battle, `=== ${actor.team}팀 행동 ===`, 'battle');
-  }
-
-  switch (type) {
-    case 'attack': {
-      // 공격 대상(없다면 랜덤)
-      const target = (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
-        || pickRandomEnemy(battle, actor.team);
-
-      if (!target) {
-        logLine(`${actor.name}이(가) 공격할 대상이 없습니다 (모두 사망)`);
-        break;
-      }
-
-      const { final: finalAtk, crit } = rollFinalAttack(actor);
-
-      // 방어/회피 처리
-      if (target.stance === 'dodge') {
-        if (checkDodge(target, finalAtk)) {
-          logLine(`${target.name}이(가) 회피 성공! 피해 0`);
-        } else {
-          // 회피 실패 → 방어 차감 없이 정면 피해
-          applyDamage(target, finalAtk, actor, crit);
-        }
-      } else if (target.stance === 'defend') {
-        const defVal = rollDefense(target);
-        const base = finalAtk;
-        const remained = base - defVal;
-        if (remained <= 0) {
-          logLine(`${target.name}이(가) 방어 성공! 피해 없음`);
-        } else {
-          applyDamage(target, remained, actor, crit);
-        }
-      } else {
-        // 아무 태세도 없으면 정면으로 공격 적용
-        applyDamage(target, finalAtk, actor, crit);
-      }
-
-      logLine(`${actor.name}이(가) ${target.name}을(를) 공격`);
-      break;
-    }
-    case 'defend': {
-      actor.stance = 'defend';
-      logLine(`${actor.name}이(가) 방어 태세`);
-      break;
-    }
-    case 'dodge': {
-      actor.stance = 'dodge';
-      logLine(`${actor.name}이(가) 회피 태세`);
-      break;
-    }
-    case 'pass': {
-      // 아무 행동 없이 자신의 순서 종료
-      logLine(`${actor.name}이(가) 행동 패스`);
-      break;
-    }
-    case 'item': {
-      const item = payload?.item;
-      if (!item) {
-        logLine(`${actor.name}의 아이템 사용 실패(지정 안됨)`);
-        break;
-      }
-      if (item === 'dittany') {
-        const tgt = (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
-          || actor; // 기본 자기 자신
-        if (!tgt || tgt.hp <= 0) {
-          logLine(`${actor.name}의 ${tgt ? tgt.name : '대상'}에게 디터니 사용 실패 (사망자)`);
-          break;
-        }
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}의 ${tgt.name}에게 디터니 사용 실패 (확률)`);
-          break;
-        }
-        const heal = 10 + d10();
-        const before = tgt.hp;
-        tgt.hp = clamp(tgt.hp + heal, 0, tgt.maxHp || 100);
-        logLine(`${actor.name}이(가) ${tgt.name}에게 디터니 사용 (+${tgt.hp - before}) → HP ${tgt.hp}`);
-      } else if (item === 'attackBooster') {
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}이(가) 공격 보정기 사용 실패 (실패확률 10%)`);
-        } else {
-          actor.temp = actor.temp || {};
-          actor.temp.attackBoost = true; // 이번 턴에만 적용
-          logLine(`${actor.name}이(가) 공격 보정기 사용 성공`);
-        }
-      } else if (item === 'defenseBooster') {
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}이(가) 방어 보정기 사용 실패 (실패확률 10%)`);
-        } else {
-          actor.temp = actor.temp || {};
-          actor.temp.defenseBoost = true; // 이번 턴에만 적용
-          logLine(`${actor.name}이(가) 방어 보정기 사용 성공`);
-        }
-      } else {
-        logLine(`${actor.name}의 알 수 없는 아이템 사용`);
-      }
-      break;
-    }
-    default:
-      logLine(`${actor.name}의 알 수 없는 행동 (패스 처리)`);
-  }
-
-  // 팀 선택 완료 여부: 이번 라운드에서 이 팀의 생존자들이 모두 1회 이상 행동했는지
-  const aliveThisTeam = livingPlayers(battle, actor.team);
-  const actedSetKey = `_acted_${actor.team}_${battle.turnNumber}`;
-  battle[actedSetKey] = battle[actedSetKey] || new Set();
-  battle[actedSetKey].add(actor.id);
-  const allActed = aliveThisTeam.every(p => battle[actedSetKey].has(p.id));
-  if (allActed) {
-    emitLog(battle, `${actor.team}팀 선택 완료`, 'battle');
-  }
-
-  // 팀 전멸 체크
-  const aliveA = livingPlayers(battle, 'A').length;
-  const aliveB = livingPlayers(battle, 'B').length;
-  if (aliveA === 0 || aliveB === 0) {
-    endBattle(battle, aliveA > 0 ? 'A' : (aliveB > 0 ? 'B' : null));
-    return;
-  }
-
-  emitUpdate(battle);
-  advanceTurn(battle);
-}
-
-/* ───────────────────────── 소켓 핸들러 ───────────────────────── */
-io.on('connection', (socket) => {
-  socket.on('join', ({ battleId }) => {
-    if (!battleId || !battles.has(battleId)) return;
-    socket.join(battleId);
-    const b = getBattle(battleId);
-    emitLog(b, '새 연결이 입장했습니다', 'notice');
-    emitUpdate(b);
-  });
-
-  socket.on('chatMessage', ({ battleId, name, message }) => {
-    if (!battleId || !battles.has(battleId) || !message) return;
-    emitChat(battleId, { name: name || '익명', message });
-  });
-
-  socket.on('spectator:cheer', ({ battleId, name, message }) => {
-    if (!battleId || !battles.has(battleId) || !message) return;
-    emitChat(battleId, { name: name ? `[응원] ${name}` : '[응원]', message });
-  });
-
-  // 플레이어 토큰 인증
-  socket.on('playerAuth', ({ battleId, token }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      const p = b.players.find(x => x.token === token);
-      if (!p) return cb?.({ ok: false, error: 'AUTH_FAIL' });
-      cb?.({ ok: true, player: p });
-      socket.emit('authSuccess', { player: p });
-      socket.emit('auth:success', { player: p });
-    } catch {
-      cb?.({ ok: false, error: 'NOT_FOUND' });
-    }
-  });
-
-  socket.on('player:ready', ({ battleId, playerId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      const p = b.players.find(x => x.id === playerId);
-      if (!p) return cb?.({ ok: false });
-      p.ready = true;
-      emitChat(battleId, { name: p.name, message: '[준비 완료]' });
-      emitLog(b, `${p.name}이(가) 준비 완료했습니다`, 'notice');
-      emitUpdate(b);
-      cb?.({ ok: true });
-    } catch {
-      cb?.({ ok: false });
-    }
-  });
-
-  socket.on('player:action', ({ battleId, playerId, action }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      if (b.status !== 'active') return cb?.({ ok: false, error: 'NOT_ACTIVE' });
-
-      const actor = b.players.find(x => x.id === playerId);
-      if (!actor || actor.hp <= 0) return cb?.({ ok: false, error: 'DEAD' });
-      if (!b.currentPlayer || b.currentPlayer.id !== actor.id) {
-        return cb?.({ ok: false, error: 'NOT_YOUR_TURN' });
-      }
-
-      // 명시하지 않으면 기본 공격
-      const payload = action || { type: 'attack' };
-      resolveAction(b, actor, payload);
-
-      cb?.({ ok: true });
-      socket.emit('actionSuccess');
-      socket.emit('player:action:success');
-    } catch (e) {
-      cb?.({ ok: false, error: e?.message || 'ERR' });
-    }
-  });
-
-  /* ─ 관리자용 소켓(선택) - 페이지가 HTTP 폴백도 쓰니 둘 다 지원 ─ */
-  socket.on('startBattle', ({ battleId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      startBattle(b);
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
-  });
-  socket.on('pauseBattle', ({ battleId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      b.status = 'paused';
-      emitLog(b, '일시정지', 'notice');
-      emitUpdate(b);
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
-  });
-  socket.on('resumeBattle', ({ battleId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      b.status = 'active';
-      emitLog(b, '재개', 'notice');
-      emitUpdate(b);
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
-  });
-  socket.on('endBattle', ({ battleId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      endBattle(b);
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
-  });
-
-  socket.on('addPlayer', ({ battleId, player }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      const p = addPlayer(b, player);
-      emitLog(b, `${p.name}이(가) ${p.team}팀으로 참가했습니다`, 'notice');
-      emitUpdate(b);
-      cb?.({ ok: true, player: p });
-    } catch (e) {
-      cb?.({ ok: false, error: e?.message || 'ERR' });
-    }
-  });
-
-  socket.on('deletePlayer', ({ battleId, playerId }, cb) => {
-    try {
-      const b = getBattle(battleId);
-      const idx = b.players.findIndex(p => p.id === playerId);
-      if (idx >= 0) {
-        const name = b.players[idx].name;
-        b.players.splice(idx, 1);
-        emitLog(b, `${name}이(가) 전투에서 제거되었습니다`, 'notice');
-        emitUpdate(b);
-      }
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
-  });
+  console.log('[battle] created', id);
+  return res.json({ id, battle: cloneBattleForClient(battle) });
 });
 
-/* ───────────────────────── 플레이어 추가/링크 ───────────────────────── */
-function addPlayer(battle, inp) {
-  if (!inp?.name || !inp?.team) throw new Error('BAD_PLAYER');
-  const p = {
-    id: `p_${uid('')}`,
-    team: (inp.team === 'B' ? 'B' : 'A'),
-    name: String(inp.name),
-    avatar: inp.avatar || '/uploads/avatars/default.svg',
-    hp: Number(inp.hp || inp.maxHp || 100),
-    maxHp: Number(inp.maxHp || inp.hp || 100),
+app.post('/api/battles/:id/player', (req, res)=>{
+  const b = battles.get(req.params.id);
+  if(!b) return res.status(404).json({ ok:false, error:'BATTLE_NOT_FOUND' });
+
+  const raw = req.body?.player || {};
+  const player = {
+    id: raw.id || randId('p'),
+    team: raw.team === 'B' ? 'B' : 'A',
+    name: String(raw.name || '이름없음').slice(0,30),
+    avatar: raw.avatar || '/uploads/avatars/default.svg',
+    hp: Number.isFinite(raw.hp) ? Math.max(1, Math.min(999, Number(raw.hp))) : 100,
+    maxHp: 100,
     stats: {
-      attack: Number(inp.stats?.attack ?? 1),
-      defense: Number(inp.stats?.defense ?? 1),
-      agility: Number(inp.stats?.agility ?? 1),
-      luck: Number(inp.stats?.luck ?? 1)
+      attack:  Math.max(1, Math.min(5, Number(raw.stats?.attack  || 1))),
+      defense: Math.max(1, Math.min(5, Number(raw.stats?.defense || 1))),
+      agility: Math.max(1, Math.min(5, Number(raw.stats?.agility || 1))),
+      luck:    Math.max(1, Math.min(5, Number(raw.stats?.luck    || 1))),
     },
     items: {
-      dittany: Number(inp.items?.dittany ?? 0),
-      attackBooster: Number(inp.items?.attackBooster ?? 0),
-      defenseBooster: Number(inp.items?.defenseBooster ?? 0)
+      dittany:        Math.max(0, Math.min(5, Number(raw.items?.dittany        || 0))),
+      attackBooster:  Math.max(0, Math.min(5, Number(raw.items?.attackBooster  || 0))),
+      defenseBooster: Math.max(0, Math.min(5, Number(raw.items?.defenseBooster || 0))),
     },
+    token: (Math.random().toString().slice(2,10)),
     ready: false,
-    stance: 'none',
-    token: uid('')
+    stance: 'none'
   };
-  battle.players.push(p);
-  return p;
-}
 
-function buildLinks(battle, baseUrl) {
-  const base = baseUrl?.replace(/\/+$/, '') || '';
-  const spectator = {
-    otp: battle.spectatorOtp,
-    url: `${base}/spectator?battle=${encodeURIComponent(battle.id)}&otp=${encodeURIComponent(battle.spectatorOtp)}`
-  };
-  const playerLinks = battle.players.map(p => ({
+  // 중복(이름+팀) 방지
+  const exists = b.players.find(p => p.name === player.name && p.team === player.team);
+  if (exists) {
+    return res.json({ ok:true, player: exists, battle: cloneBattleForClient(b) });
+  }
+
+  b.players.push(player);
+  emitBattle(b);
+  logBattle(b, 'notice', `${player.name}이(가) ${player.team}팀으로 참가했습니다`);
+  return res.json({ ok:true, player, battle: cloneBattleForClient(b) });
+});
+
+app.post('/api/battles/:id/links', (req, res)=>{
+  const b = battles.get(req.params.id);
+  if(!b) return res.status(404).json({ ok:false, error:'BATTLE_NOT_FOUND' });
+
+  const base = (req.get('x-base-url') || `${req.protocol}://${req.get('host')}`).replace(/\/+$/,'');
+  const spectatorOtp = Math.random().toString(16).slice(2,10);
+  b.spectatorOtp = spectatorOtp;
+
+  const playerLinks = b.players.map(p => ({
     id: p.id,
     playerId: p.id,
     playerName: p.name,
     team: p.team,
     otp: p.token,
     token: p.token,
-    url: `${base}/player?battle=${encodeURIComponent(battle.id)}&playerId=${encodeURIComponent(p.id)}&token=${encodeURIComponent(p.token)}`
+    url: `${base}/player?battle=${encodeURIComponent(b.id)}&playerId=${encodeURIComponent(p.id)}&token=${encodeURIComponent(p.token)}`
   }));
-  return { spectator, playerLinks };
+
+  return res.json({
+    ok: true,
+    spectator: {
+      otp: spectatorOtp,
+      url: `${base}/spectator?battle=${encodeURIComponent(b.id)}&otp=${encodeURIComponent(spectatorOtp)}`
+    },
+    playerLinks,
+    players: b.players.map(p => ({ ...p, token: p.token })) // 디버깅 편의
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+/** 전투 규칙(요약)
+ * - 선택지: 공격 / 방어 / 회피 / 패스 (아이템은 별도 버튼/타입)
+ * - 회피 미선택 시 자동 방어나 회피가 적용되지 않음 → 공격만 계산
+ * - 최종공격력 = 공격스탯 × (공격보정 사용 시 2, 아니면 1) + D10
+ * - 치명타: d10 ≥ (10 − 행운/2) → 피해 2배
+ * - 회피 판정: (피격자 민첩 + D10) ≥ (공격자 최종공격력) → 성공 시 피해 0, 실패 시 방어 차감 없이 정면 피해
+ * - 방어값 = 방어스탯 × (방어보정 사용 시 2, 아니면 1) + D10
+ *   → 최종피해 = max(0, (치명타면 공격력×2 else 공격력) − 방어값)
+ * - 아이템 성공률 90% (실패확률 10% 표기). 효과는 "사용한 턴에만" 1회 적용.
+ */
+// ──────────────────────────────────────────────────────────────
+
+// 내부 계산 유틸
+function critHappens(luck) {
+  const roll = d10();
+  const threshold = Math.max(1, 10 - (luck/2));
+  return roll >= threshold;
+}
+function rollAttack(baseAtk, useBooster) {
+  const mult = useBooster ? 2 : 1;
+  return baseAtk * mult + d10();
+}
+function rollDefense(baseDef, useBooster) {
+  const mult = useBooster ? 2 : 1;
+  return baseDef * mult + d10();
+}
+function tryItemOnce() {
+  return Math.random() < ITEM_SUCCESS_RATE;
 }
 
-/* ─────────────────────────── HTTP API ─────────────────────────── */
-// 건강 체크
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
-});
-
-// 전투 생성
-app.post('/api/battles', (req, res) => {
-  const b = createBattle(req.body?.mode || '2v2');
-  res.json({ ok: true, id: b.id, battle: publicBattle(b) });
-});
-
-// 전투 제어
-app.post('/api/battles/:id/start', (req, res) => {
-  try { const b = getBattle(req.params.id); startBattle(b); res.json({ ok: true }); }
-  catch { res.status(404).json({ ok: false }); }
-});
-app.post('/api/battles/:id/pause', (req, res) => {
-  try { const b = getBattle(req.params.id); b.status = 'paused'; emitUpdate(b); res.json({ ok: true }); }
-  catch { res.status(404).json({ ok: false }); }
-});
-app.post('/api/battles/:id/resume', (req, res) => {
-  try { const b = getBattle(req.params.id); b.status = 'active'; emitUpdate(b); res.json({ ok: true }); }
-  catch { res.status(404).json({ ok: false }); }
-});
-app.post('/api/battles/:id/end', (req, res) => {
-  try { const b = getBattle(req.params.id); endBattle(b); res.json({ ok: true }); }
-  catch { res.status(404).json({ ok: false }); }
-});
-
-// 플레이어 추가(여러 경로 호환)
-const addPlayerHttp = (req, res) => {
-  try {
-    const b = getBattle(req.params.id);
-    const p = addPlayer(b, req.body?.player || req.body);
-    emitLog(b, `${p.name}이(가) ${p.team}팀으로 참가했습니다`, 'notice');
-    emitUpdate(b);
-    res.json({ ok: true, player: p, battle: publicBattle(b) });
-  } catch (e) {
-    res.status(404).json({ ok: false, error: e?.message || 'ERR' });
+// 다음 플레이어로 포인터 이동
+function nextTurnPointer(b) {
+  if (!b.players.length) {
+    b.currentTurn.currentPlayer = null;
+    b.currentTurn.currentTeam = null;
+    return;
   }
-};
-app.post('/api/battles/:id/player', addPlayerHttp);
-app.post('/api/battles/:id/players', addPlayerHttp);
-app.post('/api/admin/battles/:id/player', addPlayerHttp);
-app.post('/api/admin/battles/:id/players', addPlayerHttp);
-app.post('/admin/battles/:id/players', addPlayerHttp);
-app.post('/battles/:id/players', addPlayerHttp);
-
-// 링크 생성(여러 경로 호환)
-const linksHttp = (req, res) => {
-  try {
-    const b = getBattle(req.params.id);
-    const out = buildLinks(b, req.headers['x-base-url']);
-    res.json({ ok: true, ...out, players: b.players });
-  } catch {
-    res.status(404).json({ ok: false });
+  // 생존자만
+  const alive = b.players.filter(p => p.hp > 0);
+  if (!alive.length) {
+    b.currentTurn.currentPlayer = null;
+    b.currentTurn.currentTeam = null;
+    return;
   }
-};
-app.post('/api/battles/:id/links', linksHttp);
-app.post('/api/admin/battles/:id/links', linksHttp);
+  // 현재 idx에서 다음 생존자
+  let idx = b.attackerIdx;
+  for (let i=0; i<b.players.length; i++) {
+    idx = (idx + 1) % b.players.length;
+    if (b.players[idx].hp > 0) {
+      b.attackerIdx = idx;
+      const p = b.players[idx];
+      b.currentTurn.currentPlayer = { id: p.id, name: p.name, team: p.team, avatar: p.avatar };
+      b.currentTurn.currentTeam = p.team;
+      return;
+    }
+  }
+  // 못 찾으면 null
+  b.currentTurn.currentPlayer = null;
+  b.currentTurn.currentTeam = null;
+}
 
-// CORS (마지막에 허용)
-app.use(cors({ origin: CORS_ORIGIN }));
+// 팀 전멸 체크
+function checkEnd(b) {
+  const aAlive = b.players.some(p => p.team==='A' && p.hp>0);
+  const bAlive = b.players.some(p => p.team==='B' && p.hp>0);
+  if (aAlive && bAlive) return false;
+  b.status = 'ended';
+  const winner = aAlive ? 'A' : (bAlive ? 'B' : '무승부');
+  logBattle(b, 'battle', `게임 종료 - ${winner}팀 승리`);
+  emitBattle(b);
+  return true;
+}
 
-/* ───────────────────────── 서버 시작 ───────────────────────── */
-server.listen(PORT, HOST, () => {
-  console.log(`[server] listening on ${HOST}:${PORT} (ESM)`);
-});
+// 타이머
+function clearTurnTimer(b) { if (b.turnTimer) { clearInterval(b.turnTimer); b.turnTimer = null; } }
+function startTurnTimer(b, sec=DEF_TURN_SECONDS) {
+  clearTurnTimer(b);
+  b.currentTurn.timeLeftSec = sec|0;
+  b.turnTimer = setInterval(()=>{
+    b.currentTurn.timeLeftSec = Math.max(0, b.currentTurn.timeLeftSec-1);
+    emitBattle(b);
+    if (b.currentTurn.timeLeftSec === 0) {
+      clearTurnTimer(b);
+      // 시간초과 → 자동 패스
+      const pid = b.currentTurn.currentPlayer?.id;
+      if (pid) {
+        resolveAction(b, pid, { type:'pass' });
+      }
+    }
+  }, 1000);
+}
+
+// 액션 해석 및 적용
+function resolveAction(b, playerId, action) {
+  if (b.status !== 'active') return;
+  const actor = b.players.find(p => p.id === playerId);
+  if (!actor || actor.hp <= 0) return;
+
+  const name = actor.name;
+  const team = actor.team;
+
+  // 아이템은 성공률 적용 & 해당 턴 1회만
+  const items = actor.items || {};
+
+  // 로그 프리픽스
+  const teamLabel = team === 'A' ? 'A팀' : 'B팀';
+
+  // 기본 메시지
+  const actionLogs = [];
+
+  const getTarget = (id) => b.players.find(p => p.id === id);
+
+  const attackFlow = (targetId, opts={useAtkBoost:false})=>{
+    const t = getTarget(targetId);
+    if (!t || t.hp<=0) {
+      actionLogs.push(`→ ${name}의 공격 대상 없음/사망`);
+      return;
+    }
+
+    // 회피/방어는 "명시적으로 선택했을 때만" 적용
+    const atkVal = rollAttack(actor.stats.attack, !!opts.useAtkBoost);
+    const isCrit = critHappens(actor.stats.luck);
+    const finalAtk = isCrit ? atkVal*2 : atkVal;
+
+    // 상대가 'dodge', 'defend'를 선택했을 때만 해당 로직을 적용.
+    const stance = t.stance || 'none';
+
+    if (stance === 'dodge') {
+      const dodgeRoll = t.stats.agility + d10();
+      if (dodgeRoll >= finalAtk) {
+        actionLogs.push(`→ ${name}의 공격을 ${t.name}이(가) 회피 성공! (피해 0)`);
+        return;
+      } else {
+        // 정면 피해: 방어차감 없이
+        t.hp = Math.max(0, t.hp - finalAtk);
+        actionLogs.push(isCrit
+          ? `→ ${name}의 치명타 공격! ${t.name} 정면 피격 (피해 ${finalAtk}) → HP ${t.hp}`
+          : `→ ${name}의 공격! ${t.name} 정면 피격 (피해 ${finalAtk}) → HP ${t.hp}`);
+        return;
+      }
+    }
+
+    if (stance === 'defend') {
+      const defVal = rollDefense(t.stats.defense, !!t._defBoostThisTurn);
+      const dmg = Math.max(0, finalAtk - defVal);
+      if (dmg <= 0) {
+        actionLogs.push(`→ ${t.name} 방어 성공! 피해 없음`);
+      } else {
+        t.hp = Math.max(0, t.hp - dmg);
+        actionLogs.push(isCrit
+          ? `→ ${name}의 치명타 공격! ${t.name} 방어 후 피해 ${dmg} → HP ${t.hp}`
+          : `→ ${name}의 공격! ${t.name} 방어 후 피해 ${dmg} → HP ${t.hp}`);
+      }
+      return;
+    }
+
+    // 방어/회피를 선택하지 않았다면 방어 차감 없이 "공격만" 적용
+    t.hp = Math.max(0, t.hp - finalAtk);
+    actionLogs.push(isCrit
+      ? `→ ${name}의 치명타 공격! ${t.name}에게 피해 ${finalAtk} → HP ${t.hp}`
+      : `→ ${name}의 공격! ${t.name}에게 피해 ${finalAtk} → HP ${t.hp}`);
+  };
+
+  // 액션 분기
+  switch (action.type) {
+    case 'attack': {
+      const useAtkBoost = (items.attackBooster||0) > 0 && !!action.useBooster;
+      if (useAtkBoost) {
+        if (tryItemOnce()) {
+          actor._atkBoostThisTurn = true;
+          items.attackBooster = Math.max(0, items.attackBooster-1);
+          actionLogs.push(`→ ${name}이(가) 공격 보정기 사용 성공`);
+        } else {
+          actionLogs.push(`→ ${name}이(가) 공격 보정기 사용 실패 (실패확률 10%)`);
+        }
+      }
+      attackFlow(action.targetId, { useAtkBoost: !!actor._atkBoostThisTurn });
+      break;
+    }
+    case 'defend': {
+      actor.stance = 'defend';
+      const useDefBoost = (items.defenseBooster||0) > 0 && !!action.useBooster;
+      if (useDefBoost) {
+        if (tryItemOnce()) {
+          actor._defBoostThisTurn = true;
+          items.defenseBooster = Math.max(0, items.defenseBooster-1);
+          actionLogs.push(`→ ${name}이(가) 방어 보정기 사용 성공`);
+        } else {
+          actionLogs.push(`→ ${name}이(가) 방어 보정기 사용 실패 (실패확률 10%)`);
+        }
+      } else {
+        actionLogs.push(`→ ${name}이(가) 방어 태세`);
+      }
+      break;
+    }
+    case 'dodge': {
+      actor.stance = 'dodge';
+      actionLogs.push(`→ ${name}이(가) 회피 태세`);
+      break;
+    }
+    case 'item': {
+      // itemKey: 'dittany'|'attackBooster'|'defenseBooster'
+      const key = action.item;
+      const t = action.targetId ? getTarget(action.targetId) : actor;
+      if (!key) { actionLogs.push(`→ ${name} 아이템 선택 없음`); break; }
+
+      if (key === 'dittany') {
+        if ((items.dittany||0) <= 0) { actionLogs.push(`→ ${name} 디터니 없음`); break; }
+        if (!t || t.hp<=0) { actionLogs.push(`→ ${name} 디터니 사용 실패 (사망자)`); break; }
+        if (tryItemOnce()) {
+          const heal = 20 + Math.floor(Math.random()*11); // 20~30
+          t.hp = Math.min(t.maxHp, t.hp + heal);
+          items.dittany = Math.max(0, items.dittany-1);
+          actionLogs.push(`→ ${name}이(가) ${t.name} 치유 (+${heal}) → HP ${t.hp}`);
+        } else {
+          actionLogs.push(`→ ${name} 디터니 사용 실패 (실패확률 10%)`);
+        }
+      } else if (key === 'attackBooster') {
+        if ((items.attackBooster||0) <= 0) { actionLogs.push(`→ ${name} 공격 보정기 없음`); break; }
+        if (tryItemOnce()) {
+          actor._atkBoostThisTurn = true;
+          items.attackBooster = Math.max(0, items.attackBooster-1);
+          actionLogs.push(`→ ${name}이(가) 공격 보정기 사용 성공`);
+        } else {
+          actionLogs.push(`→ ${name}이(가) 공격 보정기 사용 실패 (실패확률 10%)`);
+        }
+      } else if (key === 'defenseBooster') {
+        if ((items.defenseBooster||0) <= 0) { actionLogs.push(`→ ${name} 방어 보정기 없음`); break; }
+        if (tryItemOnce()) {
+          actor._defBoostThisTurn = true;
+          items.defenseBooster = Math.max(0, items.defenseBooster-1);
+          actionLogs.push(`→ ${name}이(가) 방어 보정기 사용 성공`);
+        } else {
+          actionLogs.push(`→ ${name}이(가) 방어 보정기 사용 실패 (실패확률 10%)`);
+        }
+      }
+      break;
+    }
+    case 'pass': {
+      actionLogs.push(`→ ${name}이(가) 행동 패스`);
+      break;
+    }
+    default: {
+      actionLogs.push(`→ ${name} 알 수 없는 행동`);
+    }
+  }
+
+  // 라운드/턴 마무리
+  // 선택지가 공격일 때만 실제 피해가 발생하므로, 위 attackFlow에서 HP 변경됨.
+  // 사망 처리 로그
+  for (const p of b.players) {
+    if (p.hp <= 0 && !p._deadAnnounced) {
+      p._deadAnnounced = true;
+      logBattle(b, 'battle', `${p.name} 사망`);
+    }
+  }
+
+  // 상세 메시지 출력
+  for (const m of actionLogs) logBattle(b, 'battle', m);
+
+  // 턴 이동 준비: 사용한 턴 효과 플래그 제거
+  for (const p of b.players) {
+    delete p._atkBoostThisTurn;
+    delete p._defBoostThisTurn;
+    p.stance = 'none';
+  }
+
+  if (checkEnd(b)) return;
+
+  // 다음 플레이어
+  b.currentTurn.turnNumber += 1;
+  nextTurnPointer(b);
+  logBattle(b, 'battle', `${b.currentTurn.turnNumber}라운드 시작 - ${b.currentTurn.currentTeam}팀 (${b.currentTurn.currentPlayer?.name||'-'})`);
+  startTurnTimer(b, DEF_TURN_SECONDS);
+  emitBattle(b);
+}
+
+// ──────────────────────────────────────────────────────────────
+// 소켓
+// ──────────────────────────────────────────────────────────────
+io.on('connection', (socket)=>{
+  // 단일 이벤트만 사용 (중복 이벤트명 제거)
+  socket.onAny((eventName)=> {
+    // 디버깅 시 필요하면 풀기: console.debug('[socket:on]', eventName);
+  });
+
+  socket.on('join', ({ battleId })=>{
+    if(!battleId) return;
+    socket.join(battleId);
+    const b = battles.get(battleId);
+    if (b
