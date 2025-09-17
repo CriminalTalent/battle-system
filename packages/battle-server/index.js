@@ -246,6 +246,15 @@ function enterResolve(battle) {
   emitLog(battle, `=== ${battle.turnNumber}라운드 종료 ===`, 'battle');
   emitLog(battle, `${interRoundSeconds}초 후 다음 라운드 시작...`, 'notice');
 
+  // 남은 일시효과 일괄 정리(이번 턴용 보정/태세)
+  for (const p of battle.players) {
+    if (p?.temp) {
+      delete p.temp.attackBoostOneShot;   // 공격 보정 1회 플래그
+      delete p.temp.defenseBoostOneShot;  // 방어 보정 1회 플래그
+    }
+    p.stance = 'none';
+  }
+
   // 인터 라운드 페이즈로 전환
   setTimeout(() => {
     setPhase(battle, 'inter', null, interRoundSeconds);
@@ -256,11 +265,6 @@ function enterResolve(battle) {
 
 function startRound(battle) {
   if (battle.status !== 'active') battle.status = 'active';
-
-  // 라운드 증가(첫 라운드는 startBattle에서 1로 세팅)
-  if (battle.phase === 'inter' || battle.phase === 'resolve' || battle.phase == null) {
-    battle.turnNumber = Number(battle.turnNumber || 1);
-  }
 
   // 라운드 시작 로그
   emitLog(battle, `${battle.turnNumber}라운드 시작`, 'battle');
@@ -348,10 +352,11 @@ function autoFinishPhaseSelections(battle) {
   const leftList = (battle.selectionQueue || []).slice(battle.selectorIndex); // 현재 포함
   for (const p of leftList) {
     if (!p || p.hp <= 0) continue;
-    // 기본 자동행동: 랜덤 공격
+    // 기본 자동행동: 랜덤 공격(보정 없음)
     const target = pickRandomEnemy(battle, team);
     if (!target) continue;
-    resolveAction(battle, p, { type: 'attack', targetId: target.id, auto: true }, { silentAdvance: true });
+    performAttack(battle, p, target, { attackBoostOnce: false });
+    emitLog(battle, `[${team}] ${p.name} 자동 선택 완료`, 'battle');
   }
   emitLog(battle, `${team}팀 선택 시간 종료 — 남은 인원 자동 처리`, 'notice');
   // 선택자 없음으로 세팅
@@ -360,66 +365,83 @@ function autoFinishPhaseSelections(battle) {
   emitUpdate(battle);
 }
 
-/* ───────────────────────── 행동 처리(룰) ───────────────────────── */
-function clearEphemeralOnNewRound(p) {
-  // 라운드 시작 혹은 자신의 선택 직전 초기화 규칙이 필요하면 여기에
-  p.stance = 'none';
-  p.temp = {}; // { attackBoost:bool, defenseBoost:bool }
-}
-
+/* ───────────────────────── 전투 계산 유틸 ───────────────────────── */
 function pickRandomEnemy(battle, myTeam) {
   const enemies = livingPlayers(battle, myTeam === 'A' ? 'B' : 'A');
   if (!enemies.length) return null;
   return enemies[randInt(0, enemies.length - 1)];
 }
 
-function resolveAction(battle, actor, payload, opts = {}) {
+function rollFinalAttack(attacker, { attackBoostOnce = false } = {}) {
+  const atkStat = Number(attacker.stats?.attack || 1);
+  let final = atkStat + d10();
+  const crit = (d10() >= (10 - Math.floor((attacker.stats?.luck || 0) / 2)));
+  if (crit) final *= 2;
+  if (attackBoostOnce) final *= 2; // “기본 최종 수치” 이후 2배
+  return { final, crit };
+}
+
+function rollDefense(defender) {
+  const defStat = Number(defender.stats?.defense || 1);
+  let val = defStat + d10();
+  if (defender?.temp?.defenseBoostOneShot) {
+    val *= 2; // 최종 방어 수치 2배
+    defender.temp.defenseBoostOneShot = false; // 1회 소모
+  }
+  return val;
+}
+
+function checkDodge(defender, attackerFinal) {
+  const agi = Number(defender.stats?.agility || 1);
+  return (agi + d10()) >= attackerFinal; // 성공 시 완전 회피
+}
+
+function applyDamage(battle, defender, dmg, attacker, isCrit) {
+  const before = defender.hp;
+  defender.hp = clamp(defender.hp - Math.max(0, Math.floor(dmg)), 0, defender.maxHp);
+  const after = defender.hp;
+
+  if (defender.hp <= 0) {
+    emitLog(battle, `→ ${attacker.name}의 ${isCrit ? '강화된 ' : ''}치명타 공격으로 ${defender.name} 사망! (피해 ${before})`, 'battle');
+  } else {
+    emitLog(battle, `→ ${attacker.name}이(가) ${defender.name}에게 ${isCrit ? '강화된 공격 ' : '공격 '} (피해 ${before - after}) → HP ${after}`, 'battle');
+  }
+}
+
+function performAttack(battle, attacker, target, { attackBoostOnce = false } = {}) {
+  const { final: finalAtk, crit } = rollFinalAttack(attacker, { attackBoostOnce });
+
+  // 방어/회피 처리
+  if (target.stance === 'dodge') {
+    if (checkDodge(target, finalAtk)) {
+      emitLog(battle, `→ ${target.name}이(가) 회피 성공! 피해 0`, 'battle');
+    } else {
+      applyDamage(battle, target, finalAtk, attacker, crit);
+    }
+  } else if (target.stance === 'defend') {
+    const defVal = rollDefense(target);
+    const remained = finalAtk - defVal;
+    if (remained <= 0) {
+      emitLog(battle, `→ ${target.name}이(가) 방어 성공! 피해 없음`, 'battle');
+    } else {
+      applyDamage(battle, target, remained, attacker, crit);
+    }
+  } else {
+    // 아무 태세도 없으면 정면으로 공격 적용
+    applyDamage(battle, target, finalAtk, attacker, crit);
+  }
+
+  emitLog(battle, `→ ${attacker.name}이(가) ${target.name}을(를) 공격`, 'battle');
+}
+
+/* ───────────────────────── 행동 처리(선택 1회) ───────────────────────── */
+function resolveAction(battle, actor, payload) {
   if (!actor || actor.hp <= 0) {
     emitUpdate(battle);
     return;
   }
+
   const type = payload?.type || 'attack';
-  const enemyTeam = actor.team === 'A' ? 'B' : 'A';
-
-  const logLine = (txt) => emitLog(battle, `→ ${txt}`, 'battle');
-
-  // (기존 서버 룰 유지) 아이템 성공 확률 90%
-  const itemSucceeds = () => d100() <= 90;
-
-  // 최종 공격력(치명타 플래그 포함) 계산
-  const rollFinalAttack = (attacker) => {
-    const atkStat = Number(attacker.stats?.attack || 1);
-    const coeff = attacker?.temp?.attackBoost ? 2 : 1; // 보정기 사용 시 x2
-    const base = atkStat * coeff + d10();
-    const crit = (d10() >= (10 - Math.floor((attacker.stats?.luck || 0) / 2)));
-    return { final: crit ? base * 2 : base, crit };
-  };
-
-  // 방어값 계산
-  const rollDefense = (defender) => {
-    const defStat = Number(defender.stats?.defense || 1);
-    const coeff = defender?.temp?.defenseBoost ? 2 : 1;
-    return defStat * coeff + d10();
-  };
-
-  // 회피 판정
-  const checkDodge = (defender, attackerFinal) => {
-    const agi = Number(defender.stats?.agility || 1);
-    return (agi + d10()) >= attackerFinal; // 성공 시 완전 회피
-  };
-
-  // 피해 적용
-  const applyDamage = (defender, dmg, attacker, isCrit) => {
-    const before = defender.hp;
-    defender.hp = clamp(defender.hp - Math.max(0, Math.floor(dmg)), 0, defender.maxHp);
-    const after = defender.hp;
-
-    if (defender.hp <= 0) {
-      logLine(`${attacker.name}의 ${isCrit ? '강화된 ' : ''}치명타 공격으로 ${defender.name} 사망! (피해 ${before})`);
-    } else {
-      logLine(`${attacker.name}이(가) ${defender.name}에게 ${isCrit ? '강화된 공격 ' : '공격 '} (피해 ${before - after}) → HP ${after}`);
-    }
-  };
 
   // 팀 행동 라인(선택 페이즈 내 세밀 중계)
   if (battle.phase === `${actor.team}_select`) {
@@ -433,103 +455,101 @@ function resolveAction(battle, actor, payload, opts = {}) {
   switch (type) {
     case 'attack': {
       // 공격 대상(없다면 랜덤)
-      const target = (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
+      const target =
+        (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
         || pickRandomEnemy(battle, actor.team);
 
       if (!target) {
-        logLine(`${actor.name}이(가) 공격할 대상이 없습니다 (모두 사망)`);
+        emitLog(battle, `${actor.name}이(가) 공격할 대상이 없습니다 (모두 사망)`, 'battle');
         break;
       }
 
-      const { final: finalAtk, crit } = rollFinalAttack(actor);
-
-      // 방어/회피 처리
-      if (target.stance === 'dodge') {
-        if (checkDodge(target, finalAtk)) {
-          logLine(`${target.name}이(가) 회피 성공! 피해 0`);
-        } else {
-          applyDamage(target, finalAtk, actor, crit);
-        }
-      } else if (target.stance === 'defend') {
-        const defVal = rollDefense(target);
-        const base = finalAtk;
-        const remained = base - defVal;
-        if (remained <= 0) {
-          logLine(`${target.name}이(가) 방어 성공! 피해 없음`);
-        } else {
-          applyDamage(target, remained, actor, crit);
-        }
-      } else {
-        // 아무 태세도 없으면 정면으로 공격 적용
-        applyDamage(target, finalAtk, actor, crit);
-      }
-
-      logLine(`${actor.name}이(가) ${target.name}을(를) 공격`);
+      performAttack(battle, actor, target, { attackBoostOnce: false });
       break;
     }
 
     case 'defend': {
       actor.stance = 'defend';
-      logLine(`${actor.name}이(가) 방어 태세`);
+      emitLog(battle, `${actor.name}이(가) 방어 태세`, 'battle');
       break;
     }
 
     case 'dodge': {
       actor.stance = 'dodge';
-      logLine(`${actor.name}이(가) 회피 태세`);
+      emitLog(battle, `${actor.name}이(가) 회피 태세`, 'battle');
       break;
     }
 
     case 'pass': {
-      logLine(`${actor.name}이(가) 행동 패스`);
+      emitLog(battle, `${actor.name}이(가) 행동 패스`, 'battle');
       break;
     }
 
     case 'item': {
       const item = payload?.item;
       if (!item) {
-        logLine(`${actor.name}의 아이템 사용 실패(지정 안됨)`);
+        emitLog(battle, `${actor.name}의 아이템 사용 실패(지정 안됨)`, 'battle');
         break;
       }
+
+      // 새 룰: 성공률/효과
+      const success60 = () => d100() <= 60;
+
       if (item === 'dittany') {
-        const tgt = (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
-          || actor; // 기본 자기 자신
+        // 아군 타깃(본인 포함), 100% 성공, 고정 10 회복
+        const tgt =
+          (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
+          || actor;
         if (!tgt || tgt.hp <= 0) {
-          logLine(`${actor.name}의 ${tgt ? tgt.name : '대상'}에게 디터니 사용 실패 (사망자)`);
+          emitLog(battle, `${actor.name}의 ${tgt ? tgt.name : '대상'}에게 디터니 사용 실패 (사망자)`, 'battle');
           break;
         }
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}의 ${tgt.name}에게 디터니 사용 실패 (확률)`);
-          break;
-        }
-        const heal = 10 + d10();
         const before = tgt.hp;
+        const heal = 10; // 고정 10
         tgt.hp = clamp(tgt.hp + heal, 0, tgt.maxHp || 100);
-        logLine(`${actor.name}이(가) ${tgt.name}에게 디터니 사용 (+${tgt.hp - before}) → HP ${tgt.hp}`);
+        emitLog(battle, `${actor.name}이(가) ${tgt.name}에게 디터니 사용 (+${tgt.hp - before}) → HP ${tgt.hp}`, 'battle');
+
       } else if (item === 'attackBooster') {
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}이(가) 공격 보정기 사용 실패`);
-        } else {
-          actor.temp = actor.temp || {};
-          actor.temp.attackBoost = true; // 이번 선택에만 적용
-          logLine(`${actor.name}이(가) 공격 보정기 사용 성공`);
+        // 적 타깃 필수, 60% 성공, “이번 공격 1회” 최종 2배, 즉시 그 타깃을 공격
+        const target =
+          (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0))
+          || null;
+        if (!target) {
+          emitLog(battle, `${actor.name}의 공격 보정기 사용 실패 (대상 없음)`, 'battle');
+          break;
         }
+        if (!success60()) {
+          emitLog(battle, `${actor.name}의 공격 보정기 사용 실패 (확률)`, 'battle');
+        } else {
+          emitLog(battle, `${actor.name}이(가) 공격 보정기 사용 성공 — ${target.name} 대상 즉시 강화 공격`, 'battle');
+          performAttack(battle, actor, target, { attackBoostOnce: true }); // 최종 2배 1회
+        }
+
       } else if (item === 'defenseBooster') {
-        if (!itemSucceeds()) {
-          logLine(`${actor.name}이(가) 방어 보정기 사용 실패`);
-        } else {
-          actor.temp = actor.temp || {};
-          actor.temp.defenseBoost = true; // 이번 선택에만 적용
-          logLine(`${actor.name}이(가) 방어 보정기 사용 성공`);
+        // 아군 타깃 필수, 60% 성공, “이번 턴 1회” 방어 최종 2배
+        const ally =
+          (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0 && p.team === actor.team))
+          || null;
+        if (!ally) {
+          emitLog(battle, `${actor.name}의 방어 보정기 사용 실패 (아군 대상 없음)`, 'battle');
+          break;
         }
+        if (!success60()) {
+          emitLog(battle, `${actor.name}의 방어 보정기 사용 실패 (확률)`, 'battle');
+        } else {
+          ally.temp = ally.temp || {};
+          ally.temp.defenseBoostOneShot = true; // 다음 1회 수비에 최종 2배
+          emitLog(battle, `${actor.name}이(가) ${ally.name}에게 방어 보정기 적용 (이번 턴 1회 방어 2배)`, 'battle');
+        }
+
       } else {
-        logLine(`${actor.name}의 알 수 없는 아이템 사용`);
+        emitLog(battle, `${actor.name}의 알 수 없는 아이템 사용`, 'battle');
       }
       break;
     }
 
     default:
-      logLine(`${actor.name}의 알 수 없는 행동 (패스 처리)`);
+      emitLog(battle, `${actor.name}의 알 수 없는 행동 (패스 처리)`, 'battle');
   }
 
   // 팀 전멸 체크
@@ -555,11 +575,10 @@ function resolveAction(battle, actor, payload, opts = {}) {
     }
   }
 
-  // 임시 보정은 “자신 선택 1회” 후 제거
-  actor.temp = {};
+  // 자신의 선택 1회 종료 시, 본인 태세 초기화
   actor.stance = 'none';
-
-  if (!opts.silentAdvance) emitUpdate(battle);
+  // (공격 보정은 즉시공격으로 소모, 방어 보정은 ally에 1회 플래그로 남음)
+  emitUpdate(battle);
 }
 
 /* ───────────────────────── 소켓 핸들러 ───────────────────────── */
@@ -723,7 +742,6 @@ function addPlayer(battle, inp) {
     temp: {},
     token: uid('')
   };
-  clearEphemeralOnNewRound(p);
   battle.players.push(p);
   return p;
 }
