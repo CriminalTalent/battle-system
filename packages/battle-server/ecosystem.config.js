@@ -1,10 +1,10 @@
 /**
- * PYXIS Battle System - PM2 통합 설정
- * 실행 기준 디렉토리(cwd)는 항상 리포지토리 루트(/root/battle-system)로 고정
- * └─ 서버 엔트리: packages/battle-server/index.js
+ * PYXIS Battle System - PM2 통합 설정 (ESM 버전)
+ * 이 파일은 ESM 환경("type":"module")에서 동작하도록 export default 를 사용합니다.
+ * 실행 기준 디렉토리(cwd)는 리포지토리 루트(/root/battle-system)로 고정합니다.
  */
 
-module.exports = {
+const config = {
   apps: [
     {
       name: 'pyxis-battle-system',
@@ -117,7 +117,7 @@ module.exports = {
         'cd /root/battle-system/current && npm ci --omit=dev',
         'cd /root/battle-system/current/packages/battle-server && npm ci --omit=dev',
 
-        // PM2(해당 config는 packages/battle-server 안에 있으므로 절대경로 지정)
+        // PM2 (ESM config)
         'pm2 startOrReload /root/battle-system/current/packages/battle-server/ecosystem.config.js --env production',
         'pm2 save'
       ].join(' && '),
@@ -126,3 +126,5 @@ module.exports = {
     }
   }
 };
+
+export default config;
