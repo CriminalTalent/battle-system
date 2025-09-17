@@ -259,36 +259,35 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
   (function(){
-    // ===== 전역 =====
     const socket = io({ path: "/socket.io" });
     let battleId = new URL(location.href).searchParams.get('battle') || '';
 
-    // ===== 소켓 상태 로그 =====
-    socket.on('connect', ()=> addLog('소켓 연결됨: '+socket.id));
-    socket.on('disconnect', (r)=> addLog('소켓 연결 종료: '+(r||'')));
-    socket.io.on('error', (e)=> addLog('소켓 에러(io): '+(e?.message||e), 'error'));
-    socket.on('connect_error', (e)=> addLog('소켓 연결 오류: '+(e?.message||e), 'error'));
-
-    // ===== 유틸 =====
+    // ===== 로그 =====
     const esc = (t)=> String(t||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     function addLog(msg, type='info'){
       const logs=document.getElementById('logs'); if(!logs) return;
-      const t=new Date().toLocaleTimeString('ko-KR', {hour12:false});
+      const t=new Date().toLocaleTimeString('ko-KR',{hour12:false});
       const el=document.createElement('div');
       el.className='log'+(type==='battle'?' rule': type==='error'?' error':'' );
       el.innerHTML = `<span class="tmark">${esc(t)}</span>${esc(msg)}`;
       logs.appendChild(el); logs.scrollTop=logs.scrollHeight;
     }
 
+    // ===== 조인 =====
     function updateBattleId(id){
       battleId=id; window.battleId=id;
       document.getElementById('currentBattleId').value=id;
       const url=new URL(location.href); url.searchParams.set('battle', id); history.replaceState(null,'',url.toString());
-      socket.emit('join',{ battleId:id });
+      socket.emit('join',{ battleId:id, role:'admin' }); // 역할 명시
       addLog(`전투 방에 참여: ${id}`);
     }
 
-    // ===== 팀 목록 렌더 =====
+    socket.on('connect', ()=> addLog('소켓 연결됨: '+socket.id));
+    socket.on('disconnect', (r)=> addLog('소켓 연결 종료: '+(r||'')));
+    socket.io.on('error', (e)=> addLog('소켓 에러(io): '+(e?.message||e), 'error'));
+    socket.on('connect_error', (e)=> addLog('소켓 연결 오류: '+(e?.message||e), 'error'));
+
+    // ===== 렌더 =====
     function renderTeams(players){
       const A = players.filter(p=>p.team==='A');
       const B = players.filter(p=>p.team==='B');
@@ -317,30 +316,16 @@
       B.forEach(p=>bBox.appendChild(row(p)));
     }
 
-    // ===== 소켓 수신 =====
-    const onUpdate = (snap)=>{ if(!snap) return; renderTeams(snap.players||[]); };
-    // 중복 수신 방지: 하나만 사용
+    let latestPlayers = [];
+    const onUpdate = (snap)=>{ if(!snap) return; latestPlayers = snap.players || []; renderTeams(latestPlayers); };
     socket.on('battle:update', onUpdate);
 
-    function onBattleLog(payload){
+    const onBattleLog = (payload)=>{
       const msg = payload?.message || ''; const type = payload?.type || 'info';
       if(!msg) return;
       addLog(msg, type==='battle' ? 'battle' : type);
-    }
-    // 중복 방지: 하나만 사용
+    };
     socket.on('battle:log', onBattleLog);
-
-    function onChat(payload){
-      const msg = payload?.message || payload?.text || '';
-      const name= payload?.name || payload?.playerName || '관리자';
-      if(!msg) return;
-      const box=document.getElementById('chat');
-      const el=document.createElement('div');
-      el.className='chat-entry';
-      el.textContent = `[${name}] ${msg}`;
-      box.appendChild(el); box.scrollTop=box.scrollHeight;
-    }
-    socket.on('chatMessage', onChat);
 
     // ===== 전투 생성 =====
     document.getElementById('btnCreate').addEventListener('click', async ()=>{
@@ -355,7 +340,7 @@
         const id = data?.id || data?.battleId || data?.battle?.id;
         if(id){ updateBattleId(id); addLog(`전투 생성 완료: ${id}`); }
         else { addLog('전투 생성 실패(응답 파싱 실패)','error'); }
-      }catch(e){ console.error(e); addLog('전투 생성 실패: '+e.message,'error'); }
+      }catch(e){ addLog('전투 생성 실패: '+e.message,'error'); }
     });
 
     // ===== 제어 버튼 =====
@@ -414,9 +399,9 @@
       if(!id){ addLog('전투 ID가 없습니다(?battle=...)','error'); return; }
       let data=null;
       try{
-        data = await postJson(`/api/admin/battles/${id}/links`);
+        data = await postJson(`/api/admin/battles/${encodeURIComponent(id)}/links`);
       }catch(_){
-        try{ data = await postJson(`/api/battles/${id}/links`); }
+        try{ data = await postJson(`/api/battles/${encodeURIComponent(id)}/links`); }
         catch(e){ addLog('링크 생성 실패: '+e.message, 'error'); return; }
       }
       const otp = pick(data,'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
@@ -450,7 +435,7 @@
     }
     document.getElementById('btnGenLinks').addEventListener('click', (e)=>{ e.stopImmediatePropagation?.(); onGeneratePlayerLinks(); });
 
-    // ===== 이미지 미리보기 =====
+    // ===== 업로드 미리보기 =====
     document.getElementById('avatarFile').addEventListener('change', (e)=>{
       const file=e.target.files[0];
       const preview=document.getElementById('avatarPreview');
@@ -463,13 +448,13 @@
       }
     });
 
-    // ===== 참가자 추가 (업로드 → 소켓(다중시도) → HTTP 폴백) =====
+    // ===== 참가자 추가 =====
     document.getElementById('btnAddPlayer').addEventListener('click', async ()=>{
       if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
       const name = document.getElementById('playerName').value.trim();
       if(!name){ addLog('이름을 입력해주세요','error'); document.getElementById('playerName').focus(); return; }
 
-      // 1) 아바타 업로드(선택)
+      // 업로드(선택)
       let avatarUrl = null;
       const file = document.getElementById('avatarFile').files[0];
       if(file){
@@ -483,9 +468,8 @@
         }catch(err){ addLog('이미지 업로드 오류(기본 이미지로 진행): '+err.message,'error'); }
       }
 
-      // 2) 페이로드 구성 (hp=maxHp)
       const maxHp = Number(document.getElementById('playerHp').value)||100;
-      const playerObj = {
+      const player = {
         name,
         team: document.getElementById('playerTeam').value,
         hp: maxHp,
@@ -504,11 +488,10 @@
         }
       };
 
-      // 3) 소켓 다중 시도 + HTTP 폴백
-      const ok = await addPlayerRobust(playerObj);
+      const ok = await addPlayerRobust(player);
       if(ok){
         addLog('참가자 추가 완료');
-        // 폼 리셋(팀은 유지)
+        // 폼 리셋
         document.getElementById('playerName').value='';
         document.getElementById('playerHp').value='100';
         document.getElementById('playerAttack').value='1';
@@ -526,11 +509,11 @@
       }
     });
 
+    // 소켓 + HTTP 초강력 호환 추가
     async function addPlayerRobust(player){
-      const flatA   = { battleId, ...player };
-      const nestedB = { battleId, player };
+      const flat   = { battleId, ...player };
+      const nested = { battleId, player };
 
-      // 소켓 emit을 ack/타임아웃 포함 프라미스로 래핑
       const emitAck = (event, payload)=> new Promise((resolve)=>{
         let settled=false;
         const timer = setTimeout(()=>{ if(!settled){ settled=true; resolve({ok:false, error:'timeout'}) } }, 1500);
@@ -546,34 +529,62 @@
         }
       });
 
-      // 1) 소켓 4경로 시도
-      const tries = [
-        ['addPlayer'      , nestedB],
-        ['addPlayer'      , flatA  ],
-        ['admin:addPlayer', nestedB],
-        ['admin:addPlayer', flatA  ],
+      // ACK이 없어도 업데이트가 오면 성공으로 간주
+      const beforeIds = new Set((latestPlayers||[]).map(p=>p.name+'|'+p.team));
+      const seenUpdate = new Promise((resolve)=>{
+        const t = setTimeout(()=>resolve(false), 2500);
+        const handler = (snap)=>{
+          const now = (snap?.players||[]).map(p=>p.name+'|'+p.team);
+          const added = now.find(key=>!beforeIds.has(key));
+          if(added){ clearTimeout(t); socket.off('battle:update', handler); resolve(true); }
+        };
+        socket.on('battle:update', handler);
+      });
+
+      // 1) 소켓 이벤트 8종 × (nested/flat)
+      const events = [
+        'battle:addPlayer','addPlayer','admin:addPlayer','player:add',
+        'battle:player:add','player:addToBattle','admin:player:add','add:player'
       ];
-      for(const [evt, payload] of tries){
-        const r = await emitAck(evt, payload);
-        if(r?.ok){ return true; }
-        if(r?.error) addLog(`소켓(${evt}) 실패: ${r.error}`,'error');
+      for(const evt of events){
+        const r1 = await emitAck(evt, nested); if(r1?.ok) return true; if(r1?.error) addLog(`소켓(${evt}) 실패[nested]: ${r1.error}`,'error');
+        const r2 = await emitAck(evt, flat  ); if(r2?.ok) return true; if(r2?.error) addLog(`소켓(${evt}) 실패[flat]: ${r2.error}`,'error');
       }
 
-      // 2) HTTP 폴백 2경로 시도
-      try{
-        const r1 = await postJson(`/api/admin/battles/${encodeURIComponent(battleId)}/players`, nestedB);
-        if(r1?.ok){ return true; }
-      }catch(e){ addLog('HTTP(admin) 실패: '+e.message,'error'); }
+      // 업데이트가 들어오면 성공 처리
+      if(await seenUpdate) return true;
 
-      try{
-        const r2 = await postJson(`/api/battles/${encodeURIComponent(battleId)}/players`, nestedB);
-        if(r2?.ok){ return true; }
-      }catch(e){ addLog('HTTP(일반) 실패: '+e.message,'error'); }
-
+      // 2) HTTP 폴백 6종
+      const bodies = [nested]; // 서버에 따라 player 래핑 필요
+      const paths = [
+        `/api/admin/battles/${encodeURIComponent(battleId)}/player`,
+        `/api/admin/battles/${encodeURIComponent(battleId)}/players`,
+        `/api/battles/${encodeURIComponent(battleId)}/player`,
+        `/api/battles/${encodeURIComponent(battleId)}/players`,
+        `/admin/battles/${encodeURIComponent(battleId)}/players`,
+        `/battles/${encodeURIComponent(battleId)}/players`,
+      ];
+      for(const url of paths){
+        try{
+          for(const body of bodies){
+            const res = await fetch(url, {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify(body)
+            });
+            if(res.ok){
+              addLog(`HTTP 성공: ${url}`);
+              return true;
+            }else{
+              addLog(`HTTP 실패 ${res.status}: ${url}`,'error');
+            }
+          }
+        }catch(e){ addLog(`HTTP 에러: ${url} → ${e.message}`,'error'); }
+      }
       return false;
     }
 
-    // 참가자 삭제(위임)
+    // 삭제(위임)
     document.addEventListener('click', (e)=>{
       const del = e.target.closest('[data-del]'); if(!del) return;
       const pid = del.getAttribute('data-del'); if(!pid || !battleId) return;
@@ -587,7 +598,7 @@
       if(navigator.clipboard){ navigator.clipboard.writeText(text).then(()=> addLog('복사 완료')); }
     });
 
-    // 채팅 송신(단일 이벤트)
+    // 채팅(단일 이벤트)
     function sendChat(){
       const msg = document.getElementById('chatMsg').value.trim();
       if(!msg || !battleId) return;
@@ -597,7 +608,7 @@
     document.getElementById('btnSend').addEventListener('click', sendChat);
     document.getElementById('chatMsg').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
 
-    // 초기: URL에 battle 있으면 조인
+    // 초기
     if(battleId){ updateBattleId(battleId); }
     addLog('관리자 페이지 시작');
   })();
