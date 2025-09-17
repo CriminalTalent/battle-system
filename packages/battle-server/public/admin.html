@@ -67,7 +67,8 @@
 
     .team h4{ color:var(--gold); margin-bottom:8px; font-size:1rem }
     .team-list{ display:grid; gap:8px }
-    .player-card{ background:var(--glass-2); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px }
+    .player-card{ background:var(--glass-2); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px; transition:border-color .2s, box-shadow .2s }
+    .player-card.turn{ border-color:var(--gold); box-shadow:0 0 0 2px rgba(220,199,162,.25) }
     .player-info{ display:flex; align-items:center; gap:12px }
     .player-info img{ width:40px; height:40px; border-radius:50%; border:2px solid var(--gold); object-fit:cover; background:#0b1420 }
     .player-details{ flex:1 }
@@ -190,9 +191,9 @@
           </div>
 
           <div class="grid grid-3">
-            <div class="field"><label>디터니</label><input id="playerDittany" type="number" value="0" min="0" max="9"/></div>
-            <div class="field"><label>공격 보정기</label><input id="playerAttackBooster" type="number" value="0" min="0" max="9"/></div>
-            <div class="field"><label>방어 보정기</label><input id="playerDefenseBooster" type="number" value="0" min="0" max="9"/></div>
+            <div class="field"><label>디터니</label><input id="playerDittany" type="number" value="0" min="0" max="99"/></div>
+            <div class="field"><label>공격 보정기</label><input id="playerAttackBooster" type="number" value="0" min="0" max="99"/></div>
+            <div class="field"><label>방어 보정기</label><input id="playerDefenseBooster" type="number" value="0" min="0" max="99"/></div>
           </div>
 
           <button id="btnAddPlayer" class="btn block">전투 참가자 추가</button>
@@ -240,10 +241,19 @@
     const socket = io({ path: "/socket.io" });
     let battleId = new URL(location.href).searchParams.get('battle') || '';
 
+    // 타이머 상태(리셋 필요)
+    let countdownTimer = null;
+    let countdownDeadline = 0;
+    let lastTimerShown = null;
+
+    // 최신 스냅샷 저장(시작 전 인원 체크/하이라이트에 사용)
+    let lastSnap = null;
+
     // ===== 유틸 =====
     const esc = (t)=> String(t||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const seenChat = new Set(), seenLog = new Set();
     const dedupe = (set, key, limit=400)=>{ if(set.has(key)) return true; set.add(key); if(set.size>limit){ const f=set.values().next().value; set.delete(f);} return false; };
+    const clamp=(n,min,max)=>Math.max(min,Math.min(max,Number(n||0)));
 
     function addLog(msg, type='info'){
       const logs=document.getElementById('logs'); if(!logs) return;
@@ -264,11 +274,63 @@
       box.appendChild(el); box.scrollTop=box.scrollHeight;
     }
 
+    function ensureTimerLine(){
+      const box = document.getElementById('logs'); if(!box) return null;
+      let line = document.getElementById('timer-line');
+      if(!line){
+        line = document.createElement('div');
+        line.id='timer-line';
+        line.className='log';
+        box.appendChild(line);
+      }
+      return line;
+    }
+
+    function fmtMMSS(sec){
+      const s = Math.max(0, Math.floor(sec||0));
+      const m = Math.floor(s/60);
+      const r = s%60;
+      return (m<10?'0':'')+m+':'+(r<10?'0':'')+r;
+    }
+
+    function setCountdownBySeconds(seconds, meta){
+      if(!Number.isFinite(seconds)) return;
+      countdownDeadline = Date.now() + Math.max(0, seconds*1000);
+      updateTimerLine(meta); // 즉시 1회
+      if(countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(()=> updateTimerLine(meta), 1000);
+    }
+
+    function updateTimerLine(meta){
+      const remainSec = Math.max(0, Math.floor((countdownDeadline - Date.now())/1000));
+      if(lastTimerShown === remainSec) return;
+      lastTimerShown = remainSec;
+
+      const line = ensureTimerLine();
+      if(!line) return;
+
+      const who = meta?.playerName ? ` | 현재 턴: ${esc(meta.playerName)}${meta.team?`(${esc(meta.team)}팀)`:''}` : '';
+      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${who}`;
+      line.className = 'log';
+      if(remainSec <= 0 && countdownTimer){ clearInterval(countdownTimer); countdownTimer=null; }
+    }
+
     function updateBattleId(id){
       battleId=id; window.battleId=id;
       document.getElementById('currentBattleId').value=id;
+
+      // URL 동기화
       const url=new URL(location.href); url.searchParams.set('battle', id); history.replaceState(null,'',url.toString());
+
+      // 방 조인
       socket.emit('join',{ battleId:id, role:'admin' });
+
+      // 타이머/상태 리셋
+      if(countdownTimer) clearInterval(countdownTimer);
+      countdownTimer=null; countdownDeadline=0; lastTimerShown=null;
+      const tl=document.getElementById('timer-line'); if(tl) tl.remove();
+      lastSnap = null;
+
       addLog(`전투 방에 참여: ${id}`);
     }
 
@@ -278,8 +340,8 @@
     socket.io.on('error', (e)=> addLog('소켓 에러(io): '+(e?.message||e), 'error'));
     socket.on('connect_error', (e)=> addLog('소켓 연결 오류: '+(e?.message||e), 'error'));
 
-    // ===== 팀 목록 렌더 =====
-    function renderTeams(players){
+    // ===== 팀 목록 렌더(현재 턴 하이라이트 지원) =====
+    function renderTeams(players, highlightId){
       const A = (players||[]).filter(p=>p.team==='A');
       const B = (players||[]).filter(p=>p.team==='B');
       const aBox=document.getElementById('teamA'); const bBox=document.getElementById('teamB');
@@ -289,7 +351,7 @@
         const hp = Number(p.hp||0), max=Number(p.maxHp||100);
         const pct = Math.max(0,Math.min(100,(max>0? (hp/max)*100:0)));
         const wrap=document.createElement('div');
-        wrap.className='player-card';
+        wrap.className='player-card' + (highlightId && p.id===highlightId ? ' turn' : '');
         wrap.innerHTML = `
           <div class="player-info">
             <img src="${esc(p.avatar||'/uploads/avatars/default.svg')}" onerror="this.src='/uploads/avatars/default.svg'" alt="${esc(p.name)}"/>
@@ -308,77 +370,28 @@
       B.forEach(p=>bBox.appendChild(row(p)));
     }
 
-    // ===== 스냅샷/브로드캐스트 통합 처리 =====
-    let lastSnap = null;
-    let countdownTimer = null;
-    let countdownDeadline = 0;
-    let lastTimerShown = null;
-
+    // ===== 스냅샷 수신 =====
     const SNAPSHOT_EVENTS = ['battleUpdate','battle:update','battle:state','state','snapshot','game:update'];
     const LOG_EVENTS = ['battle:log','importantLog','log','game:log','round:start','round:end','turn:start','turn:end','phase:start','phase:end'];
     const TIMER_EVENTS = ['timer:tick','battle:tick','countdown','tick'];
 
-    function fmtMMSS(sec){
-      const s = Math.max(0, Math.floor(sec||0));
-      const m = Math.floor(s/60);
-      const r = s%60;
-      return (m<10?'0':'')+m+':'+(r<10?'0':'')+r;
-    }
-
-    function ensureTimerLine(){
-      const box = document.getElementById('logs'); if(!box) return null;
-      let line = document.getElementById('timer-line');
-      if(!line){
-        line = document.createElement('div');
-        line.id='timer-line';
-        line.className='log';
-        box.appendChild(line);
-      }
-      return line;
-    }
-
-    const phaseLabel = (ph)=>{
-      switch(ph){
-        case 'A_select': return 'A팀 선택';
-        case 'B_select': return 'B팀 선택';
-        case 'resolve' : return '라운드 해석';
-        case 'inter'   : return '다음 라운드 준비';
-        default        : return '-';
-      }
-    };
-
-    function setCountdownBySeconds(seconds, meta){
-      if(!Number.isFinite(seconds)) return;
-      countdownDeadline = Date.now() + Math.max(0, seconds*1000);
-      updateTimerLine(meta); // 즉시 1회
-      if(countdownTimer) clearInterval(countdownTimer);
-      countdownTimer = setInterval(()=> updateTimerLine(meta), 1000);
-    }
-
-    function updateTimerLine(meta){
-      const remainSec = Math.max(0, Math.floor((countdownDeadline - Date.now())/1000));
-      if(lastTimerShown === remainSec) return;
-      lastTimerShown = remainSec;
-
-      const line = ensureTimerLine();
-      if(!line) return;
-
-      const phaseTxt = meta?.phase ? ` | 페이즈: ${esc(phaseLabel(meta.phase))}` : '';
-      const teamTxt  = meta?.team  ? ` | 팀: ${esc(meta.team)}` : '';
-      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${phaseTxt}${teamTxt}`;
-      line.className = 'log';
-      if(remainSec <= 0 && countdownTimer){ clearInterval(countdownTimer); countdownTimer=null; }
-    }
-
     function handleSnapshot(snap){
       if(!snap) return;
-      renderTeams(snap.players||[]);
 
-      const prev = lastSnap || {};
+      // 저장
+      lastSnap = snap;
+
+      // 현재 턴 하이라이트 id
+      const currentId = snap?.currentTurn?.currentPlayer?.id || null;
+
+      // 렌더
+      renderTeams(snap.players||[], currentId);
+
+      // 상태 변화 로그
+      const prev = handleSnapshot._prev || {};
       const prevTurn = prev.currentTurn || {};
       const curTurn  = snap.currentTurn || {};
 
-      // 상태 변화 로그
       if(prev.status !== snap.status){
         if(snap.status==='active') addLog('전투 진행 상태: active', 'battle');
         else if(snap.status==='paused') addLog('전투 진행 상태: paused', 'battle');
@@ -386,25 +399,23 @@
         else if(snap.status==='waiting') addLog('전투 대기 상태', 'battle');
       }
 
-      // 라운드 시작
       if((prevTurn.turnNumber||0) !== (curTurn.turnNumber||0) && (curTurn.turnNumber||0) > 0){
         addLog(`${curTurn.turnNumber}라운드 시작`, 'battle');
       }
 
-      // 페이즈 전환 로그 (phase/currentTeam 기반)
-      if(prev.phase !== snap.phase){
-        addLog(`페이즈 전환: ${phaseLabel(snap.phase)}${snap.currentTeam?` (${snap.currentTeam}팀)`:''}`, 'battle');
-      } else if(prev.currentTeam !== snap.currentTeam && (snap.phase==='A_select' || snap.phase==='B_select')){
-        addLog(`팀 전환: ${snap.currentTeam}팀 선택 페이즈`, 'battle');
+      const prevPlayerId = prevTurn.currentPlayer?.id || null;
+      const curPlayer    = curTurn.currentPlayer || null;
+      if(prevPlayerId !== (curPlayer?.id||null) && curPlayer){
+        addLog(`턴 시작: ${curPlayer.name} (${curPlayer.team}팀)`, 'battle');
       }
 
-      // 타이머 동기화 (팀 선택/인터/해석 등 모든 페이즈에서 timeLeftSec 제공)
+      // 타이머 동기화
       const secs = Number(curTurn.timeLeftSec);
       if(Number.isFinite(secs)){
-        setCountdownBySeconds(secs, { phase: snap.phase, team: snap.currentTeam });
+        setCountdownBySeconds(secs, { playerName: curPlayer?.name, team: curPlayer?.team });
       }
 
-      lastSnap = snap;
+      handleSnapshot._prev = snap;
     }
 
     // 표준/레거시 스냅샷 모두 수신
@@ -429,8 +440,8 @@
       );
       if(Number.isFinite(s)){
         const meta = {
-          phase: payload?.phase || lastSnap?.phase,
-          team : payload?.team  || lastSnap?.currentTeam
+          playerName: payload?.player?.name || payload?.playerName || lastSnap?.currentTurn?.currentPlayer?.name,
+          team: payload?.player?.team || payload?.team || lastSnap?.currentTurn?.currentPlayer?.team
         };
         setCountdownBySeconds(s, meta);
       }
@@ -453,9 +464,18 @@
       }catch(e){ addLog('전투 생성 실패: '+e.message,'error'); }
     });
 
-    // ===== 제어 버튼 =====
+    // ===== 제어 버튼 (시작 전 인원 점검) =====
     document.getElementById('btnStart').addEventListener('click', ()=>{
       if(!battleId){ addLog('전투 ID가 없습니다(?battle=...)','error'); return; }
+      // 스냅샷이 있으면 간단 인원 체크(팀별 최소 1)
+      if(lastSnap && Array.isArray(lastSnap.players)){
+        const a = lastSnap.players.filter(p=>p.team==='A').length;
+        const b = lastSnap.players.filter(p=>p.team==='B').length;
+        if(a<1 || b<1){
+          addLog('시작 실패: 각 팀에 최소 1명 이상의 참가자가 필요합니다', 'error');
+          return;
+        }
+      }
       socket.emit('startBattle',{ battleId }, (r)=> addLog(r?.ok?'전투 시작':'전투 시작 실패', r?.ok?'info':'error'));
     });
     document.getElementById('btnPause').addEventListener('click', ()=>{
@@ -479,9 +499,10 @@
       }
       return undefined;
     }
+
+    // ⭐ playerLinks 우선 (토큰/개별 URL 포함). 없으면 빈 배열 반환.
     function unifyPlayers(payload){
-      if(Array.isArray(payload?.players)) return payload.players;
-      if(Array.isArray(payload?.playerLinks)){
+      if (Array.isArray(payload?.playerLinks) && payload.playerLinks.length){
         return payload.playerLinks.map(pl=>({
           playerId: pl.playerId || pl.id,
           name    : pl.playerName || pl.name,
@@ -492,6 +513,7 @@
       }
       return [];
     }
+
     async function postJson(url, body={}){
       const res = await fetch(url, {
         method:'POST',
@@ -504,6 +526,7 @@
       if(!res.ok) throw new Error('HTTP '+res.status);
       return res.json();
     }
+
     async function onGeneratePlayerLinks(){
       const id=battleId || new URL(location.href).searchParams.get('battle');
       if(!id){ addLog('전투 ID가 없습니다(?battle=...)','error'); return; }
@@ -526,6 +549,9 @@
       const list = unifyPlayers(data);
       const base = location.origin;
       const box  = document.getElementById('playerLinks'); box.innerHTML='';
+      if(!list.length){
+        addLog('참가자 링크가 없습니다 (참가자가 없거나 아직 링크를 만들 수 없는 상태)', 'error');
+      }
       list.forEach(p=>{
         const link = p.url || `${base}/player?battle=${encodeURIComponent(id)}&playerId=${encodeURIComponent(p.playerId||'')}&name=${encodeURIComponent(p.name||'')}&team=${encodeURIComponent(p.team||'')}&token=${encodeURIComponent(p.token||'')}`;
         const row  = document.createElement('div');
@@ -637,18 +663,18 @@
       const player = {
         name,
         team: document.getElementById('playerTeam').value,
-        hp: Number(document.getElementById('playerHp').value),
+        hp: clamp(document.getElementById('playerHp').value, 1, 9999),
         avatar: avatarUrl,
         stats: {
-          attack : Number(document.getElementById('playerAttack').value),
-          defense: Number(document.getElementById('playerDefense').value),
-          agility: Number(document.getElementById('playerAgility').value),
-          luck   : Number(document.getElementById('playerLuck').value)
+          attack : clamp(document.getElementById('playerAttack').value, 1, 5),
+          defense: clamp(document.getElementById('playerDefense').value, 1, 5),
+          agility: clamp(document.getElementById('playerAgility').value, 1, 5),
+          luck   : clamp(document.getElementById('playerLuck').value, 1, 5)
         },
         items: {
-          dittany       : Number(document.getElementById('playerDittany').value),
-          attackBooster : Number(document.getElementById('playerAttackBooster').value),
-          defenseBooster: Number(document.getElementById('playerDefenseBooster').value)
+          dittany       : clamp(document.getElementById('playerDittany').value, 0, 99),
+          attackBooster : clamp(document.getElementById('playerAttackBooster').value, 0, 99),
+          defenseBooster: clamp(document.getElementById('playerDefenseBooster').value, 0, 99)
         }
       };
       const payload = { battleId, player };
