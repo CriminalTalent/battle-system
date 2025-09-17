@@ -127,7 +127,7 @@
       <!-- 내 정보 -->
       <div class="my-info-box">
         <div class="row" style="margin-bottom:4px">
-          <img id="myPortrait" class="my-portrait" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%22440%22></svg>'">
+          <img id="myPortrait" class="my-portrait" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22></svg>'">
           <div style="flex:1">
             <div style="font-size:12px;color:var(--gold);margin-bottom:1px" id="myName">대기중...</div>
             <div class="row" style="margin-bottom:2px">
@@ -204,8 +204,14 @@
   const params   = new URLSearchParams(location.search);
   const battleId = params.get('battle');
   const token    = params.get('token');
-  // URL에 name이 있는 경우, 서버가 비어줄 때만 폴백에 사용
-  const urlName  = params.get('name');
+  const urlName  = params.get('name'); // 서버 이름 비어있을 때만 폴백
+
+  // ======= 아이템/룰 메타(서버로 함께 전달) =======
+  const RULES = {
+    attackBooster : { chance:0.6, multiplier:2, duration:'turn', uses:1, note:'60%로 발동, 성공 시 이번 공격 1회 2배(적 대상)' },
+    defenseBooster: { chance:0.6, multiplier:2, duration:'turn', uses:1, note:'60%로 발동, 성공 시 이번 턴 1회 2배(아군 대상)' },
+    dittany       : { heal:10, guarantee:true, note:'확정 회복 10 (아군 대상, 본인 포함)' }
+  };
 
   // 상태
   let myPlayer       = null;
@@ -223,7 +229,7 @@
   let lastTimeLeft = 0;
   let lastSyncAt   = 0;
 
-  // 검은 화면(완전 블랙) SVG dataURL
+  // 검은 화면 대체 이미지
   const BLACK_SVG_250 = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="250" height="250"><rect width="250" height="250" fill="%23000"/></svg>';
   const BLACK_SVG_40  = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="%23000"/></svg>';
 
@@ -237,7 +243,7 @@
       img.src = player.avatar;
       img.onerror = ()=>{ img.src = BLACK_SVG_250; };
     }else{
-      img.src = BLACK_SVG_250; // 현재 플레이어가 없거나 아바타 없음 → 검은 화면
+      img.src = BLACK_SVG_250;
     }
   }
 
@@ -471,39 +477,63 @@
   };
   document.getElementById('defendBtn').onclick = ()=>{ if(!isMyTurnNow()) return; sendAction({type:'defend'}); };
   document.getElementById('dodgeBtn').onclick  = ()=>{ if(!isMyTurnNow()) return; sendAction({type:'dodge'});  };
+
+  // ---- 아이템 버튼 (룰 반영) ----
   document.getElementById('itemBtn').onclick   = ()=>{
     if(!isMyTurnNow()) return;
     const it = myPlayer.items||{};
     const list=[];
-    if((it.dittany||it.ditany||0)>0) list.push({k:'dittany', name:'디터니', team:'ally'});
-    if((it.attackBooster||it.attack_boost||0)>0) list.push({k:'attackBooster', name:'공격 보정기', team:'enemy'});
-    if((it.defenseBooster||it.defense_boost||0)>0) list.push({k:'defenseBooster', name:'방어 보정기', team:'ally'});
+    if((it.dittany||it.ditany||0)>0) list.push({k:'dittany', name:'디터니', hint:RULES.dittany.note, team:'ally'});
+    if((it.attackBooster||it.attack_boost||0)>0) list.push({k:'attackBooster', name:'공격 보정기', hint:RULES.attackBooster.note, team:'enemy'});
+    if((it.defenseBooster||it.defense_boost||0)>0) list.push({k:'defenseBooster', name:'방어 보정기', hint:RULES.defenseBooster.note, team:'ally'});
     if(!list.length){ alert('사용 가능한 아이템이 없습니다'); return; }
 
-    // 간단한 선택 UI
+    // 간단한 선택 UI (힌트 포함)
     document.getElementById('overlayTitle').textContent = '아이템 선택';
     const grid = document.getElementById('targetGrid');
-    grid.innerHTML = list.map(it=>`<div class="target-card item-pick" data-k="${it.k}" style="padding:16px;font-weight:700">${it.name}</div>`).join('');
+    grid.innerHTML = list.map(it=>`
+      <div class="target-card item-pick" data-k="${it.k}" style="padding:16px;font-weight:700">
+        <div>${it.name}</div>
+        <div style="font-size:11px;color:#c9c9c9;margin-top:6px">${esc(it.hint||'')}</div>
+      </div>
+    `).join('');
     document.getElementById('targetOverlay').style.display = 'flex';
 
-    window.targetCallback = (picked)=>{
-      // no-op; item pick uses separate handler below
-    };
+    window.targetCallback = (picked)=>{ /* no-op */ };
 
     grid.querySelectorAll('.item-pick').forEach(el=>{
       el.addEventListener('click', ()=>{
         const k = el.getAttribute('data-k');
         closeOverlay();
+
         if(k==='dittany'){
-          showTargetOverlay('치유 대상 선택', getTeamTargets(), (t)=> sendAction({type:'item', item:'dittany', targetId:t.id}));
+          showTargetOverlay('치유 대상 선택 (확정 회복 10)', getTeamTargets(), (t)=> 
+            sendAction({
+              type:'item', item:'dittany', targetId:t.id,
+              heal:RULES.dittany.heal, guarantee:true
+            })
+          );
         }else if(k==='attackBooster'){
-          showTargetOverlay('공격 보정 대상 선택', getEnemyTargets(), (t)=> sendAction({type:'item', item:'attackBooster', targetId:t.id}));
+          showTargetOverlay('공격 보정 대상 선택 (이번 공격 1회, 60%)', getEnemyTargets(), (t)=> 
+            sendAction({
+              type:'item', item:'attackBooster', targetId:t.id,
+              chance:RULES.attackBooster.chance, multiplier:RULES.attackBooster.multiplier,
+              duration:RULES.attackBooster.duration, uses:RULES.attackBooster.uses
+            })
+          );
         }else if(k==='defenseBooster'){
-          showTargetOverlay('방어 보정 대상 선택', getTeamTargets(), (t)=> sendAction({type:'item', item:'defenseBooster', targetId:t.id}));
+          showTargetOverlay('방어 보정 대상 선택 (이번 턴 1회, 60%)', getTeamTargets(), (t)=> 
+            sendAction({
+              type:'item', item:'defenseBooster', targetId:t.id,
+              chance:RULES.defenseBooster.chance, multiplier:RULES.defenseBooster.multiplier,
+              duration:RULES.defenseBooster.duration, uses:RULES.defenseBooster.uses
+            })
+          );
         }
       }, {once:true});
     });
   };
+
   document.getElementById('passBtn').onclick   = ()=>{ if(!isMyTurnNow()) return; sendAction({type:'pass'}); };
 
   // ======= 채팅 =======
@@ -535,7 +565,6 @@
 
   // ======= 로그 =======
   function addLog(log){
-    // 허용되는 포맷: {ts, type, message} 또는 {timestamp, level, text}
     const ts  = log.ts || log.timestamp || Date.now();
     const txt = log.message || log.text || '';
     const type = log.type || log.level || 'system';
@@ -561,10 +590,9 @@
     socket.emit('join', {battleId});
   });
 
-  // 인증(플레이어) — 서버가 여러 이벤트명을 쓰는 경우 모두 지원
+  // 인증(플레이어)
   function applyAuthedPlayer(p){
     if(!p) return;
-    // 서버가 이름을 못 내려주는 경우 URL name으로 보완
     if(!p.name && urlName) p.name = urlName;
     myPlayer = p;
     updateMyInfo();
@@ -577,7 +605,7 @@
   socket.on('authSuccess',  (d)=> applyAuthedPlayer(d.player));
   socket.on('auth:success', (d)=> applyAuthedPlayer(d.player));
 
-  // 스냅샷 — 양쪽 이벤트 모두 수신하되, render에서 키 비교로 1회만 반영
+  // 스냅샷
   const onSnap = (snap)=>{ battleState = snap; render(); };
   socket.on('battleUpdate', onSnap);
   socket.on('battle:update', onSnap);
