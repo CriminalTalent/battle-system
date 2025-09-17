@@ -2,47 +2,69 @@
   "name": "pyxis-battle-server",
   "version": "3.0.2",
   "description": "PYXIS Battle System - 실시간 턴제 전투 서버",
-  "main": "index.js",
+  "private": true,
   "type": "module",
-  
+  "main": "index.js",
+
   "scripts": {
     "dev": "cross-env NODE_ENV=development nodemon index.js",
     "start": "cross-env NODE_ENV=production node index.js",
     "debug": "cross-env NODE_ENV=development node --inspect=0.0.0.0:9229 index.js",
+
+    // --- 운영(서버) 편의 ---
+    "start:pm2": "pm2 startOrReload ecosystem.config.mjs --env production",
+    "reload:pm2": "pm2 reload pyxis-battle-system",
+    "logs": "pm2 logs pyxis-battle-system",
+
+    // --- 안전가드: 업로드 디렉터리 자동 생성 ---
+    "prestart": "node -e \"require('fs').mkdirSync('./public/uploads/avatars',{recursive:true})\"",
+
     "test": "echo 'Tests not implemented yet' && exit 0"
   },
-  
+
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.5",
-    "cors": "^2.8.5",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5",
     "compression": "^1.7.4",
-    "multer": "^1.4.5-lts.1"
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.7.5"
   },
-  
+
   "devDependencies": {
-    "nodemon": "^3.0.2",
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "nodemon": "^3.0.2"
   },
-  
+
+  "nodemonConfig": {
+    "watch": ["."],
+    "ignore": [
+      "public/uploads/**",
+      "uploads/**",
+      "logs/**",
+      "node_modules/**"
+    ],
+    "ext": "js,mjs,json",
+    "delay": "150ms"
+  },
+
   "engines": {
     "node": ">=18.17.0",
     "npm": ">=9.0.0"
   },
-  
+
   "author": {
     "name": "CriminalTalent",
     "email": "rntjdrud1@gmail.com"
   },
-  
+
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/CriminalTalent/battle-system.git"
   },
-  
+
   "keywords": [
     "pyxis",
     "battle-system",
