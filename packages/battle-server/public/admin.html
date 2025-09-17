@@ -43,61 +43,21 @@
       width:100%; padding:8px 12px; background:var(--deep-navy); color:var(--text);
       border:1px solid var(--border-light); border-radius:var(--radius); font-size:.9rem
     }
-    .field input:focus,.field select:focus{
-      outline:none; border-color:var(--gold); box-shadow:0 0 0 2px rgba(220,199,162,.2)
-    }
-    .grid{ display:grid; gap:12px }
-    .grid-2{ grid-template-columns:1fr 1fr }
-    .grid-3{ grid-template-columns:1fr 1fr 1fr }
-    .grid-4{ grid-template-columns:1fr 1fr 1fr 1fr }
-    .compact{ gap:8px }
-
     .btn{ background:linear-gradient(135deg,var(--gold) 0%, var(--gold-bright) 100%);
       border:none; color:#0b0f14; padding:10px 12px; border-radius:8px; font-weight:700; cursor:pointer }
     .btn.ghost{ background:transparent; border:1px solid var(--gold); color:var(--gold) }
-    .btn.danger{ background:#3b0c0c; border:1px solid #8a5; color:var(--gold) }
     .btn.block{ width:100% }
-    .btn.small{ padding:4px 8px; font-size:.75rem }
-
-    .hint{ color:var(--text-muted); font-size:.8rem; margin-top:6px }
-
+    .btn.small{ padding:4px 8px; font-size:.75rem; border-radius:6px; margin-left:6px }
     .team-rosters{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
-    @media (max-width:768px){ .team-rosters{ grid-template-columns:1fr } }
-
-    .team h4{ color:var(--gold); margin-bottom:8px; font-size:1rem }
-    .team-list{ display:grid; gap:8px }
     .player-card{ background:var(--glass-2); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px }
     .player-info{ display:flex; align-items:center; gap:12px }
     .player-info img{ width:40px; height:40px; border-radius:50%; border:2px solid var(--gold); object-fit:cover; background:#0b1420 }
-    .player-details{ flex:1 }
     .player-details .name{ font-weight:600; color:var(--gold); font-size:.9rem }
-    .hp-bar{ background:#0b1420; border-radius:10px; height:8px; margin:4px 0; position:relative; border:1px solid var(--border-light) }
-    .hp-fill{ background:linear-gradient(90deg,#4ade80 0%, #22c55e 100%); height:100%; border-radius:9px; transition:width .3s ease }
-    .hp-text{ font-size:.7rem; color:var(--text-muted) }
-    .stats{ font-size:.7rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace }
-
-    /* 로그/채팅 패널 */
     .logs,.chat{ max-height:340px; overflow:auto; display:grid; gap:6px }
     .log{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02);
       border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
-    .log.rule{ background:var(--gold); color:#000; font-weight:700 }
-    .log.error{ color:#ff6b6b }
-    .chat-entry{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02);
-      border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
     .tmark{ font-family:'JetBrains Mono',monospace; color:#000; background:var(--gold); border-radius:6px; padding:0 6px; margin-right:6px }
-
-    .avatar-preview{
-      width:60px; height:60px; border-radius:50%; border:2px solid var(--gold);
-      margin-top:8px; display:block; object-fit:cover; background:#0b1420
-    }
-    .row{ display:flex; align-items:center }
-    .row.between{ justify-content:space-between }
-    .pill{ background:var(--gold); color:var(--deep-navy); padding:2px 8px; border-radius:12px; font-size:.7rem; font-weight:600 }
   </style>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 </head>
 <body>
   <header class="header"><h1 class="title">PYXIS</h1></header>
@@ -113,18 +73,14 @@
             <select id="battleMode">
               <option value="1v1">1v1</option>
               <option value="2v2" selected>2v2</option>
-              <option value="3v3">3v3</option>
-              <option value="4v4">4v4</option>
             </select>
           </div>
           <button id="btnCreate" class="btn block">전투 생성</button>
-          <div class="hint">전투 생성 후 URL 파라미터가 자동으로 추가됩니다.</div>
         </div>
-
         <div class="card">
           <div class="field">
             <label>전투 ID</label>
-            <input id="currentBattleId" type="text" readonly placeholder="전투 생성 후 표시"/>
+            <input id="currentBattleId" type="text" readonly/>
           </div>
           <div class="grid grid-4 compact">
             <button id="btnStart" class="btn">시작</button>
@@ -133,8 +89,6 @@
             <button id="btnEnd" class="btn danger">종료</button>
           </div>
         </div>
-
-        <!-- 링크 / 비밀번호 -->
         <div class="card">
           <h3>링크 / 비밀번호</h3>
           <button id="btnGenLinks" class="btn block">참가자 링크 / 관전자 비번 생성</button>
@@ -142,19 +96,45 @@
             <label>관전자 비밀번호</label>
             <input id="spectatorOtp" type="text" readonly/>
           </div>
-          <div class="field">
-            <label>관전자 URL</label>
-            <input id="spectatorUrl" type="text" readonly/>
+          <div class="field" style="display:flex; align-items:center; gap:6px">
+            <div style="flex:1">
+              <label>관전자 URL</label>
+              <input id="spectatorUrl" type="text" readonly/>
+            </div>
+            <!-- ⬇ 작은 버튼 추가 -->
+            <button id="copySpectatorLinkBtn" class="btn ghost small">복사</button>
           </div>
-          <!-- 👇 추가된 관전자 링크 복사 버튼 -->
-          <button id="copySpectatorLinkBtn" class="btn ghost block">관전자 페이지 링크 복사</button>
-          <div class="hint">참가자 개별 링크(이름/팀/OTP 포함)는 아래 목록에 표시됩니다.</div>
           <div id="playerLinks" class="field"></div>
         </div>
       </div>
 
-      <!-- 전투 참가자 관리 -->
-      <!-- ... (이전과 동일, 생략) ... -->
+      <!-- 참가자 관리 -->
+      <div class="section">
+        <h2>전투 참가자 관리</h2>
+        <div class="card">
+          <div class="field"><label>이름</label><input id="playerName" type="text"/></div>
+          <button id="btnAddPlayer" class="btn block">전투 참가자 추가</button>
+        </div>
+        <div class="card">
+          <h3>팀 목록</h3>
+          <div class="team-rosters">
+            <div class="team"><h4>A</h4><div id="teamA"></div></div>
+            <div class="team"><h4>B</h4><div id="teamB"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 로그 & 채팅 -->
+      <div class="section">
+        <h2>실시간 로그</h2>
+        <div class="card"><div id="logs" class="logs"></div></div>
+        <h2>채팅</h2>
+        <div class="card">
+          <div id="chat" class="chat"></div>
+          <input id="chatMsg" type="text" placeholder="메시지 입력...">
+          <button id="btnSend" class="btn">전송</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -163,34 +143,15 @@
   (function(){
     const socket = io({ path: "/socket.io" });
     let battleId = new URL(location.href).searchParams.get('battle') || '';
-    const esc = (t)=> String(t||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-
-    function addLog(msg,type='info'){
-      const logs=document.getElementById('logs'); if(!logs) return;
-      const t=new Date().toLocaleTimeString();
-      const el=document.createElement('div');
-      el.className='log'+(type==='battle'?' rule': type==='error'?' error':'');
-      el.innerHTML = `<span class="tmark">${esc(t)}</span>${esc(msg)}`;
-      logs.appendChild(el); logs.scrollTop=logs.scrollHeight;
-    }
-
-    function updateBattleId(id){
-      battleId=id; window.battleId=id;
-      document.getElementById('currentBattleId').value=id;
-      const url=new URL(location.href); url.searchParams.set('battle', id); history.replaceState(null,'',url.toString());
-      socket.emit('join',{ battleId:id });
-      addLog(`전투 방에 참여: ${id}`);
-    }
-
-    // 관전자 링크 복사 기능
+    function addLog(msg){const logs=document.getElementById('logs');const t=new Date().toLocaleTimeString();const el=document.createElement('div');el.className='log';el.innerHTML=`<span class="tmark">${t}</span>${msg}`;logs.appendChild(el);logs.scrollTop=logs.scrollHeight;}
+    // 복사 기능
     document.getElementById('copySpectatorLinkBtn').onclick = ()=>{
-      if(!battleId){ alert('전투 ID가 없습니다'); return; }
-      const url = `${location.origin}/spectator.html?battle=${battleId}`;
+      const url = document.getElementById('spectatorUrl').value.trim();
+      if(!url){ alert('관전자 URL이 없습니다'); return; }
       navigator.clipboard.writeText(url)
         .then(()=> addLog('관전자 페이지 링크 복사 완료'))
-        .catch(()=> addLog('관전자 페이지 링크 복사 실패','error'));
+        .catch(()=> addLog('관전자 페이지 링크 복사 실패'));
     };
-
     addLog('관리자 페이지 시작');
   })();
   </script>
