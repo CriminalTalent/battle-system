@@ -4,71 +4,42 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>PYXIS - 전투 관리자</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
     :root{
-      --deep-navy:#000813;
-      --gold:#DCC7A2;
-      --gold-bright:#D4BA8D;
-      --glass-1:rgba(0,8,19,.7);
-      --glass-2:rgba(0,8,19,.5);
-      --border-light:rgba(220,199,162,.3);
-      --text:#fff;
-      --text-muted:rgba(255,255,255,.7);
-      --radius:6px;
+      --deep-navy:#000813; --gold:#DCC7A2; --gold-bright:#D4BA8D;
+      --glass-1:rgba(0,8,19,.7); --glass-2:rgba(0,8,19,.5);
+      --border-light:rgba(220,199,162,.3); --text:#fff; --text-muted:rgba(255,255,255,.7); --radius:6px;
     }
     *{margin:0;padding:0;box-sizing:border-box}
-    body{
-      font-family:'Cinzel',serif;
-      background:linear-gradient(135deg,var(--deep-navy) 0%, #001122 100%);
-      color:var(--text); min-height:100vh; line-height:1.6;
-    }
-    .header{ text-align:center; padding:20px 0; background:var(--glass-1);
-      border-bottom:1px solid var(--border-light); backdrop-filter:blur(10px) }
-    .title{ color:var(--gold); font-size:2.5rem; font-weight:700; letter-spacing:.15em;
-      text-shadow:0 0 20px rgba(220,199,162,.5) }
-
+    body{font-family:'Cinzel',serif;background:linear-gradient(135deg,var(--deep-navy) 0%, #001122 100%);color:var(--text); min-height:100vh; line-height:1.6;}
+    .header{ text-align:center; padding:20px 0; background:var(--glass-1);border-bottom:1px solid var(--border-light); backdrop-filter:blur(10px) }
+    .title{ color:var(--gold); font-size:2.5rem; font-weight:700; letter-spacing:.15em;text-shadow:0 0 20px rgba(220,199,162,.5) }
     .admin-container{ max-width:1400px; margin:0 auto; padding:20px }
     .admin-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; align-items:start }
     @media (max-width:1200px){ .admin-grid{ grid-template-columns:1fr 1fr } }
     @media (max-width:768px){ .admin-grid{ grid-template-columns:1fr } }
-
     .section h2{ color:var(--gold); margin-bottom:16px; font-size:1.2rem; font-weight:600 }
-    .card{
-      background:var(--glass-1); border:1px solid var(--border-light);
-      border-radius:var(--radius); padding:20px; margin-bottom:16px; backdrop-filter:blur(10px)
-    }
+    .card{ background:var(--glass-1); border:1px solid var(--border-light); border-radius:var(--radius); padding:20px; margin-bottom:16px; backdrop-filter:blur(10px) }
     .field{ margin-bottom:12px }
     .field label{ display:block; color:var(--gold); font-weight:600; margin-bottom:4px; font-size:.9rem }
-    .field input,.field select{
-      width:100%; padding:8px 12px; background:var(--deep-navy); color:var(--text);
-      border:1px solid var(--border-light); border-radius:var(--radius); font-size:.9rem
-    }
-    .field input:focus,.field select:focus{
-      outline:none; border-color:var(--gold); box-shadow:0 0 0 2px rgba(220,199,162,.2)
-    }
-
+    .field input,.field select{ width:100%; padding:8px 12px; background:var(--deep-navy); color:var(--text); border:1px solid var(--border-light); border-radius:var(--radius); font-size:.9rem }
+    .field input:focus,.field select:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 2px rgba(220,199,162,.2) }
     .grid{ display:grid; gap:12px }
-    .grid-2{ grid-template-columns:1fr 1fr }
-    .grid-3{ grid-template-columns:1fr 1fr 1fr }
     .grid-4{ grid-template-columns:1fr 1fr 1fr 1fr }
     .compact{ gap:8px }
-
-    .btn{ background:linear-gradient(135deg,var(--gold) 0%, var(--gold-bright) 100%);
-      border:none; color:#0b0f14; padding:10px 12px; border-radius:8px; font-weight:700; cursor:pointer }
+    .btn{ background:linear-gradient(135deg,var(--gold) 0%, var(--gold-bright) 100%);border:none; color:#0b0f14; padding:10px 12px; border-radius:8px; font-weight:700; cursor:pointer }
     .btn.ghost{ background:transparent; border:1px solid var(--gold); color:var(--gold) }
     .btn.danger{ background:#3b0c0c; border:1px solid #8a5; color:var(--gold) }
-    .btn.block{ width:100% }
-    .btn.small{ padding:4px 8px; font-size:.75rem }
-
+    .btn.block{ width:100% } .btn.small{ padding:4px 8px; font-size:.75rem }
     .hint{ color:var(--text-muted); font-size:.8rem; margin-top:6px }
-
     .team-rosters{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
     @media (max-width:768px){ .team-rosters{ grid-template-columns:1fr } }
-
     .team h4{ color:var(--gold); margin-bottom:8px; font-size:1rem }
     .team-list{ display:grid; gap:8px }
-    .player-card{ background:var(--glass-2); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px; transition:border-color .2s, box-shadow .2s }
-    .player-card.turn{ border-color:var(--gold); box-shadow:0 0 0 2px rgba(220,199,162,.25) }
+    .player-card{ background:var(--glass-2); border:1px solid var(--border-light); border-radius:var(--radius); padding:12px }
     .player-info{ display:flex; align-items:center; gap:12px }
     .player-info img{ width:40px; height:40px; border-radius:50%; border:2px solid var(--gold); object-fit:cover; background:#0b1420 }
     .player-details{ flex:1 }
@@ -77,31 +48,18 @@
     .hp-fill{ background:linear-gradient(90deg,#4ade80 0%, #22c55e 100%); height:100%; border-radius:9px; transition:width .3s ease }
     .hp-text{ font-size:.7rem; color:var(--text-muted) }
     .stats{ font-size:.7rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace }
-
-    .avatar-preview{
-      width:60px; height:60px; border-radius:50%; border:2px solid var(--gold);
-      margin-top:8px; display:block; object-fit:cover; background:#0b1420
-    }
-
-    /* 로그/채팅 패널 */
+    .avatar-preview{ width:60px; height:60px; border-radius:50%; border:2px solid var(--gold); margin-top:8px; display:block; object-fit:cover; background:#0b1420 }
     .logs,.chat{ max-height:340px; overflow:auto; display:grid; gap:6px }
-    .log{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02);
-      border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
+    .log{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
     .log.rule{ background:var(--gold); color:#000; font-weight:700 }
     .log.error{ color:#ff6b6b }
-    .chat-entry{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02);
-      border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
+    .chat-entry{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
     .tmark{ font-family:'JetBrains Mono',monospace; color:#000; background:var(--gold); border-radius:6px; padding:0 6px; margin-right:6px }
     .chat-name{ font-weight:700 } .chat-sep{ padding:0 4px; opacity:.9 }
   </style>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 </head>
 <body>
   <header class="header"><h1 class="title">PYXIS</h1></header>
-
   <div class="admin-container">
     <div class="admin-grid">
       <!-- 전투 제어 -->
@@ -133,7 +91,6 @@
           </div>
         </div>
 
-        <!-- 링크 / 비밀번호 -->
         <div class="card">
           <h3>링크 / 비밀번호</h3>
           <button id="btnGenLinks" class="btn block">참가자 링크 / 관전자 비번 생성</button>
@@ -191,15 +148,14 @@
           </div>
 
           <div class="grid grid-3">
-            <div class="field"><label>디터니</label><input id="playerDittany" type="number" value="0" min="0" max="99"/></div>
-            <div class="field"><label>공격 보정기</label><input id="playerAttackBooster" type="number" value="0" min="0" max="99"/></div>
-            <div class="field"><label>방어 보정기</label><input id="playerDefenseBooster" type="number" value="0" min="0" max="99"/></div>
+            <div class="field"><label>디터니</label><input id="playerDittany" type="number" value="0" min="0" max="9"/></div>
+            <div class="field"><label>공격 보정기</label><input id="playerAttackBooster" type="number" value="0" min="0" max="9"/></div>
+            <div class="field"><label>방어 보정기</label><input id="playerDefenseBooster" type="number" value="0" min="0" max="9"/></div>
           </div>
 
           <button id="btnAddPlayer" class="btn block">전투 참가자 추가</button>
         </div>
 
-        <!-- 팀 목록 -->
         <div class="card">
           <h3>팀 목록</h3>
           <div class="team-rosters">
@@ -235,518 +191,7 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-  (function(){
-    // ===== 전역 =====
-    const socket = io({ path: "/socket.io" });
-    let battleId = new URL(location.href).searchParams.get('battle') || '';
-
-    // 타이머 상태(리셋 필요)
-    let countdownTimer = null;
-    let countdownDeadline = 0;
-    let lastTimerShown = null;
-
-    // 최신 스냅샷 저장(시작 전 인원 체크/하이라이트에 사용)
-    let lastSnap = null;
-
-    // ===== 유틸 =====
-    const esc = (t)=> String(t||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const seenChat = new Set(), seenLog = new Set();
-    const dedupe = (set, key, limit=400)=>{ if(set.has(key)) return true; set.add(key); if(set.size>limit){ const f=set.values().next().value; set.delete(f);} return false; };
-    const clamp=(n,min,max)=>Math.max(min,Math.min(max,Number(n||0)));
-
-    function addLog(msg, type='info'){
-      const logs=document.getElementById('logs'); if(!logs) return;
-      const t=new Date().toLocaleTimeString('ko-KR',{hour12:false});
-      const el=document.createElement('div');
-      el.className='log'+(type==='battle'?' rule': type==='error'?' error':'' );
-      el.innerHTML = `<span class="tmark">${esc(t)}</span>${esc(msg)}`;
-      logs.appendChild(el); logs.scrollTop=logs.scrollHeight;
-    }
-
-    function addChatLine(name, text){
-      const key = name+'|'+text+'|'+Date.now();
-      if(dedupe(seenChat, key)) return;
-      const box=document.getElementById('chat');
-      const el=document.createElement('div');
-      el.className='chat-entry';
-      el.innerHTML = `<span class="chat-name">${esc(name)}</span><span class="chat-sep"> : </span><span>${esc(text)}</span>`;
-      box.appendChild(el); box.scrollTop=box.scrollHeight;
-    }
-
-    function ensureTimerLine(){
-      const box = document.getElementById('logs'); if(!box) return null;
-      let line = document.getElementById('timer-line');
-      if(!line){
-        line = document.createElement('div');
-        line.id='timer-line';
-        line.className='log';
-        box.appendChild(line);
-      }
-      return line;
-    }
-
-    function fmtMMSS(sec){
-      const s = Math.max(0, Math.floor(sec||0));
-      const m = Math.floor(s/60);
-      const r = s%60;
-      return (m<10?'0':'')+m+':'+(r<10?'0':'')+r;
-    }
-
-    function setCountdownBySeconds(seconds, meta){
-      if(!Number.isFinite(seconds)) return;
-      countdownDeadline = Date.now() + Math.max(0, seconds*1000);
-      updateTimerLine(meta); // 즉시 1회
-      if(countdownTimer) clearInterval(countdownTimer);
-      countdownTimer = setInterval(()=> updateTimerLine(meta), 1000);
-    }
-
-    function updateTimerLine(meta){
-      const remainSec = Math.max(0, Math.floor((countdownDeadline - Date.now())/1000));
-      if(lastTimerShown === remainSec) return;
-      lastTimerShown = remainSec;
-
-      const line = ensureTimerLine();
-      if(!line) return;
-
-      const who = meta?.playerName ? ` | 현재 턴: ${esc(meta.playerName)}${meta.team?`(${esc(meta.team)}팀)`:''}` : '';
-      line.innerHTML = `<span class="tmark">TIMER</span>남은 시간 ${fmtMMSS(remainSec)}${who}`;
-      line.className = 'log';
-      if(remainSec <= 0 && countdownTimer){ clearInterval(countdownTimer); countdownTimer=null; }
-    }
-
-    function updateBattleId(id){
-      battleId=id; window.battleId=id;
-      document.getElementById('currentBattleId').value=id;
-
-      // URL 동기화
-      const url=new URL(location.href); url.searchParams.set('battle', id); history.replaceState(null,'',url.toString());
-
-      // 방 조인
-      socket.emit('join',{ battleId:id, role:'admin' });
-
-      // 타이머/상태 리셋
-      if(countdownTimer) clearInterval(countdownTimer);
-      countdownTimer=null; countdownDeadline=0; lastTimerShown=null;
-      const tl=document.getElementById('timer-line'); if(tl) tl.remove();
-      lastSnap = null;
-
-      addLog(`전투 방에 참여: ${id}`);
-    }
-
-    // ===== 소켓 상태 로그 =====
-    socket.on('connect', ()=> addLog('소켓 연결됨: '+socket.id));
-    socket.on('disconnect', (r)=> addLog('소켓 연결 종료: '+(r||'')));
-    socket.io.on('error', (e)=> addLog('소켓 에러(io): '+(e?.message||e), 'error'));
-    socket.on('connect_error', (e)=> addLog('소켓 연결 오류: '+(e?.message||e), 'error'));
-
-    // ===== 팀 목록 렌더(현재 턴 하이라이트 지원) =====
-    function renderTeams(players, highlightId){
-      const A = (players||[]).filter(p=>p.team==='A');
-      const B = (players||[]).filter(p=>p.team==='B');
-      const aBox=document.getElementById('teamA'); const bBox=document.getElementById('teamB');
-      aBox.innerHTML=''; bBox.innerHTML='';
-
-      function row(p){
-        const hp = Number(p.hp||0), max=Number(p.maxHp||100);
-        const pct = Math.max(0,Math.min(100,(max>0? (hp/max)*100:0)));
-        const wrap=document.createElement('div');
-        wrap.className='player-card' + (highlightId && p.id===highlightId ? ' turn' : '');
-        wrap.innerHTML = `
-          <div class="player-info">
-            <img src="${esc(p.avatar||'/uploads/avatars/default.svg')}" onerror="this.src='/uploads/avatars/default.svg'" alt="${esc(p.name)}"/>
-            <div class="player-details">
-              <div class="name">${esc(p.name)}</div>
-              <div class="hp-bar"><div class="hp-fill" style="width:${pct}%"></div></div>
-              <div class="hp-text">${hp}/${max}</div>
-              <div class="stats">공:${p.stats?.attack??1} 방:${p.stats?.defense??1} 민:${p.stats?.agility??1} 행:${p.stats?.luck??1}</div>
-            </div>
-            <button class="btn danger small" data-del="${esc(p.id)}">삭제</button>
-          </div>
-        `;
-        return wrap;
-      }
-      A.forEach(p=>aBox.appendChild(row(p)));
-      B.forEach(p=>bBox.appendChild(row(p)));
-    }
-
-    // ===== 스냅샷 수신 =====
-    const SNAPSHOT_EVENTS = ['battleUpdate','battle:update','battle:state','state','snapshot','game:update'];
-    const LOG_EVENTS = ['battle:log','importantLog','log','game:log','round:start','round:end','turn:start','turn:end','phase:start','phase:end'];
-    const TIMER_EVENTS = ['timer:tick','battle:tick','countdown','tick'];
-
-    function handleSnapshot(snap){
-      if(!snap) return;
-
-      // 저장
-      lastSnap = snap;
-
-      // 현재 턴 하이라이트 id
-      const currentId = snap?.currentTurn?.currentPlayer?.id || null;
-
-      // 렌더
-      renderTeams(snap.players||[], currentId);
-
-      // 상태 변화 로그
-      const prev = handleSnapshot._prev || {};
-      const prevTurn = prev.currentTurn || {};
-      const curTurn  = snap.currentTurn || {};
-
-      if(prev.status !== snap.status){
-        if(snap.status==='active') addLog('전투 진행 상태: active', 'battle');
-        else if(snap.status==='paused') addLog('전투 진행 상태: paused', 'battle');
-        else if(snap.status==='ended') addLog('전투 진행 상태: ended', 'battle');
-        else if(snap.status==='waiting') addLog('전투 대기 상태', 'battle');
-      }
-
-      if((prevTurn.turnNumber||0) !== (curTurn.turnNumber||0) && (curTurn.turnNumber||0) > 0){
-        addLog(`${curTurn.turnNumber}라운드 시작`, 'battle');
-      }
-
-      const prevPlayerId = prevTurn.currentPlayer?.id || null;
-      const curPlayer    = curTurn.currentPlayer || null;
-      if(prevPlayerId !== (curPlayer?.id||null) && curPlayer){
-        addLog(`턴 시작: ${curPlayer.name} (${curPlayer.team}팀)`, 'battle');
-      }
-
-      // 타이머 동기화
-      const secs = Number(curTurn.timeLeftSec);
-      if(Number.isFinite(secs)){
-        setCountdownBySeconds(secs, { playerName: curPlayer?.name, team: curPlayer?.team });
-      }
-
-      handleSnapshot._prev = snap;
-    }
-
-    // 표준/레거시 스냅샷 모두 수신
-    const onUpdate = (snap)=> handleSnapshot(snap);
-    SNAPSHOT_EVENTS.forEach(ev=> socket.on(ev, onUpdate));
-
-    // 서버 로그 통합 수신(중복 제거)
-    function onBattleLog(payload){
-      const msg = payload?.message || payload?.msg || '';
-      const type = payload?.type || 'info';
-      const ts = payload?.ts || payload?.timestamp || payload?.time || '';
-      const key = (ts? String(ts):'')+'|'+msg;
-      if(dedupe(seenLog, key)) return;
-      addLog(msg, type==='battle' ? 'battle' : type);
-    }
-    LOG_EVENTS.forEach(ev=> socket.on(ev, onBattleLog));
-
-    // 타이머 브로드캐스트 수신 시 즉시 보정
-    function onTimer(payload){
-      const s = Number(
-        payload?.secondsLeft ?? payload?.sec ?? payload?.timeLeftSec ?? payload?.remain ?? 0
-      );
-      if(Number.isFinite(s)){
-        const meta = {
-          playerName: payload?.player?.name || payload?.playerName || lastSnap?.currentTurn?.currentPlayer?.name,
-          team: payload?.player?.team || payload?.team || lastSnap?.currentTurn?.currentPlayer?.team
-        };
-        setCountdownBySeconds(s, meta);
-      }
-    }
-    TIMER_EVENTS.forEach(ev=> socket.on(ev, onTimer));
-
-    // ===== 전투 생성 =====
-    document.getElementById('btnCreate').addEventListener('click', async ()=>{
-      try{
-        const mode=document.getElementById('battleMode').value;
-        const res = await fetch('/api/battles', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ mode })
-        });
-        if(!res.ok){ addLog(`전투 생성 실패 (HTTP ${res.status})`, 'error'); return; }
-        const data = await res.json();
-        const id = data?.id || data?.battleId || data?.battle?.id;
-        if(id){ updateBattleId(id); addLog(`전투 생성 완료: ${id}`); }
-        else { addLog('전투 생성 실패(응답 파싱 실패)','error'); }
-      }catch(e){ addLog('전투 생성 실패: '+e.message,'error'); }
-    });
-
-    // ===== 제어 버튼 (시작 전 인원 점검) =====
-    document.getElementById('btnStart').addEventListener('click', ()=>{
-      if(!battleId){ addLog('전투 ID가 없습니다(?battle=...)','error'); return; }
-      // 스냅샷이 있으면 간단 인원 체크(팀별 최소 1)
-      if(lastSnap && Array.isArray(lastSnap.players)){
-        const a = lastSnap.players.filter(p=>p.team==='A').length;
-        const b = lastSnap.players.filter(p=>p.team==='B').length;
-        if(a<1 || b<1){
-          addLog('시작 실패: 각 팀에 최소 1명 이상의 참가자가 필요합니다', 'error');
-          return;
-        }
-      }
-      socket.emit('startBattle',{ battleId }, (r)=> addLog(r?.ok?'전투 시작':'전투 시작 실패', r?.ok?'info':'error'));
-    });
-    document.getElementById('btnPause').addEventListener('click', ()=>{
-      if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
-      socket.emit('pauseBattle',{ battleId }, r=> addLog(r?.ok?'일시정지':'일시정지 실패', r?.ok?'info':'error'));
-    });
-    document.getElementById('btnResume').addEventListener('click', ()=>{
-      if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
-      socket.emit('resumeBattle',{ battleId }, r=> addLog(r?.ok?'재개':'재개 실패', r?.ok?'info':'error'));
-    });
-    document.getElementById('btnEnd').addEventListener('click', ()=>{
-      if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
-      socket.emit('endBattle',  { battleId }, r=> addLog(r?.ok?'전투 종료':'전투 종료 실패', r?.ok?'info':'error'));
-    });
-
-    // ===== 링크/비번 생성 =====
-    function pick(obj, ...paths){
-      for(const p of paths){
-        const v = p.split('.').reduce((acc,k)=> (acc&&acc[k]!=null)?acc[k]:undefined, obj);
-        if(v!=null) return v;
-      }
-      return undefined;
-    }
-
-    // ⭐ playerLinks 우선 (토큰/개별 URL 포함). 없으면 빈 배열 반환.
-    function unifyPlayers(payload){
-      if (Array.isArray(payload?.playerLinks) && payload.playerLinks.length){
-        return payload.playerLinks.map(pl=>({
-          playerId: pl.playerId || pl.id,
-          name    : pl.playerName || pl.name,
-          team    : pl.team,
-          token   : pl.otp || pl.token,
-          url     : pl.url
-        }));
-      }
-      return [];
-    }
-
-    async function postJson(url, body={}){
-      const res = await fetch(url, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'x-base-url': location.origin
-        },
-        body: JSON.stringify(body)
-      });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      return res.json();
-    }
-
-    async function onGeneratePlayerLinks(){
-      const id=battleId || new URL(location.href).searchParams.get('battle');
-      if(!id){ addLog('전투 ID가 없습니다(?battle=...)','error'); return; }
-      let data=null;
-      try{
-        data = await postJson(`/api/admin/battles/${id}/links`);
-      }catch(_){
-        try{ data = await postJson(`/api/battles/${id}/links`); }
-        catch(e){ addLog('링크 생성 실패: '+e.message, 'error'); return; }
-      }
-      const otp = pick(data,'spectator.otp','spectator.code','spectator.password','spectatorOtp','otp') || '';
-      let surl = pick(data,'spectator.url','spectatorUrl','url') || '';
-      if(!surl && otp){
-        surl = `${location.origin}/spectator?battle=${encodeURIComponent(id)}&otp=${encodeURIComponent(otp)}`;
-        addLog('관전자 URL(폴백) 생성됨');
-      }
-      document.getElementById('spectatorOtp').value = otp;
-      document.getElementById('spectatorUrl').value = surl;
-
-      const list = unifyPlayers(data);
-      const base = location.origin;
-      const box  = document.getElementById('playerLinks'); box.innerHTML='';
-      if(!list.length){
-        addLog('참가자 링크가 없습니다 (참가자가 없거나 아직 링크를 만들 수 없는 상태)', 'error');
-      }
-      list.forEach(p=>{
-        const link = p.url || `${base}/player?battle=${encodeURIComponent(id)}&playerId=${encodeURIComponent(p.playerId||'')}&name=${encodeURIComponent(p.name||'')}&team=${encodeURIComponent(p.team||'')}&token=${encodeURIComponent(p.token||'')}`;
-        const row  = document.createElement('div');
-        row.className='field';
-        row.innerHTML = `
-          <div class="row between" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <div><strong>${esc(p.name||'')}</strong> <span style="background:var(--gold);color:#000;padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700">${esc(p.team||'')}</span></div>
-            <button class="btn ghost" data-copy="${esc(link)}">URL복사</button>
-          </div>
-          <input type="text" readonly value="${esc(link)}">
-        `;
-        box.appendChild(row);
-      });
-      addLog('링크/비밀번호 생성 완료');
-      if(otp) addLog('관전자 비밀번호 설정됨: '+otp);
-      if(surl) addLog('관전자 URL 설정됨: '+surl);
-    }
-    document.getElementById('btnGenLinks').addEventListener('click', (e)=>{ e.stopImmediatePropagation?.(); onGeneratePlayerLinks(); });
-
-    // ===== 이미지 미리보기 =====
-    document.getElementById('avatarFile').addEventListener('change', (e)=>{
-      const file=e.target.files[0];
-      const preview=document.getElementById('avatarPreview');
-      if(file){
-        const reader=new FileReader();
-        reader.onload=(ev)=>{ preview.src = ev.target.result; };
-        reader.readAsDataURL(file);
-      }else{
-        preview.src='/uploads/avatars/default.svg';
-      }
-    });
-
-    // ===== 참가자 추가 (다중 소켓 이벤트 + HTTP 폴백) =====
-    async function uploadAvatarIfAny(){
-      const file = document.getElementById('avatarFile').files[0];
-      if(!file) return null;
-      try{
-        const fd=new FormData(); fd.append('avatar', file);
-        const up = await fetch('/api/upload/avatar',{ method:'POST', body:fd });
-        const jd = await up.json();
-        if(jd?.ok && jd?.url){ addLog('이미지 업로드 성공: ' + jd.url); return jd.url; }
-        addLog('이미지 업로드 실패(기본 이미지로 진행)','error'); return null;
-      }catch(err){ addLog('이미지 업로드 오류','error'); return null; }
-    }
-
-    function emitWithTimeout(event, payload, timeoutMs=2000){
-      return new Promise((resolve)=>{
-        let done=false;
-        try{
-          socket.timeout?.(timeoutMs).emit(event, payload, (err, res)=>{
-            if(done) return; done=true;
-            if(err) return resolve({ok:false, error:String(err)});
-            resolve(res||{ok:false});
-          });
-        }catch(_){
-          socket.emit(event, payload, (res)=>{
-            if(done) return; done=true;
-            resolve(res||{ok:false});
-          });
-          setTimeout(()=>{ if(!done){ done=true; resolve({ok:false,error:'timeout'});} }, timeoutMs);
-        }
-      });
-    }
-
-    async function tryAddPlayerViaSockets(payload){
-      const events = [
-        'admin:addPlayer',
-        'battle:addPlayer',
-        'player:add',
-        'addPlayer',
-        'battle:player:add',
-        'player:addToBattle',
-        'admin:player:add',
-        'add:player'
-      ];
-      for(const ev of events){
-        const r = await emitWithTimeout(ev, payload, 2500);
-        if(r?.ok){ addLog(`소켓(${ev}) 성공`); return true; }
-        else { addLog(`소켓(${ev}) 실패: ${r?.error||'N/A'}`,'error'); }
-      }
-      return false;
-    }
-
-    async function tryAddPlayerViaHttp(id, player){
-      const bodies = [
-        { url:`/api/admin/battles/${id}/players`, body:{player} },
-        { url:`/api/battles/${id}/players`,       body:{player} },
-        { url:`/admin/battles/${id}/players`,     body:{player} },
-        { url:`/battles/${id}/players`,           body:{player} },
-        { url:`/api/admin/battles/${id}/player`,  body:player    },
-        { url:`/api/battles/${id}/player`,        body:player    }
-      ];
-      for(const {url,body} of bodies){
-        try{
-          const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-          if(res.ok){ addLog(`HTTP 성공: ${url}`); return true; }
-          addLog(`HTTP 실패 ${res.status}: ${url}`,'error');
-        }catch(e){ addLog(`HTTP 예외: ${url} (${e.message})`,'error'); }
-      }
-      return false;
-    }
-
-    document.getElementById('btnAddPlayer').addEventListener('click', async ()=>{
-      if(!battleId){ addLog('전투 ID가 없습니다','error'); return; }
-      const name = document.getElementById('playerName').value.trim();
-      if(!name){ addLog('이름을 입력해주세요','error'); return; }
-
-      const avatarUrl = await uploadAvatarIfAny();
-      const player = {
-        name,
-        team: document.getElementById('playerTeam').value,
-        hp: clamp(document.getElementById('playerHp').value, 1, 9999),
-        avatar: avatarUrl,
-        stats: {
-          attack : clamp(document.getElementById('playerAttack').value, 1, 5),
-          defense: clamp(document.getElementById('playerDefense').value, 1, 5),
-          agility: clamp(document.getElementById('playerAgility').value, 1, 5),
-          luck   : clamp(document.getElementById('playerLuck').value, 1, 5)
-        },
-        items: {
-          dittany       : clamp(document.getElementById('playerDittany').value, 0, 99),
-          attackBooster : clamp(document.getElementById('playerAttackBooster').value, 0, 99),
-          defenseBooster: clamp(document.getElementById('playerDefenseBooster').value, 0, 99)
-        }
-      };
-      const payload = { battleId, player };
-
-      // 1) 소켓 경로들 시도
-      const okSocket = await tryAddPlayerViaSockets(payload);
-      // 2) HTTP 폴백
-      const okHttp   = okSocket ? true : await tryAddPlayerViaHttp(battleId, player);
-
-      if(okSocket || okHttp){
-        addLog(`${name}이(가) ${player.team}팀으로 참가했습니다`);
-        // 폼 리셋(선택 팀은 유지)
-        document.getElementById('playerName').value='';
-        document.getElementById('playerHp').value='100';
-        document.getElementById('playerAttack').value='1';
-        document.getElementById('playerDefense').value='1';
-        document.getElementById('playerAgility').value='1';
-        document.getElementById('playerLuck').value='1';
-        document.getElementById('playerDittany').value='0';
-        document.getElementById('playerAttackBooster').value='0';
-        document.getElementById('playerDefenseBooster').value='0';
-        document.getElementById('avatarFile').value='';
-        document.getElementById('avatarPreview').src='/uploads/avatars/default.svg';
-      }else{
-        addLog('참가자 추가 실패(모든 경로 시도 실패)','error');
-      }
-    });
-
-    // 참가자 삭제(소켓 + HTTP 폴백)
-    document.addEventListener('click', async (e)=>{
-      const del = e.target.closest('[data-del]'); if(!del) return;
-      const pid = del.getAttribute('data-del'); if(!pid || !battleId) return;
-
-      let ok=false;
-      const r = await emitWithTimeout('deletePlayer', { battleId, playerId: pid }, 2500);
-      if(r?.ok) ok=true;
-      if(!ok){
-        const urls = [
-          `/api/admin/battles/${battleId}/players/${pid}`,
-          `/api/battles/${battleId}/players/${pid}`
-        ];
-        for(const u of urls){
-          try{
-            const res = await fetch(u,{method:'DELETE'});
-            if(res.ok){ ok=true; break; }
-          }catch(_){}
-        }
-      }
-      addLog(ok?'삭제 완료':'삭제 실패', ok?'info':'error');
-    });
-
-    // 복사(위임)
-    document.addEventListener('click', (e)=>{
-      const btn = e.target.closest('[data-copy]'); if(!btn) return;
-      const text = btn.getAttribute('data-copy');
-      if(navigator.clipboard){ navigator.clipboard.writeText(text).then(()=> addLog('복사 완료')); }
-    });
-
-    // 채팅 송신
-    function sendChat(){
-      const msg = document.getElementById('chatMsg').value.trim();
-      if(!msg || !battleId) return;
-      socket.emit('chatMessage', { battleId, name:'관리자', message: msg });
-      document.getElementById('chatMsg').value='';
-    }
-    document.getElementById('btnSend').addEventListener('click', sendChat);
-    document.getElementById('chatMsg').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
-
-    // 초기: URL에 battle 있으면 조인
-    if(battleId){ updateBattleId(battleId); }
-    addLog('관리자 페이지 시작');
-  })();
-  </script>
+  <!-- 관리자 동작 전체 포함(전투 생성/제어/참가자 추가/렌더 + 링크핫픽스 통합) -->
+  <script defer src="/assets/js/admin.js"></script>
 </body>
 </html>
