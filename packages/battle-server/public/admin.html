@@ -477,4 +477,298 @@
     if (!currentBattleId) return;
     if (!confirm('정말 전투를 종료하시겠습니까?')) return;
     
-    socket.emit('endBattle', { battleId: currentBattleId }, (response
+    socket.emit('endBattle', { battleId: currentBattleId }, (response) => {
+      if (!response?.ok) {
+        alert('전투 종료 실패: ' + (response?.error || '알 수 없는 오류'));
+      }
+    });
+  }
+
+  // 아바타 업로드
+  async function uploadAvatar(file) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    try {
+      const response = await fetch('/api/upload/avatar', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const result = await response.json();
+      if (result.url) {
+        uploadedAvatarUrl = result.url;
+        addLog({ts: Date.now(), type: 'notice', message: '아바타 업로드 완료'});
+      } else {
+        throw new Error(result.error || '업로드 실패');
+      }
+    } catch (error) {
+      alert('아바타 업로드 실패: ' + error.message);
+      uploadedAvatarUrl = null;
+    }
+  }
+
+  // 전투 참가자 추가
+  function addPlayer() {
+    if (!currentBattleId) {
+      alert('먼저 전투를 생성해주세요');
+      return;
+    }
+    
+    const name = document.getElementById('playerName').value.trim();
+    const team = document.getElementById('playerTeam').value;
+    const hp = parseInt(document.getElementById('playerHP').value);
+    const attack = parseInt(document.getElementById('playerAttack').value);
+    const defense = parseInt(document.getElementById('playerDefense').value);
+    const agility = parseInt(document.getElementById('playerAgility').value);
+    const luck = parseInt(document.getElementById('playerLuck').value);
+    const dittany = parseInt(document.getElementById('playerDittany').value);
+    const attackBooster = parseInt(document.getElementById('playerAttackBooster').value);
+    const defenseBooster = parseInt(document.getElementById('playerDefenseBooster').value);
+    
+    if (!name) {
+      alert('이름을 입력해주세요');
+      return;
+    }
+    
+    const playerData = {
+      name,
+      team,
+      hp,
+      maxHp: hp,
+      stats: { attack, defense, agility, luck },
+      items: {
+        dittany,
+        attackBooster,
+        defenseBooster
+      },
+      avatar: uploadedAvatarUrl
+    };
+    
+    socket.emit('addPlayer', {
+      battleId: currentBattleId,
+      player: playerData
+    }, (response) => {
+      if (response?.ok) {
+        addLog({ts: Date.now(), type: 'notice', message: `${name}이(가) ${team}팀에 추가되었습니다`});
+        clearPlayerForm();
+      } else {
+        alert('전투 참가자 추가 실패: ' + (response?.error || '알 수 없는 오류'));
+      }
+    });
+  }
+
+  // 전투 참가자 제거
+  function removePlayer(playerId) {
+    if (!currentBattleId || !playerId) return;
+    
+    const player = battleState?.players?.find(p => p.id === playerId);
+    const playerName = player?.name || 'Unknown';
+    
+    if (!confirm(`${playerName}을(를) 제거하시겠습니까?`)) return;
+
+    socket.emit('deletePlayer', {
+      battleId: currentBattleId,
+      playerId: playerId
+    }, (response) => {
+      if (response?.ok) {
+        addLog({ts: Date.now(), type: 'notice', message: `${playerName}이(가) 제거되었습니다`});
+      } else {
+        alert('전투 참가자 제거 실패: ' + (response?.error || '알 수 없는 오류'));
+      }
+    });
+  }
+
+  // 폼 초기화
+  function clearPlayerForm() {
+    document.getElementById('playerName').value = '';
+    document.getElementById('playerTeam').value = 'A';
+    document.getElementById('playerHP').value = '100';
+    document.getElementById('playerAttack').value = '1';
+    document.getElementById('playerDefense').value = '1';
+    document.getElementById('playerAgility').value = '1';
+    document.getElementById('playerLuck').value = '1';
+    document.getElementById('playerDittany').value = '0';
+    document.getElementById('playerAttackBooster').value = '0';
+    document.getElementById('playerDefenseBooster').value = '0';
+    document.getElementById('avatarUpload').value = '';
+    uploadedAvatarUrl = null;
+  }
+
+  // 링크 생성
+  function generateLinks() {
+    if (!currentBattleId) {
+      alert('먼저 전투를 생성해주세요');
+      return;
+    }
+    
+    // HTTP API 또는 소켓으로 링크 요청
+    fetch(`/api/admin/battles/${currentBattleId}/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.spectator && data.playerLinks) {
+        displayLinks(data);
+      } else {
+        throw new Error('링크 생성 실패');
+      }
+    })
+    .catch(error => {
+      alert('링크 생성 실패: ' + error.message);
+    });
+  }
+
+  // 링크 표시
+  function displayLinks(data) {
+    const container = document.getElementById('linksContainer');
+    let html = '';
+    
+    // 관전자 링크
+    if (data.spectator?.url) {
+      html += `<div class="link-item">
+        <div class="link-label">관전자 링크</div>
+        <div class="link-url" onclick="copyToClipboard('${data.spectator.url}')">${data.spectator.url}</div>
+        <button class="copy-btn" onclick="copyToClipboard('${data.spectator.url}')">복사</button>
+      </div>`;
+    }
+    
+    // 전투 참가자 링크들
+    if (data.playerLinks && data.playerLinks.length > 0) {
+      data.playerLinks.forEach(link => {
+        html += `<div class="link-item">
+          <div class="link-label">${link.playerName} (${link.team}팀)</div>
+          <div class="link-url" onclick="copyToClipboard('${link.url}')">${link.url}</div>
+          <button class="copy-btn" onclick="copyToClipboard('${link.url}')">복사</button>
+        </div>`;
+      });
+    }
+    
+    container.innerHTML = html;
+  }
+
+  // 클립보드 복사
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      // 간단한 피드백 (토스트 메시지 대신)
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.textContent = '복사됨!';
+      btn.style.background = '#16a34a';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '';
+      }, 1000);
+    }).catch(() => {
+      alert('복사 실패');
+    });
+  }
+
+  // 채팅 전송
+  function sendChat() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    if (!message || !currentBattleId) return;
+    
+    socket.emit('chatMessage', {
+      battleId: currentBattleId,
+      name: '관리자',
+      message
+    }, (response) => {
+      if (response?.ok) {
+        input.value = '';
+      }
+    });
+  }
+
+  // 이벤트 리스너 설정
+  function setupEventListeners() {
+    // 전투 제어
+    document.getElementById('btnCreate').addEventListener('click', createBattle);
+    document.getElementById('btnStart').addEventListener('click', startBattle);
+    document.getElementById('btnPause').addEventListener('click', pauseBattle);
+    document.getElementById('btnResume').addEventListener('click', resumeBattle);
+    document.getElementById('btnEnd').addEventListener('click', endBattle);
+    
+    // 전투 참가자 관리
+    document.getElementById('btnAddPlayer').addEventListener('click', addPlayer);
+    document.getElementById('avatarUpload').addEventListener('change', (e) => {
+      if (e.target.files[0]) {
+        uploadAvatar(e.target.files[0]);
+      }
+    });
+    
+    // 링크 생성
+    document.getElementById('btnGenPlayerLinks').addEventListener('click', generateLinks);
+    document.getElementById('btnGenSpectatorLink').addEventListener('click', generateLinks);
+    
+    // 채팅
+    document.getElementById('chatSend').addEventListener('click', sendChat);
+    document.getElementById('chatInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+    
+    // 게임 오버 재시작
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      hideGameOverOverlay();
+      createBattle();
+    });
+  }
+
+  // 전역 함수 (HTML onclick용)
+  window.removePlayer = removePlayer;
+  window.copyToClipboard = copyToClipboard;
+
+  // 소켓 이벤트 리스너
+  socket.on('connect', () => {
+    console.log('관리자 소켓 연결됨');
+  });
+  
+  // 상태 업데이트
+  const onSnap = (snap) => {
+    battleState = snap;
+    render();
+  };
+  socket.on('battleUpdate', onSnap);
+  socket.on('battle:update', onSnap);
+  
+  // 로그
+  socket.on('battle:log', addLog);
+  socket.on('battleLog', addLog);
+  socket.on('importantLog', addLog);
+  
+  // 채팅
+  socket.on('chatMessage', addChat);
+  socket.on('battle:chat', addChat);
+
+  // 게임 종료
+  socket.on('battle:ended', (data) => {
+    console.log('전투 종료:', data);
+    showGameOverOverlay(data.winner);
+  });
+
+  socket.on('battleEnded', (data) => {
+    console.log('전투 종료 (호환):', data);
+    showGameOverOverlay(data.winner);
+  });
+
+  // 초기화
+  setupEventListeners();
+  
+  // URL에서 battleId 확인
+  const urlParams = new URLSearchParams(window.location.search);
+  const battleIdFromUrl = urlParams.get('battle');
+  if (battleIdFromUrl) {
+    currentBattleId = battleIdFromUrl;
+    socket.emit('join', { battleId: currentBattleId });
+  }
+  
+  console.log('관리자 페이지 초기화 완료');
+})();
+</script>
+</body>
+</html>
