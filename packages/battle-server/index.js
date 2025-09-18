@@ -95,11 +95,13 @@ function emitUpdate(battle) {
 function emitLog(battle, message, type = 'battle') {
   const log = { ts: now(), type, message };
   io.to(battle.id).emit('battle:log', log);
+  io.to(battle.id).emit('battleLog', log); // 레거시 병행
   // 라운드 요약 수집용(결과 탭에서 사용)
   battle.roundEvents.push(log);
 }
 function emitChat(battleId, msg) {
   io.to(battleId).emit('chatMessage', msg);
+  io.to(battleId).emit('battle:chat', msg); // 신식 이벤트 병행
 }
 
 /* ───────────────────────── 상태 스냅샷 ───────────────────────── */
@@ -385,7 +387,7 @@ function rollDefense(defender) {
   const defStat = Number(defender.stats?.defense || 1);
   let val = defStat + d10();
   if (defender?.temp?.defenseBoostOneShot) {
-    val *= 2; // 최종 방어 수치 2배
+    val *= 2; // 최종 방어 수치 2배 (해당 턴 방어 자세일 때만 적용)
     defender.temp.defenseBoostOneShot = false; // 1회 소모
   }
   return val;
@@ -393,7 +395,7 @@ function rollDefense(defender) {
 
 function checkDodge(defender, attackerFinal) {
   const agi = Number(defender.stats?.agility || 1);
-  return (agi + d10()) >= attackerFinal; // 성공 시 완전 회피
+  return (agi + d10()) >= attackerFinal; // 성공 시 완전 회피 (사전 선택 필요, 자동 회피 없음)
 }
 
 function applyDamage(battle, defender, dmg, attacker, isCrit) {
@@ -411,7 +413,7 @@ function applyDamage(battle, defender, dmg, attacker, isCrit) {
 function performAttack(battle, attacker, target, { attackBoostOnce = false } = {}) {
   const { final: finalAtk, crit } = rollFinalAttack(attacker, { attackBoostOnce });
 
-  // 방어/회피 처리
+  // 방어/회피 처리 (사전 선택한 경우에만)
   if (target.stance === 'dodge') {
     if (checkDodge(target, finalAtk)) {
       emitLog(battle, `→ ${target.name}이(가) 회피 성공! 피해 0`, 'battle');
@@ -427,7 +429,7 @@ function performAttack(battle, attacker, target, { attackBoostOnce = false } = {
       applyDamage(battle, target, remained, attacker, crit);
     }
   } else {
-    // 아무 태세도 없으면 정면으로 공격 적용
+    // 자동 방어/회피/역공 없음
     applyDamage(battle, target, finalAtk, attacker, crit);
   }
 
@@ -492,7 +494,7 @@ function resolveAction(battle, actor, payload) {
         break;
       }
 
-      // 새 룰: 성공률/효과
+      // 새 룰: 성공률/효과 (모든 다이스 D10, 보정기 성공률 60%)
       const success60 = () => d100() <= 60;
 
       if (item === 'dittany') {
@@ -526,7 +528,7 @@ function resolveAction(battle, actor, payload) {
         }
 
       } else if (item === 'defenseBooster') {
-        // 아군 타깃 필수, 60% 성공, “이번 턴 1회” 방어 최종 2배
+        // 아군 타깃 필수, 60% 성공, “해당 턴에 방어 시 1회” 방어 최종 2배
         const ally =
           (payload?.targetId && battle.players.find(p => p.id === payload.targetId && p.hp > 0 && p.team === actor.team))
           || null;
@@ -538,8 +540,8 @@ function resolveAction(battle, actor, payload) {
           emitLog(battle, `${actor.name}의 방어 보정기 사용 실패 (확률)`, 'battle');
         } else {
           ally.temp = ally.temp || {};
-          ally.temp.defenseBoostOneShot = true; // 다음 1회 수비에 최종 2배
-          emitLog(battle, `${actor.name}이(가) ${ally.name}에게 방어 보정기 적용 (이번 턴 1회 방어 2배)`, 'battle');
+          ally.temp.defenseBoostOneShot = true; // 이번 턴 방어 자세일 때 1회 최종 2배
+          emitLog(battle, `${actor.name}이(가) ${ally.name}에게 방어 보정기 적용 (이번 턴 방어 1회 2배)`, 'battle');
         }
 
       } else {
