@@ -376,8 +376,8 @@
         name: $('#playerName')?.value?.trim() || '',
         team: $('#playerTeam')?.value || 'A',
         avatar: avatarUrl,
-        hp: 100,
-        maxHp: 100,
+        hp: parseInt($('#playerHP')?.value) || 100,
+        maxHp: parseInt($('#playerHP')?.value) || 100,
         stats: {
           attack: parseInt($('#playerAttack')?.value) || 1,
           defense: parseInt($('#playerDefense')?.value) || 1,
@@ -403,6 +403,11 @@
           throw new Error('스탯은 1~5 범위여야 합니다');
         }
       });
+
+      // HP 범위 검사 (1-1000)
+      if (playerData.hp < 1 || playerData.hp > 1000) {
+        throw new Error('HP는 1~1000 범위여야 합니다');
+      }
 
       // 소켓으로 플레이어 추가
       const socket = initSocket();
@@ -458,6 +463,7 @@
         input.value = '';
       } else if (input.type === 'number') {
         const defaultValues = {
+          'playerHP': 100,
           'playerAttack': 1, 'playerDefense': 1, 
           'playerAgility': 1, 'playerLuck': 1,
           'playerDittany': 0, 'playerAttackBooster': 0, 
