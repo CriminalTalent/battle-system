@@ -104,8 +104,9 @@ app.post('/api/battles', (req, res) => {
 app.post('/api/admin/battles/:id/links', async (req, res) => {
   try {
     const b = getBattle(req.params.id);
-    const links = await generateLinks(b);
-    res.json({ ok: true, links });
+    const { spectator, playerLinks } = await generateLinks(b);
+    // 호환성을 위해 평평한 키와 중첩 links 둘 다 제공
+    res.json({ ok: true, spectator, playerLinks, links: { spectator, playerLinks } });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -115,8 +116,8 @@ app.post('/api/admin/battles/:id/links', async (req, res) => {
 app.post('/api/battles/:id/links', async (req, res) => {
   try {
     const b = getBattle(req.params.id);
-    const links = await generateLinks(b);
-    res.json({ ok: true, links });
+    const { spectator, playerLinks } = await generateLinks(b);
+    res.json({ ok: true, spectator, playerLinks, links: { spectator, playerLinks } });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -693,7 +694,7 @@ async function generateLinks(battle) {
       otp: spectatorOtp,
       url: spectatorUrl
     },
-    players: playerLinks
+    playerLinks
   };
 }
 
@@ -956,8 +957,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('removePlayer', ({ battleId, playerId }, cb) => {
-    // deletePlayer와 동일 (호환용)
-    socket.emit('deletePlayer', { battleId, playerId }, cb);
+    // deletePlayer와 동일 (호환용) — 서버 내부에서 직접 처리
+    try {
+      const b = getBattle(battleId);
+      const idx = b.players.findIndex(p => p.id === playerId);
+      if (idx >= 0) {
+        const name = b.players[idx].name;
+        b.players.splice(idx, 1);
+        emitLog(b, `${name}이(가) 전투에서 제거되었습니다`, 'notice');
+        emitUpdate(b);
+      }
+      cb?.({ ok: true });
+    } catch { cb?.({ ok: false }); }
   });
 
   // 채팅
