@@ -31,6 +31,7 @@ const io = new IOServer(server, {
 app.disable('x-powered-by');
 app.use(compression());
 app.use(express.json({ limit: '1mb' }));
+app.set('trust proxy', 1); // 프록시 환경에서 https 감지
 
 /* ───────────────────── 정적 라우팅 + 별칭 (/admin 등) ───────────────────── */
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
@@ -100,13 +101,13 @@ app.post('/api/battles', (req, res) => {
   }
 });
 
-// HTTP 폴백: 링크 생성
+// HTTP 폴백: 링크 생성 (요청 호스트/프로토콜 또는 BASE_URL 사용)
 app.post('/api/admin/battles/:id/links', async (req, res) => {
   try {
     const b = getBattle(req.params.id);
-    const { spectator, playerLinks } = await generateLinks(b);
-    // 호환성을 위해 평평한 키와 중첩 links 둘 다 제공
-    res.json({ ok: true, spectator, playerLinks, links: { spectator, playerLinks } });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const links = await generateLinks(b, baseUrl);
+    res.json({ ok: true, links });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -116,8 +117,9 @@ app.post('/api/admin/battles/:id/links', async (req, res) => {
 app.post('/api/battles/:id/links', async (req, res) => {
   try {
     const b = getBattle(req.params.id);
-    const { spectator, playerLinks } = await generateLinks(b);
-    res.json({ ok: true, spectator, playerLinks, links: { spectator, playerLinks } });
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const links = await generateLinks(b, baseUrl);
+    res.json({ ok: true, links });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -669,10 +671,8 @@ function resolveAction(battle, actor, payload) {
 }
 
 /* ────────────────────────── 링크 생성 ────────────────────────── */
-async function generateLinks(battle) {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
-  
-  // 관전자 링크
+async function generateLinks(battle, baseUrl) {
+  // baseUrl은 라우트에서 env 또는 요청 호스트/프로토콜로 전달
   const spectatorOtp = battle.spectatorOtp;
   const spectatorUrl = `${baseUrl}/spectator?battle=${battle.id}&otp=${spectatorOtp}`;
   
@@ -694,7 +694,7 @@ async function generateLinks(battle) {
       otp: spectatorOtp,
       url: spectatorUrl
     },
-    playerLinks
+    players: playerLinks
   };
 }
 
@@ -957,18 +957,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('removePlayer', ({ battleId, playerId }, cb) => {
-    // deletePlayer와 동일 (호환용) — 서버 내부에서 직접 처리
-    try {
-      const b = getBattle(battleId);
-      const idx = b.players.findIndex(p => p.id === playerId);
-      if (idx >= 0) {
-        const name = b.players[idx].name;
-        b.players.splice(idx, 1);
-        emitLog(b, `${name}이(가) 전투에서 제거되었습니다`, 'notice');
-        emitUpdate(b);
-      }
-      cb?.({ ok: true });
-    } catch { cb?.({ ok: false }); }
+    // deletePlayer와 동일 (호환용)
+    socket.emit('deletePlayer', { battleId, playerId }, cb);
   });
 
   // 채팅
