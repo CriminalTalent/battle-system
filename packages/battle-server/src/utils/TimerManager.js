@@ -26,6 +26,7 @@ class TimerManager extends EventEmitter {
       onBattleWarning: callbacks.onBattleWarning || (() => {}),      // 전투 시간 경고
       onTeamPhaseTimeout: callbacks.onTeamPhaseTimeout || (() => {}),// 팀 턴 전체 만료
       onAutoPass: callbacks.onAutoPass || (() => {}),                // 개별 자동 패스 트리거(선택)
+      onTeamPhaseComplete: callbacks.onTeamPhaseComplete || null,    // 팀 페이즈 모든 인원 행동 완료
       onAutoSave: callbacks.onAutoSave || null,                      // (state) => {}
       ...callbacks,
     };
@@ -124,13 +125,13 @@ class TimerManager extends EventEmitter {
 
   _setTimeout(handler, ms) {
     const t = setTimeout(handler, ms);
-    if (this.config.unrefTimers && t.unref) t.unref();
+    if (this.config.unrefTimers && t?.unref) t.unref();
     return t;
   }
 
   _setInterval(handler, ms) {
     const t = setInterval(handler, ms);
-    if (this.config.unrefTimers && t.unref) t.unref();
+    if (this.config.unrefTimers && t?.unref) t.unref();
     return t;
   }
 
@@ -266,7 +267,7 @@ class TimerManager extends EventEmitter {
     this._battle.pauseStartedAt = null;
     this._battle.remainingAtPauseMs = 0;
     this._battle.totalPlannedMs = d;
-    this._battle.warnedPercents.clear();
+    this._battle.warnedPercents = new Set();
 
     this._battle.timer = this._setTimeout(() => this._handleBattleTimeout(), d);
 
@@ -419,6 +420,12 @@ class TimerManager extends EventEmitter {
     );
     this._teamPhase.warned = false;
 
+    // 모든 인원이 이미 행동 완료 상태라면 즉시 완료 처리
+    if (this._teamPhase.pendingPlayers.size === 0) {
+      this._completeTeamPhase('allActed');
+      return;
+    }
+
     this._teamPhase.timer = this._setTimeout(() => this._handleTeamPhaseTimeout(), total);
 
     this.log('팀 페이즈 타이머 시작', 'INFO', {
@@ -446,6 +453,10 @@ class TimerManager extends EventEmitter {
         playerId,
         remainingPending: this._teamPhase.pendingPlayers.size,
       });
+      // 모든 인원이 선택/행동을 마치면 즉시 페이즈 완료
+      if (this._teamPhase.pendingPlayers.size === 0) {
+        this._completeTeamPhase('allActed');
+      }
     }
   }
 
@@ -468,6 +479,28 @@ class TimerManager extends EventEmitter {
     if (wasActive) {
       this.emit('teamPhase:cleared', { battleId: this.battleId });
     }
+  }
+
+  /** 팀 페이즈 강제 완료(모든 인원 행동 완료 등) */
+  _completeTeamPhase(trigger = 'allActed') {
+    const teamKey = this._teamPhase.teamKey;
+    const pending = Array.from(this._teamPhase.pendingPlayers);
+    this.log('팀 페이즈 완료', 'INFO', { teamKey, trigger, pendingCount: pending.length });
+
+    this.emit('teamPhase:completed', { teamKey, trigger });
+
+    try {
+      if (this.callbacks.onTeamPhaseComplete) {
+        this.callbacks.onTeamPhaseComplete(this.battleId, teamKey);
+      } else {
+        // 콜백 미구현 시, 하위 호환: timeout 콜백을 빈 pending으로 호출
+        this.callbacks.onTeamPhaseTimeout(this.battleId, teamKey, []);
+      }
+    } catch (err) {
+      this.log('onTeamPhaseComplete/Timeout 콜백 오류', 'ERROR', err);
+    }
+
+    this.clearTeamPhase();
   }
 
   /** 팀 페이즈 만료: 남은 모든 pending 플레이어 자동 패스 */
@@ -731,6 +764,18 @@ class TimerManager extends EventEmitter {
     return this._teamPhase.pendingPlayers.size;
   }
 
+  getTeamPhaseInfo() {
+    if (!this._teamPhase.active) return null;
+    return {
+      teamKey: this._teamPhase.teamKey,
+      startAt: this._teamPhase.startAt,
+      deadlineAt: this._teamPhase.deadlineAt,
+      totalMs: this._teamPhase.totalMs,
+      pendingPlayers: Array.from(this._teamPhase.pendingPlayers),
+      warned: this._teamPhase.warned,
+    };
+  }
+
   isPlayerTimerActive(playerId) {
     return this.playerTimers.has(playerId);
   }
@@ -961,6 +1006,9 @@ class TimerManager extends EventEmitter {
               () => this._handleBattleTimeout(),
               remaining
             );
+          } else {
+            // 이미 만료된 상태면 즉시 처리
+            this._handleBattleTimeout();
           }
         }
       }
@@ -984,6 +1032,9 @@ class TimerManager extends EventEmitter {
           () => this._handleTeamPhaseTimeout(),
           remaining
         );
+      } else {
+        // 복원 시점에서 이미 만료됐다면 즉시 만료 처리
+        this._handleTeamPhaseTimeout();
       }
     }
 
@@ -1004,6 +1055,9 @@ class TimerManager extends EventEmitter {
             warned: !!t.warned,
             timer,
           });
+        } else {
+          // 이미 만료되었으면 즉시 타임아웃 처리
+          this._handlePlayerTimeout(t.playerId);
         }
       }
     }
