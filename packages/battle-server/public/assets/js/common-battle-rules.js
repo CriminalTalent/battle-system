@@ -1,26 +1,25 @@
 // packages/battle-server/public/assets/js/common-battle-rules.js
-// PYXIS 공통 전투 룰 (브라우저) - 방어 보정기 ×2 반영판
+// PYXIS 공통 전투 룰 (브라우저) - D10 + 60% 성공률 적용판
 // - 스탯: 각 1~5 / HP 최대 100
 // - 아이템(1회용)
-//    • 공격 보정기: 10% 성공 → 해당 '공격 시도 1회'에 한해 공격력 ×2 로 계산
-//    • 방어 보정기: 10% 성공 → '다음 피격 1회' 방어력 ×2 로 계산 (가산 아님)
+//    • 공격 보정기: 60% 성공 → 해당 '공격 시도 1회'에 한해 공격력 ×2 로 계산
+//    • 방어 보정기: 60% 성공 → '다음 피격 1회' 방어력 ×2 로 계산
 //    • 디터니(ditany): +10 HP(즉시)
-// - 치명타: d20 ≥ (20 - luck/2) → 최종 피해 ×2
+// - 치명타: D10 ≥ (10 - luck/2) → 최종 피해 ×2
 // - 방어: 피해 = max(0, (공격치 - 방어치) × (치명타?2:1))
-// - 회피: 수비측 (민첩 + d20) ≥ 공격치 → 피해 0
-//        (회피는 '방어 대신' 시도. 실패 시 방어치/보정기 미적용)
+// - 회피: 수비측 (민첩 + D10) ≥ 공격치 → 피해 0
 
 ;(function initPyxisRules (root) {
   const RULES = {
-    ATK_BOOSTER_SUCCESS: 0.10,
-    DEF_BOOSTER_SUCCESS: 0.10,
-    DEF_MULT_ON_HIT: 2,   // 방어 보정기 성공 시, 다음 피격 1회 방어력 ×2
+    ATK_BOOSTER_SUCCESS: 0.60,  // 60% 성공률
+    DEF_BOOSTER_SUCCESS: 0.60,  // 60% 성공률
+    DEF_MULT_ON_HIT: 2,         // 방어 보정기 성공 시, 다음 피격 1회 방어력 ×2
     MAX_HP: 100
   };
 
   // ---------- 유틸 ----------
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
-  function rollD20() { return Math.floor(Math.random() * 20) + 1; }
+  function rollD10() { return Math.floor(Math.random() * 10) + 1; }  // D10으로 변경
   function toInt(v, fb=0){ const n = parseInt(v,10); return Number.isNaN(n)?fb:n; }
 
   // ---------- 스탯 읽기 ----------
@@ -33,21 +32,21 @@
     return { attack, defense, agility, luck };
   }
 
-  // ---------- 크리티컬 ----------
+  // ---------- 크리티컬 (D10 기준) ----------
   function isCritical(attackerLuck) {
-    const th = 20 - Math.floor(attackerLuck / 2);
-    const d  = rollD20();
+    const th = 10 - Math.floor(attackerLuck / 2);  // D10 기준으로 변경
+    const d  = rollD10();  // D10 사용
     return { crit: d >= th, roll: d, threshold: th };
   }
 
   // ---------- 아이템 판정 ----------
   function tryAttackBooster() {
-    const ok = Math.random() < RULES.ATK_BOOSTER_SUCCESS;
+    const ok = Math.random() < RULES.ATK_BOOSTER_SUCCESS;  // 60% 성공률
     return { success: ok, mult: ok ? 2 : 1 }; // 공격력 ×2(그 행동 1회)
   }
 
   function tryDefenseBooster() {
-    const ok = Math.random() < RULES.DEF_BOOSTER_SUCCESS;
+    const ok = Math.random() < RULES.DEF_BOOSTER_SUCCESS;  // 60% 성공률
     return { success: ok, mult: ok ? RULES.DEF_MULT_ON_HIT : 1 }; // 다음 피격 1회 방어력 ×2
   }
 
@@ -59,10 +58,10 @@
   const useDittany = useDitany;
 
   // ---------- 수치 계산 ----------
-  // 공격 수치 = (공격 스탯 × (공보 성공?2:1)) + d20
+  // 공격 수치 = (공격 스탯 × (공보 성공?2:1)) + D10
   function computeAttackScore(attacker, { useAtkBooster=false }={}) {
     const { attack, luck } = readStats(attacker);
-    const roll = rollD20();
+    const roll = rollD10();  // D10 사용
     let atkStat = attack;
     let booster = { success:false, mult:1 };
     if (useAtkBooster) {
@@ -71,7 +70,7 @@
     }
     const score = atkStat + roll;
     const { crit } = isCritical(luck);
-    return { score, roll, crit, boosterUsed: !!useAtkBooster, boosterSuccess: booster.success };
+    return { score, roll, crit, boosterUsed: !useAtkBooster, boosterSuccess: booster.success };
   }
 
   // 방어 수치 = (방어 스탯 × defenseMult)
@@ -101,12 +100,12 @@
     };
   }
 
-  // 회피: (민첩 + d20) ≥ atk.score → 0
+  // 회피: (민첩 + D10) ≥ atk.score → 0
   // 디자인상 회피 선택 시 방어 수치/보정기는 적용되지 않음(실패해도 미적용).
   function resolveDodge(attacker, defender, opts={}) {
     const atk = computeAttackScore(attacker, { useAtkBooster: !!opts.useAtkBooster });
     const { agility } = readStats(defender);
-    const dodgeRoll = rollD20();
+    const dodgeRoll = rollD10();  // D10 사용
     const dodgeScore = agility + dodgeRoll;
     const dodged = dodgeScore >= atk.score;
 
@@ -123,21 +122,21 @@
   function optionalHitCheck(attacker, defender) {
     const { luck } = readStats(attacker);
     const { agility } = readStats(defender);
-    const hitRoll = rollD20();
-    const dodgeRoll = rollD20();
+    const hitRoll = rollD10();    // D10 사용
+    const dodgeRoll = rollD10();  // D10 사용
     const hitScore = luck + hitRoll;
     const dodgeScore = agility + dodgeRoll;
     const hit = hitScore > dodgeScore;
     return { hit, hitScore, dodgeScore, hitRoll, dodgeRoll };
   }
 
-  // 팀 선공(팀원 각각 민첩+d20 합산)
+  // 팀 선공(팀원 각각 민첩+D10 합산)
   function computeTeamInitiative(teamPlayers=[]) {
     let total = 0;
     const breakdown = [];
     teamPlayers.forEach(p=>{
       const { agility } = readStats(p);
-      const r = rollD20();
+      const r = rollD10();  // D10 사용
       total += agility + r;
       breakdown.push({ name: p?.name || '', agility, roll: r, sum: agility + r });
     });
@@ -155,13 +154,13 @@
   // ---------- 공개 API ----------
   const API = {
     RULES,
-    rollD20,
+    rollD10,           // rollD20 → rollD10으로 변경
     readStats,
     isCritical,
     tryAttackBooster,
-    tryDefenseBooster,   // 성공 시 mult:2 (다음 피격 1회 방어력 ×2)
-    useDitany,           // 표준 표기
-    useDittany,          // 이전 이름 호환
+    tryDefenseBooster, // 성공 시 mult:2 (다음 피격 1회 방어력 ×2)
+    useDitany,         // 표준 표기
+    useDittany,        // 이전 이름 호환
     computeAttackScore,
     computeDefenseValue, // 방어력 × defenseMult
     resolveDefense,
