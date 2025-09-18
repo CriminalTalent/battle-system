@@ -323,7 +323,7 @@ class OTPManager extends EventEmitter {
       this.log(`만료 OTP 정리: ${n}건`, 'INFO');
     }
     return n;
-    }
+  }
 
   clearByBattle(battleId) {
     if (!battleId) return 0;
