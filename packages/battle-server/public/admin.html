@@ -285,7 +285,7 @@
   let uploadedAvatarUrl = null;
   
   // 디버깅용 전역 함수
-  window.debugSocket = () => {
+  window.debugSocket = function() {
     console.log('Socket connected:', socket.connected);
     console.log('Socket id:', socket.id);
     console.log('Current battle ID:', currentBattleId);
@@ -360,18 +360,18 @@
           items.push(`방어보정 ${p.items?.defenseBooster || p.items?.defense_boost}`);
         }
         
-        html += `<div class="player-card ${isAlive ? '' : 'dead'}">
-          <img src="${p.avatar||'data:image/svg+xml,<svg width=\\'32\\' height=\\'32\\' xmlns=\\'http://www.w3.org/2000/svg\\'><circle cx=\\'16\\' cy=\\'16\\' r=\\'14\\' fill=\\'%23DCC7A2\\' stroke=\\'%23000\\' stroke-width=\\'2\\'/><text x=\\'16\\' y=\\'20\\' text-anchor=\\'middle\\' fill=\\'%23000\\' font-size=\\'12\\'>?</text></svg>'}" class="player-avatar" alt="${esc(p.name)}" onerror="this.src='data:image/svg+xml,<svg width=\\'32\\' height=\\'32\\' xmlns=\\'http://www.w3.org/2000/svg\\'><circle cx=\\'16\\' cy=\\'16\\' r=\\'14\\' fill=\\'%23DCC7A2\\' stroke=\\'%23000\\' stroke-width=\\'2\\'/><text x=\\'16\\' y=\\'20\\' text-anchor=\\'middle\\' fill=\\'%23000\\' font-size=\\'12\\'>?</text></svg>'"/>
-          <div class="player-info">
-            <div class="player-name">${esc(p.name)}</div>
-            <div class="hp"><span style="width:${hpPct}%"></span></div>
-            <div class="hp-text">HP ${p.hp}/${p.maxHp||100}</div>
-            <div class="stats">공${p.stats?.attack||0} 방${p.stats?.defense||0} 민${p.stats?.agility||0} 행${p.stats?.luck||0}</div>
-            <div class="items-info">${items.length ? items.join(', ') : '아이템 없음'}</div>
-            <div class="ready-status">${readyStatus}</div>
-            <button class="remove-btn" onclick="removePlayer('${p.id}')">제거</button>
-          </div>
-        </div>`;
+        html += '<div class="player-card ' + (isAlive ? '' : 'dead') + '">' +
+          '<img src="' + (p.avatar || 'data:image/svg+xml,<svg width=\'32\' height=\'32\' xmlns=\'http://www.w3.org/2000/svg\'><circle cx=\'16\' cy=\'16\' r=\'14\' fill=\'%23DCC7A2\' stroke=\'%23000\' stroke-width=\'2\'/><text x=\'16\' y=\'20\' text-anchor=\'middle\' fill=\'%23000\' font-size=\'12\'>?</text></svg>') + '" class="player-avatar" alt="' + esc(p.name) + '" onerror="this.src=\'data:image/svg+xml,<svg width=\\'32\\' height=\\'32\\' xmlns=\\'http://www.w3.org/2000/svg\\'><circle cx=\\'16\\' cy=\\'16\\' r=\\'14\\' fill=\\'%23DCC7A2\\' stroke=\\'%23000\\' stroke-width=\\'2\\'/><text x=\\'16\\' y=\\'20\\' text-anchor=\\'middle\\' fill=\\'%23000\\' font-size=\\'12\\'>?</text></svg>\'"/>' +
+          '<div class="player-info">' +
+            '<div class="player-name">' + esc(p.name) + '</div>' +
+            '<div class="hp"><span style="width:' + hpPct + '%"></span></div>' +
+            '<div class="hp-text">HP ' + p.hp + '/' + (p.maxHp||100) + '</div>' +
+            '<div class="stats">공' + (p.stats && p.stats.attack || 0) + ' 방' + (p.stats && p.stats.defense || 0) + ' 민' + (p.stats && p.stats.agility || 0) + ' 행' + (p.stats && p.stats.luck || 0) + '</div>' +
+            '<div class="items-info">' + (items.length ? items.join(', ') : '아이템 없음') + '</div>' +
+            '<div class="ready-status">' + readyStatus + '</div>' +
+            '<button class="remove-btn" onclick="removePlayer(\'' + p.id + '\')">제거</button>' +
+          '</div>' +
+        '</div>';
       });
       document.getElementById(containerId).innerHTML = html;
     }
