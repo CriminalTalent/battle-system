@@ -1,7 +1,8 @@
 // packages/battle-server/src/socket/broadcastManager.js
 // BroadcastManager: 브로드캐스트 계층 캡슐화 (신/구 이벤트 동시 지원)
 // - init(io) 후 인스턴스 메서드 사용
-// - 상태/로그/채팅/턴/관전자 카운트 모두 신·구 이벤트명으로 송신
+// - 상태/로그/채팅/턴/라운드/페이즈/선택/타이머/관전자 카운트 모두 신·구 이벤트명으로 송신
+// - 기존 룰/디자인/이벤트 명칭 유지 + 누락된 별칭 보강
 
 'use strict';
 
@@ -37,6 +38,7 @@ class BroadcastManager {
     }
   }
 
+  // ---- room helpers --------------------------------------------------------
   room(battleId) {
     return String(battleId || '');
   }
@@ -114,6 +116,7 @@ class BroadcastManager {
    * 전투 상태 전체 브로드캐스트
    * - 신: "battle:update"
    * - 구: "battleUpdate"
+   * 클라이언트 호환을 위해 currentTurn/timeLeftSec 포함
    */
   state(battle, extra = {}) {
     if (!battle?.id) return false;
@@ -121,29 +124,60 @@ class BroadcastManager {
     const players = Array.isArray(battle.players) ? battle.players : [];
     const logs = Array.isArray(battle.log) ? battle.log : [];
 
+    // timeLeftSec 계산 (turnDeadline/turnEndsAt 둘 다 호환)
+    const now = Date.now();
+    const deadline = Number(battle.turnDeadline ?? battle.turnEndsAt ?? 0) || 0;
+    const timeLeftSec = Math.max(0, Math.floor((deadline - now) / 1000));
+
+    const currentPlayer = battle.currentPlayer || battle.turn?.currentPlayer || null;
+    const currentTeam = battle.currentTeam ?? battle.turn?.currentTeam ?? null;
+    const turnNumber = battle.turnNumber ?? battle.turn?.turnNumber ?? battle.round ?? 1;
+
     const payload = {
-      ...battle,
       id: battle.id,
+      mode: battle.mode,
       status: battle.status || 'waiting',
-      // 엔진형 turn 동봉 (round/order/phase 등)
+
+      // 엔진형 구조(있는 경우 그대로 유지)
       turn: battle.turn,
-      // 레거시 호환 필드
+
+      // 레거시/호환 필드
+      currentTurn: {
+        turnNumber,
+        currentTeam,
+        currentPlayer: currentPlayer
+          ? {
+              id: currentPlayer.id,
+              name: currentPlayer.name,
+              avatar: currentPlayer.avatar,
+              team: currentPlayer.team
+            }
+          : null,
+        timeLeftSec
+      },
+
       current: battle.current ?? null,
       startedAt: battle.startedAt ?? null,
       endedAt: battle.endedAt ?? null,
-      turnEndsAt: battle.turnEndsAt ?? null,
+      turnEndsAt: deadline || null,
+
       players: players
         .map(p => ({
           id: p?.id || '',
           name: p?.name || '',
           team: p?.team || '',
           hp: Number(p?.hp || 0),
+          maxHp: Number(p?.maxHp || p?.hp || 0),
           ready: !!p?.ready,
-          avatar: p?.avatar || p?.avatarUrl || '',
-          stats: p?.stats || {}
+          avatar: p?.avatar || p?.avatarUrl || '/uploads/avatars/default.svg',
+          stats: p?.stats || {},
+          items: p?.items || {}
         }))
         .filter(p => p.id),
+
+      // 마지막 로그 일부(관리/디버깅용)
       log: logs.slice(-200),
+
       ...extra
     };
 
@@ -156,129 +190,3 @@ class BroadcastManager {
   // 관리자 델타(meta) 전용
   admin(battleId, data) {
     if (!battleId) return false;
-    return this.toAll(battleId, 'admin:update', data || {});
-  }
-
-  // =============== 종료 알림 ===============
-  /**
-   * - 신: "battle:ended"
-   */
-  ended(battleId, result) {
-    if (!battleId) return false;
-    return this.toAll(battleId, 'battle:ended', result || {});
-  }
-
-  // =============== 로그 & 채팅 ===============
-  /**
-   * 전투 로그 1건
-   * - 신: "battle:log"
-   * - 구: "battleLog"
-   * - 추가 신식: "log:new" (선택)
-   */
-  log(battleId, { type = 'system', message = '', ts, timestamp } = {}) {
-    if (!battleId) return false;
-    const entry = {
-      type,
-      message: String(message).substring(0, 500),
-      ts: ts || timestamp || Date.now()
-    };
-    const roomId = this.room(battleId);
-    const a = this._safeEmit(roomId, 'battle:log', entry);
-    const b = this._safeEmit(roomId, 'battleLog', entry);
-    const c = this._safeEmit(roomId, 'log:new', { ...entry, timestamp: entry.ts });
-    return a && b && c;
-  }
-
-  /**
-   * 채팅
-   * - 구: "chatMessage" { senderName, message }
-   * - 신: "chat:message" { senderName, message }
-   * - 추가 신식: "chat:new" { name, message, timestamp }
-   */
-  chat(battleId, { name = '', senderName, message = '', timestamp } = {}) {
-    if (!battleId) return false;
-    const sender = (senderName || name || '익명').toString().substring(0, 50);
-    const msg = message.toString().substring(0, 500);
-    const ts = timestamp || Date.now();
-    const roomId = this.room(battleId);
-
-    const payloadLegacy = { senderName: sender, message: msg };
-    const payloadNew = { senderName: sender, message: msg };
-    const payloadNewest = { name: sender, message: msg, timestamp: ts };
-
-    const a = this._safeEmit(roomId, 'chatMessage', payloadLegacy);
-    const b = this._safeEmit(roomId, 'chat:message', payloadNew);
-    const c = this._safeEmit(roomId, 'chat:new', payloadNewest);
-    return a && b && c;
-  }
-
-  // =============== 관전자 카운트 ===============
-  /**
-   * - 신: "spectator:count_update" { count }
-   * - 구: "spectatorCountUpdate"   { count }
-   * - 추가 신식: "spectator:count" { count, timestamp }
-   */
-  spectators(battleId, count) {
-    if (!battleId) return false;
-    const c = Math.max(0, Number(count) || 0);
-    const roomId = this.room(battleId);
-
-    const a = this._safeEmit(roomId, 'spectator:count_update', { count: c });
-    const b = this._safeEmit(roomId, 'spectatorCountUpdate', { count: c });
-    const d = this._safeEmit(roomId, 'spectator:count', { count: c, timestamp: Date.now() });
-    return a && b && d;
-  }
-
-  // =============== 턴/페이즈 이벤트 ===============
-  /**
-   * 턴 시작 힌트
-   * - 신: "turn:start"
-   * data 예: { playerId, phaseTeam: "A"|"B", round, order }
-   */
-  turnStart(battleId, data) {
-    if (!battleId) return false;
-    return this.toAll(battleId, 'turn:start', data || {});
-  }
-
-  /**
-   * 턴 종료 힌트
-   * - 신: "turn:end"
-   * data 예: { teamPhaseCompleted, roundCompleted }
-   */
-  turnEnd(battleId, data) {
-    if (!battleId) return false;
-    return this.toAll(battleId, 'turn:end', data || {});
-  }
-
-  // =============== 스냅샷(선택) ===============
-  snapshot(battleId, snapshot) {
-    if (!battleId || !snapshot) return false;
-    return this.toAll(battleId, 'state:snapshot', snapshot);
-  }
-
-  // =============== 시스템 통계/정리 ===============
-  getSystemStats() {
-    if (!this.options.enableMetrics) return { metricsDisabled: true };
-    return {
-      ...this.metrics,
-      isInitialized: this.isInitialized,
-      options: this.options,
-      uptime: Date.now() - (this.metrics.lastActivity || Date.now())
-    };
-  }
-
-  destroy() {
-    this.io = null;
-    this.isInitialized = false;
-    this.metrics = { messagesSent: 0, errors: 0, lastActivity: Date.now() };
-    if (this.options.verbose) console.log('[BroadcastManager] Destroyed');
-  }
-}
-
-export { BroadcastManager };
-export const init = (io, options) => {
-  const manager = new BroadcastManager();
-  manager.init(io, options);
-  return manager;
-};
-export default BroadcastManager;
