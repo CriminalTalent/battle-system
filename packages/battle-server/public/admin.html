@@ -12,6 +12,11 @@
       --deep-navy:#000813; --gold:#DCC7A2; --gold-bright:#D4BA8D;
       --glass-1:rgba(0,8,19,.7); --glass-2:rgba(0,8,19,.5);
       --border-light:rgba(220,199,162,.3); --text:#fff; --text-muted:rgba(255,255,255,.7); --radius:6px;
+      /* 팀별 컬러 정의 - 채도 낮은 색상 */
+      --team-a-color: #8b5757; /* 채도 낮은 빨간색 */
+      --team-b-color: #5d6b8d; /* 채도 낮은 파란색 */
+      --result-bg: #DCC7A2;    /* 금색 배경 */
+      --result-text: #000;     /* 검은 글자 */
     }
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Cinzel',serif;background:linear-gradient(135deg,var(--deep-navy) 0%, #001122 100%);color:var(--text); min-height:100vh; line-height:1.6;}
@@ -51,9 +56,32 @@
     .stats{ font-size:.7rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace }
     .avatar-preview{ width:60px; height:60px; border-radius:50%; border:2px solid var(--gold); margin-top:8px; display:block; object-fit:cover; background:#0b1420 }
     .logs,.chat{ max-height:340px; overflow:auto; display:grid; gap:6px }
-    .log{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
+    .log{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text); border-left:3px solid transparent; }
     .log.rule{ background:var(--gold); color:#000; font-weight:700 }
     .log.error{ color:#ff6b6b }
+    
+    /* 팀별 로그 컬러링 */
+    .log-team-a { 
+      border-left-color: var(--team-a-color) !important;
+      background: rgba(139, 87, 87, 0.1) !important;
+      color: var(--team-a-color) !important;
+    }
+    .log-team-b { 
+      border-left-color: var(--team-b-color) !important;
+      background: rgba(93, 107, 141, 0.1) !important;
+      color: var(--team-b-color) !important;
+    }
+    .log-result { 
+      background: var(--result-bg) !important;
+      color: var(--result-text) !important;
+      font-weight: 700 !important;
+      border-left-color: var(--result-bg) !important;
+      box-shadow: 0 2px 8px rgba(220, 199, 162, 0.3) !important;
+    }
+    .log-system { color: var(--text); }
+    .log-notice { color: var(--gold); }
+    .log-error { color: #ff6b6b; }
+    
     .chat-entry{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
     .tmark{ font-family:'JetBrains Mono',monospace; color:#000; background:var(--gold); border-radius:6px; padding:0 6px; margin-right:6px }
     .chat-name{ font-weight:700 } .chat-sep{ padding:0 4px; opacity:.9 }
@@ -304,6 +332,45 @@
       const overlay = document.getElementById('gameOverOverlay');
       overlay.classList.remove('show');
       document.body.classList.remove('battle-ended');
+    }
+
+    // 팀별 로그 분류 함수
+    function getLogClass(message, type) {
+      if (type === 'battle' || type === 'item') {
+        // A팀 관련 로그 감지
+        if (message.includes('A1') || message.includes('A2') || message.includes('A3') || message.includes('A4') || 
+            message.includes('A팀') || message.includes('=== A팀')) {
+          return 'log-team-a';
+        }
+        // B팀 관련 로그 감지
+        if (message.includes('B1') || message.includes('B2') || message.includes('B3') || message.includes('B4') || 
+            message.includes('B팀') || message.includes('=== B팀')) {
+          return 'log-team-b';
+        }
+        // 결과 관련 로그 (라운드 종료, 승리 등)
+        if (message.includes('라운드 종료') || message.includes('승리') || message.includes('전투가') || 
+            message.includes('결과') || message.includes('===')) {
+          return 'log-result';
+        }
+      }
+      
+      // 기타 타입별 분류
+      if (type === 'notice') return 'log-notice';
+      if (type === 'error') return 'log-error';
+      return 'log-system';
+    }
+
+    // 로그 추가 함수 (컬러링 적용)
+    function addLogWithColor(logElement, message, type, timestamp) {
+      const logClass = getLogClass(message, type);
+      const time = new Date(timestamp || Date.now()).toLocaleTimeString('ko-KR', {hour12: false});
+      
+      const logDiv = document.createElement('div');
+      logDiv.className = `log ${logClass}`;
+      logDiv.innerHTML = `<span class="tmark">[${time}]</span>${message}`;
+      
+      logElement.appendChild(logDiv);
+      logElement.scrollTop = logElement.scrollHeight;
     }
 
     // 소켓 연결 및 게임 종료 이벤트 리스너
