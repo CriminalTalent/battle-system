@@ -34,6 +34,7 @@
     .btn.ghost{ background:transparent; border:1px solid var(--gold); color:var(--gold) }
     .btn.danger{ background:#3b0c0c; border:1px solid #8a5; color:var(--gold) }
     .btn.block{ width:100% } .btn.small{ padding:4px 8px; font-size:.75rem }
+    .btn:disabled{ opacity:0.5; cursor:not-allowed; }
     .hint{ color:var(--text-muted); font-size:.8rem; margin-top:6px }
     .team-rosters{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
     @media (max-width:768px){ .team-rosters{ grid-template-columns:1fr } }
@@ -56,10 +57,111 @@
     .chat-entry{ font-size:.92rem; line-height:1.45; background:rgba(255,255,255,.02); border:1px solid rgba(220,199,162,.12); border-radius:8px; padding:6px 8px; color:var(--text) }
     .tmark{ font-family:'JetBrains Mono',monospace; color:#000; background:var(--gold); border-radius:6px; padding:0 6px; margin-right:6px }
     .chat-name{ font-weight:700 } .chat-sep{ padding:0 4px; opacity:.9 }
+
+    /* 게임 종료 오버레이 */
+    .game-over-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 8, 19, 0.95);
+      backdrop-filter: blur(20px);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    
+    .game-over-overlay.show {
+      display: flex;
+    }
+    
+    .game-over-content {
+      background: var(--glass-1);
+      border: 2px solid var(--gold);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      backdrop-filter: blur(15px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      max-width: 500px;
+      width: 90%;
+    }
+    
+    .game-over-title {
+      font-family: 'Cinzel', serif;
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 20px;
+      text-shadow: 0 0 30px rgba(220, 199, 162, 0.8);
+      letter-spacing: 0.1em;
+    }
+    
+    .winner-announcement {
+      font-size: 1.5rem;
+      color: var(--text);
+      margin-bottom: 30px;
+      line-height: 1.4;
+    }
+    
+    .winner-team {
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 2rem;
+      text-shadow: 0 0 20px rgba(220, 199, 162, 0.6);
+    }
+    
+    .game-over-message {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 30px;
+    }
+    
+    .restart-button {
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-bright) 100%);
+      border: none;
+      color: var(--deep-navy);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .restart-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(220, 199, 162, 0.4);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* 전투 종료 시 모든 버튼 비활성화 */
+    body.battle-ended .btn:not(.restart-button) {
+      opacity: 0.3 !important;
+      cursor: not-allowed !important;
+      pointer-events: none !important;
+    }
+
+    body.battle-ended input, 
+    body.battle-ended select, 
+    body.battle-ended textarea {
+      opacity: 0.3 !important;
+      pointer-events: none !important;
+    }
   </style>
 </head>
 <body>
   <header class="header"><h1 class="title">PYXIS</h1></header>
+  
   <div class="admin-container">
     <div class="admin-grid">
       <!-- 전투 제어 -->
@@ -92,52 +194,36 @@
         </div>
 
         <div class="card">
-          <h3>링크 / 비밀번호</h3>
-          <button id="btnGenLinks" class="btn block">참가자 링크 / 관전자 비번 생성</button>
-          <div class="field">
-            <label>관전자 비밀번호</label>
-            <input id="spectatorOtp" type="text" readonly/>
+          <h3>링크 생성</h3>
+          <div class="grid grid-2 compact">
+            <button id="btnGenPlayerLinks" class="btn block">전투 참가자 링크</button>
+            <button id="btnGenSpectatorLink" class="btn block">관전자 링크</button>
           </div>
-          <div class="field">
-            <label>관전자 URL</label>
-            <input id="spectatorUrl" type="text" readonly/>
-          </div>
-          <div class="hint">참가자 개별 링크(이름/팀/OTP 포함)는 아래 목록에 표시됩니다.</div>
-          <div id="playerLinks" class="field"></div>
+          <div id="generatedLinks" style="margin-top:12px"></div>
         </div>
       </div>
 
-      <!-- 전투 참가자 관리 -->
+      <!-- 참가자 관리 -->
       <div class="section">
-        <h2>전투 참가자 관리</h2>
+        <h2>전투 참가자 추가</h2>
         <div class="card">
-          <div class="grid">
-            <div class="field">
-              <label>이름</label>
-              <input id="playerName" type="text" placeholder="전투 참가자 이름"/>
-            </div>
-            <div class="field">
-              <label>팀</label>
-              <select id="playerTeam">
-                <option value="A" selected>A</option>
-                <option value="B">B</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>초기 HP (= MAX HP)</label>
-              <input id="playerHp" type="number" value="100" min="1" max="9999"/>
-            </div>
+          <div class="field">
+            <label>이름</label>
+            <input id="playerName" type="text" placeholder="참가자 이름"/>
+          </div>
+          
+          <div class="field">
+            <label>팀</label>
+            <select id="playerTeam">
+              <option value="A">A팀</option>
+              <option value="B">B팀</option>
+            </select>
           </div>
 
-          <div class="grid">
-            <div class="field">
-              <label>이미지 업로드</label>
-              <input id="avatarFile" type="file" accept="image/*"/>
-              <img id="avatarPreview" class="avatar-preview" alt="미리보기"
-                   src="/uploads/avatars/default.svg"
-                   onerror="this.src='/uploads/avatars/default.svg'"/>
-              <div class="hint">업로드 성공 시 서버가 `/uploads/avatars/...` URL을 돌려줍니다.</div>
-            </div>
+          <div class="field">
+            <label>이미지 업로드</label>
+            <input id="playerAvatar" type="file" accept="image/*"/>
+            <div class="hint">권장: 정사각형, 500KB 이하</div>
           </div>
 
           <div class="grid grid-4">
@@ -190,8 +276,59 @@
     </div>
   </div>
 
+  <!-- 게임 종료 오버레이 -->
+  <div id="gameOverOverlay" class="game-over-overlay">
+    <div class="game-over-content">
+      <div class="game-over-title">전투 종료</div>
+      <div class="winner-announcement">
+        <span id="winnerTeam" class="winner-team"></span> 승리!
+      </div>
+      <div class="game-over-message">전투가 종료되었습니다.</div>
+      <button id="restartButton" class="restart-button">새 전투 시작</button>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
-  <!-- 관리자 동작 전체 포함(전투 생성/제어/참가자 추가/렌더 + 링크핫픽스 통합) -->
+  <script>
+    // 게임 종료 처리 함수들
+    function showGameOverOverlay(winner) {
+      const overlay = document.getElementById('gameOverOverlay');
+      const winnerTeam = document.getElementById('winnerTeam');
+      
+      winnerTeam.textContent = winner + '팀';
+      overlay.classList.add('show');
+      document.body.classList.add('battle-ended');
+    }
+
+    function hideGameOverOverlay() {
+      const overlay = document.getElementById('gameOverOverlay');
+      overlay.classList.remove('show');
+      document.body.classList.remove('battle-ended');
+    }
+
+    // 소켓 연결 및 게임 종료 이벤트 리스너
+    const socket = io();
+    
+    // 게임 종료 이벤트 처리 (신/구 버전 모두 대응)
+    socket.on('battle:ended', (data) => {
+      console.log('전투 종료:', data);
+      showGameOverOverlay(data.winner);
+    });
+
+    socket.on('battleEnded', (data) => {
+      console.log('전투 종료 (호환):', data);
+      showGameOverOverlay(data.winner);
+    });
+
+    // 재시작 버튼 클릭 핸들러
+    document.getElementById('restartButton').addEventListener('click', () => {
+      hideGameOverOverlay();
+      // 새 전투 생성 로직은 기존 admin.js에서 처리
+      document.getElementById('btnCreate').click();
+    });
+
+    // 기존 관리자 기능들은 별도 admin.js에서 로드
+  </script>
   <script defer src="/assets/js/admin.js"></script>
 </body>
 </html>
