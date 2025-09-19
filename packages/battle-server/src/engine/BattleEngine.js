@@ -85,12 +85,12 @@ export function createBattleStore() {
       phase: 'idle',     // idle|A_select|B_select|resolve|inter
       round: 0,
       currentTeam: null, // 'A' or 'B' – 현재 선택 페이즈 팀
-      nextFirstTeam: null, // 다음 라운드 선공팀
+      nextFirstTeam: null, // 다음 라운드(=현재 라운드 시작 시점)의 선공팀
       players: [],
       choices: { A: [], B: [] }, // 선택 큐(의도만 저장)
       logs: [],
       createdAt: now(),
-      hardLimitAt: now() + 60 * 60 * 1000, // 1시간 제한 (필요시 서버 레이어에서 사용)
+      hardLimitAt: now() + 60 * 60 * 1000, // 1시간 제한
       turnCursor: null,        // UI용 현재 차례 플레이어 (선택 페이즈 표시 목적)
       phaseEndsAt: null
     };
@@ -134,7 +134,6 @@ export function createBattleStore() {
     const idx = b.players.findIndex(p => p.id === playerId);
     if (idx === -1) return false;
     b.players.splice(idx, 1);
-    // 선택 큐에서도 제거
     ['A','B'].forEach(t => { b.choices[t] = b.choices[t].filter(c => c.playerId !== playerId); });
     return true;
   }
@@ -181,7 +180,7 @@ export function createBattleStore() {
 
     const first = (scoreA === scoreB) ? (Math.random() < 0.5 ? 'A' : 'B') : (scoreA > scoreB ? 'A' : 'B');
     b.currentTeam = first;
-    b.nextFirstTeam = first; // 1라운드 선공 기록(라운드 종료 시 반전)
+    b.nextFirstTeam = first; // 이번 라운드 선공팀(라운드 종료 시 반전됨)
     pushLog(b, `선공 결정: A팀(민첩 ${Math.floor(avgA)} + ${rollA} = ${scoreA}) vs B팀(민첩 ${Math.floor(avgB)} + ${rollB} = ${scoreB})`, 'system');
     pushLog(b, `${first}팀이 선공입니다!`, 'system');
     pushLog(b, '전투가 시작되었습니다!', 'system');
@@ -203,13 +202,16 @@ export function createBattleStore() {
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
   }
 
-  /** 다음 팀 선택 or 해석으로 전환 */
+  /** ✅ 수정 포인트: 이번 라운드 선공팀 기준으로 다음 단계 결정 */
   function finishSelectOrNext(b) {
-    if (b.currentTeam === 'A') {
-      // B 선택으로
-      startSelectPhase(b, 'B');
+    const firstTeamThisRound = b.nextFirstTeam || 'A';
+    const other = firstTeamThisRound === 'A' ? 'B' : 'A';
+
+    if (b.currentTeam === firstTeamThisRound) {
+      // 선공팀 선택이 끝났으면 → 후공팀 선택으로
+      startSelectPhase(b, other);
     } else {
-      // 해석으로
+      // 후공팀 선택까지 끝났으면 → 해석
       startResolve(b);
     }
   }
@@ -304,12 +306,13 @@ export function createBattleStore() {
     b.phase = 'inter';
     b.phaseEndsAt = now() + 5_000;
 
-    // 5초 후 다음 라운드 자동 시작(서버 틱 없이 간단 타이머)
+    // 5초 후 다음 라운드 안내 로그(즉시 송출 효과)
+    pushLog(b, '5초 후 다음 라운드 시작...', 'system');
+    // 다음 라운드 시작
     setTimeout(() => {
       if (b.status !== 'active') return;
-      pushLog(b, '5초 후 다음 라운드 시작...', 'system');
       startSelectPhase(b, b.nextFirstTeam);
-    }, 50); // 로그 즉시 송출
+    }, 50);
   }
 
   /** 한 팀의 의도들을 팀 내부 이니시 순으로 실행 */
@@ -317,14 +320,12 @@ export function createBattleStore() {
     const intents = b.choices[team] || [];
     if (!intents.length) return;
 
-    // 팀 내 순서(민첩↓, 이름 오름차순)로 플레이어 목록 생성
     const order = sortByInitiative(
       intents
         .map(c => b.players.find(p => p.id === c.playerId))
         .filter(Boolean)
     ).map(p => p.id);
 
-    // 실행
     for (const pid of order) {
       const intent = intents.find(c => c.playerId === pid);
       if (!intent) continue;
@@ -335,7 +336,6 @@ export function createBattleStore() {
 
       if (intent.type === 'attack') {
         if (!target || target.hp <= 0) continue;
-        // 치명타 여부 (운/민첩 약간 반영)
         const critChance = clamp(0.05 + (actor.stats?.luck ?? 0) * 0.02, 0, 0.5);
         const isCrit = Math.random() < critChance;
         const dmg = calcDamage(actor, target, isCrit, false);
@@ -346,11 +346,10 @@ export function createBattleStore() {
           'result'
         );
       } else if (intent.type === 'defend') {
-        // 다음 해석 1회 한정 방어 버프(간단: 임시 방어+2)
         actor.stats._defTmp = (actor.stats._defTmp ?? 0) + 2;
         pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
       } else if (intent.type === 'dodge') {
-        actor.stats._dodgeTmp = (actor.stats._dodgeTmp ?? 0) + 1; // 이후 로직에 반영 여지
+        actor.stats._dodgeTmp = (actor.stats._dodgeTmp ?? 0) + 1;
         pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
       } else if (intent.type === 'item') {
         const it = intent.raw?.item;
