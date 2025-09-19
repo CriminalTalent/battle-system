@@ -1,9 +1,11 @@
-/* packages/battle-server/src/engine/BattleEngine.js (ESM) */
-/* PYXIS BattleEngine — Alternate first team each round, resolve order = First → Second */
+/* packages/battle-server/src/engine/BattleEngine.js (ESM)
+   - 선/후공 교대
+   - 해석 순서: 이번 라운드 선공팀 → 후공팀
+   - 선택 페이즈: 설명 로그만 (수치 없음), 해석 페이즈에서 수치 적용
+*/
 
 let _idSeq = 1;
 const newId = (p = 'b') => `${p}_${(_idSeq++).toString(36)}`;
-
 const now = () => Date.now();
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const otherTeam = (t) => (t === 'A' ? 'B' : 'A');
@@ -13,24 +15,24 @@ function sortByAgilityThenName(players) {
   return players
     .slice()
     .sort((a, b) => {
-      const da = a?.stats?.agility ?? 0;
-      const db = b?.stats?.agility ?? 0;
-      if (db !== da) return db - da; // agility desc
+      const ga = a?.stats?.agility ?? 0;
+      const gb = b?.stats?.agility ?? 0;
+      if (gb !== ga) return gb - ga;
       return (a?.name || '').localeCompare(b?.name || '', 'ko');
     });
 }
 
-/** 대미지 계산(간단 버전, 기존 톤 유지) */
+/** 대미지 계산(간단) */
 function computeAttackDamage(attacker, defender, crit = false, boosted = false) {
   const atk = (attacker?.stats?.attack ?? 1) * (boosted ? 2 : 1);
-  const def = (defender?.stats?.defense ?? 1);
+  const def = defender?.stats?.defense ?? 1;
   let base = 6 + Math.max(1, atk * 3 - def * 2);
   if (crit) base = Math.round(base * 1.5);
   const jitter = Math.floor(Math.random() * 5) - 2; // ±2
   return Math.max(1, base + jitter);
 }
 
-const healAmount = () => 10; // 디터니 고정 10 회복
+const healAmount = 10;
 
 export function createBattleStore() {
   const battles = new Map();
@@ -46,14 +48,14 @@ export function createBattleStore() {
 
   function create(mode = '2v2') {
     const id = newId('battle');
-    const battle = {
+    const b = {
       id,
       mode,
       status: 'waiting',                 // waiting | active | paused | ended
       phase: 'waiting',                  // waiting | A_select | B_select | resolve | inter
       round: 0,
-      firstTeam: 'A',                    // 다음 라운드 시작 시 선공 팀
-      firstTeamThisRound: null,          // 현재 라운드 선공 팀(해석 기준)
+      firstTeam: 'A',                    // 다음 라운드 선공팀
+      firstTeamThisRound: null,          // 현재 라운드 선공팀(해석 기준)
       players: [],
       logs: [],
       spectatorOtp: null,
@@ -62,16 +64,16 @@ export function createBattleStore() {
       currentTurn: {
         turnNumber: 0,
         currentTeam: null,               // A | B (선택 페이즈에서 의미)
-        timeLeftSec: 0,
+        timeLeftSec: 300,
         currentPlayer: null
       }
     };
-    battles.set(id, battle);
-    return battle;
+    battles.set(id, b);
+    return b;
   }
 
-  function get(id) { return battles.get(id) || null; }
-  function size() { return battles.size; }
+  const get = (id) => battles.get(id) || null;
+  const size = () => battles.size;
 
   function start(id) {
     const b = battles.get(id);
@@ -160,9 +162,7 @@ export function createBattleStore() {
     return true;
   }
 
-  function aliveOfTeam(b, team) {
-    return b.players.filter(p => p.team === team && p.hp > 0);
-  }
+  const aliveOfTeam = (b, team) => b.players.filter(p => p.team === team && p.hp > 0);
 
   function teamSelectionComplete(b, team) {
     const alive = aliveOfTeam(b, team);
@@ -175,10 +175,9 @@ export function createBattleStore() {
   function playerAction(id, playerId, action) {
     const b = battles.get(id);
     if (!b || b.status !== 'active') return null;
-
     if (!(b.phase === 'A_select' || b.phase === 'B_select')) return null;
-    const currentTeam = b.currentTurn?.currentTeam;
 
+    const currentTeam = b.currentTurn?.currentTeam;
     const actor = b.players.find(p => p.id === playerId);
     if (!actor || actor.team !== currentTeam || actor.hp <= 0) return null;
 
@@ -228,7 +227,7 @@ export function createBattleStore() {
     return { ok: true, b, result: { accepted: true } };
   }
 
-  /** 라운드 해석: 이번 라운드 선공팀 → 후공팀 순서로 실제 적용 */
+  /** 라운드 해석: 이번 라운드 선공팀 → 후공팀 */
   function resolveRound(b) {
     const first = b.firstTeamThisRound || b.firstTeam || 'A';
     const second = otherTeam(first);
@@ -244,7 +243,7 @@ export function createBattleStore() {
     b.logs.push({ ts: now(), type: 'system', message: `[해석] ${first}팀 결과 처리 시작` });
 
     // 1) 선공팀 처리
-    for (const p of (first === 'A' ? aliveFirst : aliveFirst)) {
+    for (const p of aliveFirst) {
       if (p.hp <= 0) continue;
       const a = actOf(first, p.id);
       applyAction(b, first, p, a);
@@ -252,7 +251,7 @@ export function createBattleStore() {
 
     // 2) 후공팀 처리
     b.logs.push({ ts: now(), type: 'system', message: `[해석] ${second}팀 결과 처리 시작` });
-    for (const p of (second === 'A' ? aliveSecond : aliveSecond)) {
+    for (const p of aliveSecond) {
       if (p.hp <= 0) continue;
       const a = actOf(second, p.id);
       applyAction(b, second, p, a);
@@ -270,11 +269,10 @@ export function createBattleStore() {
       return;
     }
 
-    // 라운드 종료 및 다음 라운드 준비
+    // 라운드 종료 및 다음 라운드 세팅(선공 교대)
     b.logs.push({ ts: now(), type: 'battle', message: `=== ${b.round}라운드 종료 ===` });
     b.logs.push({ ts: now(), type: 'system', message: '5초 후 다음 라운드 시작...' });
 
-    // 선공 교대 ★핵심★
     b.round += 1;
     b.firstTeam = otherTeam(first);
     b.firstTeamThisRound = b.firstTeam;
@@ -317,14 +315,13 @@ export function createBattleStore() {
         if (!tgt) return;
         const has = (p.items.dittany ?? p.items.ditany ?? 0) > 0;
         if (!has) return;
-        const heal = healAmount(p);
-        tgt.hp = Math.min(tgt.maxHp, tgt.hp + heal);
+        tgt.hp = Math.min(tgt.maxHp, tgt.hp + healAmount);
         if (typeof p.items.dittany === 'number') p.items.dittany = Math.max(0, p.items.dittany - 1);
         else if (typeof p.items.ditany === 'number') p.items.ditany = Math.max(0, p.items.ditany - 1);
         b.logs.push({
           ts: stamp,
           type: team === 'A' ? 'teamA' : 'teamB',
-          message: `${p.name}이(가) ${tgt.name} 치료 (+${heal}) → HP ${tgt.hp}`
+          message: `${p.name}이(가) ${tgt.name} 치료 (+${healAmount}) → HP ${tgt.hp}`
         });
         return;
       }
