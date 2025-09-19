@@ -1,7 +1,6 @@
 /* packages/battle-server/src/engine/BattleEngine.js (ESM)
-   - 선/후공 교대
-   - 해석 순서: 이번 라운드 선공팀 → 후공팀
-   - 선택 페이즈: 설명 로그만 (수치 없음), 해석 페이즈에서 수치 적용
+   - hp/maxHp/stats/items 누락/NaN 방지 보정
+   - 선/후공 교대 + 선택/해석 분리 (이전 답변 유지)
 */
 
 let _idSeq = 1;
@@ -9,6 +8,14 @@ const newId = (p = 'b') => `${p}_${(_idSeq++).toString(36)}`;
 const now = () => Date.now();
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const otherTeam = (t) => (t === 'A' ? 'B' : 'A');
+
+function toInt(n, d = 0) {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.trunc(v) : d;
+}
+function saneStat(n)   { return Math.min(5, Math.max(0, toInt(n, 0))); }
+function saneItem(n)   { return Math.max(0, toInt(n, 0)); }
+function saneHp(n, d)  { return Math.max(0, toInt(n, d)); }
 
 /** 민첩 내림차순 → 이름(ko) 오름차순 */
 function sortByAgilityThenName(players) {
@@ -37,10 +44,40 @@ const healAmount = 10;
 export function createBattleStore() {
   const battles = new Map();
 
+  /** 스냅샷 보정: 누락/NaN 필드 채우기 */
+  function sanitizePlayer(p) {
+    const maxHp = saneHp(p.maxHp ?? p.hp, 100);
+    let hp = saneHp(p.hp, maxHp);
+    if (!Number.isFinite(hp) || hp <= 0) hp = saneHp(p.hp ?? maxHp, maxHp);
+
+    const stats = {
+      attack:  saneStat(p?.stats?.attack),
+      defense: saneStat(p?.stats?.defense),
+      agility: saneStat(p?.stats?.agility),
+      luck:    saneStat(p?.stats?.luck),
+    };
+    const items = {
+      // ditany/dittany 둘 다 케어
+      dittany:        saneItem(p?.items?.dittany ?? p?.items?.ditany),
+      attackBooster:  saneItem(p?.items?.attackBooster ?? p?.items?.attack_boost),
+      defenseBooster: saneItem(p?.items?.defenseBooster ?? p?.items?.defense_boost),
+    };
+    return {
+      ...p,
+      maxHp,
+      hp,
+      stats,
+      items,
+      team: p.team === 'B' ? 'B' : 'A',
+      name: String(p.name || '플레이어'),
+    };
+  }
+
   function snapshot(id) {
     const b = battles.get(id);
     if (!b) return null;
     const s = clone(b);
+    s.players = (s.players || []).map(sanitizePlayer);
     delete s.pendingActions;
     delete s.firstTeamThisRound;
     return s;
@@ -63,7 +100,7 @@ export function createBattleStore() {
       pendingActions: { A: [], B: [] },
       currentTurn: {
         turnNumber: 0,
-        currentTeam: null,               // A | B (선택 페이즈에서 의미)
+        currentTeam: null,
         timeLeftSec: 300,
         currentPlayer: null
       }
@@ -112,27 +149,32 @@ export function createBattleStore() {
     const b = battles.get(id);
     if (!b) return null;
 
-    const p = {
+    // 들어온 값 보정(문자 → 숫자 / 누락 채우기)
+    const reqMax = toInt(player.maxHp ?? player.hp, 100);
+    const saneMax = reqMax > 0 ? reqMax : 100;
+    const saneCur = toInt(player.hp, saneMax);
+    const p = sanitizePlayer({
       id: newId('p'),
       team: player.team === 'B' ? 'B' : 'A',
       name: String(player.name || '플레이어'),
       avatar: player.avatar || null,
-      hp: Number(player.hp ?? 100),
-      maxHp: Number(player.maxHp ?? player.hp ?? 100),
+      hp: saneCur,
+      maxHp: saneMax,
       ready: !!player.ready,
       stats: {
-        attack: Number(player.stats?.attack ?? 1),
-        defense: Number(player.stats?.defense ?? 1),
-        agility: Number(player.stats?.agility ?? 1),
-        luck: Number(player.stats?.luck ?? 1)
+        attack:  player?.stats?.attack,
+        defense: player?.stats?.defense,
+        agility: player?.stats?.agility,
+        luck:    player?.stats?.luck,
       },
       items: {
-        dittany: Number(player.items?.dittany ?? player.items?.ditany ?? 0),
-        attackBooster: Number(player.items?.attackBooster ?? player.items?.attack_boost ?? 0),
-        defenseBooster: Number(player.items?.defenseBooster ?? player.items?.defense_boost ?? 0)
+        dittany:        player?.items?.dittany ?? player?.items?.ditany,
+        attackBooster:  player?.items?.attackBooster ?? player?.items?.attack_boost,
+        defenseBooster: player?.items?.defenseBooster ?? player?.items?.defense_boost,
       },
       token: player.token || Math.random().toString(36).slice(2, 10).toUpperCase()
-    };
+    });
+
     b.players.push(p);
     return p;
   }
@@ -192,7 +234,7 @@ export function createBattleStore() {
     };
     b.pendingActions[currentTeam].push(entry);
 
-    // 선택 페이즈 로그(수치 없음)
+    // 선택 로그(수치 없음)
     const tgt = entry.targetId ? b.players.find(p => p.id === entry.targetId) : null;
     const verb =
       entry.kind === 'attack' ? '공격' :
@@ -239,17 +281,16 @@ export function createBattleStore() {
     const actsB = new Map(b.pendingActions.B.map(a => [a.actorId, a]));
     const actOf = (team, id) => (team === 'A' ? actsA.get(id) : actsB.get(id)) || { kind: 'pass' };
 
-    // 해석 안내 로그
     b.logs.push({ ts: now(), type: 'system', message: `[해석] ${first}팀 결과 처리 시작` });
 
-    // 1) 선공팀 처리
+    // 1) 선공팀
     for (const p of aliveFirst) {
       if (p.hp <= 0) continue;
       const a = actOf(first, p.id);
       applyAction(b, first, p, a);
     }
 
-    // 2) 후공팀 처리
+    // 2) 후공팀
     b.logs.push({ ts: now(), type: 'system', message: `[해석] ${second}팀 결과 처리 시작` });
     for (const p of aliveSecond) {
       if (p.hp <= 0) continue;
@@ -269,7 +310,7 @@ export function createBattleStore() {
       return;
     }
 
-    // 라운드 종료 및 다음 라운드 세팅(선공 교대)
+    // 라운드 종료 + 다음 라운드(선공 교대)
     b.logs.push({ ts: now(), type: 'battle', message: `=== ${b.round}라운드 종료 ===` });
     b.logs.push({ ts: now(), type: 'system', message: '5초 후 다음 라운드 시작...' });
 
