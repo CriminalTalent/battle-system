@@ -44,7 +44,7 @@
   .battle-main{text-align:center}
   .current-player-info{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
   .current-avatar{
-    width:100%; max-width:560px; height:560px; margin:0 auto 12px auto;
+    width:100%; max-width:420px; height:420px; margin:0 auto 12px auto;
     display:block; object-fit:cover; border:4px solid var(--gold); border-radius:16px; background:#000;
   }
   .turn-info{font-size:16px;margin-bottom:8px;color:var(--text);font-weight:600}
@@ -83,7 +83,7 @@
   @media (max-width:767px){
     .main-grid{grid-template-columns:1fr}
     .cheer-grid{grid-template-columns:1fr}
-    .current-avatar{max-width:100%;height:360px}
+    .current-avatar{height:360px}
   }
 </style>
 </head>
@@ -129,7 +129,7 @@
       </div>
     </div>
 
-    <!-- 우측: B팀 + 채팅 뷰(입력 없음) -->
+    <!-- 우측: B팀 + 채팅뷰(입력 없음) -->
     <div>
       <div class="team-container" style="margin-bottom:12px">
         <div class="team-title">B팀</div>
@@ -170,6 +170,20 @@
 
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 
+  function classForLog(type, message){
+    if (type === 'teamA') return 'log-team-a';
+    if (type === 'teamB') return 'log-team-b';
+    if (type === 'result') return 'log-result';
+    if (type === 'notice') return 'log-notice';
+    if (type === 'error')  return 'log-error';
+    if (type === 'system') return 'log-system';
+    const m = message||'';
+    if (/(^|\s)A[1-4]\b|A팀|=== A팀/.test(m)) return 'log-team-a';
+    if (/(^|\s)B[1-4]\b|B팀|=== B팀/.test(m)) return 'log-team-b';
+    if (/라운드 해석|승리|결과|===/.test(m)) return 'log-result';
+    return 'log-system';
+  }
+
   function stripDetail(msg){
     return msg
       .replace(/\s*\(피해\s*[\d]+\)\s*→\s*HP\s*[\d]+/g,'')
@@ -177,7 +191,7 @@
       .replace(/\s*→\s*HP\s*[\d]+/g,'');
   }
 
-  function pushLogHtml(text, cls='log-system', ts){
+  function pushLog(text, cls='log-system', ts){
     const time = new Date(ts||Date.now()).toLocaleTimeString('ko-KR',{hour12:false});
     const div = document.createElement('div');
     div.className = `log-item ${cls}`;
@@ -189,29 +203,21 @@
   function addLog({ts, type, message}){
     if (!message) return;
     const phase = battle?.phase || currentPhase;
-    const isSelectPhase = (phase === 'A_select' || phase === 'B_select');
+    const isSelect = (phase === 'A_select' || phase === 'B_select');
     const hasDetail = /(피해\s*\d+|회복\s*\d+|→\s*HP\s*\d+)/.test(message);
 
-    if (isSelectPhase && hasDetail) {
-      const shortMsg = stripDetail(message);
-      pushLogHtml(shortMsg, 'log-system', ts);
+    if (isSelect && hasDetail) {
+      pushLog(stripDetail(message), classForLog(type, message), ts);
       bufferedResolutionLogs.push({ ts, text: message });
       return;
     }
-
     if (message.includes('라운드 해석')) {
-      pushLogHtml('라운드 해석', 'log-result', ts);
-      bufferedResolutionLogs.forEach(x => pushLogHtml(x.text, 'log-result', x.ts));
+      pushLog('라운드 해석', 'log-result', ts);
+      bufferedResolutionLogs.forEach(x => pushLog(x.text, 'log-result', x.ts));
       bufferedResolutionLogs.length = 0;
       return;
     }
-
-    let cls = 'log-system';
-    if (type === 'result') cls = 'log-result';
-    if (type === 'error') cls = 'log-error';
-    if (type === 'teamA') cls = 'log-team-a';
-    if (type === 'teamB') cls = 'log-team-b';
-    pushLogHtml(message, cls, ts);
+    pushLog(message, classForLog(type, message), ts);
   }
 
   function addChat({name, message}){
@@ -228,8 +234,7 @@
     if(!battle?.players) return;
     const teamA = battle.players.filter(p=>p.team==='A');
     const teamB = battle.players.filter(p=>p.team==='B');
-
-    function render(list, id){
+    const render = (list, id)=>{
       let html = '';
       list.forEach(p=>{
         const hpPct = Math.max(0, p.hp/(p.maxHp||100)*100);
@@ -248,7 +253,7 @@
         </div>`;
       });
       document.getElementById(id).innerHTML = html;
-    }
+    };
     render(teamA,'teamA');
     render(teamB,'teamB');
   }
@@ -259,7 +264,7 @@
     const img = document.getElementById('currentPortrait');
     const info = document.getElementById('turnInfo');
 
-    let phaseText =
+    const phaseText =
       battle?.phase === 'A_select' ? 'A팀 선택 중' :
       battle?.phase === 'B_select' ? 'B팀 선택 중' :
       battle?.phase === 'resolve'  ? '라운드 해석 중' :
@@ -282,12 +287,11 @@
   }
 
   function renderAll(){
-    // 페이즈 전환 감지 (안전 플러시)
     if (battle?.phase && battle.phase !== currentPhase) {
       currentPhase = battle.phase;
       if (currentPhase === 'resolve' && bufferedResolutionLogs.length) {
-        pushLogHtml('라운드 해석', 'log-result');
-        bufferedResolutionLogs.forEach(x => pushLogHtml(x.text, 'log-result', x.ts));
+        pushLog('라운드 해석', 'log-result');
+        bufferedResolutionLogs.forEach(x => pushLog(x.text, 'log-result', x.ts));
         bufferedResolutionLogs.length = 0;
       }
     }
@@ -295,24 +299,23 @@
     renderTeams();
   }
 
-  // 이름 입력
-  const nameOverlay = document.getElementById('nameOverlay');
-  document.getElementById('enterBtn').addEventListener('click', ()=>{
+  // 이름 입력 → 채팅 발송용 이름만 세팅 (관전자 인증 불필요)
+  document.getElementById('enterBtn').onclick = ()=>{
     const v = document.getElementById('nameInput').value.trim();
     if (!v) { alert('이름을 입력하세요'); return; }
     spectatorName = v;
-    nameOverlay.style.display = 'none';
-  });
+    document.getElementById('nameOverlay').style.display = 'none';
+  };
   document.getElementById('nameInput').addEventListener('keydown', (e)=>{
     if (e.key==='Enter'){ e.preventDefault(); document.getElementById('enterBtn').click(); }
   });
 
-  // 응원 버튼: 인증없이 chatMessage
+  // 응원 버튼 → 일반 채팅 채널로 송출(서버가 중계만 하면 됨)
   document.addEventListener('click',(e)=>{
     const b = e.target.closest('.cheer-btn');
     if (!b) return;
     const msg = b.getAttribute('data-msg');
-    socket.emit('chatMessage',{ battleId, name: spectatorName||'관전자', message: msg, type:'cheer' });
+    socket.emit('chatMessage', { battleId, name: spectatorName || '관전자', message: msg, type:'cheer' });
   });
 
   // 소켓
