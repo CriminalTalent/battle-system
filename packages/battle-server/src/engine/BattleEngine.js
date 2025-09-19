@@ -193,18 +193,23 @@ export function createBattleStore() {
     return { b };
   }
 
+  /** 선택 페이즈 시작 (의도 수집 전용) — 팀 전환 시 의도 큐/커서 초기화 보장 */
   function startSelectPhase(b, team) {
     if (b.status !== 'active') return;
+
     b.phase = (team === 'A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
 
-    // 같은 라운드에서 팀별 큐는 매번 리셋 (의도만 유지)
+    // 해당 팀의 의도 큐는 전환 시마다 초기화 (라운드 내 중복/잔여 방지)
     b.choices[team] = [];
 
-    // 팀 내 턴커서(표시용) – 민첩/ABC 정렬
+    // 팀 내 생존자 이니시 정렬로 표시용 커서 구성
     const alive = sortByInitiative(b.players.filter(p => p.team === team && p.hp > 0));
-    b.turnCursor = { team, order: alive.map(p=>p.id), index: 0, playerId: alive[0]?.id || null };
-    b.phaseEndsAt = now() + 30_000; // UI 타이머 가정
+    b.turnCursor = { team, order: alive.map(p => p.id), index: 0, playerId: alive[0]?.id || null };
+
+    // 선택 페이즈 제한시간(클라이언트 UI 타이머용)
+    b.phaseEndsAt = now() + 30_000;
+
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
   }
 
@@ -276,26 +281,35 @@ export function createBattleStore() {
     return { b, result: { queued: true } };
   }
 
-  /** ✅ 확정: 이번 라운드 선공팀 기준으로 선택 흐름 / 해석 진입 가드 */
+  /** ✅ 확정: 이번 라운드 선공팀/후공팀 선택 흐름 보장 */
   function finishSelectOrNext(b) {
     if (b.status !== 'active') return;
     if (!(b.phase === 'A_select' || b.phase === 'B_select')) return;
 
-    const firstTeamThisRound = b.nextFirstTeam || 'A';
-    const secondTeam = firstTeamThisRound === 'A' ? 'B' : 'A';
+    const first = b.nextFirstTeam || 'A';
+    const second = first === 'A' ? 'B' : 'A';
 
-    // 아직 다른 팀이 선택 안 끝났다면 그 팀으로 전환
-    if (b.currentTeam === firstTeamThisRound) {
-      if (!b.selectionDone[secondTeam]) {
-        startSelectPhase(b, secondTeam);
-        return;
-      }
-      // 이 경우는 이론상 발생하지 않지만, 두 팀이 동시에 끝난 케이스면 아래로 넘어감
+    const cur = b.currentTeam;              // 지금 선택 중이던 팀
+    const curDone = !!b.selectionDone[cur];
+    const other = cur === 'A' ? 'B' : 'A';  // 반대 팀
+    const otherDone = !!b.selectionDone[other];
+
+    // 1) 현재가 선공팀이고, 후공팀이 아직 미완료면 → 후공팀 선택 페이즈로 전환
+    if (cur === first && curDone && !otherDone) {
+      startSelectPhase(b, second);
+      return;
     }
 
-    // 두 팀 모두 완료되었으면 해석
+    // 2) 두 팀이 모두 완료되었으면 → 해석
     if (b.selectionDone.A && b.selectionDone.B) {
       startResolve(b);
+      return;
+    }
+
+    // 3) 안정장치: 후공팀이 먼저 완료된 비정상 흐름이면 선공팀 선택으로 되돌림
+    if (cur === second && curDone && !b.selectionDone[first]) {
+      startSelectPhase(b, first);
+      return;
     }
   }
 
