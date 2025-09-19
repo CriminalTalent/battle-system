@@ -55,7 +55,7 @@ if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir));
 
-const send = file => (req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
+const send = file => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
 app.get('/', send('admin.html'));          // 루트 → 관리자
 app.get('/admin', send('admin.html'));
 app.get('/player', send('player.html'));
@@ -552,14 +552,14 @@ io.on('connection', (socket) => {
 /* ─────────────────────────── 서버 시작 ─────────────────────────── */
 server.listen(PORT, HOST, () => {
   console.log(`
-╔════════════════════════════════════════╗
-║           PYXIS Battle System          ║
-║        서버가 시작되었습니다           ║
-╠════════════════════════════════════════╣
-║ 주소: http://${HOST}:${PORT}${HOST === '0.0.0.0' ? ' (모든 인터페이스)' : ''}
-║ 환경: ${process.env.NODE_ENV || 'development'}
-║ CORS: ${CORS_ORIGIN.join(', ')}
-╚════════════════════════════════════════╝
+============================================================
+                PYXIS Battle System
+                 서버가 시작되었습니다
+------------------------------------------------------------
+ 주소: http://${HOST}:${PORT}${HOST === '0.0.0.0' ? ' (모든 인터페이스)' : ''}
+ 환경: ${process.env.NODE_ENV || 'development'}
+ CORS: ${CORS_ORIGIN.join(', ')}
+============================================================
   `);
 });
 
