@@ -1,4 +1,4 @@
-/* ESM BattleEngine – 선택 페이즈는 '의도 로그', 해석 페이즈에서만 '결과+적용' */
+/* ESM BattleEngine – 선택 페이즈는 '의도 로그', 해석 페이즈에서만 '결과+적용(일괄)' */
 
 import { randomUUID } from 'node:crypto';
 
@@ -313,7 +313,7 @@ export function createBattleStore() {
     }
   }
 
-  /** 해석 – 결과(수치 포함) 출력 + HP/아이템 실제 적용 */
+  /** 해석 – 결과(수치 포함) '모두 계산 → 일괄 적용 & 로그 송출' */
   function startResolve(b) {
     if (b.status !== 'active') return;
     b.phase = 'resolve';
@@ -321,14 +321,46 @@ export function createBattleStore() {
     b.turnCursor = null;
     b.phaseEndsAt = now() + 3_000;
 
-    pushLog(b, '라운드 해석', 'result');
-
     const first = b.nextFirstTeam || 'A';
     const second = first === 'A' ? 'B' : 'A';
 
-    // 해석 순서: 선공팀 → 후공팀
-    resolveTeam(b, first);
-    resolveTeam(b, second);
+    // 시뮬레이션 상태(실제 배틀 상태를 바꾸지 않고 계산)
+    const simById = new Map();
+    for (const p of b.players) {
+      simById.set(p.id, {
+        id: p.id,
+        name: p.name,
+        team: p.team,
+        avatar: p.avatar,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        stats: { ...p.stats },
+        items: { ...p.items },
+      });
+    }
+
+    // 팀별 해석 결과(로그 텍스트를 먼저 모은다)
+    const logsBuffer = [];
+    const { logs: logsFirst } = computeTeamOutcomes(b, first, simById);
+    const { logs: logsSecond } = computeTeamOutcomes(b, second, simById);
+
+    // 해석 로그 일괄 송출
+    pushLog(b, '라운드 해석', 'result');
+    for (const line of logsFirst) pushLog(b, line, 'result');
+    for (const line of logsSecond) pushLog(b, line, 'result');
+
+    // 시뮬레이션 최종치를 실제 상태에 일괄 적용
+    for (const p of b.players) {
+      const sim = simById.get(p.id);
+      p.hp = clamp(sim.hp, 0, p.maxHp);
+      // 아이템(소모/사용) 반영
+      p.items.dittany = Math.max(0, sim.items.dittany|0);
+      p.items.attackBooster = Math.max(0, sim.items.attackBooster|0);
+      p.items.defenseBooster = Math.max(0, sim.items.defenseBooster|0);
+      // 임시 버프는 라운드 종료 시 제거
+      if (p.stats._defTmp) delete p.stats._defTmp;
+      if (p.stats._dodgeTmp) delete p.stats._dodgeTmp;
+    }
 
     // 라운드 종료/다음 라운드
     pushLog(b, `=== ${b.round}라운드 종료 ===`, 'result');
@@ -350,24 +382,30 @@ export function createBattleStore() {
     }, 50);
   }
 
-  /** 한 팀의 의도들을 팀 내부 이니시 순으로 실행 */
-  function resolveTeam(b, team) {
+  /**
+   * ⚙️ 팀 해석(시뮬레이션만 변경) – 결과 로그 문자열만 반환
+   * - 의도 큐를 이니시 순으로 처리하되, 실제 b.players는 건드리지 않음
+   * - 모든 계산은 simById를 읽고/쓰며, 최종 적용은 startResolve에서 한 번에 수행
+   */
+  function computeTeamOutcomes(b, team, simById) {
     const intents = b.choices[team] || [];
-    if (!intents.length) return;
+    const logs = [];
+    if (!intents.length) return { logs };
 
     const order = sortByInitiative(
       intents
-        .map(c => b.players.find(p => p.id === c.playerId))
+        .map(c => simById.get(c.playerId))
         .filter(Boolean)
     ).map(p => p.id);
 
     for (const pid of order) {
       const intent = intents.find(c => c.playerId === pid);
       if (!intent) continue;
-      const actor = b.players.find(p => p.id === pid);
+
+      const actor = simById.get(pid);
       if (!actor || actor.hp <= 0) continue;
 
-      const target = intent.targetId ? b.players.find(p => p.id === intent.targetId) : null;
+      const target = intent.targetId ? simById.get(intent.targetId) : null;
 
       if (intent.type === 'attack') {
         if (!target || target.hp <= 0) continue;
@@ -375,62 +413,58 @@ export function createBattleStore() {
         const isCrit = Math.random() < critChance;
         const dmg = calcDamage(actor, target, isCrit, false);
         target.hp = clamp(target.hp - dmg, 0, target.maxHp);
-        pushLog(
-          b,
-          `→ ${actor.name}이(가) ${target.name}에게 ${isCrit ? '치명타 ' : ''}공격 (피해 ${dmg}) → HP ${target.hp}`,
-          'result'
-        );
+        logs.push(`→ ${actor.name}이(가) ${target.name}에게 ${isCrit ? '치명타 ' : ''}공격 (피해 ${dmg}) → HP ${target.hp}`);
       } else if (intent.type === 'defend') {
         actor.stats._defTmp = (actor.stats._defTmp ?? 0) + 2;
-        pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
+        logs.push(`→ ${actor.name}이(가) 방어 태세`);
       } else if (intent.type === 'dodge') {
         actor.stats._dodgeTmp = (actor.stats._dodgeTmp ?? 0) + 1;
-        pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
+        logs.push(`→ ${actor.name}이(가) 회피 태세`);
       } else if (intent.type === 'item') {
         const it = intent.raw?.item;
         if (it === 'dittany' || it === 'ditany') {
-          const tgt = intent.raw?.targetId ? (b.players.find(p=>p.id===intent.raw.targetId) || actor) : actor;
-          if (actor.items.dittany > 0 && tgt.hp > 0) {
-            actor.items.dittany -= 1;
+          const tgt = intent.raw?.targetId ? (simById.get(intent.raw?.targetId) || actor) : actor;
+          if ((actor.items.dittany|0) > 0 && tgt.hp > 0) {
+            actor.items.dittany = (actor.items.dittany|0) - 1;
             const heal = calcHeal(actor);
             tgt.hp = clamp(tgt.hp + heal, 0, tgt.maxHp);
-            pushLog(b, `→ ${actor.name}이(가) 디터니 사용 — ${tgt.name} HP +${heal} → HP ${tgt.hp}`, 'result');
+            logs.push(`→ ${actor.name}이(가) 디터니 사용 — ${tgt.name} HP +${heal} → HP ${tgt.hp}`);
+          } else {
+            logs.push(`→ ${actor.name}이(가) 디터니 사용 실패(재고/대상 불가)`);
           }
         } else if (it === 'attackBooster') {
-          const tgt = intent.raw?.targetId ? (b.players.find(p=>p.id===intent.raw.targetId)) : null;
-          if (actor.items.attackBooster > 0) {
-            actor.items.attackBooster -= 1;
+          const tgt = intent.raw?.targetId ? simById.get(intent.raw?.targetId) : null;
+          if ((actor.items.attackBooster|0) > 0) {
+            actor.items.attackBooster = (actor.items.attackBooster|0) - 1;
             const realTarget = tgt && tgt.hp > 0 ? tgt : null;
             const dmg = realTarget ? calcDamage(actor, realTarget, Math.random()<0.2, true) : 0;
             if (realTarget) {
               realTarget.hp = clamp(realTarget.hp - dmg, 0, realTarget.maxHp);
-              pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용 성공 — ${realTarget.name} 대상 즉시 강화 공격 (피해 ${dmg}) → HP ${realTarget.hp}`, 'result');
+              logs.push(`→ ${actor.name}이(가) 공격 보정기 사용 성공 — ${realTarget.name} 대상 즉시 강화 공격 (피해 ${dmg}) → HP ${realTarget.hp}`);
             } else {
-              pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용(대상 부재)`, 'result');
+              logs.push(`→ ${actor.name}이(가) 공격 보정기 사용(대상 부재)`);
             }
+          } else {
+            logs.push(`→ ${actor.name}이(가) 공격 보정기 사용 실패(재고 없음)`);
           }
         } else if (it === 'defenseBooster') {
-          if (actor.items.defenseBooster > 0) {
-            actor.items.defenseBooster -= 1;
+          if ((actor.items.defenseBooster|0) > 0) {
+            actor.items.defenseBooster = (actor.items.defenseBooster|0) - 1;
             actor.stats._defTmp = (actor.stats._defTmp ?? 0) + 4;
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화`, 'result');
+            logs.push(`→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화`);
+          } else {
+            logs.push(`→ ${actor.name}이(가) 방어 보정기 사용 실패(재고 없음)`);
           }
         } else {
-          pushLog(b, `→ ${actor.name}이(가) 아이템 사용 시도`, 'result');
+          logs.push(`→ ${actor.name}이(가) 아이템 사용 시도`);
         }
       } else if (intent.type === 'pass') {
-        pushLog(b, `→ ${actor.name}이(가) 행동을 생략`, 'result');
+        logs.push(`→ ${actor.name}이(가) 행동을 생략`);
       }
     }
 
-    // 임시 버프 해제
-    b.players.forEach(p => {
-      if (p.stats._defTmp) delete p.stats._defTmp;
-      if (p.stats._dodgeTmp) delete p.stats._dodgeTmp;
-    });
-
-    // 팀 의도 큐 소거
-    b.choices[team] = [];
+    // 팀 의도 큐는 실제 적용 단계에서 초기화할 것이므로 여기선 유지
+    return { logs };
   }
 
   /** 전투 종료 */
