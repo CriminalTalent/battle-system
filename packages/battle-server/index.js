@@ -1,9 +1,10 @@
 // packages/battle-server/index.js
-// - /admin, /player, /spectator 라우트 별칭
-// - battle:update / battleUpdate 모두 브로드캐스트
-// - battle:log / battleLog 실시간 로그 브로드캐스트(증분)
-// - 매 1초 스냅샷/로그 브로드캐스트(타이머 1초 갱신)
-// - 아바타 업로드 엔드포인트(/api/upload/avatar, /upload) 추가(JSON 응답)
+// - /admin, /player, /spectator 정적 별칭
+// - 아바타 업로드(/api/upload/avatar, /upload) → JSON 응답
+// - 참가자/관전자 링크 생성(/api/link/participant, /api/link/spectator, /api/link, 호환용 /link/*)
+// - /api/* 404는 JSON으로 고정
+// - battle:update/battleUpdate, battle:log/battleLog 이벤트 브로드캐스트
+// - 1초 주기 스냅샷/로그 재전송
 
 import express from 'express';
 import http from 'node:http';
@@ -17,14 +18,15 @@ import { createBattleStore } from './src/engine/BattleEngine.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ----------------------------------------------------------------------------
-// Server bootstrap
-// ----------------------------------------------------------------------------
 const app = express();
+app.set('trust proxy', true);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
 });
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -35,7 +37,7 @@ const uploadDir = path.join(pubDir, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 app.use(express.static(pubDir, { extensions: ['html'] }));
 
-// 단일 파일 별칭
+// 페이지 별칭
 app.get('/admin', (_req, res) => res.sendFile(path.join(pubDir, 'admin.html')));
 app.get('/player', (_req, res) => res.sendFile(path.join(pubDir, 'player.html')));
 app.get('/spectator', (_req, res) => res.sendFile(path.join(pubDir, 'spectator.html')));
@@ -44,58 +46,116 @@ app.get('/', (_req, res) => res.sendFile(path.join(pubDir, 'index.html')));
 // 헬스체크
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// ----------------------------------------------------------------------------
-// File upload (avatar)
-// ----------------------------------------------------------------------------
+// ================================
+// 업로드(API) - JSON 응답
+// ================================
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     const base = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     cb(null, ext ? `${base}${ext}` : base);
-  }
+  },
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!/^image\/(png|jpeg|jpg|gif|webp|avif)$/.test(file.mimetype)) {
       return cb(new Error('INVALID_TYPE'));
     }
     cb(null, true);
-  }
+  },
 });
-
-// 업로드 엔드포인트(관리자 페이지 호환용으로 두 경로 모두 지원)
 function handleAvatarUpload(req, res) {
   if (!req.file) return res.status(400).json({ ok: false, error: 'NO_FILE' });
-  const urlPath = `/uploads/${req.file.filename}`; // 정적 서빙됨
+  const urlPath = `/uploads/${req.file.filename}`;
   return res.json({ ok: true, url: urlPath });
 }
 app.post('/api/upload/avatar', upload.single('avatar'), handleAvatarUpload);
-app.post('/upload', upload.single('avatar'), handleAvatarUpload); // 구버전 호환
+app.post('/upload', upload.single('avatar'), handleAvatarUpload); // 호환
 
-// 업로드 에러를 JSON으로 반환
+// 업로드 에러를 JSON으로
 app.use((err, _req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ ok: false, error: err.code });
-  }
-  if (err && (err.message === 'INVALID_TYPE')) {
+  if (err?.message === 'INVALID_TYPE') {
     return res.status(400).json({ ok: false, error: 'INVALID_TYPE' });
+  }
+  if (err?.name === 'MulterError') {
+    return res.status(400).json({ ok: false, error: err.code || 'MULTER_ERROR' });
   }
   return next(err);
 });
 
-// ----------------------------------------------------------------------------
-// Battle Engine
-// ----------------------------------------------------------------------------
+// ================================
+// 링크 생성(API)
+// ================================
+function absoluteUrl(req, pathnameWithQuery) {
+  const proto =
+    (req.headers['x-forwarded-proto']?.toString().split(',')[0]) ||
+    req.protocol || 'http';
+  const host =
+    (req.headers['x-forwarded-host']?.toString().split(',')[0]) ||
+    req.get('host');
+  return `${proto}://${host}${pathnameWithQuery}`;
+}
+function linkHandler(kind) {
+  const basePath = kind === 'spectator' ? '/spectator' : '/player';
+  return (req, res) => {
+    const id =
+      req.body?.battleId || req.query?.battleId ||
+      req.body?.id || req.query?.id || '';
+    if (!id) return res.status(400).json({ ok: false, error: 'NO_BATTLE_ID' });
+    const qs = `?battleId=${encodeURIComponent(id)}&id=${encodeURIComponent(id)}`;
+    const url = absoluteUrl(req, `${basePath}${qs}`);
+    return res.json({ ok: true, url, battleId: id, role: kind });
+  };
+}
+// 신경로
+app.post('/api/link/participant', linkHandler('player'));
+app.get('/api/link/participant', linkHandler('player'));
+app.post('/api/link/spectator', linkHandler('spectator'));
+app.get('/api/link/spectator', linkHandler('spectator'));
+app.post('/api/link', (req, res) => {
+  const role = (req.body?.role || req.query?.role || '').toString();
+  if (role === 'player') return linkHandler('player')(req, res);
+  if (role === 'spectator') return linkHandler('spectator')(req, res);
+  return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
+});
+app.get('/api/link', (req, res) => {
+  const role = (req.query?.role || '').toString();
+  if (role === 'player') return linkHandler('player')(req, res);
+  if (role === 'spectator') return linkHandler('spectator')(req, res);
+  return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
+});
+// 구버전/호환 경로
+app.post('/link/participant', linkHandler('player'));
+app.get('/link/participant', linkHandler('player'));
+app.post('/link/spectator', linkHandler('spectator'));
+app.get('/link/spectator', linkHandler('spectator'));
+app.post('/link', (req, res) => {
+  const role = (req.body?.role || req.query?.role || '').toString();
+  if (role === 'player') return linkHandler('player')(req, res);
+  if (role === 'spectator') return linkHandler('spectator')(req, res);
+  return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
+});
+app.get('/link', (req, res) => {
+  const role = (req.query?.role || '').toString();
+  if (role === 'player') return linkHandler('player')(req, res);
+  if (role === 'spectator') return linkHandler('spectator')(req, res);
+  return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
+});
+
+// /api/* 404는 JSON
+app.use('/api', (_req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND' }));
+
+// ================================
+// 배틀 엔진 + 소켓
+// ================================
 const battleEngine = createBattleStore();
 
-// 활성 배틀 추적(주기적 브로드캐스트/로그 플러시용)
-const activeBattles = new Set();     // Set<battleId>
-const lastLogIdx = new Map();        // Map<battleId, number>
+const activeBattles = new Set(); // Set<battleId>
+const lastLogIdx = new Map();    // Map<battleId, number>
 
-// 스냅샷 빌더(최근 로그 포함)
 function buildSnapshotWithLogs(battleId, logLimit = 200) {
   const snap = battleEngine.snapshot(battleId);
   if (!snap) return null;
@@ -103,17 +163,13 @@ function buildSnapshotWithLogs(battleId, logLimit = 200) {
   const logs = Array.isArray(b?.logs) ? b.logs.slice(-logLimit) : [];
   return { ...snap, logs };
 }
-
-// 스냅샷 브로드캐스트(이벤트 이름 호환)
 function emitUpdate(io, battleId) {
   const payload = buildSnapshotWithLogs(battleId);
   if (!payload) return;
   const room = `battle_${battleId}`;
   io.to(room).emit('battle:update', payload);
-  io.to(room).emit('battleUpdate', payload); // 구버전 호환
+  io.to(room).emit('battleUpdate', payload); // 호환
 }
-
-// 신규 로그 플러시(증분)
 function flushLogs(io, battleId) {
   const b = battleEngine.get(battleId);
   if (!b) return;
@@ -124,12 +180,11 @@ function flushLogs(io, battleId) {
   for (let i = start; i < end; i++) {
     const entry = b.logs[i];
     io.to(room).emit('battle:log', entry);
-    io.to(room).emit('battleLog', entry); // 구버전 호환
+    io.to(room).emit('battleLog', entry); // 호환
   }
   lastLogIdx.set(battleId, end);
 }
-
-// 매 1초 전체 배틀 스냅샷/로그 브로드캐스트(타이머/로그 실시간 보장)
+// 1초마다 스냅샷/로그 재전송
 setInterval(() => {
   for (const battleId of activeBattles) {
     emitUpdate(io, battleId);
@@ -137,9 +192,6 @@ setInterval(() => {
   }
 }, 1000);
 
-// ----------------------------------------------------------------------------
-// Socket.io
-// ----------------------------------------------------------------------------
 io.on('connection', (socket) => {
   console.log('[Socket] 새 연결:', socket.id);
 
@@ -147,7 +199,6 @@ io.on('connection', (socket) => {
     console.log('[Socket] 연결 해제:', socket.id);
   });
 
-  // 방 참가
   socket.on('join', ({ battleId }, cb = () => {}) => {
     try {
       if (!battleId) return cb({ ok: false, error: 'battleId 필요' });
@@ -161,7 +212,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 새 배틀 생성
   socket.on('createBattle', ({ mode = '2v2' } = {}, cb = () => {}) => {
     try {
       const b = battleEngine.create(mode);
@@ -172,7 +222,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 플레이어 추가
   socket.on('addPlayer', ({ battleId, player }, cb = () => {}) => {
     try {
       const added = battleEngine.addPlayer(battleId, player);
@@ -187,7 +236,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 플레이어 제거
   socket.on('removePlayer', ({ battleId, playerId }, cb = () => {}) => {
     try {
       const b = battleEngine.get(battleId);
@@ -203,7 +251,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 준비 토글
   socket.on('markReady', ({ battleId, playerId, ready = true }, cb = () => {}) => {
     try {
       const ok = battleEngine.markReady(battleId, playerId, ready);
@@ -214,11 +261,10 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 전투 시작
   socket.on('startBattle', ({ battleId }, cb = () => {}) => {
     try {
-      const result = battleEngine.start(battleId);
-      if (!result) return cb({ ok: false, error: '전투를 시작할 수 없습니다' });
+      const started = battleEngine.start(battleId);
+      if (!started) return cb({ ok: false, error: '전투를 시작할 수 없습니다' });
       activeBattles.add(battleId);
       emitUpdate(io, battleId);
       flushLogs(io, battleId);
@@ -226,7 +272,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 플레이어 행동(선택 페이즈 의도 큐잉)
   socket.on('player:action', ({ battleId, playerId, action }, cb = () => {}) => {
     try {
       const res = battleEngine.playerAction(battleId, playerId, action);
@@ -237,7 +282,6 @@ io.on('connection', (socket) => {
     } catch (e) { cb({ ok: false, error: e.message }); }
   });
 
-  // 전투 종료
   socket.on('endBattle', ({ battleId }, cb = () => {}) => {
     try {
       const b = battleEngine.end(battleId);
@@ -250,9 +294,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// ----------------------------------------------------------------------------
-// Launch
-// ----------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`[PYXIS] listening on http://0.0.0.0:${PORT}`);
 });
