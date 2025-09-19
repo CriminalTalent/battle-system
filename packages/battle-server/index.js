@@ -1,71 +1,343 @@
-// packages/battle-server/index.js
-// Node >=18, ESM
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import http from 'node:http';
+// /packages/battle-server/index.js
+// Node ≥18, ESM
 
 import express from 'express';
-import multer from 'multer';
-import cors from 'cors';
+import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 
-import { createBattleStore } from './src/engine/BattleEngine.js';
-
-// ---------------------------------------------------------------------
-// 환경/경로
-// ---------------------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname);
-const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 
-const PORT = Number(process.env.PORT || process.env.PYXIS_PORT || 3001);
+// ────────────────────────────────────────────────────────────
+// Battle Engine (내장 스토어)
+// ────────────────────────────────────────────────────────────
+function createId(prefix = '') {
+  return (
+    prefix +
+    Math.random().toString(36).slice(2, 6) +
+    Date.now().toString(36).slice(-6)
+  );
+}
 
-// 프록시 뒤에서 실제 Host/Proto 확인 허용
+function createBattleStore(io) {
+  const battles = new Map();                  // battleId -> battle
+  const playerTokens = new Map();             // token -> { battleId, playerId }
+
+  const broadcast = (battleId, event, payload) => {
+    io.to(roomOf(battleId)).emit(event, payload);
+  };
+  const roomOf = (battleId) => `battle:${battleId}`;
+
+  function snapshot(b) {
+    const { timers, ...rest } = b;
+    return JSON.parse(JSON.stringify(rest));
+  }
+
+  function ensureTimer(b) {
+    if (b.timers.tick) clearInterval(b.timers.tick);
+    b.timers.tick = setInterval(() => {
+      if (b.status !== 'active') return;
+      // 매초 타이머 감소
+      if (b.currentTurn.timeLeftSec > 0) {
+        b.currentTurn.timeLeftSec -= 1;
+      }
+      // 0이면 자동 패스 처리
+      if (b.currentTurn.timeLeftSec <= 0) {
+        addLog(b.id, 'notice', '시간 초과로 자동 패스 처리됩니다.');
+        nextTurn(b);
+      }
+      broadcast(b.id, 'battle:update', snapshot(b));
+    }, 1000);
+  }
+
+  function stopTimer(b) {
+    if (b?.timers?.tick) {
+      clearInterval(b.timers.tick);
+      b.timers.tick = null;
+    }
+  }
+
+  function addLog(battleId, type, message) {
+    const b = battles.get(battleId);
+    if (!b) return;
+    const item = { ts: Date.now(), type, message };
+    b.logs.push(item);
+    broadcast(battleId, 'battle:log', item);
+  }
+
+  function reorderPlayers(b) {
+    // 팀 A → 팀 B 순으로 턴 큐 간단 구성
+    const A = b.players.filter(p => p.team === 'A');
+    const B = b.players.filter(p => p.team === 'B');
+    b.turnOrder = [...A, ...B].map(p => p.id);
+  }
+
+  function nextTurn(b) {
+    if (!b.turnOrder.length) reorderPlayers(b);
+    b.turnIndex = (b.turnIndex + 1) % b.turnOrder.length;
+    const pid = b.turnOrder[b.turnIndex];
+    const currentPlayer = b.players.find(p => p.id === pid) || null;
+    b.currentTurn = {
+      currentPlayer,
+      timeLeftSec: b.turnDurationSec
+    };
+    addLog(b.id, 'notice', `${currentPlayer?.name || '플레이어'} 차례입니다.`);
+  }
+
+  // ── 공개 API ─────────────────────────────
+  const api = {
+    get battles() { return battles; },
+    get playerTokens() { return playerTokens; },
+
+    createBattle(mode = '2v2') {
+      const battleId = createId('b_');
+      const battle = {
+        id: battleId,
+        mode,
+        status: 'waiting',                 // waiting | active | paused | ended
+        phase: 'waiting',
+        round: 1,
+        players: [],
+        logs: [],
+        createdAt: Date.now(),
+        turnDurationSec: 300,              // 5분
+        currentTurn: { currentPlayer: null, timeLeftSec: 300 },
+        turnOrder: [],
+        turnIndex: -1,
+        timers: { tick: null }
+      };
+      battles.set(battleId, battle);
+      addLog(battleId, 'notice', `${mode} 전투가 생성되었습니다 (ID: ${battleId})`);
+      return battle;
+    },
+
+    addPlayer(battleId, playerLike) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      const p = {
+        id: createId('p_'),
+        name: playerLike.name || '플레이어',
+        team: playerLike.team === 'B' ? 'B' : 'A',
+        maxHp: Number(playerLike.maxHp || playerLike.hp || 100),
+        hp: Number(playerLike.hp || 100),
+        ready: false,
+        avatar: playerLike.avatar || '',
+        stats: {
+          attack: Number(playerLike.stats?.attack || 1),
+          defense: Number(playerLike.stats?.defense || 1),
+          agility: Number(playerLike.stats?.agility || 1),
+          luck: Number(playerLike.stats?.luck || 1),
+        },
+        items: {
+          dittany: Number(playerLike.items?.dittany || playerLike.items?.ditany || 0),
+          attackBooster: Number(playerLike.items?.attackBooster || playerLike.items?.attack_boost || 0),
+          defenseBooster: Number(playerLike.items?.defenseBooster || playerLike.items?.defense_boost || 0),
+        }
+      };
+      b.players.push(p);
+      reorderPlayers(b);
+      addLog(battleId, 'notice', `${p.name}이(가) ${p.team}팀에 합류했습니다.`);
+      return p;
+    },
+
+    deletePlayer(battleId, playerId) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      const idx = b.players.findIndex(p => p.id === playerId);
+      if (idx >= 0) {
+        const [removed] = b.players.splice(idx, 1);
+        addLog(battleId, 'notice', `${removed.name}이(가) 제거되었습니다.`);
+        reorderPlayers(b);
+      }
+    },
+
+    setReady(battleId, playerId) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      const p = b.players.find(p => p.id === playerId);
+      if (p) {
+        p.ready = true;
+        addLog(battleId, 'notice', `${p.name}이(가) 준비 완료`);
+      }
+    },
+
+    start(battleId) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      if (!b.players.length) throw new Error('플레이어가 없습니다.');
+      b.status = 'active';
+      b.phase = 'A_select';
+      b.round = 1;
+      b.turnIndex = -1;
+      reorderPlayers(b);
+      nextTurn(b);
+      ensureTimer(b);
+      addLog(battleId, 'notice', '전투 시작');
+      return b;
+    },
+
+    pause(battleId) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      b.status = 'paused';
+      stopTimer(b);
+      addLog(battleId, 'notice', '일시정지됨');
+    },
+
+    resume(battleId) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      b.status = 'active';
+      ensureTimer(b);
+      addLog(battleId, 'notice', '재개됨');
+    },
+
+    end(battleId, winner = null) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      b.status = 'ended';
+      stopTimer(b);
+      addLog(battleId, 'result', `전투 종료${winner ? ` - ${winner}팀 승리` : ''}`);
+      io.to(roomOf(battleId)).emit('battle:ended', { winner });
+    },
+
+    act(battleId, playerId, action) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+      const p = b.players.find(x => x.id === playerId);
+      if (!p) throw new Error('Player not found');
+
+      // 간단한 로그만 남기고 다음 턴
+      const msgBase =
+        action.type === 'attack' ? '공격' :
+        action.type === 'defend' ? '방어' :
+        action.type === 'dodge'  ? '회피' :
+        action.type === 'item'   ? `아이템(${action.item})` :
+        '패스';
+      addLog(battleId, 'notice', `${p.name} - ${msgBase}`);
+
+      nextTurn(b);
+      broadcast(battleId, 'battle:update', snapshot(b));
+    },
+
+    // 링크/토큰
+    makeLinks(battleId, publicBase) {
+      const b = battles.get(battleId);
+      if (!b) throw new Error('Battle not found');
+
+      const players = b.players.map(p => {
+        const token = createId('t_');
+        playerTokens.set(token, { battleId, playerId: p.id });
+        const url = new URL('/player', publicBase);
+        url.searchParams.set('battle', battleId);
+        url.searchParams.set('token', token);
+        url.searchParams.set('name', p.name);
+        return {
+          playerId: p.id,
+          team: p.team,
+          playerName: p.name,
+          url: url.toString()
+        };
+      });
+
+      const sp = new URL('/spectator', publicBase);
+      sp.searchParams.set('battle', battleId);
+
+      return {
+        spectator: { url: sp.toString() },
+        players
+      };
+    },
+
+    authByToken(token) {
+      const info = playerTokens.get(token);
+      if (!info) return null;
+      const b = battles.get(info.battleId);
+      if (!b) return null;
+      const player = b.players.find(p => p.id === info.playerId);
+      if (!player) return null;
+      return { battleId: info.battleId, playerId: info.playerId };
+    }
+  };
+
+  return api;
+}
+
+// ────────────────────────────────────────────────────────────
+// App / IO
+// ────────────────────────────────────────────────────────────
 const app = express();
-app.set('trust proxy', true);
+const server = createServer(app);
+const io = new SocketIOServer(server, {
+  cors: { origin: true, credentials: true }
+});
 
-// 미들웨어
-app.use(cors());
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 // 정적 파일
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads', 'avatars');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 app.use(express.static(PUBLIC_DIR, { fallthrough: true }));
 
-// 업로드 폴더 준비
-const UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// 명시 라우트 (404 방지)
+app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/player', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'player.html')));
+app.get('/spectator', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'spectator.html')));
 
-// multer 저장소
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '');
-    const base = path.basename(file.originalname || 'avatar', ext).replace(/[^\w.-]/g, '_');
-    cb(null, `${Date.now()}_${base}${ext}`);
-  },
-});
-const upload = multer({ storage });
-
-// ---------------------------------------------------------------------
-// 배틀 엔진 구동
-// ---------------------------------------------------------------------
-const engine = createBattleStore();
-const engineTag = engine?.version ? `battle-engine@${engine.version}` : 'battle-engine';
-
-console.log(`[ENGINE LOADED] ${engineTag}`);
-
-// ---------------------------------------------------------------------
-// HTTP 서버 + Socket.IO
-// ---------------------------------------------------------------------
-const server = http.createServer(app);
-const io = new SocketIOServer(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-  path: '/socket.io',
+// 업로드
+const upload = multer({ dest: UPLOAD_DIR });
+app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok:false, error:'no_file' });
+    // 정적 경로 노출
+    const rel = `/uploads/avatars/${req.file.filename}`;
+    return res.json({ ok:true, url: rel });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
+// 링크 생성(관리자용)
+app.post('/api/admin/battles/:id/links', (req, res) => {
+  try {
+    const battleId = req.params.id;
+    const publicBase =
+      process.env.PUBLIC_BASE ||
+      `${req.protocol}://${req.get('host')}`;
+    const links = battleEngine.makeLinks(battleId, publicBase);
+    return res.json({ ok:true, links });
+  } catch (e) {
+    return res.status(400).json({ ok:false, error: e.message });
+  }
+});
+
+// 구형 호환 링크
+app.get('/api/link/participant', (req, res) => {
+  const battleId = req.query.battleId || req.query.id;
+  if (!battleId) return res.status(400).send('battleId required');
+  const url = new URL('/player', `${req.protocol}://${req.get('host')}`);
+  url.searchParams.set('battle', battleId);
+  url.searchParams.set('id', battleId);
+  return res.json({ ok:true, url: url.toString(), battleId, role:'player' });
+});
+app.get('/api/link/spectator', (req, res) => {
+  const battleId = req.query.battleId || req.query.id;
+  if (!battleId) return res.status(400).send('battleId required');
+  const url = new URL('/spectator', `${req.protocol}://${req.get('host')}`);
+  url.searchParams.set('battle', battleId);
+  url.searchParams.set('id', battleId);
+  return res.json({ ok:true, url: url.toString(), battleId, role:'spectator' });
+});
+
+// ────────────────────────────────────────────────────────────
+const battleEngine = createBattleStore(io);
+
+// ── Socket.io
 io.on('connection', (socket) => {
   console.log(`[Socket] 새 연결: ${socket.id}`);
 
@@ -73,273 +345,109 @@ io.on('connection', (socket) => {
     console.log(`[Socket] 연결 해제: ${socket.id}`);
   });
 
-  // 방 참가
   socket.on('join', ({ battleId }) => {
     if (!battleId) return;
-    socket.join(battleId);
-    const snap = safeSnapshot(battleId);
-    if (snap) socket.emit('battle:update', snap);
+    socket.join(`battle:${battleId}`);
+    const b = battleEngine.battles.get(battleId);
+    if (b) socket.emit('battle:update', JSON.parse(JSON.stringify(b)));
+  });
+
+  // 관리자: 배틀 생성
+  socket.on('createBattle', (payload, ack = () => {}) => {
+    try {
+      const mode = payload?.mode || '2v2';
+      const b = battleEngine.createBattle(mode);
+      socket.join(`battle:${b.id}`);
+      io.to(`battle:${b.id}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+      ack({ ok:true, battleId:b.id, battle:b });
+    } catch (e) {
+      ack({ ok:false, error: e.message || String(e) });
+    }
+  });
+
+  socket.on('startBattle', ({ battleId }, ack = () => {}) => {
+    try {
+      const b = battleEngine.start(battleId);
+      io.to(`battle:${battleId}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+      ack({ ok:true });
+    } catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  socket.on('pauseBattle', ({ battleId }, ack = () => {}) => {
+    try { battleEngine.pause(battleId); ack({ ok:true }); }
+    catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  socket.on('resumeBattle', ({ battleId }, ack = () => {}) => {
+    try {
+      battleEngine.resume(battleId);
+      const b = battleEngine.battles.get(battleId);
+      io.to(`battle:${battleId}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+      ack({ ok:true });
+    } catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  socket.on('endBattle', ({ battleId, winner }, ack = () => {}) => {
+    try { battleEngine.end(battleId, winner); ack({ ok:true }); }
+    catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  // 플레이어 추가/삭제 (관리자)
+  socket.on('addPlayer', ({ battleId, player }, ack = () => {}) => {
+    try {
+      const p = battleEngine.addPlayer(battleId, player || {});
+      const b = battleEngine.battles.get(battleId);
+      io.to(`battle:${battleId}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+      ack({ ok:true, player:p });
+    } catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  socket.on('deletePlayer', ({ battleId, playerId }, ack = () => {}) => {
+    try {
+      battleEngine.deletePlayer(battleId, playerId);
+      const b = battleEngine.battles.get(battleId);
+      io.to(`battle:${battleId}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+      ack({ ok:true });
+    } catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  // 플레이어 인증(토큰)
+  socket.on('playerAuth', ({ battleId, token }, ack = () => {}) => {
+    try {
+      const info = battleEngine.authByToken(token);
+      if (!info || info.battleId !== battleId) return ack({ ok:false, error:'invalid_token' });
+      ack({ ok:true, playerId: info.playerId });
+    } catch (e) { ack({ ok:false, error:e.message }); }
+  });
+
+  // 플레이어 준비/행동
+  socket.on('player:ready', ({ battleId, playerId }) => {
+    try {
+      battleEngine.setReady(battleId, playerId);
+      const b = battleEngine.battles.get(battleId);
+      io.to(`battle:${battleId}`).emit('battle:update', JSON.parse(JSON.stringify(b)));
+    } catch {}
+  });
+
+  socket.on('player:action', ({ battleId, playerId, action }, ack = () => {}) => {
+    try {
+      battleEngine.act(battleId, playerId, action || { type:'pass' });
+      socket.emit('player:action:success', { ok:true });
+      ack({ ok:true });
+    } catch (e) { ack({ ok:false, error:e.message }); }
   });
 
   // 채팅
   socket.on('chatMessage', ({ battleId, name, message }) => {
     if (!battleId || !message) return;
-    const payload = { ts: Date.now(), name: name || '익명', message: String(message) };
-    io.to(battleId).emit('chatMessage', payload);
-  });
-
-  // 관리 명령
-  socket.on('createBattle', (params = {}, cb) => {
-    try {
-      const battle = engine.createBattle({ mode: params.mode || '2v2' });
-      socket.join(battle.id);
-      const snap = safeSnapshot(battle.id);
-      io.to(battle.id).emit('battle:update', snap);
-      cb?.({ ok: true, battleId: battle.id, battle: snap });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('addPlayer', ({ battleId, player }, cb) => {
-    try {
-      engine.addPlayer(battleId, player);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('deletePlayer', ({ battleId, playerId }, cb) => {
-    try {
-      engine.removePlayer(battleId, playerId);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('startBattle', ({ battleId }, cb) => {
-    try {
-      engine.startBattle(battleId);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('pauseBattle', ({ battleId }, cb) => {
-    try {
-      engine.pauseBattle(battleId);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('resumeBattle', ({ battleId }, cb) => {
-    try {
-      engine.resumeBattle(battleId);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
-  });
-
-  socket.on('endBattle', ({ battleId }, cb) => {
-    try {
-      engine.endBattle(battleId);
-      broadcastUpdate(battleId);
-      cb?.({ ok: true });
-    } catch (e) {
-      cb?.({ ok: false, error: e.message });
-    }
+    io.to(`battle:${battleId}`).emit('chatMessage', { name: name || '익명', message });
   });
 });
 
-// 엔진 이벤트 → 실시간 브로드캐스트(있으면)
-if (typeof engine?.on === 'function') {
-  engine.on('update', (battleId) => broadcastUpdate(battleId));
-  engine.on('log', ({ battleId, ts, type, message }) => {
-    if (!battleId || !message) return;
-    io.to(battleId).emit('battle:log', { ts: ts || Date.now(), type: type || 'system', message: String(message) });
-    if (process.env.ENGINE_STDOUT) {
-      console.log(`[BATTLE LOG][${battleId}] ${message}`);
-    }
-  });
-  engine.on('chat', ({ battleId, name, message, ts }) => {
-    if (!battleId || !message) return;
-    io.to(battleId).emit('chatMessage', { ts: ts || Date.now(), name: name || '시스템', message: String(message) });
-  });
-}
-
-// ---------------------------------------------------------------------
-// 헬퍼
-// ---------------------------------------------------------------------
-function safeSnapshot(battleId) {
-  try {
-    return engine.snapshot(battleId);
-  } catch {
-    return null;
-  }
-}
-
-function broadcastUpdate(battleId) {
-  const snap = safeSnapshot(battleId);
-  if (snap) io.to(battleId).emit('battle:update', snap);
-}
-
-function getBaseUrl(req) {
-  // x-forwarded-* 우선
-  const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  if (proto && host) return `${proto}://${host}`;
-  // 환경 변수 우선
-  if (process.env.PUBLIC_BASE) return process.env.PUBLIC_BASE.replace(/\/+$/, '');
-  // 로컬 기본값
-  return `http://127.0.0.1:${PORT}`;
-}
-
-function absUrl(req, relative) {
-  const base = getBaseUrl(req);
-  if (!relative.startsWith('/')) relative = `/${relative}`;
-  return `${base}${relative}`;
-}
-
-// ---------------------------------------------------------------------
-// 라우팅(페이지)
-// ---------------------------------------------------------------------
-
-// 관리자 페이지
-app.get('/admin', (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
-});
-
-// 플레이어 페이지(id → playerId 보정 리다이렉트)
-app.get('/player', (req, res) => {
-  const hasId = req.query.id && !req.query.playerId;
-  if (hasId) {
-    const q = new URLSearchParams(req.query);
-    q.set('playerId', req.query.id);
-    q.delete('id');
-    return res.redirect(302, `/player?${q.toString()}`);
-  }
-  res.sendFile(path.join(PUBLIC_DIR, 'player.html'));
-});
-
-// 관전자 페이지
-app.get('/spectator', (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'spectator.html'));
-});
-
-// 대시/헬스
-app.get('/', (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
-});
-
-app.get('/healthz', (_req, res) => res.json({ ok: true, engine: engineTag }));
-
-// ---------------------------------------------------------------------
-// 라우팅(파일 업로드 / API)
-// ---------------------------------------------------------------------
-
-// 아바타 업로드(JSON 응답)
-app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ ok: false, error: 'no file' });
-    const rel = `/uploads/${req.file.filename}`;
-    // 상대/절대 둘 다 제공(클라이언트에서 절대화 처리)
-    res.json({ ok: true, url: rel, absoluteUrl: absUrl(req, rel) });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// 배틀 스냅샷 조회(플레이어/관전자 초기 데이터용)
-app.get('/api/battles/:battleId', (req, res) => {
-  const snap = safeSnapshot(req.params.battleId);
-  if (!snap) return res.status(404).json({ ok: false, error: 'battle not found' });
-  res.json({ ok: true, battle: snap });
-});
-
-// 플레이어 링크 유효성 검사(선택)
-app.get('/api/validate/player-link', (req, res) => {
-  const battleId = req.query.battleId || req.query.battle;
-  const playerId = req.query.playerId || req.query.pid || req.query.id;
-  const snap = battleId ? safeSnapshot(battleId) : null;
-  const player = snap?.players?.find(p => p.id === playerId);
-  if (!battleId || !playerId || !snap || !player) {
-    return res.status(400).json({ ok: false, error: 'invalid link' });
-  }
-  res.json({ ok: true, battleId, player });
-});
-
-// 관리자: 링크 묶음 생성(관전자 + 참가자들)
-app.post('/api/admin/battles/:battleId/links', (req, res) => {
-  const battleId = req.params.battleId;
-  const snap = safeSnapshot(battleId);
-  if (!snap) return res.status(404).json({ ok: false, error: 'battle not found' });
-
-  const spectatorUrl = absUrl(req, `/spectator?battleId=${encodeURIComponent(battleId)}`);
-
-  const players = (snap.players || []).map(p => {
-    // 관리자 UI 호환: id 파라미터 사용(플레이어 페이지에서 id→playerId 보정)
-    const url = absUrl(req, `/player?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(p.id)}`);
-    return {
-      id: p.id,
-      playerName: p.name,
-      name: p.name,
-      team: p.team,
-      url,
-    };
-  });
-
-  // 두 가지 포맷을 모두 반환(클라이언트 호환 최적화)
-  res.json({
-    ok: true,
-    links: {
-      spectator: { url: spectatorUrl },
-      players,
-      playerLinks: players,
-    },
-  });
-});
-
-// 단건 링크 생성(참가자)
-app.get('/api/link/participant', (req, res) => {
-  const battleId = req.query.battleId || req.query.battle;
-  const playerId = req.query.playerId || req.query.pid || req.query.id;
-  if (!battleId || !playerId) return res.status(400).json({ ok: false, error: 'missing params' });
-
-  const url = absUrl(req, `/player?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(playerId)}`);
-  res.json({ ok: true, url, battleId, role: 'player' });
-});
-
-// 단건 링크 생성(관전자)
-app.get('/api/link/spectator', (req, res) => {
-  const battleId = req.query.battleId || req.query.battle;
-  if (!battleId) return res.status(400).json({ ok: false, error: 'missing params' });
-
-  const url = absUrl(req, `/spectator?battleId=${encodeURIComponent(battleId)}`);
-  res.json({ ok: true, url, battleId, role: 'spectator' });
-});
-
-// ---------------------------------------------------------------------
-// 에러 핸들러(최후)
-// ---------------------------------------------------------------------
-app.use((err, _req, res, _next) => {
-  console.error('[HTTP ERROR]', err);
-  res.status(500).json({ ok: false, error: err?.message || 'internal error' });
-});
-
-// ---------------------------------------------------------------------
-// 시작
-// ---------------------------------------------------------------------
+// ────────────────────────────────────────────────────────────
+// Start
+// ────────────────────────────────────────────────────────────
+const PORT = Number(process.env.PORT || 3001);
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[PYXIS] listening on http://0.0.0.0:${PORT}`);
 });
