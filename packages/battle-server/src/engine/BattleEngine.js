@@ -92,7 +92,8 @@ export function createBattleStore() {
       createdAt: now(),
       hardLimitAt: now() + 60 * 60 * 1000, // 1시간 제한
       turnCursor: null,        // UI용 현재 차례 플레이어
-      phaseEndsAt: null
+      phaseEndsAt: null,
+      started: false           // ✅ start() 이중호출 방지 플래그
     };
     battles.set(id, battle);
     return battle;
@@ -159,6 +160,10 @@ export function createBattleStore() {
     const b = get(battleId);
     if (!b) return null;
     if (b.status !== 'waiting') return null;
+
+    // ✅ 이중 호출 가드
+    if (b.started) return null;
+    b.started = true;
 
     if (!allReady(b)) {
       pushLog(b, '모든 플레이어가 준비되면 시작할 수 있습니다', 'notice');
@@ -242,7 +247,7 @@ export function createBattleStore() {
     };
     b.choices[team].push(intent);
 
-    // 의도 로그(피해/회복 수치 없음)
+    // ✅ 의도 로그만 (수치/HP 적용 금지)
     if (intent.type === 'attack') {
       pushLog(b, `→ ${p.name}이(가) ${target?.name ?? '대상'}에게 공격`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'defend') {
@@ -340,7 +345,6 @@ export function createBattleStore() {
     }
 
     // 팀별 해석 결과(로그 텍스트를 먼저 모은다)
-    const logsBuffer = [];
     const { logs: logsFirst } = computeTeamOutcomes(b, first, simById);
     const { logs: logsSecond } = computeTeamOutcomes(b, second, simById);
 
@@ -375,9 +379,10 @@ export function createBattleStore() {
     b.phaseEndsAt = now() + 5_000;
     pushLog(b, '5초 후 다음 라운드 시작...', 'system');
 
-    // 다음 라운드 시작(짧은 지연 후)
+    // ✅ 다음 라운드 시작 로그를 엔진이 직접 송출하고 곧바로 선택 페이즈 진입
     setTimeout(() => {
       if (b.status !== 'active') return;
+      pushLog(b, `${b.round}라운드 시작`, 'system');
       startSelectPhase(b, b.nextFirstTeam);
     }, 50);
   }
@@ -463,7 +468,6 @@ export function createBattleStore() {
       }
     }
 
-    // 팀 의도 큐는 실제 적용 단계에서 초기화할 것이므로 여기선 유지
     return { logs };
   }
 
