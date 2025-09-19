@@ -49,14 +49,13 @@ export function createBattleStore() {
   function snapshot(id) {
     const b = battles.get(id);
     if (!b) return null;
-    // 얕은 스냅샷 (UI용)
-    const { id: bid, status, phase, round, currentTeam, nextFirstTeam, createdAt, hardLimitAt } = b;
+    const { status, phase, round, currentTeam, nextFirstTeam, createdAt, hardLimitAt } = b;
     const currentPlayer = b.turnCursor?.playerId
       ? b.players.find(p => p.id === b.turnCursor.playerId) || null
       : null;
     const timeLeftSec = Math.max(0, Math.ceil(((b.phaseEndsAt || now()) - now()) / 1000));
     return {
-      id: bid,
+      id: b.id,
       status,
       phase,
       round,
@@ -84,14 +83,15 @@ export function createBattleStore() {
       status: 'waiting', // waiting|active|paused|ended
       phase: 'idle',     // idle|A_select|B_select|resolve|inter
       round: 0,
-      currentTeam: null, // 'A' or 'B' – 현재 선택 페이즈 팀
-      nextFirstTeam: null, // 다음 라운드(=현재 라운드 시작 시점)의 선공팀
+      currentTeam: null,     // 현재 선택 페이즈의 팀
+      nextFirstTeam: null,   // 해당 라운드 선공팀(라운드 끝나면 교대)
+      selectionDone: { A: false, B: false }, // 라운드 선택 완료 플래그
       players: [],
-      choices: { A: [], B: [] }, // 선택 큐(의도만 저장)
+      choices: { A: [], B: [] }, // 의도 큐
       logs: [],
       createdAt: now(),
       hardLimitAt: now() + 60 * 60 * 1000, // 1시간 제한
-      turnCursor: null,        // UI용 현재 차례 플레이어 (선택 페이즈 표시 목적)
+      turnCursor: null,        // UI용 현재 차례 플레이어
       phaseEndsAt: null
     };
     battles.set(id, battle);
@@ -154,7 +154,7 @@ export function createBattleStore() {
     return b.players.every(p => p.ready);
   }
 
-  /** 전투 시작 – 선공팀 결정 + A/B 선택 페이즈 중 선공팀부터 */
+  /** 전투 시작 – 선공팀 결정 + 선공팀 선택부터 */
   function start(battleId) {
     const b = get(battleId);
     if (!b) return null;
@@ -180,7 +180,9 @@ export function createBattleStore() {
 
     const first = (scoreA === scoreB) ? (Math.random() < 0.5 ? 'A' : 'B') : (scoreA > scoreB ? 'A' : 'B');
     b.currentTeam = first;
-    b.nextFirstTeam = first; // 이번 라운드 선공팀(라운드 종료 시 반전됨)
+    b.nextFirstTeam = first;
+    b.selectionDone = { A: false, B: false };
+
     pushLog(b, `선공 결정: A팀(민첩 ${Math.floor(avgA)} + ${rollA} = ${scoreA}) vs B팀(민첩 ${Math.floor(avgB)} + ${rollB} = ${scoreB})`, 'system');
     pushLog(b, `${first}팀이 선공입니다!`, 'system');
     pushLog(b, '전투가 시작되었습니다!', 'system');
@@ -192,28 +194,18 @@ export function createBattleStore() {
   }
 
   function startSelectPhase(b, team) {
+    if (b.status !== 'active') return;
     b.phase = (team === 'A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
-    b.choices[team] = []; // 당 라운드 해당 팀 선택 큐 초기화
+
+    // 같은 라운드에서 팀별 큐는 매번 리셋 (의도만 유지)
+    b.choices[team] = [];
+
     // 팀 내 턴커서(표시용) – 민첩/ABC 정렬
     const alive = sortByInitiative(b.players.filter(p => p.team === team && p.hp > 0));
     b.turnCursor = { team, order: alive.map(p=>p.id), index: 0, playerId: alive[0]?.id || null };
-    b.phaseEndsAt = now() + 30_000; // UI 타이머용(선택 제한 30초 가정)
+    b.phaseEndsAt = now() + 30_000; // UI 타이머 가정
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
-  }
-
-  /** ✅ 수정 포인트: 이번 라운드 선공팀 기준으로 다음 단계 결정 */
-  function finishSelectOrNext(b) {
-    const firstTeamThisRound = b.nextFirstTeam || 'A';
-    const other = firstTeamThisRound === 'A' ? 'B' : 'A';
-
-    if (b.currentTeam === firstTeamThisRound) {
-      // 선공팀 선택이 끝났으면 → 후공팀 선택으로
-      startSelectPhase(b, other);
-    } else {
-      // 후공팀 선택까지 끝났으면 → 해석
-      startResolve(b);
-    }
   }
 
   /** 선택(의도만 저장 & 의도 로그만 송출) */
@@ -227,10 +219,10 @@ export function createBattleStore() {
     const team = teamOf(p);
     if (team !== b.currentTeam) return null;
 
-    // 중복 선택 방지: 기존 의도 제거 후 덮어쓰기
+    // 의도 덮어쓰기(중복 선택 방지)
     b.choices[team] = b.choices[team].filter(c => c.playerId !== p.id);
 
-    // 대상 유효성 검증(의도 수집 시 살아있는지 정도만 체크)
+    // 대상 유효성 검증(의도 수집 시는 생존 여부만)
     let target = null;
     if (action?.targetId) {
       target = b.players.find(x => x.id === action.targetId) || null;
@@ -245,7 +237,7 @@ export function createBattleStore() {
     };
     b.choices[team].push(intent);
 
-    // 의도 로그(피해/회복 없음, 내용만)
+    // 의도 로그(피해/회복 수치 없음)
     if (intent.type === 'attack') {
       pushLog(b, `→ ${p.name}이(가) ${target?.name ?? '대상'}에게 공격`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'defend') {
@@ -276,15 +268,40 @@ export function createBattleStore() {
     const chosenIds = new Set(b.choices[team].map(c => c.playerId));
     const done = [...aliveIds].every(id => chosenIds.has(id));
 
-    if (done) {
+    if (done && !b.selectionDone[team]) {
+      b.selectionDone[team] = true;
       pushLog(b, `[${team}] ${team}팀 선택 완료`, team === 'A' ? 'teamA' : 'teamB');
       finishSelectOrNext(b);
     }
     return { b, result: { queued: true } };
   }
 
+  /** ✅ 확정: 이번 라운드 선공팀 기준으로 선택 흐름 / 해석 진입 가드 */
+  function finishSelectOrNext(b) {
+    if (b.status !== 'active') return;
+    if (!(b.phase === 'A_select' || b.phase === 'B_select')) return;
+
+    const firstTeamThisRound = b.nextFirstTeam || 'A';
+    const secondTeam = firstTeamThisRound === 'A' ? 'B' : 'A';
+
+    // 아직 다른 팀이 선택 안 끝났다면 그 팀으로 전환
+    if (b.currentTeam === firstTeamThisRound) {
+      if (!b.selectionDone[secondTeam]) {
+        startSelectPhase(b, secondTeam);
+        return;
+      }
+      // 이 경우는 이론상 발생하지 않지만, 두 팀이 동시에 끝난 케이스면 아래로 넘어감
+    }
+
+    // 두 팀 모두 완료되었으면 해석
+    if (b.selectionDone.A && b.selectionDone.B) {
+      startResolve(b);
+    }
+  }
+
   /** 해석 – 결과(수치 포함) 출력 + HP/아이템 실제 적용 */
   function startResolve(b) {
+    if (b.status !== 'active') return;
     b.phase = 'resolve';
     b.currentTeam = null;
     b.turnCursor = null;
@@ -302,13 +319,17 @@ export function createBattleStore() {
     // 라운드 종료/다음 라운드
     pushLog(b, `=== ${b.round}라운드 종료 ===`, 'result');
     b.round += 1;
-    b.nextFirstTeam = (b.nextFirstTeam === 'A') ? 'B' : 'A'; // 선후공 교대
+
+    // 선후공 교대
+    b.nextFirstTeam = (b.nextFirstTeam === 'A') ? 'B' : 'A';
+
+    // 다음 라운드 준비
+    b.selectionDone = { A: false, B: false };
     b.phase = 'inter';
     b.phaseEndsAt = now() + 5_000;
-
-    // 5초 후 다음 라운드 안내 로그(즉시 송출 효과)
     pushLog(b, '5초 후 다음 라운드 시작...', 'system');
-    // 다음 라운드 시작
+
+    // 다음 라운드 시작(짧은 지연 후)
     setTimeout(() => {
       if (b.status !== 'active') return;
       startSelectPhase(b, b.nextFirstTeam);
