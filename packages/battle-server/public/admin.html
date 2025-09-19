@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PYXIS - 전투 관리자</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230081B4'/%3E%3Ctext x='32' y='40' font-size='28' text-anchor='middle' fill='white' font-family='system-ui,sans-serif'%3EP%3C/text%3E%3C/svg%3E" />
 <script src="/socket.io/socket.io.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -242,22 +243,19 @@
 
 <script>
 (() => {
-  // 서버에서 절대 URL을 내려주지만, 혹시 상대경로가 섞일 경우 대비
-  const PUBLIC_BASE = 'https://pyxisbattlesystem.monster';
+  // 프로덕션 절대 URL 보정 헬퍼
+  const PUBLIC_BASE = location.origin.replace(/:\d+$/, '');
   const toAbs = (u) => {
     if (!u) return '';
     try {
       const test = new URL(u, PUBLIC_BASE);
-      // 개발 포트(:3001 등) 제거 보정
+      // 내부 주소면 퍼블릭 도메인으로 교체
       if (/^https?:\/\/(localhost|127\.|0\.0\.0\.0|10\.|172\.|192\.168\.)/i.test(test.origin)) {
         const prod = new URL(PUBLIC_BASE);
-        test.protocol = prod.protocol;
-        test.host = prod.host;
+        test.protocol = prod.protocol; test.host = prod.host;
       }
       return test.toString();
-    } catch {
-      return u;
-    }
+    } catch { return u; }
   };
 
   const socket = io();
@@ -268,7 +266,7 @@
   let battleState = null;
   let uploadedAvatarUrl = null;
 
-  const seenLogs = new Map(); // dedup
+  const seenLogs = new Map();
   const seenChats = new Map();
   const now = () => Date.now();
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
@@ -284,6 +282,29 @@
     return 'log-system';
   }
 
+  function addLog({ts,type,message}) {
+    if(!message) return;
+    const k = `${type}::${message}`, t=now(), last=seenLogs.get(k)||0;
+    if (t-last<300) return; seenLogs.set(k,t);
+    const time=new Date(ts||Date.now()).toLocaleTimeString('ko-KR',{hour12:false});
+    const div=document.createElement('div');
+    div.className = `log-item ${logClass(message,type)}`;
+    div.innerHTML = `<span class="log-time">[${time}]</span> ${esc(message)}`;
+    logPanel.appendChild(div); logPanel.scrollTop=logPanel.scrollHeight;
+    while (logPanel.children.length>800) logPanel.removeChild(logPanel.firstChild);
+  }
+
+  function addChat({name,message}) {
+    if(!name||!message) return;
+    const k = `${name}::${message}`, t=now(), last=seenChats.get(k)||0;
+    if (t-last<500) return; seenChats.set(k,t);
+    const div=document.createElement('div');
+    div.className='chat-item';
+    div.innerHTML=`<span class="chat-name">${esc(name)}</span>: ${esc(message)}`;
+    chatPanel.appendChild(div); chatPanel.scrollTop=chatPanel.scrollHeight;
+    while (chatPanel.children.length>200) chatPanel.removeChild(chatPanel.firstChild);
+  }
+
   function renderTeams() {
     if (!battleState?.players) return;
     const A = battleState.players.filter(p => p.team === 'A');
@@ -297,7 +318,6 @@
         if ((p.items?.dittany || p.items?.ditany) > 0) items.push(`디터니 ${p.items?.dittany || p.items?.ditany}`);
         if ((p.items?.attackBooster || p.items?.attack_boost) > 0) items.push(`공격보정 ${p.items?.attackBooster || p.items?.attack_boost}`);
         if ((p.items?.defenseBooster || p.items?.defense_boost) > 0) items.push(`방어보정 ${p.items?.defenseBooster || p.items?.defense_boost}`);
-
         const av = p.avatar || '';
         html += `
         <div class="player-card ${p.hp>0?'':'dead'}">
@@ -331,30 +351,7 @@
 
   function render(){ renderTeams(); updateBattleControls(); }
 
-  function addChat({name,message}) {
-    if(!name||!message) return;
-    const k = `${name}::${message}`, t=now(), last=seenChats.get(k)||0;
-    if (t-last<1000) return; seenChats.set(k,t);
-    const div=document.createElement('div');
-    div.className='chat-item';
-    div.innerHTML=`<span class="chat-name">${esc(name)}</span>: ${esc(message)}`;
-    chatPanel.appendChild(div); chatPanel.scrollTop=chatPanel.scrollHeight;
-    while (chatPanel.children.length>200) chatPanel.removeChild(chatPanel.firstChild);
-  }
-
-  function addLog({ts,type,message}) {
-    if(!message) return;
-    const k = `${type}::${message}`, t=now(), last=seenLogs.get(k)||0;
-    if (t-last<1000) return; seenLogs.set(k,t);
-    const time=new Date(ts).toLocaleTimeString('ko-KR',{hour12:false});
-    const div=document.createElement('div');
-    div.className = `log-item ${logClass(message,type)}`;
-    div.innerHTML = `<span class="log-time">[${time}]</span> ${esc(message)}`;
-    logPanel.appendChild(div); logPanel.scrollTop=logPanel.scrollHeight;
-    while (logPanel.children.length>800) logPanel.removeChild(logPanel.firstChild);
-  }
-
-  // 액션들
+  // API: 전투 생성/제어
   function createBattle(){
     const mode=document.getElementById('battleMode').value;
     socket.emit('createBattle',{mode},(res)=>{
@@ -378,6 +375,7 @@
   function resumeBattle(){ if(!currentBattleId) return; socket.emit('resumeBattle',{battleId:currentBattleId}); }
   function endBattle(){ if(!currentBattleId) return; if(!confirm('정말 전투를 종료하시겠습니까?')) return; socket.emit('endBattle',{battleId:currentBattleId}); }
 
+  // 아바타 업로드(JSON 응답)
   async function uploadAvatar(file){
     const fd=new FormData(); fd.append('avatar',file);
     try{
@@ -388,6 +386,7 @@
     }catch(e){ alert('아바타 업로드 실패: '+e.message); uploadedAvatarUrl=null; document.getElementById('avatarPreview').removeAttribute('src'); }
   }
 
+  // 참가자 추가/제거
   function addPlayer(){
     if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
     const name=document.getElementById('playerName').value.trim();
@@ -432,7 +431,9 @@
     playerDittany.value='0'; playerAttackBooster.value='0'; playerDefenseBooster.value='0';
     avatarUpload.value=''; uploadedAvatarUrl=null; document.getElementById('avatarPreview').removeAttribute('src');
   }
+  window.removePlayer = removePlayer; // 전역 노출
 
+  // 링크 생성(신규 엔드포인트)
   function requestLinks(){
     if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
     fetch(`/api/admin/battles/${currentBattleId}/links`,{method:'POST'})
@@ -479,6 +480,7 @@
     }).catch(()=>alert('복사 실패'));
   };
 
+  // 채팅
   function sendChat(){
     const input=document.getElementById('chatInput');
     const message=input.value.trim(); if(!message||!currentBattleId) return;
@@ -508,28 +510,24 @@
   document.getElementById('chatSend').addEventListener('click',sendChat);
   document.getElementById('chatInput').addEventListener('keypress',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
 
-  // 소켓 이벤트 (중복 구독 방지: 한 채널만 사용)
+  // 소켓 이벤트(신규 이벤트 우선 수신)
   socket.on('connect', ()=>{ addLog({ts:Date.now(),type:'notice',message:'서버에 연결되었습니다'}); });
   socket.on('disconnect', ()=>{ addLog({ts:Date.now(),type:'error',message:'서버 연결이 끊어졌습니다'}); });
   socket.on('connect_error', (err)=>{ addLog({ts:Date.now(),type:'error',message:'서버 연결 오류: '+err.message}); });
 
   const onSnap=(snap)=>{ battleState=snap; render(); };
-  socket.on('battle:update', onSnap); // 사용
-  // socket.on('battleUpdate', onSnap); // 중복 방지로 미사용
+  socket.on('battle:update', onSnap);
+  socket.on('battle:log', addLog);
+  socket.on('chatMessage', addChat);
 
-  socket.on('battle:log', addLog);    // 사용
-  // socket.on('battleLog', addLog);  // 미사용
-
-  socket.on('chatMessage', addChat);  // 사용
-  // socket.on('battle:chat', addChat); // 미사용
+  // 필요 시 구 이벤트도 백업으로 수신
+  socket.on('battleUpdate', (s)=>{ if(!battleState) onSnap(s); });
+  socket.on('battleLog', (l)=>{ if(l) addLog(l); });
 
   // 쿼리로 전투 방 지정 시 바로 조인
   const qs=new URLSearchParams(location.search);
   const bid=qs.get('battle');
   if(bid){ currentBattleId=bid; socket.emit('join',{battleId:currentBattleId}); }
-
-  // 전역에서 제거 핸들러 호출 가능
-  window.removePlayer = removePlayer;
 })();
 </script>
 </body>
