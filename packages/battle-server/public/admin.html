@@ -270,10 +270,13 @@
 (function(){
   'use strict';
   
-  const socket = io('/socket.io');
+  // Socket 연결 개선
+  let socket;
   let currentBattleId = null;
   let battleState = null;
   let uploadedAvatarUrl = null;
+  let connectionRetries = 0;
+  const maxRetries = 5;
 
   // DOM 요소들
   const playerName = document.getElementById('playerName');
@@ -288,6 +291,87 @@
   const playerDefenseBooster = document.getElementById('playerDefenseBooster');
   const avatarUpload = document.getElementById('avatarUpload');
 
+  // Socket 연결 함수 개선
+  function initializeSocket() {
+    try {
+      // 기존 연결이 있으면 정리
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+      }
+
+      // 새 소켓 연결
+      socket = io({
+        path: '/socket.io',
+        transports: ['websocket', 'polling'],
+        upgrade: true,
+        rememberUpgrade: true,
+        timeout: 20000,
+        forceNew: true
+      });
+
+      setupSocketEvents();
+      
+    } catch (error) {
+      console.error('소켓 초기화 실패:', error);
+      addLog({ts: Date.now(), type: 'error', message: '서버 연결 초기화 실패'});
+    }
+  }
+
+  function setupSocketEvents() {
+    socket.on('connect', () => {
+      console.log('서버에 연결되었습니다');
+      connectionRetries = 0;
+      addLog({ts: Date.now(), type: 'notice', message: '서버에 연결되었습니다'});
+      
+      // 기존 전투가 있으면 재입장
+      if (currentBattleId) {
+        socket.emit('join', { battleId: currentBattleId });
+      }
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('서버 연결이 끊어졌습니다:', reason);
+      addLog({ts: Date.now(), type: 'error', message: '서버 연결이 끊어졌습니다: ' + reason});
+      
+      // 자동 재연결 시도
+      if (connectionRetries < maxRetries) {
+        connectionRetries++;
+        setTimeout(() => {
+          addLog({ts: Date.now(), type: 'notice', message: `재연결 시도 중... (${connectionRetries}/${maxRetries})`});
+          initializeSocket();
+        }, 2000 * connectionRetries);
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('연결 오류:', error);
+      addLog({ts: Date.now(), type: 'error', message: '서버 연결 오류: ' + error.message});
+    });
+
+    // 전투 상태 업데이트
+    const onSnap = (snap) => {
+      battleState = snap;
+      render();
+    };
+    socket.on('battleUpdate', onSnap);
+    socket.on('battle:update', onSnap);
+
+    // 로그 수신
+    socket.on('battle:log', addLog);
+    socket.on('battleLog', addLog);
+
+    // 채팅 수신
+    socket.on('chatMessage', addChat);
+    socket.on('battle:chat', addChat);
+
+    // 전투 종료
+    socket.on('battle:ended', (d) => {
+      addLog({ts: Date.now(), type: 'notice', message: `${d.winner}팀 승리!`});
+      showGameOverOverlay(d.winner);
+    });
+  }
+
   // 유틸리티 함수들
   function esc(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -298,7 +382,7 @@
     return url.replace(/([^:]\/)\/+/g, '$1');
   }
 
-  // 로그 시스템
+  // 로그 시스템 (기존 유지)
   function getLogClass(log) {
     const type = log.type || 'system';
     const message = log.message || '';
@@ -416,12 +500,13 @@
     }
   }
 
-  function renderChat() {
-    // 채팅은 실시간으로만 표시
-  }
-
-  // 전투 제어 함수들
+  // 전투 제어 함수들 (안전장치 추가)
   function createBattle() {
+    if (!socket || !socket.connected) {
+      addLog({ts: Date.now(), type: 'error', message: '서버에 연결되지 않았습니다'});
+      return;
+    }
+
     const mode = document.getElementById('battleMode').value;
     socket.emit('createBattle', { mode }, (response) => {
       if (response?.ok) {
@@ -435,7 +520,7 @@
   }
 
   function startBattle() {
-    if (!currentBattleId) return;
+    if (!currentBattleId || !socket?.connected) return;
     socket.emit('startBattle', { battleId: currentBattleId }, (response) => {
       if (!response?.ok) {
         addLog({ts: Date.now(), type: 'error', message: '전투 시작 실패: ' + (response?.error || '알 수 없는 오류')});
@@ -444,7 +529,7 @@
   }
 
   function pauseBattle() {
-    if (!currentBattleId) return;
+    if (!currentBattleId || !socket?.connected) return;
     socket.emit('pauseBattle', { battleId: currentBattleId }, (response) => {
       if (!response?.ok) {
         addLog({ts: Date.now(), type: 'error', message: '일시정지 실패: ' + (response?.error || '알 수 없는 오류')});
@@ -453,7 +538,7 @@
   }
 
   function resumeBattle() {
-    if (!currentBattleId) return;
+    if (!currentBattleId || !socket?.connected) return;
     socket.emit('resumeBattle', { battleId: currentBattleId }, (response) => {
       if (!response?.ok) {
         addLog({ts: Date.now(), type: 'error', message: '재개 실패: ' + (response?.error || '알 수 없는 오류')});
@@ -462,7 +547,7 @@
   }
 
   function endBattle() {
-    if (!currentBattleId) return;
+    if (!currentBattleId || !socket?.connected) return;
     if (!confirm('정말로 전투를 종료하시겠습니까?')) return;
     socket.emit('endBattle', { battleId: currentBattleId }, (response) => {
       if (!response?.ok) {
@@ -501,6 +586,11 @@
       return;
     }
 
+    if (!socket?.connected) {
+      addLog({ts: Date.now(), type: 'error', message: '서버에 연결되지 않았습니다'});
+      return;
+    }
+
     const name = playerName.value.trim();
     if (!name) {
       addLog({ts: Date.now(), type: 'error', message: '이름을 입력해주세요'});
@@ -535,7 +625,7 @@
   }
 
   function removePlayer(playerId) {
-    if (!currentBattleId || !playerId) return;
+    if (!currentBattleId || !playerId || !socket?.connected) return;
     const p = battleState?.players?.find(x => x.id === playerId);
     const nm = p?.name || 'Unknown';
     if (!confirm(`${nm}을(를) 제거하시겠습니까?`)) return;
@@ -653,7 +743,7 @@
   function sendChat() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
-    if (!message || !currentBattleId) return;
+    if (!message || !currentBattleId || !socket?.connected) return;
     socket.emit('chatMessage', { battleId: currentBattleId, name: '관리자', message });
     input.value = '';
   }
@@ -740,9 +830,6 @@
     
     // 로그 렌더링
     renderLogs();
-    
-    // 채팅 렌더링
-    renderChat();
   }
 
   // 게임 종료 처리
@@ -789,48 +876,18 @@
   // 전역 함수로 등록
   window.removePlayer = removePlayer;
 
-  // 소켓 이벤트 리스너들
-  socket.on('connect', () => {
-    addLog({ts: Date.now(), type: 'notice', message: '서버에 연결되었습니다'});
-  });
-
-  socket.on('disconnect', () => {
-    addLog({ts: Date.now(), type: 'error', message: '서버 연결이 끊어졌습니다'});
-  });
-
-  socket.on('connect_error', (err) => {
-    addLog({ts: Date.now(), type: 'error', message: '서버 연결 오류: ' + err.message});
-  });
-
-  // 전투 상태 업데이트
-  const onSnap = (snap) => {
-    battleState = snap;
-    render();
-  };
-  socket.on('battleUpdate', onSnap);
-  socket.on('battle:update', onSnap);
-
-  // 로그 수신
-  socket.on('battle:log', addLog);
-  socket.on('battleLog', addLog);
-
-  // 채팅 수신
-  socket.on('chatMessage', addChat);
-  socket.on('battle:chat', addChat);
-
-  // 전투 종료
-  socket.on('battle:ended', (d) => {
-    addLog({ts: Date.now(), type: 'notice', message: `${d.winner}팀 승리!`});
-    showGameOverOverlay(d.winner);
-  });
-
   // URL 파라미터에서 battleId 확인
   const qs = new URLSearchParams(location.search);
   const bid = qs.get('battle');
   if (bid) {
     currentBattleId = bid;
-    socket.emit('join', { battleId: currentBattleId });
   }
+
+  // 초기화
+  initializeSocket();
+  
+  // 초기 로그
+  addLog({ts: Date.now(), type: 'system', message: 'PYXIS 관리자 콘솔이 시작되었습니다'});
 
 })();
   </script>
