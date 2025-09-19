@@ -1,109 +1,228 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta http-equiv="x-ua-compatible" content="ie=edge" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PYXIS 배틀 시스템 - 전투 참가자</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>PYXIS - 전투 참가자</title>
+<script src="/socket.io/socket.io.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg1:#0e0e0e; --bg2:#141414;
+    --glass-1:rgba(0,0,0,.7); --glass-2:rgba(0,0,0,.5);
+    --border:rgba(220,199,162,.3);
+    --text:#F8F9FA; --muted:#A9AFB6;
+    --gold:#DCC7A2; --gold2:#E6D2A8;
+    --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    --shadow:0 10px 30px rgba(0,0,0,.45);
+    --team-a-color:#8b5757;
+    --team-b-color:#5d6b8d;
+    --result-bg:#DCC7A2;
+    --result-text:#000;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:linear-gradient(135deg,#000813,#001122);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:8px}
+  body.battle-ended{overflow:hidden}
+  .container{max-width:1400px;margin:0 auto}
+  .header{text-align:center;padding:16px 16px 8px;font-family:Cinzel,serif;color:var(--gold);font-size:24px;letter-spacing:.1em}
+  .status-line{text-align:center;color:var(--muted);margin-bottom:8px}
+  .status-line .badge{display:inline-block;border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:12px}
+  .main-grid{display:grid;gap:12px;grid-template-columns:1fr;}
+  @media (min-width:768px){ .main-grid{ grid-template-columns:1fr 2fr 1fr; } }
+  .team-container{background:var(--glass-1);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow);height:fit-content}
+  .team-title{font-family:Cinzel,serif;color:var(--gold);font-weight:700;letter-spacing:.08em;margin-bottom:12px;font-size:16px;text-align:center}
+  .center-section{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--glass-1);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+  .title{font-family:Cinzel,serif;color:var(--gold);font-weight:700;letter-spacing:.08em;margin-bottom:8px;font-size:14px}
 
-  <!-- 요청하신 공통 스타일 -->
-  <link rel="stylesheet" href="/assets/css/pyxis.css">
+  .player-card{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .player-card.dead{opacity:.5}
+  .player-avatar{width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid var(--gold);background:#000}
+  .player-info{flex:1;min-width:0}
+  .player-name{font-size:12px;font-weight:600;color:var(--gold);margin-bottom:2px}
+  .hp{height:6px;background:#0b0b0b;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-bottom:2px}
+  .hp>span{display:block;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);transition:width .3s}
+  .hp-text{font-size:10px;color:var(--muted);margin-bottom:2px}
+  .stats{font-size:10px;color:var(--muted)}
+  .items-info{font-size:9px;color:var(--text);margin-top:2px}
+  .ready-status{font-size:9px;color:var(--gold);margin-top:2px}
+
+  .battle-main{text-align:center}
+  .current-player-info{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+  .current-avatar{width:140px;height:140px;border-radius:16px;object-fit:cover;border:4px solid var(--gold);margin-bottom:12px;background:#000}
+  .turn-info{font-size:16px;margin-bottom:8px;color:var(--text);font-weight:600}
+  .timer-display{color:var(--gold);font-size:32px;margin-bottom:8px;font-weight:700}
+  .timer-seconds{font-size:14px;color:var(--muted);margin-bottom:16px}
+
+  .my-info-section{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:12px}
+  .my-info-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .my-avatar{width:32px;height:32px;border-radius:6px;object-fit:cover;border:2px solid var(--gold);background:#000}
+  .my-details{flex:1}
+  .my-name{font-weight:600;color:var(--gold);font-size:12px}
+  .my-team{font-size:10px;color:var(--muted)}
+  .my-hp-bar{height:6px;background:#0b0b0b;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin:2px 0}
+  .my-hp-fill{height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);transition:width .3s}
+  .my-hp-text{font-size:9px;color:var(--muted);margin-bottom:2px}
+  .my-stats{font-size:9px;color:var(--muted);margin-bottom:2px}
+  .my-items{font-size:8px;color:var(--text);margin-bottom:6px}
+  .ready-btn{background:transparent;color:var(--gold);border:2px solid var(--gold);padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;transition:all .2s;width:100%;font-size:10px}
+  .ready-btn:hover:not(.done){background:var(--gold);color:#000}
+  .ready-btn.done{background:var(--muted);border-color:var(--muted);color:#666;cursor:not-allowed}
+
+  .actions{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0}
+  .act{background:transparent;color:var(--gold);border:2px solid var(--gold);padding:12px 6px;border-radius:8px;font-size:14px;cursor:pointer;transition:all .2s;font-weight:700}
+  .act:hover:not(:disabled){background:var(--gold);color:#000}
+  .act:disabled{opacity:.4;cursor:not-allowed}
+
+  .logs-section{height:400px;overflow-y:auto;background:var(--glass-2);border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:12px}
+  .chat-section{height:400px;overflow-y:auto;background:var(--glass-2);border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:8px}
+  .log-item{margin-bottom:4px;font-size:11px;line-height:1.4;padding:2px 4px;border-radius:4px}
+  .log-time{color:var(--muted);font-weight:normal}
+  .chat-item{margin-bottom:4px;font-size:11px}
+  .chat-name{color:var(--gold);font-weight:600}
+  .input-group{display:flex;gap:4px}
+  .chat-input{flex:1;background:var(--glass-2);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:11px}
+  .send-btn{background:var(--gold);color:#000;border:none;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600}
+
+  .log-team-a{background-color:var(--team-a-color);color:var(--text)}
+  .log-team-b{background-color:var(--team-b-color);color:var(--text)}
+  .log-result{background-color:var(--result-bg);color:var(--result-text)}
+  .log-notice{background-color:var(--glass-1);color:var(--gold)}
+  .log-error{background-color:#000;color:var(--gold)}
+  .log-system{background-color:transparent;color:var(--muted)}
+
+  .action-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;visibility:hidden;transition:all .3s}
+  .action-overlay.show{opacity:1;visibility:visible}
+  .action-content{background:var(--glass-1);border:2px solid var(--gold);border-radius:12px;padding:20px;max-width:500px;width:90%}
+  .action-title{font-family:Cinzel,serif;color:var(--gold);font-size:18px;margin-bottom:12px;text-align:center}
+  .targets{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin:8px 0}
+  .target{background:var(--glass-2);border:1px solid var(--border);padding:8px;border-radius:8px;text-align:center;cursor:pointer;transition:all .2s;font-size:10px}
+  .target:hover:not(.disabled){background:var(--gold2);color:#000}
+  .target.disabled{opacity:.4;cursor:not-allowed}
+  .target img{width:32px;height:32px;border-radius:6px;margin-bottom:4px;background:#000}
+  .cancel-btn{background:var(--bad);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;margin-top:12px;width:100%}
+
+  .game-over-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;visibility:hidden;transition:all .3s}
+  .game-over-overlay.show{opacity:1;visibility:visible}
+  .game-over-content{text-align:center;background:var(--glass-1);border:2px solid var(--gold);border-radius:16px;padding:32px;max-width:400px;width:90%}
+  .game-over-title{font-family:Cinzel,serif;font-size:28px;color:var(--gold);margin-bottom:16px}
+  .winner-announcement{font-size:20px;margin-bottom:16px}
+  .winner-team{color:var(--gold);font-weight:700;font-size:24px}
+  .victory-message{color:var(--ok);font-size:18px;font-weight:600;margin-bottom:12px}
+  .defeat-message{color:var(--bad);font-size:18px;font-weight:600;margin-bottom:12px}
+  .game-over-message{color:var(--muted);font-size:14px}
+
+  @media (max-width:767px){
+    .main-grid{grid-template-columns:1fr}
+    .actions{grid-template-columns:repeat(3,1fr)}
+    .targets{grid-template-columns:repeat(2,1fr)}
+    .current-avatar{width:120px;height:120px}
+  }
+</style>
 </head>
 <body>
-  <header class="header">
-    <div class="container">
-      <h1>PYXIS 배틀 시스템 - 전투 참가자</h1>
-    </div>
-  </header>
+<div class="container">
+  <div class="header">PYXIS 전투 시스템</div>
+  <div class="status-line">상태: <span id="battleStatus" class="badge">대기 중</span></div>
 
-  <main class="container main-layout">
-    <!-- 좌측: 내 정보 / 액션 -->
-    <aside class="sidebar">
-      <h3>전투 상태</h3>
-      <div class="mb-10">
-        <span class="text-secondary">상태:</span>
-        <span id="battleStatus" class="text-gold">대기 중</span>
-      </div>
-
-      <h3 class="mt-20">내 정보</h3>
-      <div class="player-card">
-        <div class="player-avatar">
-          <img id="playerAvatar" src="/uploads/avatars/default.svg" alt="플레이어 아바타">
-        </div>
-        <div class="player-info">
-          <div id="playerName" class="player-name">이름</div>
-          <div class="hp-container">
-            <div class="hp-bar">
-              <div id="playerHpBar" class="hp-fill hp-high" style="width: 100%"></div>
-              <div id="playerHpText" class="hp-text">0/0</div>
-            </div>
-          </div>
-          <div id="playerStats" class="player-stats mt-10"></div>
-          <div id="playerItems" class="player-items"></div>
-        </div>
-      </div>
-
-      <button id="btnReady" class="btn mt-10">준비 완료</button>
-
-      <h3 class="mt-20">액션</h3>
-      <div class="action-buttons">
-        <button id="btnAttack" class="action-btn">공격</button>
-        <button id="btnDefend" class="action-btn">방어</button>
-        <button id="btnDodge" class="action-btn">회피</button>
-        <button id="btnItemDittany" class="action-btn">디터니 사용</button>
-        <button id="btnPass" class="action-btn">패스</button>
-      </div>
-    </aside>
-
-    <!-- 중앙: 팀/턴/로그 -->
-    <section class="main-content">
-      <div class="turn-info">
-        <div id="turnInfo">
-          <div class="turn-number">0턴</div>
-          <div class="current-team">N/A팀 턴</div>
-          <div class="phase">대기 중</div>
-          <div class="time-left">0초 남음</div>
-        </div>
-      </div>
-
-      <h3 class="text-gold">팀 정보</h3>
-      <div class="team-section">
+  <div class="main-grid">
+    <!-- 좌측: A팀 + 채팅 -->
+    <div>
+      <div class="team-container" style="margin-bottom:12px">
+        <div class="team-title">A팀</div>
         <div id="teamAContainer"></div>
       </div>
-      <div class="team-section">
+
+      <div class="card">
+        <div class="title">채팅</div>
+        <div class="chat-section" id="chatContainer"></div>
+        <div class="input-group">
+          <input class="chat-input" id="chatMsg" type="text" placeholder="메시지 입력..."/>
+          <button class="send-btn" id="btnSendChat" type="button">전송</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 중앙: 내 정보 + 현재 전투 진행 -->
+    <div class="center-section">
+      <!-- 내 정보 -->
+      <div class="card">
+        <div class="my-info-section">
+          <div class="my-info-header">
+            <img id="playerAvatar" class="my-avatar" alt="내 아바타" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+            <div class="my-details">
+              <div id="playerName" class="my-name">전투 참가자</div>
+              <div class="my-team"><span id="myTeam">?</span>팀</div>
+            </div>
+          </div>
+          <div class="my-hp-bar"><div id="playerHpBar" class="my-hp-fill" style="width:100%"></div></div>
+          <div id="playerHpText" class="my-hp-text">100/100</div>
+          <div id="playerStats" class="my-stats">공0 방0 민0 행0</div>
+          <div id="playerItems" class="my-items">아이템 없음</div>
+          <button id="btnReady" class="ready-btn" type="button">준비 완료</button>
+        </div>
+      </div>
+
+      <!-- 현재 턴 -->
+      <div class="card battle-main">
+        <div class="current-player-info">
+          <img id="currentPlayerAvatar" class="current-avatar" alt="현재 플레이어" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div id="turnInfo" class="turn-info">대기 중...</div>
+          <div id="timerDisplay" class="timer-display">5:00</div>
+          <div id="timerSeconds" class="timer-seconds">300초</div>
+        </div>
+
+        <div class="actions">
+          <button class="act" id="btnAttack"        type="button" disabled>공격</button>
+          <button class="act" id="btnDefend"        type="button" disabled>방어</button>
+          <button class="act" id="btnDodge"         type="button" disabled>회피</button>
+          <button class="act" id="btnItemDittany"   type="button" disabled>아이템</button>
+          <button class="act" id="btnPass"          type="button" disabled>패스</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측: B팀 + 로그 -->
+    <div>
+      <div class="team-container" style="margin-bottom:12px">
+        <div class="team-title">B팀</div>
         <div id="teamBContainer"></div>
       </div>
 
-      <h3 class="text-gold mt-20">로그</h3>
-      <div id="logContainer" class="log-container"></div>
-    </section>
-
-    <!-- 우측: 현재 플레이어 / 채팅 -->
-    <aside class="sidebar">
-      <h3>현재 선택 중인 플레이어</h3>
-      <div class="player-avatar-small mb-10">
-        <img id="currentPlayerAvatar" src="/uploads/avatars/default.svg" alt="현재 플레이어">
+      <div class="card">
+        <div class="title">실시간 로그</div>
+        <div class="logs-section" id="logContainer"></div>
       </div>
-
-      <h3 class="mt-20">채팅</h3>
-      <div id="chatContainer" class="chat-container mb-10"></div>
-      <div class="form-group">
-        <input id="chatMsg" class="form-control" type="text" placeholder="메시지를 입력하세요 (Enter 전송)">
-      </div>
-      <button id="btnSendChat" class="btn">전송</button>
-    </aside>
-  </main>
-
-  <!-- 대상 선택 오버레이 -->
-  <div id="targetOverlay" class="target-overlay">
-    <div class="target-container" id="targetContainer">
-      <!-- JS에서 채움: h3 + .target-list + 취소버튼 -->
     </div>
   </div>
+</div>
 
-  <!-- socket.io 클라이언트 -->
-  <script src="/socket.io/socket.io.js"></script>
-  <!-- 전투 참가자 페이지 스크립트 (당신이 제공한 IIFE) -->
-  <script src="/assets/js/player.js"></script>
+<!-- 대상 선택 오버레이 (외부 스크립트 호환 ID) -->
+<div id="targetOverlay" class="action-overlay">
+  <div class="action-content">
+    <div class="action-title" id="actionTitle">대상 선택</div>
+    <div class="targets" id="targetContainer"></div>
+    <button class="cancel-btn" id="cancelAction" type="button">취소</button>
+  </div>
+</div>
+
+<!-- 게임 종료 오버레이 (서버 이벤트 호환) -->
+<div id="gameOverOverlay" class="game-over-overlay">
+  <div class="game-over-content">
+    <div class="game-over-title">전투 종료</div>
+    <div class="winner-announcement">
+      <span id="winnerTeam" class="winner-team"></span> 승리!
+    </div>
+    <div id="personalResult" class="victory-message"></div>
+    <div class="game-over-message">전투가 종료되었습니다.</div>
+  </div>
+</div>
+
+<script>
+  // 오버레이 닫기 버튼만 로컬 처리 (외부 스크립트와 충돌 없음)
+  document.getElementById('cancelAction')?.addEventListener('click', function(){
+    document.getElementById('targetOverlay')?.classList.remove('show');
+  });
+</script>
 </body>
 </html>
