@@ -15,18 +15,14 @@
     --gold:#DCC7A2; --gold2:#E6D2A8;
     --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
     --shadow:0 10px 30px rgba(0,0,0,.45);
-    --team-a-color:#8b5757;
-    --team-b-color:#5d6b8d;
-    --result-bg:#DCC7A2;
-    --result-text:#000;
+    --team-a-color:#8b5757;  --team-b-color:#5d6b8d;
+    --result-bg:#DCC7A2;     --result-text:#000;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:linear-gradient(135deg,#000813,#001122);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:8px}
   body.battle-ended{overflow:hidden}
   .container{max-width:1400px;margin:0 auto}
-  .header{text-align:center;padding:16px 16px 8px;font-family:Cinzel,serif;color:var(--gold);font-size:24px;letter-spacing:.1em}
-  .status-line{text-align:center;color:var(--muted);margin-bottom:8px}
-  .status-line .badge{display:inline-block;border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:12px}
+  .header{text-align:center;padding:16px;font-family:Cinzel,serif;color:var(--gold);font-size:24px;letter-spacing:.1em}
   .main-grid{display:grid;gap:12px;grid-template-columns:1fr;}
   @media (min-width:768px){ .main-grid{ grid-template-columns:1fr 2fr 1fr; } }
   .team-container{background:var(--glass-1);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow);height:fit-content}
@@ -40,6 +36,7 @@
   .player-avatar{width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid var(--gold);background:#000}
   .player-info{flex:1;min-width:0}
   .player-name{font-size:12px;font-weight:600;color:var(--gold);margin-bottom:2px}
+  .player-team{font-size:10px;color:var(--muted);margin-bottom:4px}
   .hp{height:6px;background:#0b0b0b;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-bottom:2px}
   .hp>span{display:block;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);transition:width .3s}
   .hp-text{font-size:10px;color:var(--muted);margin-bottom:2px}
@@ -123,61 +120,58 @@
 <body>
 <div class="container">
   <div class="header">PYXIS 전투 시스템</div>
-  <div class="status-line">상태: <span id="battleStatus" class="badge">대기 중</span></div>
 
   <div class="main-grid">
     <!-- 좌측: A팀 + 채팅 -->
     <div>
       <div class="team-container" style="margin-bottom:12px">
         <div class="team-title">A팀</div>
-        <div id="teamAContainer"></div>
+        <div id="teamA"></div>
       </div>
 
       <div class="card">
         <div class="title">채팅</div>
-        <div class="chat-section" id="chatContainer"></div>
+        <div class="chat-section" id="chatPanel"></div>
         <div class="input-group">
-          <input class="chat-input" id="chatMsg" type="text" placeholder="메시지 입력..."/>
-          <button class="send-btn" id="btnSendChat" type="button">전송</button>
+          <input class="chat-input" id="chatInput" type="text" placeholder="메시지 입력..."/>
+          <button class="send-btn" id="chatSend" type="button">전송</button>
         </div>
       </div>
     </div>
 
     <!-- 중앙: 내 정보 + 현재 전투 진행 -->
     <div class="center-section">
-      <!-- 내 정보 -->
       <div class="card">
         <div class="my-info-section">
           <div class="my-info-header">
-            <img id="playerAvatar" class="my-avatar" alt="내 아바타" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+            <img id="myPortrait" class="my-avatar" alt="내 아바타" onerror="this.style.background='#000';this.removeAttribute('src')"/>
             <div class="my-details">
-              <div id="playerName" class="my-name">전투 참가자</div>
+              <div id="myName" class="my-name">전투 참가자</div>
               <div class="my-team"><span id="myTeam">?</span>팀</div>
             </div>
           </div>
-          <div class="my-hp-bar"><div id="playerHpBar" class="my-hp-fill" style="width:100%"></div></div>
-          <div id="playerHpText" class="my-hp-text">100/100</div>
-          <div id="playerStats" class="my-stats">공0 방0 민0 행0</div>
-          <div id="playerItems" class="my-items">아이템 없음</div>
-          <button id="btnReady" class="ready-btn" type="button">준비 완료</button>
+          <div class="my-hp-bar"><div id="myHpBar" class="my-hp-fill" style="width:100%"></div></div>
+          <div id="myHpText" class="my-hp-text">100/100</div>
+          <div id="myStats" class="my-stats">공0 방0 민0 행0</div>
+          <div id="myItems" class="my-items">아이템 없음</div>
+          <button id="readyBtn" class="ready-btn" type="button">준비 완료</button>
         </div>
       </div>
 
-      <!-- 현재 턴 -->
       <div class="card battle-main">
         <div class="current-player-info">
-          <img id="currentPlayerAvatar" class="current-avatar" alt="현재 플레이어" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <img id="currentPortrait" class="current-avatar" alt="현재 플레이어" onerror="this.style.background='#000';this.removeAttribute('src')"/>
           <div id="turnInfo" class="turn-info">대기 중...</div>
           <div id="timerDisplay" class="timer-display">5:00</div>
           <div id="timerSeconds" class="timer-seconds">300초</div>
         </div>
 
         <div class="actions">
-          <button class="act" id="btnAttack"        type="button" disabled>공격</button>
-          <button class="act" id="btnDefend"        type="button" disabled>방어</button>
-          <button class="act" id="btnDodge"         type="button" disabled>회피</button>
-          <button class="act" id="btnItemDittany"   type="button" disabled>아이템</button>
-          <button class="act" id="btnPass"          type="button" disabled>패스</button>
+          <button class="act" id="attackBtn" type="button" disabled>공격</button>
+          <button class="act" id="defendBtn" type="button" disabled>방어</button>
+          <button class="act" id="dodgeBtn"  type="button" disabled>회피</button>
+          <button class="act" id="itemBtn"   type="button" disabled>아이템</button>
+          <button class="act" id="passBtn"   type="button" disabled>패스</button>
         </div>
       </div>
     </div>
@@ -186,27 +180,27 @@
     <div>
       <div class="team-container" style="margin-bottom:12px">
         <div class="team-title">B팀</div>
-        <div id="teamBContainer"></div>
+        <div id="teamB"></div>
       </div>
 
       <div class="card">
         <div class="title">실시간 로그</div>
-        <div class="logs-section" id="logContainer"></div>
+        <div class="logs-section" id="logPanel"></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- 대상 선택 오버레이 (외부 스크립트 호환 ID) -->
-<div id="targetOverlay" class="action-overlay">
+<!-- 액션 선택 오버레이 -->
+<div id="actionOverlay" class="action-overlay">
   <div class="action-content">
     <div class="action-title" id="actionTitle">대상 선택</div>
-    <div class="targets" id="targetContainer"></div>
-    <button class="cancel-btn" id="cancelAction" type="button">취소</button>
+    <div class="targets" id="overlayTargets"></div>
+    <button class="cancel-btn" id="cancelAction">취소</button>
   </div>
 </div>
 
-<!-- 게임 종료 오버레이 (서버 이벤트 호환) -->
+<!-- 게임 종료 오버레이 -->
 <div id="gameOverOverlay" class="game-over-overlay">
   <div class="game-over-content">
     <div class="game-over-title">전투 종료</div>
@@ -219,10 +213,371 @@
 </div>
 
 <script>
-  // 오버레이 닫기 버튼만 로컬 처리 (외부 스크립트와 충돌 없음)
-  document.getElementById('cancelAction')?.addEventListener('click', function(){
-    document.getElementById('targetOverlay')?.classList.remove('show');
+(()=> {
+  const params   = new URLSearchParams(location.search);
+  const battleId = params.get('battle');
+  const token    = params.get('token');
+  const urlName  = params.get('name');
+
+  if (!battleId || !token) {
+    alert('올바르지 않은 URL입니다');
+    return;
+  }
+
+  const socket = io();
+  const logPanel  = document.getElementById('logPanel');
+  const chatPanel = document.getElementById('chatPanel');
+
+  let myPlayer = null;       // 실제 객체
+  let myPlayerId = null;     // 인증으로 받은 id (객체 동기화를 위해 보관)
+  let battleState = null;
+  let hasActedThisTurn = false;
+  let selectedAction = null;
+
+  const seenLogIds = new Set();
+  const seenChats  = new Set();
+  const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+
+  function classForLog(type, message) {
+    if (type === 'teamA') return 'log-team-a';
+    if (type === 'teamB') return 'log-team-b';
+    if (type === 'result') return 'log-result';
+    if (type === 'notice') return 'log-notice';
+    if (type === 'error') return 'log-error';
+    if (type === 'system') return 'log-system';
+    const m = message || '';
+    if (/A팀|=== A팀| A\d/.test(m)) return 'log-team-a';
+    if (/B팀|=== B팀| B\d/.test(m)) return 'log-team-b';
+    if (/라운드 해석|승리|결과|===/.test(m)) return 'log-result';
+    return 'log-system';
+  }
+
+  function showGameOverOverlay(winner) {
+    const overlay = document.getElementById('gameOverOverlay');
+    const winnerTeam = document.getElementById('winnerTeam');
+    const personalResult = document.getElementById('personalResult');
+    winnerTeam.textContent = winner + '팀';
+    if (myPlayer && myPlayer.team === winner) {
+      personalResult.textContent = '승리했습니다!';
+      personalResult.className = 'victory-message';
+    } else {
+      personalResult.textContent = '패배했습니다...';
+      personalResult.className = 'defeat-message';
+    }
+    overlay.classList.add('show');
+    document.body.classList.add('battle-ended');
+  }
+
+  function updateMyInfo() {
+    if (!myPlayer) return;
+    document.getElementById('myName').textContent = myPlayer.name || '전투 참가자';
+    document.getElementById('myTeam').textContent = myPlayer.team || '?';
+    document.getElementById('myStats').textContent =
+      `공${myPlayer.stats?.attack||0} 방${myPlayer.stats?.defense||0} 민${myPlayer.stats?.agility||0} 행${myPlayer.stats?.luck||0}`;
+    const hpPct = Math.max(0, myPlayer.hp/(myPlayer.maxHp||100)*100);
+    document.getElementById('myHpBar').style.width = hpPct + '%';
+    document.getElementById('myHpText').textContent = `${myPlayer.hp}/${myPlayer.maxHp||100}`;
+    const items = [];
+    if ((myPlayer.items?.dittany || myPlayer.items?.ditany) > 0) items.push(`디터니 ${myPlayer.items?.dittany || myPlayer.items?.ditany}`);
+    if ((myPlayer.items?.attackBooster || myPlayer.items?.attack_boost) > 0) items.push(`공격보정 ${myPlayer.items?.attackBooster || myPlayer.items?.attack_boost}`);
+    if ((myPlayer.items?.defenseBooster || myPlayer.items?.defense_boost) > 0) items.push(`방어보정 ${myPlayer.items?.defenseBooster || myPlayer.items?.defense_boost}`);
+    document.getElementById('myItems').textContent = items.length ? items.join(', ') : '아이템 없음';
+    if (myPlayer.avatar) document.getElementById('myPortrait').src = myPlayer.avatar;
+  }
+
+  function renderTeams() {
+    if (!battleState?.players) return;
+    const teamA = battleState.players.filter(p => p.team === 'A');
+    const teamB = battleState.players.filter(p => p.team === 'B');
+    const renderTeam = (players, containerId) => {
+      let html = '';
+      players.forEach(p => {
+        const hpPct = Math.max(0, p.hp/(p.maxHp||100)*100);
+        const items = [];
+        if ((p.items?.dittany || p.items?.ditany) > 0) items.push(`디터니 ${p.items?.dittany || p.items?.ditany}`);
+        if ((p.items?.attackBooster || p.items?.attack_boost) > 0) items.push(`공격보정 ${p.items?.attackBooster || p.items?.attack_boost}`);
+        if ((p.items?.defenseBooster || p.items?.defense_boost) > 0) items.push(`방어보정 ${p.items?.defenseBooster || p.items?.defense_boost}`);
+        html += `
+        <div class="player-card ${p.hp>0?'':'dead'}">
+          <img src="${p.avatar||''}" class="player-avatar" alt="${esc(p.name)}"
+               onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div class="player-info">
+            <div class="player-name">${esc(p.name)}</div>
+            <div class="hp"><span style="width:${hpPct}%"></span></div>
+            <div class="hp-text">HP ${p.hp}/${p.maxHp||100}</div>
+            <div class="stats">공${p.stats?.attack||0} 방${p.stats?.defense||0} 민${p.stats?.agility||0} 행${p.stats?.luck||0}</div>
+            <div class="items-info">${items.length ? items.join(', ') : '아이템 없음'}</div>
+            <div class="ready-status">${p.ready ? '준비완료' : '대기중'}</div>
+          </div>
+        </div>`;
+      });
+      document.getElementById(containerId).innerHTML = html;
+    };
+    renderTeam(teamA, 'teamA');
+    renderTeam(teamB, 'teamB');
+  }
+
+  function render() {
+    if (!battleState) return;
+
+    // 내 객체가 비어 있으면 동기화 시도
+    if (!myPlayer && myPlayerId && Array.isArray(battleState.players)) {
+      const found = battleState.players.find(p => p.id === myPlayerId);
+      if (found) {
+        myPlayer = found;
+        // URL에 name=이 있으면 서버 플레이어 이름이 비어있을 때만 보정
+        if (!myPlayer.name && urlName) myPlayer.name = urlName;
+        updateMyInfo();
+      }
+    }
+
+    const turnInfo = battleState.currentTurn;
+    const phaseText =
+      battleState.phase === 'A_select' ? 'A팀 선택 중' :
+      battleState.phase === 'B_select' ? 'B팀 선택 중' :
+      battleState.phase === 'resolve'  ? '라운드 해석 중' :
+      battleState.phase === 'inter'    ? '다음 라운드 대기' : '대기중';
+
+    document.getElementById('turnInfo').textContent =
+      turnInfo?.currentPlayer ? `${phaseText} - ${turnInfo.currentPlayer.name} 차례` : phaseText;
+
+    const timeLeft = turnInfo?.timeLeftSec || 0;
+    const mm = Math.floor(timeLeft/60);
+    const ss = (timeLeft%60).toString().padStart(2,'0');
+    document.getElementById('timerDisplay').textContent = `${mm}:${ss}`;
+    document.getElementById('timerSeconds').textContent = `${timeLeft}초`;
+
+    if (turnInfo?.currentPlayer?.avatar) {
+      document.getElementById('currentPortrait').src = turnInfo.currentPlayer.avatar;
+    } else {
+      document.getElementById('currentPortrait').removeAttribute('src');
+    }
+
+    const isMyTurn = myPlayer && turnInfo?.currentPlayer?.id === myPlayer.id;
+    const canAct = isMyTurn && battleState.status === 'active' && !hasActedThisTurn && (myPlayer?.hp ?? 1) > 0;
+    ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'].forEach(id => {
+      document.getElementById(id).disabled = !canAct;
+    });
+
+    if (myPlayer) updateMyInfo();
+    renderTeams();
+  }
+
+  function disableActions(){
+    ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.disabled=true;
+    });
+  }
+
+  function addChat({name, message}) {
+    if (!name || !message) return;
+    const key = `${name}|${message}`;
+    if (seenChats.has(key)) return;
+    seenChats.add(key);
+    if (seenChats.size > 200) {
+      const first = seenChats.values().next().value;
+      seenChats.delete(first);
+    }
+    const div = document.createElement('div');
+    div.className = 'chat-item';
+    div.innerHTML = `<span class="chat-name">${esc(name)}</span>: ${esc(message)}`;
+    chatPanel.appendChild(div);
+    chatPanel.scrollTop = chatPanel.scrollHeight;
+    while (chatPanel.children.length > 100) chatPanel.removeChild(chatPanel.firstChild);
+  }
+
+  function sendChat() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    if (!message) return;
+    socket.emit('chatMessage', {
+      battleId,
+      name: myPlayer?.name || urlName || '전투 참가자',
+      message
+    });
+    input.value = '';
+  }
+
+  function addLog({ts, type, message}) {
+    if (!message) return;
+    const idKey = `${ts}|${type}|${message}`;
+    if (seenLogIds.has(idKey)) return;
+    seenLogIds.add(idKey);
+    if (seenLogIds.size > 1200) {
+      const first = seenLogIds.values().next().value;
+      seenLogIds.delete(first);
+    }
+    const time = new Date(ts).toLocaleTimeString('ko-KR', {hour12:false});
+    const div = document.createElement('div');
+    const cls = classForLog(type, message);
+    div.className = `log-item ${cls}`;
+    div.innerHTML = `<span class="log-time">[${time}]</span> ${esc(message)}`;
+    logPanel.appendChild(div);
+    logPanel.scrollTop = logPanel.scrollHeight;
+    while (logPanel.children.length > 500) logPanel.removeChild(logPanel.firstChild);
+  }
+
+  const overlayEl = document.getElementById('actionOverlay');
+  const overlayTitle = document.getElementById('actionTitle');
+  const overlayTargets = document.getElementById('overlayTargets');
+
+  function showActionOverlay(actionType) {
+    selectedAction = actionType;
+    let titleText = '';
+    let targets = [];
+
+    if (actionType === 'attack') {
+      titleText = '공격 대상 선택';
+      targets = (battleState?.players||[]).filter(p => p.team !== myPlayer.team && p.hp > 0);
+    } else if (actionType === 'item') {
+      return showItemSelection();
+    } else if (actionType === 'defend' || actionType === 'dodge' || actionType === 'pass') {
+      return sendAction(actionType);
+    }
+
+    overlayTitle.textContent = titleText;
+    overlayTargets.innerHTML = targets.map(t => `
+      <div class="target" onclick="selectTarget('${t.id}')">
+        <img src="${t.avatar||''}" alt="${esc(t.name)}" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+        <div>${esc(t.name)}</div>
+        <div>HP ${t.hp}</div>
+      </div>`).join('');
+    overlayEl.classList.add('show');
+  }
+
+  function showItemSelection() {
+    overlayTitle.textContent = '아이템 선택';
+    const opts = [];
+    if ((myPlayer.items?.dittany || myPlayer.items?.ditany) > 0) {
+      opts.push(`<div class="target" onclick="selectItem('dittany')"><div>디터니</div><div>HP +10 (100%)</div></div>`);
+    }
+    if ((myPlayer.items?.attackBooster || myPlayer.items?.attack_boost) > 0) {
+      opts.push(`<div class="target" onclick="selectItem('attackBooster')"><div>공격 보정기</div><div>공격력 x2 (60%)</div></div>`);
+    }
+    if ((myPlayer.items?.defenseBooster || myPlayer.items?.defense_boost) > 0) {
+      opts.push(`<div class="target" onclick="selectItem('defenseBooster')"><div>방어 보정기</div><div>방어력 x2 (60%)</div></div>`);
+    }
+    overlayTargets.innerHTML = opts.length ? opts.join('') : `<div class="target disabled">사용 가능한 아이템이 없습니다</div>`;
+    overlayEl.classList.add('show');
+  }
+
+  function selectItem(itemType) {
+    selectedAction = { type:'item', item:itemType };
+    if (itemType === 'dittany' || itemType === 'ditany') {
+      overlayTitle.textContent = '치료 대상 선택';
+      const targets = (battleState?.players||[]).filter(p => p.team === myPlayer.team && p.hp > 0);
+      overlayTargets.innerHTML = targets.map(t => `
+        <div class="target" onclick="selectTarget('${t.id}')">
+          <img src="${t.avatar||''}" alt="${esc(t.name)}" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div>${esc(t.name)}</div><div>HP ${t.hp}</div>
+        </div>`).join('');
+    } else if (itemType === 'attackBooster') {
+      overlayTitle.textContent = '공격 대상 선택 (보정기)';
+      const targets = (battleState?.players||[]).filter(p => p.team !== myPlayer.team && p.hp > 0);
+      overlayTargets.innerHTML = targets.map(t => `
+        <div class="target" onclick="selectTarget('${t.id}')">
+          <img src="${t.avatar||''}" alt="${esc(t.name)}" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div>${esc(t.name)}</div><div>HP ${t.hp}</div>
+        </div>`).join('');
+    } else if (itemType === 'defenseBooster') {
+      overlayTitle.textContent = '방어 보정 대상 선택';
+      const targets = (battleState?.players||[]).filter(p => p.team === myPlayer.team && p.hp > 0);
+      overlayTargets.innerHTML = targets.map(t => `
+        <div class="target" onclick="selectTarget('${t.id}')">
+          <img src="${t.avatar||''}" alt="${esc(t.name)}" onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div>${esc(t.name)}</div><div>HP ${t.hp}</div>
+        </div>`).join('');
+    }
+  }
+
+  function selectTarget(targetId) {
+    if (selectedAction && typeof selectedAction === 'object' && selectedAction.type === 'item') {
+      sendAction('item', { item: selectedAction.item, targetId });
+    } else {
+      sendAction(selectedAction, { targetId });
+    }
+    hideActionOverlay();
+  }
+
+  function hideActionOverlay(){ overlayEl.classList.remove('show'); selectedAction = null; }
+
+  function sendAction(actionType, params = {}) {
+    if (!myPlayer) return;
+    const action = { type: actionType, ...params };
+    socket.emit('player:action', { battleId, playerId: myPlayer.id, action }, (response) => {
+      if (!response?.ok) alert('액션 실패: ' + (response?.error || '알 수 없는 오류'));
+    });
+  }
+
+  function setReady() {
+    const btn = document.getElementById('readyBtn');
+    if (btn.classList.contains('done') || !myPlayer) return;
+    socket.emit('player:ready', { battleId, playerId: myPlayer.id });
+    socket.emit('chatMessage', {
+      battleId,
+      name: myPlayer?.name || urlName || '전투 참가자',
+      message: '[준비 완료]'
+    });
+    btn.classList.add('done');
+    btn.textContent = '준비 완료됨';
+  }
+
+  function setupEventListeners() {
+    document.getElementById('attackBtn').addEventListener('click', () => showActionOverlay('attack'));
+    document.getElementById('defendBtn').addEventListener('click', () => showActionOverlay('defend'));
+    document.getElementById('dodgeBtn').addEventListener('click',  () => showActionOverlay('dodge'));
+    document.getElementById('itemBtn').addEventListener('click',   () => showActionOverlay('item'));
+    document.getElementById('passBtn').addEventListener('click',   () => showActionOverlay('pass'));
+    document.getElementById('cancelAction').addEventListener('click', hideActionOverlay);
+    document.getElementById('chatSend').addEventListener('click', sendChat);
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+    });
+    document.getElementById('readyBtn').addEventListener('click', setReady);
+    window.selectTarget = selectTarget;
+    window.selectItem   = selectItem;
+  }
+
+  // 인증/조인: 서버가 player 객체를 안 줄 수도 있으니 id만 먼저 저장
+  function applyAuthedPayload(payload){
+    if (!payload?.ok) return;
+    if (payload.player) {
+      myPlayer = payload.player;
+      myPlayerId = payload.player.id;
+      if (!myPlayer.name && urlName) myPlayer.name = urlName;
+      updateMyInfo();
+    } else {
+      myPlayerId = payload.playerId;
+      // 실제 myPlayer 객체는 다음 스냅샷에서 동기화됨
+    }
+  }
+
+  socket.on('connect', () => {
+    socket.emit('join', { battleId });
   });
+
+  // 콜백/이벤트 모두 지원 (서버 호환성)
+  socket.emit('playerAuth', { battleId, token }, (res) => applyAuthedPayload(res));
+  socket.on('authSuccess', (d) => applyAuthedPayload(d));
+  socket.on('auth:success', (d) => applyAuthedPayload(d));
+
+  const onSnap = (snap) => { battleState = snap; render(); hasActedThisTurn = false; };
+  socket.on('battle:update', onSnap);
+
+  socket.on('battle:log', addLog);
+  socket.on('chatMessage', addChat);
+
+  socket.on('actionSuccess', () => { hasActedThisTurn = true; disableActions(); });
+  socket.on('player:action:success', () => { hasActedThisTurn = true; disableActions(); });
+
+  socket.on('battle:ended', (data) => showGameOverOverlay(data.winner));
+  socket.on('battleEnded',  (data) => showGameOverOverlay(data.winner));
+
+  window.addEventListener('beforeunload', () => { socket.disconnect(); });
+
+  setupEventListeners();
+  socket.emit('join', { battleId });
+})();
 </script>
 </body>
 </html>
