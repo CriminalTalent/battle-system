@@ -1,10 +1,7 @@
 // packages/battle-server/index.js
-// - /admin, /player, /spectator 정적 별칭
-// - 아바타 업로드(/api/upload/avatar, /upload) → JSON 응답
-// - 참가자/관전자 링크 생성(/api/link/participant, /api/link/spectator, /api/link, 호환용 /link/*)
-// - /api/* 404는 JSON으로 고정
-// - battle:update/battleUpdate, battle:log/battleLog 이벤트 브로드캐스트
-// - 1초 주기 스냅샷/로그 재전송
+// 정적 페이지(/admin, /player, /spectator), 업로드, 링크 생성,
+// /api/admin/battles/:id/links 호환 라우트, /api/* 404 JSON,
+// 배틀 엔진 소켓 브로드캐스트(1초 주기) 포함
 
 import express from 'express';
 import http from 'node:http';
@@ -46,9 +43,7 @@ app.get('/', (_req, res) => res.sendFile(path.join(pubDir, 'index.html')));
 // 헬스체크
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// ================================
-// 업로드(API) - JSON 응답
-// ================================
+// ===== 업로드(JSON) =====
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -75,7 +70,6 @@ function handleAvatarUpload(req, res) {
 app.post('/api/upload/avatar', upload.single('avatar'), handleAvatarUpload);
 app.post('/upload', upload.single('avatar'), handleAvatarUpload); // 호환
 
-// 업로드 에러를 JSON으로
 app.use((err, _req, res, next) => {
   if (err?.message === 'INVALID_TYPE') {
     return res.status(400).json({ ok: false, error: 'INVALID_TYPE' });
@@ -86,9 +80,7 @@ app.use((err, _req, res, next) => {
   return next(err);
 });
 
-// ================================
-// 링크 생성(API)
-// ================================
+// ===== 링크 유틸/라우트 =====
 function absoluteUrl(req, pathnameWithQuery) {
   const proto =
     (req.headers['x-forwarded-proto']?.toString().split(',')[0]) ||
@@ -105,7 +97,8 @@ function linkHandler(kind) {
       req.body?.battleId || req.query?.battleId ||
       req.body?.id || req.query?.id || '';
     if (!id) return res.status(400).json({ ok: false, error: 'NO_BATTLE_ID' });
-    const qs = `?battleId=${encodeURIComponent(id)}&id=${encodeURIComponent(id)}`;
+    const enc = encodeURIComponent(id);
+    const qs = `?battleId=${enc}&id=${enc}`;
     const url = absoluteUrl(req, `${basePath}${qs}`);
     return res.json({ ok: true, url, battleId: id, role: kind });
   };
@@ -145,12 +138,34 @@ app.get('/link', (req, res) => {
   return res.status(400).json({ ok: false, error: 'INVALID_ROLE' });
 });
 
-// /api/* 404는 JSON
+// ===== 관리자 호환 라우트 =====
+// /api/admin/battles/:id/links  (GET/POST)
+function adminLinksResponder(req, res) {
+  const id = (req.params?.id || req.body?.battleId || req.query?.battleId || '').toString();
+  if (!id) return res.status(400).json({ ok: false, error: 'NO_BATTLE_ID' });
+  const enc = encodeURIComponent(id);
+  const participant = absoluteUrl(req, `/player?battleId=${enc}&id=${enc}`);
+  const spectator = absoluteUrl(req, `/spectator?battleId=${enc}&id=${enc}`);
+  return res.json({
+    ok: true,
+    battleId: id,
+    // 여러 키명 동시 제공(프런트 호환성)
+    playerUrl: participant,
+    participantUrl: participant,
+    player: participant,
+    participant,
+    spectatorUrl: spectator,
+    spectator,
+    urls: { participant, spectator },
+  });
+}
+app.get('/api/admin/battles/:id/links', adminLinksResponder);
+app.post('/api/admin/battles/:id/links', adminLinksResponder);
+
+// /api/* 404는 JSON으로 고정
 app.use('/api', (_req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND' }));
 
-// ================================
-// 배틀 엔진 + 소켓
-// ================================
+// ===== 배틀 엔진 + 소켓 =====
 const battleEngine = createBattleStore();
 
 const activeBattles = new Set(); // Set<battleId>
@@ -184,7 +199,7 @@ function flushLogs(io, battleId) {
   }
   lastLogIdx.set(battleId, end);
 }
-// 1초마다 스냅샷/로그 재전송
+// 1초마다 스냅샷/로그 전송
 setInterval(() => {
   for (const battleId of activeBattles) {
     emitUpdate(io, battleId);
