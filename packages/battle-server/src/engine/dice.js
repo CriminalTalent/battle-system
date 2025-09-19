@@ -1,10 +1,11 @@
 // packages/battle-server/src/engine/dice.js
 // 주사위 모듈 - D10과 D20 지원
+// (오탈자/문법/중복 점검만 수행, 로직/흐름 변경 없음)
 
-/**
- * D10 주사위 굴리기 (1-10)
- * @returns {number} 1부터 10까지의 랜덤 숫자
- */
+ /**
+  * D10 주사위 굴리기 (1-10)
+  * @returns {number} 1부터 10까지의 랜덤 숫자
+  */
 export function d10() {
   return Math.floor(Math.random() * 10) + 1;
 }
@@ -44,7 +45,7 @@ export function dice(sides = 6) {
 export function roll(count = 1, sides = 6) {
   if (count <= 0) return [1];
   if (sides <= 0) return Array(count).fill(1);
-  
+
   const results = [];
   for (let i = 0; i < count; i++) {
     results.push(dice(sides));
@@ -135,47 +136,48 @@ export function randomFloat(min, max) {
 
 /**
  * 가중치가 있는 무작위 선택
- * @param {Object} weights - {값: 가중치} 형태의 객체
- * @returns {*} 가중치에 따라 선택된 값
+ * @param {Object.<string, number>} weights - {값: 가중치} 형태의 객체
+ * @returns {string|null} 가중치에 따라 선택된 값
  */
 export function weightedChoice(weights) {
   const entries = Object.entries(weights);
   const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
-  
+
   if (totalWeight <= 0) return null;
-  
+
   let random = Math.random() * totalWeight;
-  
+
   for (const [value, weight] of entries) {
     random -= weight;
     if (random <= 0) {
       return value;
     }
   }
-  
+
   return entries[entries.length - 1][0];
 }
 
 /**
  * 주사위 결과 시뮬레이션 (테스트용)
  * @param {Function} diceFunc - 주사위 함수
- * @param {number} iterations - 시뮬레이션 횟수
- * @returns {Object} 결과 통계
+ * @param {number} [iterations=10000] - 시뮬레이션 횟수
+ * @returns {{total:number, results:Object, average:number}} 결과 통계
  */
 export function simulate(diceFunc, iterations = 10000) {
   const results = {};
-  
+
   for (let i = 0; i < iterations; i++) {
     const result = diceFunc();
     results[result] = (results[result] || 0) + 1;
   }
-  
-  const stats = {
+
+  const average =
+    Object.entries(results).reduce((sum, [val, count]) => sum + (parseInt(val, 10) * count), 0) /
+    iterations;
+
+  return {
     total: iterations,
-    results: results,
-    average: Object.entries(results).reduce((sum, [val, count]) => 
-      sum + (parseInt(val) * count), 0) / iterations
+    results,
+    average,
   };
-  
-  return stats;
 }
