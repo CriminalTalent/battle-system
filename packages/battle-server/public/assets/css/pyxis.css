@@ -1,0 +1,732 @@
+/* PYXIS 배틀 시스템 - 개선된 스타일 */
+
+/* 기본 테마 - 블랙 + 골드 */
+:root {
+  --primary-black: #000000;
+  --primary-gold: #FFD700;
+  --dark-gold: #B8860B;
+  --light-gold: #FFFFE0;
+  --gray-dark: #1a1a1a;
+  --gray-medium: #2a2a2a;
+  --gray-light: #3a3a3a;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --hp-high: #4CAF50;
+  --hp-medium: #FF9800;
+  --hp-low: #F44336;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, var(--primary-black) 0%, var(--gray-dark) 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* 공통 컨테이너 */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* 헤더 */
+.header {
+  text-align: center;
+  padding: 20px 0;
+  border-bottom: 2px solid var(--primary-gold);
+  margin-bottom: 30px;
+}
+
+.header h1 {
+  color: var(--primary-gold);
+  font-size: 2.5rem;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* 메인 레이아웃 */
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 20px;
+  min-height: calc(100vh - 200px);
+}
+
+/* 사이드바 */
+.sidebar {
+  background: var(--gray-medium);
+  border: 1px solid var(--primary-gold);
+  border-radius: 8px;
+  padding: 20px;
+  height: fit-content;
+}
+
+.sidebar h3 {
+  color: var(--primary-gold);
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  border-bottom: 1px solid var(--primary-gold);
+  padding-bottom: 5px;
+}
+
+/* 메인 콘텐츠 */
+.main-content {
+  background: var(--gray-medium);
+  border: 1px solid var(--primary-gold);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 버튼 스타일 */
+.btn {
+  background: var(--primary-gold);
+  color: var(--primary-black);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--dark-gold);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(255, 215, 0, 0.3);
+}
+
+.btn:disabled {
+  background: var(--gray-light);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn.ready {
+  background: var(--primary-black);
+  color: var(--primary-gold);
+  border: 1px solid var(--primary-gold);
+}
+
+/* 입력 필드 */
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  color: var(--primary-gold);
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-control {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--gray-dark);
+  border: 1px solid var(--primary-gold);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--light-gold);
+  box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+}
+
+select.form-control {
+  cursor: pointer;
+}
+
+/* 플레이어 카드 */
+.player-card {
+  background: var(--gray-dark);
+  border: 1px solid var(--primary-gold);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.player-avatar img,
+.player-avatar-small img,
+.player-avatar-spectator img {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px solid var(--primary-gold);
+  object-fit: cover;
+}
+
+.player-avatar-small img {
+  width: 40px;
+  height: 40px;
+}
+
+.player-info {
+  flex: 1;
+}
+
+.player-name {
+  color: var(--primary-gold);
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+.player-hp,
+.player-stats,
+.player-items {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 3px;
+}
+
+.remove-btn {
+  background: #F44336;
+  color: #ffffff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.remove-btn:hover {
+  background: #D32F2F;
+}
+
+/* HP 바 */
+.hp-container,
+.hp-container-spectator {
+  margin: 5px 0;
+}
+
+.hp-bar,
+.hp-bar-small,
+.hp-bar-spectator {
+  background: var(--gray-light);
+  border: 1px solid var(--primary-gold);
+  border-radius: 10px;
+  height: 20px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hp-bar-small {
+  height: 15px;
+}
+
+.hp-fill,
+.hp-bar .hp-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 9px;
+}
+
+.hp-high { background: var(--hp-high); }
+.hp-medium { background: var(--hp-medium); }
+.hp-low { background: var(--hp-low); }
+
+.hp-text,
+.hp-text-small,
+.hp-text-spectator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--text-primary);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.hp-text-small {
+  font-size: 10px;
+}
+
+/* 팀 컨테이너 */
+.team-section {
+  margin-bottom: 20px;
+}
+
+.team-section h3 {
+  color: var(--primary-gold);
+  margin-bottom: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--primary-gold);
+}
+
+.team-players {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.team-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--gray-dark);
+  border: 1px solid var(--gray-light);
+  border-radius: 6px;
+}
+
+.team-player.current-player {
+  border-color: var(--primary-gold);
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.spectator-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--gray-dark);
+  border: 1px solid var(--gray-light);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.spectator-player.dead {
+  opacity: 0.5;
+  background: #2a2a2a;
+}
+
+/* 준비 상태 */
+.player-ready.ready {
+  color: var(--hp-high);
+  font-weight: bold;
+}
+
+.player-ready.not-ready {
+  color: var(--hp-medium);
+}
+
+.ready-indicator {
+  background: var(--hp-high);
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* 액션 버튼 */
+.action-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.action-btn {
+  background: var(--primary-gold);
+  color: var(--primary-black);
+  border: none;
+  padding: 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--dark-gold);
+  transform: translateY(-2px);
+}
+
+.action-btn:disabled {
+  background: var(--gray-light);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 턴 정보 */
+.turn-info,
+.turn-display {
+  background: var(--gray-dark);
+  border: 2px solid var(--primary-gold);
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+}
+
+.turn-number {
+  color: var(--primary-gold);
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.current-team {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  margin-bottom: 5px;
+}
+
+.phase {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-bottom: 5px;
+}
+
+.time-left {
+  color: var(--hp-medium);
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+/* 로그/채팅 */
+.log-container,
+.chat-container {
+  background: var(--gray-dark);
+  border: 1px solid var(--primary-gold);
+  border-radius: 8px;
+  height: 300px;
+  overflow-y: auto;
+  padding: 10px;
+  font-size: 14px;
+}
+
+.log-entry {
+  margin-bottom: 8px;
+  padding: 5px;
+  border-radius: 4px;
+  display: flex;
+  gap: 10px;
+}
+
+.log-time {
+  color: var(--primary-black);
+  font-size: 12px;
+  min-width: 70px;
+  font-weight: normal;
+}
+
+.log-message {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+/* 로그 타입별 */
+.log-system {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.log-system .log-message {
+  color: var(--text-secondary);
+}
+
+/* 룰 중계 강조 */
+.log-battle {
+  background: var(--primary-gold);
+  border: 1px solid var(--dark-gold);
+}
+
+.log-battle .log-message,
+.log-battle .log-time {
+  color: var(--primary-black);
+  font-weight: bold;
+}
+
+/* 에러 로그 */
+.log-error {
+  background: var(--primary-black);
+  border: 1px solid var(--primary-gold);
+}
+
+.log-error .log-message {
+  color: var(--primary-gold);
+  font-weight: bold;
+}
+
+.log-error .log-time {
+  color: var(--primary-black);
+  background: var(--primary-gold);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+/* 채팅 엔트리 */
+.chat-entry {
+  margin-bottom: 8px;
+  padding: 5px;
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+}
+
+.chat-time {
+  color: var(--text-secondary);
+  font-size: 12px;
+  min-width: 60px;
+}
+
+.chat-name {
+  color: var(--primary-gold);
+  font-weight: bold;
+  min-width: 80px;
+}
+
+.chat-message {
+  color: var(--text-primary);
+  flex: 1;
+}
+
+/* 응원 메시지 */
+.cheer-message {
+  background: rgba(255, 215, 0, 0.1);
+  border-left: 3px solid var(--primary-gold);
+}
+
+.cheer-message .chat-name {
+  color: var(--light-gold);
+}
+
+/* 응원 버튼 */
+.cheer-button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cheer-btn {
+  background: var(--primary-gold);
+  color: var(--primary-black);
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.cheer-btn:hover {
+  background: var(--dark-gold);
+  transform: scale(1.05);
+}
+
+/* 대상 선택 오버레이 */
+.target-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.target-container {
+  background: var(--gray-medium);
+  border: 2px solid var(--primary-gold);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.target-container h3 {
+  color: var(--primary-gold);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.target-option {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 10px;
+  background: var(--gray-dark);
+  border: 1px solid var(--gray-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.target-option:hover {
+  border-color: var(--primary-gold);
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.target-avatar img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid var(--primary-gold);
+  object-fit: cover;
+}
+
+.target-name {
+  color: var(--primary-gold);
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.target-hp {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* 링크 섹션 */
+.link-section {
+  margin-top: 20px;
+}
+
+.link-item,
+.player-link-item {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: var(--gray-dark);
+  border: 1px solid var(--primary-gold);
+  border-radius: 6px;
+}
+
+.link-item h4 {
+  color: var(--primary-gold);
+  margin-bottom: 10px;
+}
+
+.link-url {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.link-url input {
+  flex: 1;
+  background: var(--gray-medium);
+  border: 1px solid var(--gray-light);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.link-url button {
+  background: var(--primary-gold);
+  color: var(--primary-black);
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.player-info-small {
+  color: var(--primary-gold);
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+/* 이름 입력 오버레이 */
+.name-input-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.name-input-container {
+  background: var(--gray-medium);
+  border: 2px solid var(--primary-gold);
+  border-radius: 12px;
+  padding: 30px;
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+}
+
+.name-input-container h2 {
+  color: var(--primary-gold);
+  margin-bottom: 20px;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  .action-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cheer-button-grid {
+    grid-template-columns: 1fr;
+  }
+  .header h1 {
+    font-size: 2rem;
+  }
+  .container {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .action-buttons {
+    grid-template-columns: 1fr;
+  }
+  .player-card {
+    flex-direction: column;
+    text-align: center;
+  }
+  .team-player {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+/* 유틸리티 클래스 */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.text-gold { color: var(--primary-gold); }
+.text-secondary { color: var(--text-secondary); }
+.mb-10 { margin-bottom: 10px; }
+.mb-20 { margin-bottom: 20px; }
+.mt-10 { margin-top: 10px; }
+.mt-20 { margin-top: 20px; }
+
+/* 스크롤바 스타일링 */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--gray-dark); }
+::-webkit-scrollbar-thumb { background: var(--primary-gold); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dark-gold); }
