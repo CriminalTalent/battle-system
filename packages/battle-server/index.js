@@ -21,6 +21,12 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || '*')
   .map(s => s.trim())
   .filter(Boolean);
 
+/**
+ * 외부로 노출될 절대 URL (링크 생성 시 항상 이 값을 사용)
+ * 예: PUBLIC_BASE_URL="https://pyxisbattlesystem.monster"
+ */
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://pyxisbattlesystem.monster').replace(/\/+$/, '');
+
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, {
@@ -55,15 +61,15 @@ if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
 
 app.use('/uploads', express.static(uploadsDir));
 
-const send = file => (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
+const send = file => (req, res) => res.sendFile(path.join(PUBLIC_DIR, file));
 app.get('/', send('admin.html'));          // 루트 → 관리자
 app.get('/admin', send('admin.html'));
 app.get('/player', send('player.html'));
 app.get('/spectator', send('spectator.html'));
 
-/* ─────────────────────────── 공용 유틸 ─────────────────────────── */
-const battles = new Map(); // id -> battle state (엔진 외 부가 보관용)
-const passwordStore = new Map(); // 토큰/OTP 저장소
+/* ─────────────────────────── 공용 스토어 ─────────────────────────── */
+const battles = new Map();        // id -> battle state (엔진 외 부가 보관용)
+const passwordStore = new Map();  // 토큰/OTP 저장소
 
 // BattleEngine 임포트
 import { createBattleStore } from './src/engine/BattleEngine.js';
@@ -97,7 +103,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'healthy',
     timestamp: Date.now(),
-    battles: battleEngine.size ? battleEngine.size() : 0,
+    battles: typeof battleEngine.size === 'function' ? battleEngine.size() : 0,
     uptime: process.uptime()
   });
 });
@@ -132,11 +138,13 @@ app.post('/api/battles', (req, res) => {
   }
 });
 
-// 링크 생성 함수
-function buildLinks(battle, baseUrl) {
-  const base = String(baseUrl || '').replace(/\/+$/, '');
+/**
+ * 링크 생성: PUBLIC_BASE_URL만 사용하여 포트 오염(:3001 등) 제거
+ */
+function buildLinks(battle) {
+  const base = PUBLIC_BASE_URL;
 
-  // 관전자 OTP 생성
+  // 관전자 OTP 생성 및 저장
   if (!battle.spectatorOtp) {
     battle.spectatorOtp = Math.random().toString(36).slice(2, 8).toUpperCase();
     passwordStore.set(`spectator_${battle.id}`, {
@@ -145,7 +153,7 @@ function buildLinks(battle, baseUrl) {
     });
   }
 
-  // 플레이어 토큰 생성
+  // 플레이어 토큰 생성 및 저장
   (battle.players || []).forEach(player => {
     if (!player.token) {
       player.token = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -158,7 +166,7 @@ function buildLinks(battle, baseUrl) {
 
   const spectator = {
     otp: battle.spectatorOtp,
-    url: base ? `${base}/spectator?battle=${encodeURIComponent(battle.id)}&otp=${encodeURIComponent(battle.spectatorOtp)}` : undefined
+    url: `${base}/spectator?battle=${encodeURIComponent(battle.id)}&otp=${encodeURIComponent(battle.spectatorOtp)}`
   };
 
   const players = (battle.players || []).map(p => ({
@@ -169,7 +177,7 @@ function buildLinks(battle, baseUrl) {
     team: p.team,
     otp: p.token,
     token: p.token,
-    url: base ? `${base}/player?battle=${encodeURIComponent(battle.id)}&token=${encodeURIComponent(p.token)}` : undefined
+    url: `${base}/player?battle=${encodeURIComponent(battle.id)}&token=${encodeURIComponent(p.token)}`
   }));
 
   return { spectator, players, playerLinks: players };
@@ -180,8 +188,7 @@ app.post('/api/admin/battles/:id/links', (req, res) => {
   try {
     const battle = battleEngine.get(req.params.id);
     if (!battle) return res.status(404).json({ ok: false, error: '전투를 찾을 수 없습니다' });
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const links = buildLinks(battle, baseUrl);
+    const links = buildLinks(battle);
     res.json({ ok: true, links });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
@@ -193,8 +200,7 @@ app.post('/api/battles/:id/links', (req, res) => {
   try {
     const battle = battleEngine.get(req.params.id);
     if (!battle) return res.status(404).json({ ok: false, error: '전투를 찾을 수 없습니다' });
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const links = buildLinks(battle, baseUrl);
+    const links = buildLinks(battle);
     res.json({ ok: true, links });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
@@ -428,7 +434,8 @@ io.on('connection', (socket) => {
 
       socket.join(`battle_${battleId}`);
 
-      const payload = { ok: true, playerId: player.id, name: player.name, team: player.team };
+      // 여기서 전체 player 객체를 포함해 전달
+      const payload = { ok: true, playerId: player.id, name: player.name, team: player.team, player };
       socket.emit('authSuccess', payload);
       socket.emit('auth:success', payload);
       callback?.(payload);
@@ -552,14 +559,15 @@ io.on('connection', (socket) => {
 /* ─────────────────────────── 서버 시작 ─────────────────────────── */
 server.listen(PORT, HOST, () => {
   console.log(`
-============================================================
-                PYXIS Battle System
-                 서버가 시작되었습니다
-------------------------------------------------------------
+========================================
+           PYXIS Battle System
+           서버가 시작되었습니다
+========================================
  주소: http://${HOST}:${PORT}${HOST === '0.0.0.0' ? ' (모든 인터페이스)' : ''}
  환경: ${process.env.NODE_ENV || 'development'}
  CORS: ${CORS_ORIGIN.join(', ')}
-============================================================
+ 공개 URL: ${PUBLIC_BASE_URL}
+========================================
   `);
 });
 
