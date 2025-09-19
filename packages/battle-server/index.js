@@ -1,16 +1,15 @@
-// index.js — PYXIS battle-server (ESM)
-// - battle:update / battleUpdate 두 이벤트 모두로 스냅샷 브로드캐스트
-// - battle:log / battleLog 실시간 로그 브로드캐스트(1초 주기 플러시)
-// - 스냅샷에 최근 로그 포함(최대 200개) -> 프런트가 스냅샷만 받아도 로그 렌더 가능
-// - 매 1초 스냅샷 재전송 -> 프런트가 클라이언트 타이머 없이도 1초 단위 갱신
-// - 엔진은 ./src/engine/BattleEngine.js (선택 5분/해석에서만 적용 버전 추천)
+// packages/battle-server/index.js
+// - battle:update / battleUpdate 둘 다 브로드캐스트(호환성)
+// - battle:log / battleLog 실시간 로그 브로드캐스트(증분 플러시)
+// - 스냅샷에 최근 로그 포함(최대 200개)
+// - 매 1초 스냅샷/로그 재전송(타이머 1초 갱신 보장)
+// - /admin, /player, /spectator 라우트 별칭 추가
 
 import express from 'express';
 import http from 'node:http';
 import { Server } from 'socket.io';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
 import { createBattleStore } from './src/engine/BattleEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,9 +27,15 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 
-// 정적 파일(필요 시)
+// 정적 파일
 const pubDir = path.join(__dirname, 'public');
-app.use(express.static(pubDir));
+app.use(express.static(pubDir, { extensions: ['html'] }));
+
+// 단일 파일 별칭(존재하면 서빙)
+app.get('/admin', (_req, res) => res.sendFile(path.join(pubDir, 'admin.html')));
+app.get('/player', (_req, res) => res.sendFile(path.join(pubDir, 'player.html')));
+app.get('/spectator', (_req, res) => res.sendFile(path.join(pubDir, 'spectator.html')));
+app.get('/', (_req, res) => res.sendFile(path.join(pubDir, 'index.html')));
 
 // 헬스체크
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -101,14 +106,8 @@ io.on('connection', (socket) => {
     try {
       if (!battleId) return cb({ ok: false, error: 'battleId 필요' });
 
-      // 존재하지 않으면 새 배틀 생성(운영 정책에 맞게 필요 시 에러로 변경)
-      let b = battleEngine.get(battleId);
-      if (!b) {
-        b = battleEngine.create('custom');
-        // 새로 만든 battle의 id를 클라이언트가 넘긴 battleId로 강제 맞추고 싶다면
-        // 엔진을 수정해야 한다. 여기서는 존재하지 않을 경우 에러로 처리한다.
-        return cb({ ok: false, error: '존재하지 않는 전투입니다' });
-      }
+      const b = battleEngine.get(battleId);
+      if (!b) return cb({ ok: false, error: '존재하지 않는 전투입니다' });
 
       socket.join(`battle_${battleId}`);
       activeBattles.add(battleId);
