@@ -243,16 +243,16 @@
 
 <script>
 (() => {
-  // 프로덕션 절대 URL 보정 헬퍼
+  // 절대 URL 보정 (개발호스트 → 배포도메인)
   const PUBLIC_BASE = location.origin.replace(/:\d+$/, '');
   const toAbs = (u) => {
     if (!u) return '';
     try {
       const test = new URL(u, PUBLIC_BASE);
-      // 내부 주소면 퍼블릭 도메인으로 교체
       if (/^https?:\/\/(localhost|127\.|0\.0\.0\.0|10\.|172\.|192\.168\.)/i.test(test.origin)) {
         const prod = new URL(PUBLIC_BASE);
-        test.protocol = prod.protocol; test.host = prod.host;
+        test.protocol = prod.protocol;
+        test.host = prod.host;
       }
       return test.toString();
     } catch { return u; }
@@ -265,6 +265,7 @@
   let currentBattleId = null;
   let battleState = null;
   let uploadedAvatarUrl = null;
+  window.currentBattleId = null; // 외부에서 참조할 수 있게 노출
 
   const seenLogs = new Map();
   const seenChats = new Map();
@@ -351,12 +352,13 @@
 
   function render(){ renderTeams(); updateBattleControls(); }
 
-  // API: 전투 생성/제어
+  // 전투 생성/제어
   function createBattle(){
     const mode=document.getElementById('battleMode').value;
     socket.emit('createBattle',{mode},(res)=>{
       if(res?.ok){
         currentBattleId = res.battleId || res.battle?.id || null;
+        window.currentBattleId = currentBattleId;
         if(currentBattleId){
           if(res.battle) battleState = res.battle;
           addLog({ts:Date.now(),type:'notice',message:`${mode} 전투가 생성되었습니다 (ID: ${currentBattleId})`});
@@ -375,15 +377,24 @@
   function resumeBattle(){ if(!currentBattleId) return; socket.emit('resumeBattle',{battleId:currentBattleId}); }
   function endBattle(){ if(!currentBattleId) return; if(!confirm('정말 전투를 종료하시겠습니까?')) return; socket.emit('endBattle',{battleId:currentBattleId}); }
 
-  // 아바타 업로드(JSON 응답)
+  // 아바타 업로드(JSON)
   async function uploadAvatar(file){
     const fd=new FormData(); fd.append('avatar',file);
     try{
       const r=await fetch('/api/upload/avatar',{method:'POST',body:fd});
       const j=await r.json();
-      if(j.url){ uploadedAvatarUrl=j.url; document.getElementById('avatarPreview').src=uploadedAvatarUrl; addLog({ts:Date.now(),type:'notice',message:'아바타 업로드 완료'}); }
-      else throw new Error(j.error||'업로드 실패');
-    }catch(e){ alert('아바타 업로드 실패: '+e.message); uploadedAvatarUrl=null; document.getElementById('avatarPreview').removeAttribute('src'); }
+      if(j.url){
+        uploadedAvatarUrl=j.url;
+        document.getElementById('avatarPreview').src=uploadedAvatarUrl;
+        addLog({ts:Date.now(),type:'notice',message:'아바타 업로드 완료'});
+      } else {
+        throw new Error(j.error||'업로드 실패');
+      }
+    }catch(e){
+      alert('아바타 업로드 실패: '+e.message);
+      uploadedAvatarUrl=null;
+      document.getElementById('avatarPreview').removeAttribute('src');
+    }
   }
 
   // 참가자 추가/제거
@@ -431,25 +442,27 @@
     playerDittany.value='0'; playerAttackBooster.value='0'; playerDefenseBooster.value='0';
     avatarUpload.value=''; uploadedAvatarUrl=null; document.getElementById('avatarPreview').removeAttribute('src');
   }
-  window.removePlayer = removePlayer; // 전역 노출
+  window.removePlayer = removePlayer;
 
-  // 링크 생성(신규 엔드포인트)
-  function requestLinks(){
+  // 링크 생성(서버가 반환한 안전한 URL을 그대로 사용)
+  async function requestLinks(){
     if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
-    fetch(`/api/admin/battles/${currentBattleId}/links`,{method:'POST'})
-      .then(r=>r.json())
-      .then(d=>{
-        const payload=d?.links||d;
-        if(!payload) throw new Error('링크 생성 실패');
-        drawLinks(payload);
-      })
-      .catch(e=>alert('링크 생성 실패: '+e.message));
+    try{
+      const r = await fetch(`/api/admin/battles/${encodeURIComponent(currentBattleId)}/links`, { method:'POST' });
+      const j = await r.json();
+      const payload = j?.links || j;
+      if(!payload) throw new Error(j?.error || '링크 생성 실패');
+      drawLinks(payload);
+    }catch(e){
+      alert('링크 생성 실패: ' + e.message);
+    }
   }
 
   function drawLinks(data){
     const container=document.getElementById('linksContainer');
     let html='';
-    if(data.spectator?.url){
+
+    if(data?.spectator?.url){
       const sp = toAbs(data.spectator.url);
       html+=`<div class="link-item">
         <div class="link-label">관전자 링크</div>
@@ -457,17 +470,19 @@
         <button class="copy-btn" onclick="copyToClipboard('${sp}', event)">복사</button>
       </div>`;
     }
-    const list=Array.isArray(data.players)?data.players:(data.playerLinks||[]);
-    list.forEach(link=>{
-      const url=toAbs(link.url);
+
+    const list = Array.isArray(data?.players) ? data.players : (data?.playerLinks || []);
+    for (const link of list){
+      const url = toAbs(link.url); // 서버가 준 URL을 그대로 사용
       const labelName = link.playerName || link.name || '참가자';
+      const team = link.team ? ` (${link.team}팀)` : '';
       html+=`<div class="link-item">
-        <div class="link-label">${esc(labelName)} (${esc(link.team||'')}팀)</div>
+        <div class="link-label">${esc(labelName)}${team}</div>
         <div class="link-url" onclick="copyToClipboard('${url}', event)">${url}</div>
         <button class="copy-btn" onclick="copyToClipboard('${url}', event)">복사</button>
       </div>`;
-    });
-    container.innerHTML=html;
+    }
+    container.innerHTML = html;
   }
 
   window.copyToClipboard=function(text,ev){
@@ -510,7 +525,7 @@
   document.getElementById('chatSend').addEventListener('click',sendChat);
   document.getElementById('chatInput').addEventListener('keypress',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendChat(); } });
 
-  // 소켓 이벤트(신규 이벤트 우선 수신)
+  // 소켓 이벤트
   socket.on('connect', ()=>{ addLog({ts:Date.now(),type:'notice',message:'서버에 연결되었습니다'}); });
   socket.on('disconnect', ()=>{ addLog({ts:Date.now(),type:'error',message:'서버 연결이 끊어졌습니다'}); });
   socket.on('connect_error', (err)=>{ addLog({ts:Date.now(),type:'error',message:'서버 연결 오류: '+err.message}); });
@@ -520,14 +535,14 @@
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
 
-  // 필요 시 구 이벤트도 백업으로 수신
+  // 구 이벤트도 백업으로 수신
   socket.on('battleUpdate', (s)=>{ if(!battleState) onSnap(s); });
   socket.on('battleLog', (l)=>{ if(l) addLog(l); });
 
-  // 쿼리로 전투 방 지정 시 바로 조인
+  // URL 쿼리로 방 지정 시 자동 조인
   const qs=new URLSearchParams(location.search);
   const bid=qs.get('battle');
-  if(bid){ currentBattleId=bid; socket.emit('join',{battleId:currentBattleId}); }
+  if(bid){ currentBattleId=bid; window.currentBattleId=bid; socket.emit('join',{battleId:currentBattleId}); }
 })();
 </script>
 </body>
