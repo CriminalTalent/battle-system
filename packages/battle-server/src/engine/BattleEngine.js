@@ -1,12 +1,17 @@
 /* ESM BattleEngine – 선택 페이즈는 '의도 로그', 해석 페이즈에서만 '결과+적용'
-   팀당 선택 페이즈 제한시간 5분(300초), 1초 단위 카운트다운 송출 */
+   - 아이템(디터니/공격보정기/방어보정기) 모두 1회용 소모
+   - 아이템 재고 0이면 선택 단계(playerAction)에서 바로 거부
+   - 대미지/치명타/회피/방어 공식은 요구사항 그대로 적용
+*/
 
 import { randomUUID } from 'node:crypto';
 
 const now = () => Date.now();
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-/** 내부 유틸 – 정렬: 민첩 내림차순, 동률 시 이름 오름차순(ABC) */
+// 팀 선택 페이즈 제한(클라이언트 타이머 표시에 사용)
+const TEAM_SELECT_MS = 5 * 60 * 1000; // 5분
+
+// 정렬: 민첩 내림차순, 동률 시 이름 오름차순(ABC)
 function sortByInitiative(players) {
   return [...players].sort((a, b) => {
     const ag = (b.stats?.agility ?? 0) - (a.stats?.agility ?? 0);
@@ -17,28 +22,16 @@ function sortByInitiative(players) {
   });
 }
 
-/** 대미지 간단 공식 */
-function calcDamage(attacker, defender, crit = false, boosted = false) {
-  const atk = attacker.stats?.attack ?? 0;
-  const def = defender.stats?.defense ?? 0;
-  const base = Math.max(1, atk * (boosted ? 2 : 1) - Math.floor(def / 2));
-  const critMul = crit ? 2 : 1;
-  const roll = 0.85 + Math.random() * 0.3; // 0.85~1.15
-  return Math.max(1, Math.floor(base * critMul * roll));
-}
+// 주사위 d10 (1~10)
+const d10 = () => 1 + Math.floor(Math.random() * 10);
 
-/** 치유량 간단 공식 */
-function calcHeal(user) {
-  return 10 + Math.floor((user.stats?.luck ?? 0) / 2);
-}
-
-/** 팀 문자 'A' | 'B' */
+// 팀 문자
 const teamOf = (p) => (p?.team === 'B' ? 'B' : 'A');
 
 export function createBattleStore() {
   const battles = new Map(); // id -> battle
 
-  // 서버로 이벤트를 전달하기 위한 훅
+  // 서버 훅
   let onLog = null;     // (battleId, {ts,type,message})
   let onUpdate = null;  // (battleId)
 
@@ -48,13 +41,9 @@ export function createBattleStore() {
   function pushLog(battle, message, type = 'system') {
     const entry = { ts: now(), type, message };
     battle.logs.push(entry);
-    if (battle.logs.length > 1000) battle.logs.shift();
     if (onLog) onLog(battle.id, entry);
   }
-
-  function touch(battle) {
-    if (onUpdate) onUpdate(battle.id);
-  }
+  function touch(battle) { if (onUpdate) onUpdate(battle.id); }
 
   function size() { return battles.size; }
   function get(id) { return battles.get(id) || null; }
@@ -87,29 +76,6 @@ export function createBattleStore() {
     };
   }
 
-  /** 내부: 페이즈 타이머 시작/중지 */
-  function clearPhaseTimer(b) {
-    if (b._phaseTimer) {
-      clearInterval(b._phaseTimer);
-      b._phaseTimer = null;
-    }
-  }
-  function startPhaseTimer(b, seconds, onExpire) {
-    clearPhaseTimer(b);
-    const deadline = now() + seconds * 1000;
-    b.phaseEndsAt = deadline;
-
-    touch(b); // 즉시 1회 업데이트
-
-    b._phaseTimer = setInterval(() => {
-      touch(b); // 매초 카운트다운 갱신
-      if (now() >= deadline) {
-        clearPhaseTimer(b);
-        if (typeof onExpire === 'function') onExpire();
-      }
-    }, 1000);
-  }
-
   /** 전투 생성 */
   function create(mode = '2v2') {
     const id = randomUUID();
@@ -120,17 +86,15 @@ export function createBattleStore() {
       phase: 'idle',     // idle|A_select|B_select|resolve|inter
       round: 0,
       currentTeam: null,
-      nextFirstTeam: null,
+      nextFirstTeam: null, // 이번 라운드의 선공팀 기록 (라운드마다 토글)
       selectionDone: { A: false, B: false },
       players: [],
-      choices: { A: [], B: [] },
+      choices: { A: [], B: [] }, // 의도 큐
       logs: [],
       createdAt: now(),
-      hardLimitAt: now() + 60 * 60 * 1000, // 총 1시간
-      turnCursor: null,
-      phaseEndsAt: null,
-      _phaseTimer: null,
-      _newRound: false     // ← 다음 라운드 진입 플래그
+      hardLimitAt: now() + 60 * 60 * 1000, // 1시간 하드 제한(승부 산정에 사용)
+      turnCursor: null,   // 현재 선택 중인 플레이어 포인터(표시용)
+      phaseEndsAt: null
     };
     battles.set(id, battle);
     return battle;
@@ -141,13 +105,14 @@ export function createBattleStore() {
     const b = get(battleId);
     if (!b) return null;
     const id = player.id || randomUUID();
+    const baseHp = Number.isFinite(player.hp) ? player.hp : 100;
     const p = {
       id,
       team: player.team === 'B' ? 'B' : 'A',
       name: player.name || `P${b.players.length + 1}`,
       avatar: player.avatar || '',
-      hp: Number.isFinite(player.hp) ? player.hp : 100,
-      maxHp: Number.isFinite(player.maxHp) ? player.maxHp : (Number.isFinite(player.hp) ? player.hp : 100),
+      hp: baseHp,
+      maxHp: Number.isFinite(player.maxHp) ? player.maxHp : baseHp,
       stats: {
         attack: +(player.stats?.attack ?? 1),
         defense: +(player.stats?.defense ?? 1),
@@ -155,6 +120,7 @@ export function createBattleStore() {
         luck:    +(player.stats?.luck ?? 1),
       },
       items: {
+        // 모두 1회용 소모형
         dittany: +(player.items?.dittany ?? player.items?.ditany ?? 0),
         attackBooster: +(player.items?.attackBooster ?? player.items?.attack_boost ?? 0),
         defenseBooster: +(player.items?.defenseBooster ?? player.items?.defense_boost ?? 0),
@@ -173,6 +139,7 @@ export function createBattleStore() {
     const idx = b.players.findIndex(p => p.id === playerId);
     if (idx === -1) return false;
     b.players.splice(idx, 1);
+    // 해당 플레이어의 의도 제거
     ['A','B'].forEach(t => { b.choices[t] = b.choices[t].filter(c => c.playerId !== playerId); });
     touch(b);
     return true;
@@ -210,13 +177,13 @@ export function createBattleStore() {
     b.status = 'active';
     b.round = 1;
 
-    // 선공 결정: 팀 평균 민첩 + 주사위
+    // 선공 결정: 팀 평균 민첩 + d10
     const teamA = b.players.filter(p => p.team === 'A');
     const teamB = b.players.filter(p => p.team === 'B');
     const avgA = teamA.reduce((s,p)=>s+(p.stats?.agility ?? 0),0) / Math.max(1,teamA.length);
     const avgB = teamB.reduce((s,p)=>s+(p.stats?.agility ?? 0),0) / Math.max(1,teamB.length);
-    const rollA = 1 + Math.floor(Math.random()*10);
-    const rollB = 1 + Math.floor(Math.random()*10);
+    const rollA = d10();
+    const rollB = d10();
     const scoreA = Math.floor(avgA) + rollA;
     const scoreB = Math.floor(avgB) + rollB;
 
@@ -235,53 +202,21 @@ export function createBattleStore() {
     return { b };
   }
 
-  /** 선택 페이즈 시작 */
   function startSelectPhase(b, team) {
     if (b.status !== 'active') return;
-    clearPhaseTimer(b);
-
-    // 새 라운드 진입 시 초기화
-    if (b._newRound) {
-      b.selectionDone = { A: false, B: false };
-      b.choices.A = [];
-      b.choices.B = [];
-      pushLog(b, `${b.round}라운드 시작`, 'system');
-      b._newRound = false;
-    }
-
     b.phase = (team === 'A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
-    b.choices[team] = []; // 해당 팀 의도 초기화
+    b.choices[team] = []; // 이번 팀 의도 초기화
 
     const alive = sortByInitiative(b.players.filter(p => p.team === team && p.hp > 0));
     b.turnCursor = { team, order: alive.map(p=>p.id), index: 0, playerId: alive[0]?.id || null };
+    b.phaseEndsAt = now() + TEAM_SELECT_MS; // 5분
 
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
-
-    // 팀당 5분 타이머 — 만료 시 미선택자 자동 패스
-    startPhaseTimer(b, 300, () => {
-      autoFinalizeSelection(b, team);
-      finishSelectOrNext(b);
-    });
-
     touch(b);
   }
 
-  /** 아직 선택 안 한 생존자들을 자동 패스 처리 */
-  function autoFinalizeSelection(b, team) {
-    const aliveIds = new Set(b.players.filter(x => x.team === team && x.hp > 0).map(x => x.id));
-    const chosenIds = new Set(b.choices[team].map(c => c.playerId));
-    const remain = [...aliveIds].filter(id => !chosenIds.has(id));
-    for (const id of remain) {
-      b.choices[team].push({ playerId: id, type: 'pass', targetId: null, raw: { type: 'pass' } });
-      const actor = b.players.find(p => p.id === id);
-      if (actor) pushLog(b, `→ ${actor.name}이(가) 시간초과로 패스`, team === 'A' ? 'teamA' : 'teamB');
-    }
-    b.selectionDone[team] = true;
-    clearPhaseTimer(b);
-  }
-
-  /** 선택(의도만 저장 & 의도 로그만 송출) */
+  /** 선택(의도만 저장 & 의도 로그만 송출) + 재고 0 아이템 가드 */
   function playerAction(battleId, playerId, action) {
     const b = get(battleId);
     if (!b || b.status !== 'active') return null;
@@ -292,7 +227,22 @@ export function createBattleStore() {
     const team = teamOf(p);
     if (team !== b.currentTeam) return null;
 
-    // 중복 시 덮어쓰기
+    // 아이템 재고 확인(선택 단계에서 0이면 거부)
+    if (action?.type === 'item') {
+      const kind = action.item;
+      const inv =
+        kind === 'dittany' || kind === 'ditany' ? (p.items.dittany ?? 0)
+      : kind === 'attackBooster' ? (p.items.attackBooster ?? 0)
+      : kind === 'defenseBooster' ? (p.items.defenseBooster ?? 0)
+      : 0;
+      if (inv <= 0) {
+        pushLog(b, `아이템 사용 불가: ${p.name} — 재고 없음`, 'notice');
+        touch(b);
+        return { b, result: { queued: false, error: 'no_item' } };
+      }
+    }
+
+    // 기존 의도 덮어쓰기
     b.choices[team] = b.choices[team].filter(c => c.playerId !== p.id);
 
     // 대상
@@ -309,7 +259,7 @@ export function createBattleStore() {
     };
     b.choices[team].push(intent);
 
-    // 의도 로그
+    // 의도 로그(결과 수치/피해는 해석 페이즈에서만)
     if (intent.type === 'attack') {
       pushLog(b, `→ ${p.name}이(가) ${target?.name ?? '대상'}에게 공격`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'defend') {
@@ -317,12 +267,11 @@ export function createBattleStore() {
     } else if (intent.type === 'dodge') {
       pushLog(b, `→ ${p.name}이(가) 회피를 준비`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'item') {
-      const itemName =
-        intent.raw.item === 'dittany' || intent.raw.item === 'ditany' ? '디터니' :
-        intent.raw.item === 'attackBooster' ? '공격 보정기' :
-        intent.raw.item === 'defenseBooster' ? '방어 보정기' : '아이템';
-      const tgt = intent.raw.targetId ? (b.players.find(x=>x.id===intent.raw.targetId)?.name ?? '대상') : '자신';
-      pushLog(b, `→ ${p.name}이(가) ${itemName} 사용 예정 (${tgt})`, team === 'A' ? 'teamA' : 'teamB');
+      const itemName = (intent.raw.item === 'dittany' || intent.raw.item === 'ditany') ? '디터니'
+        : intent.raw.item === 'attackBooster' ? '공격 보정기'
+        : intent.raw.item === 'defenseBooster' ? '방어 보정기' : '아이템';
+      const tgtName = intent.raw.targetId ? (b.players.find(x=>x.id===intent.raw.targetId)?.name ?? '대상') : '자신';
+      pushLog(b, `→ ${p.name}이(가) ${itemName} 사용 예정 (${tgtName})`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'pass') {
       pushLog(b, `→ ${p.name}이(가) 패스`, team === 'A' ? 'teamA' : 'teamB');
     } else {
@@ -336,14 +285,6 @@ export function createBattleStore() {
       b.turnCursor.playerId = nextId;
     }
 
-    // ★ 커서가 끝났다면 자동 마감 (팀 내 남은 플레이어가 없거나 인식 문제로 못 잡는 경우 방지)
-    if (!b.turnCursor?.playerId) {
-      autoFinalizeSelection(b, team);
-      touch(b);
-      finishSelectOrNext(b);
-      return { b, result: { queued: true, autoClosed: true } };
-    }
-
     // 완료 판정
     const aliveIds = new Set(b.players.filter(x => x.team === team && x.hp > 0).map(x => x.id));
     const chosenIds = new Set(b.choices[team].map(c => c.playerId));
@@ -351,7 +292,6 @@ export function createBattleStore() {
 
     if (done && !b.selectionDone[team]) {
       b.selectionDone[team] = true;
-      clearPhaseTimer(b); // 다 고르면 타이머 종료
       pushLog(b, `[${team}] ${team}팀 선택 완료`, team === 'A' ? 'teamA' : 'teamB');
       touch(b);
       finishSelectOrNext(b);
@@ -374,7 +314,7 @@ export function createBattleStore() {
         startSelectPhase(b, secondTeam);
         return;
       }
-      // 동시 완료 → 아래로
+      // 동시 완료면 아래로
     }
 
     if (b.selectionDone.A && b.selectionDone.B) {
@@ -382,50 +322,126 @@ export function createBattleStore() {
     }
   }
 
-  /** 해석 – 수치 적용 및 결과 로그 */
+  /** 승리 체크: 한 팀 전원 사망 or 1시간 종료 시 HP 합 */
+  function checkWinner(b) {
+    const aliveA = b.players.filter(p => p.team === 'A' && p.hp > 0).length;
+    const aliveB = b.players.filter(p => p.team === 'B' && p.hp > 0).length;
+    if (aliveA === 0 && aliveB === 0) return 'Draw';
+    if (aliveA === 0) return 'B';
+    if (aliveB === 0) return 'A';
+
+    // 하드 제한 도달 시: HP 합으로 승패
+    if (now() >= b.hardLimitAt) {
+      const sumA = b.players.filter(p=>p.team==='A').reduce((s,p)=>s+Math.max(0,p.hp),0);
+      const sumB = b.players.filter(p=>p.team==='B').reduce((s,p)=>s+Math.max(0,p.hp),0);
+      if (sumA === sumB) return 'Draw';
+      return sumA > sumB ? 'A' : 'B';
+    }
+    return null;
+  }
+
+  /** 해석 – 보정기 소모/적용, 디터니 회복 적용, 공격/회피/방어 공식 적용 및 결과 로그 */
   function startResolve(b) {
     if (b.status !== 'active') return;
-    clearPhaseTimer(b);
-
     b.phase = 'resolve';
     b.currentTeam = null;
     b.turnCursor = null;
+    b.phaseEndsAt = now() + 3_000;
 
     pushLog(b, '라운드 해석', 'result');
+    touch(b);
 
     const first = b.nextFirstTeam || 'A';
     const second = first === 'A' ? 'B' : 'A';
 
-    resolveTeam(b, first);
-    resolveTeam(b, second);
+    // 이번 라운드 보정기 플래그
+    const atkBoost = new Set(); // 공격 2배
+    const defBoost = new Set(); // 방어 2배
 
+    // 1) 아이템 해석 선처리(모두 1회용 소모)
+    const allIntents = [...(b.choices.A || []), ...(b.choices.B || [])];
+
+    for (const it of allIntents) {
+      if (it.type !== 'item') continue;
+      const actor = b.players.find(p => p.id === it.playerId);
+      if (!actor || actor.hp <= 0) continue;
+
+      const kind = it.raw?.item;
+      if (kind === 'dittany' || kind === 'ditany') {
+        // 치유: 바로 소모, 해석 즉시 회복
+        if ((actor.items.dittany ?? 0) > 0) {
+          const tgt = it.raw?.targetId ? (b.players.find(p=>p.id===it.raw.targetId) || actor) : actor;
+          if (tgt.hp > 0) {
+            actor.items.dittany -= 1; // 1회용 소모
+            const heal = 10 + Math.floor((actor.stats?.luck ?? 0) / 2);
+            const newHp = Math.min(tgt.maxHp, Math.max(0, tgt.hp + heal));
+            tgt.hp = newHp;
+            pushLog(b, `→ ${actor.name}이(가) 디터니 사용 — ${tgt.name} HP +${heal} → HP ${tgt.hp}`, 'result');
+          }
+        } else {
+          pushLog(b, `→ ${actor.name}이(가) 디터니 사용 실패(재고 없음)`, 'result');
+        }
+      } else if (kind === 'attackBooster') {
+        if ((actor.items.attackBooster ?? 0) > 0) {
+          actor.items.attackBooster -= 1; // 1회용 소모
+          atkBoost.add(actor.id);         // 이번 라운드 공격 2배 반영(최종공격력 계산시 계수 2)
+          pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용`, 'result');
+        } else {
+          pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용 실패(재고 없음)`, 'result');
+        }
+      } else if (kind === 'defenseBooster') {
+        if ((actor.items.defenseBooster ?? 0) > 0) {
+          actor.items.defenseBooster -= 1; // 1회용 소모
+          defBoost.add(actor.id);          // 이번 라운드 방어 2배 반영
+          pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용`, 'result');
+        } else {
+          pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 실패(재고 없음)`, 'result');
+        }
+      }
+    }
+
+    // 2) 전투 의도 해석: 팀 순서(선→후), 팀 내부는 민첩 우선(동률 ABC)
+    resolveTeam(b, first, atkBoost, defBoost);
+    resolveTeam(b, second, atkBoost, defBoost);
+
+    // 승리 판정
+    const winner = checkWinner(b);
     pushLog(b, `=== ${b.round}라운드 종료 ===`, 'result');
-    touch(b);
 
-    // 라운드 증가 및 선후공 교대
+    if (winner) {
+      b.status = 'ended';
+      b.phase = 'idle';
+      b.currentTeam = null;
+      b.turnCursor = null;
+      if (winner === 'Draw') pushLog(b, `무승부`, 'result');
+      else pushLog(b, `${winner}팀 승리!`, 'result');
+      touch(b);
+      return;
+    }
+
+    // 다음 라운드 준비: 선후교대
     b.round += 1;
     b.nextFirstTeam = (b.nextFirstTeam === 'A') ? 'B' : 'A';
 
-    // 다음 라운드 진입 준비 플래그
-    b._newRound = true;
-
-    // 인터페이즈 5초
+    b.selectionDone = { A: false, B: false };
     b.phase = 'inter';
-    startPhaseTimer(b, 5, () => {
+    b.phaseEndsAt = now() + 5_000;
+    pushLog(b, '5초 후 다음 라운드 시작...', 'system');
+    touch(b);
+
+    setTimeout(() => {
       if (b.status !== 'active') return;
       startSelectPhase(b, b.nextFirstTeam);
-    });
+    }, 50);
   }
 
-  /** 팀 해석: 팀 내부 이니시 순으로 실행 */
-  function resolveTeam(b, team) {
+  /** 팀 해석: 팀 내부 이니시 순으로 실행(요구 공식 적용) */
+  function resolveTeam(b, team, atkBoost, defBoost) {
     const intents = b.choices[team] || [];
     if (!intents.length) return;
 
     const order = sortByInitiative(
-      intents
-        .map(c => b.players.find(p => p.id === c.playerId))
-        .filter(Boolean)
+      intents.map(c => b.players.find(p => p.id === c.playerId)).filter(Boolean)
     ).map(p => p.id);
 
     for (const pid of order) {
@@ -434,69 +450,67 @@ export function createBattleStore() {
       const actor = b.players.find(p => p.id === pid);
       if (!actor || actor.hp <= 0) continue;
 
-      const target = intent.targetId ? b.players.find(p => p.id === intent.targetId) : null;
+      // 패스/준비 의도는 로그만
+      if (intent.type === 'pass') {
+        pushLog(b, `→ ${actor.name}이(가) 행동을 생략`, 'result');
+        continue;
+      }
+      if (intent.type === 'defend') {
+        pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
+        continue;
+      }
+      if (intent.type === 'dodge') {
+        pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
+        continue;
+      }
+      if (intent.type === 'item') {
+        // 아이템은 startResolve 초반에 이미 처리/소모/로그 출력됨
+        continue;
+      }
 
+      // 공격만 남음
       if (intent.type === 'attack') {
+        const target = intent.targetId ? b.players.find(p => p.id === intent.targetId) : null;
         if (!target || target.hp <= 0) continue;
-        const critChance = clamp(0.05 + (actor.stats?.luck ?? 0) * 0.02, 0, 0.5);
-        const isCrit = Math.random() < critChance;
-        const dmg = calcDamage(actor, target, isCrit, false);
-        target.hp = clamp(target.hp - dmg, 0, target.maxHp);
+
+        // 회피 체크: (대상 민첩 + d10) vs 공격자의 최종공격력
+        const atkMul = atkBoost.has(actor.id) ? 2 : 1;
+        const finalAttack = (actor.stats?.attack ?? 0) * atkMul + d10();
+
+        const dodgeScore = (target.stats?.agility ?? 0) + d10();
+        if (dodgeScore >= finalAttack) {
+          // 회피 성공 → 피해 0
+          pushLog(b, `→ ${actor.name}의 공격을 ${target.name}이(가) 회피`, 'result');
+          continue;
+        }
+
+        // 치명타 판정: d10 ≥ (10 − luck/2)
+        const luck = (actor.stats?.luck ?? 0);
+        const crit = d10() >= (10 - Math.floor(luck / 2));
+        const attackValue = crit ? (finalAttack * 2) : finalAttack;
+
+        // 대상이 방어 의도를 냈는지 확인
+        const targetIntent =
+          (b.choices.A || []).concat(b.choices.B || []).find(c => c.playerId === target.id && c.type === 'defend');
+
+        let damage = attackValue;
+        if (targetIntent) {
+          // 방어값 = 방어스탯 ×(보정기면 2) + d10
+          const defMul = defBoost.has(target.id) ? 2 : 1;
+          const defenseValue = (target.stats?.defense ?? 0) * defMul + d10();
+          damage = Math.max(1, attackValue - defenseValue);
+        }
+
+        target.hp = Math.max(0, Math.min(target.maxHp, target.hp - damage));
         pushLog(
           b,
-          `→ ${actor.name}이(가) ${target.name}에게 ${isCrit ? '치명타 ' : ''}공격 (피해 ${dmg}) → HP ${target.hp}`,
+          `→ ${actor.name}이(가) ${target.name}에게 ${crit ? '치명타 ' : ''}공격 (피해 ${damage}) → HP ${target.hp}`,
           'result'
         );
-      } else if (intent.type === 'defend') {
-        actor.stats._defTmp = (actor.stats._defTmp ?? 0) + 2;
-        pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
-      } else if (intent.type === 'dodge') {
-        actor.stats._dodgeTmp = (actor.stats._dodgeTmp ?? 0) + 1;
-        pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
-      } else if (intent.type === 'item') {
-        const it = intent.raw?.item;
-        if (it === 'dittany' || it === 'ditany') {
-          const tgt = intent.raw?.targetId ? (b.players.find(p=>p.id===intent.raw.targetId) || actor) : actor;
-          if (actor.items.dittany > 0 && tgt.hp > 0) {
-            actor.items.dittany -= 1;
-            const heal = calcHeal(actor);
-            tgt.hp = clamp(tgt.hp + heal, 0, tgt.maxHp);
-            pushLog(b, `→ ${actor.name}이(가) 디터니 사용 — ${tgt.name} HP +${heal} → HP ${tgt.hp}`, 'result');
-          }
-        } else if (it === 'attackBooster') {
-          const tgt = intent.raw?.targetId ? (b.players.find(p=>p.id===intent.raw.targetId)) : null;
-          if (actor.items.attackBooster > 0) {
-            actor.items.attackBooster -= 1;
-            const realTarget = tgt && tgt.hp > 0 ? tgt : null;
-            const dmg = realTarget ? calcDamage(actor, realTarget, Math.random()<0.2, true) : 0;
-            if (realTarget) {
-              realTarget.hp = clamp(realTarget.hp - dmg, 0, realTarget.maxHp);
-              pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용 성공 — ${realTarget.name} 대상 즉시 강화 공격 (피해 ${dmg}) → HP ${realTarget.hp}`, 'result');
-            } else {
-              pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용(대상 부재)`, 'result');
-            }
-          }
-        } else if (it === 'defenseBooster') {
-          if (actor.items.defenseBooster > 0) {
-            actor.items.defenseBooster -= 1;
-            actor.stats._defTmp = (actor.stats._defTmp ?? 0) + 4;
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화`, 'result');
-          }
-        } else {
-          pushLog(b, `→ ${actor.name}이(가) 아이템 사용 시도`, 'result');
-        }
-      } else if (intent.type === 'pass') {
-        pushLog(b, `→ ${actor.name}이(가) 행동을 생략`, 'result');
       }
     }
 
-    // 임시 버프 해제
-    b.players.forEach(p => {
-      if (p.stats._defTmp) delete p.stats._defTmp;
-      if (p.stats._dodgeTmp) delete p.stats._dodgeTmp;
-    });
-
-    // 의도 큐 비우기
+    // 해당 팀 의도 큐 소거
     b.choices[team] = [];
     touch(b);
   }
@@ -509,7 +523,6 @@ export function createBattleStore() {
     b.phase = 'idle';
     b.turnCursor = null;
     b.phaseEndsAt = null;
-    clearPhaseTimer(b);
     touch(b);
     return b;
   }
