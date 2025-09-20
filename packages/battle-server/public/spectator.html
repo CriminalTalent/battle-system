@@ -155,10 +155,20 @@
 
 <script>
 (()=> {
-  // ✅ battleId와 battle 둘 다 지원
   const qs = new URLSearchParams(location.search);
-  const battleId = qs.get('battleId') || qs.get('battle') || '';
+  // 기존 ?battle=... 과 예전 ?battleId=.../optional ?bid=... 모두 지원
+  const battleId = qs.get('battle') || qs.get('battleId') || qs.get('bid');
   if (!battleId) { alert('올바르지 않은 URL입니다'); return; }
+
+  // 주소 정규화(표준 파라미터로 정리)
+  try {
+    if ((qs.get('battleId') || qs.get('bid')) && battleId) {
+      const u = new URL(location.href);
+      u.searchParams.set('battle', battleId);
+      ['battleId','bid'].forEach(k => u.searchParams.delete(k));
+      history.replaceState(null, '', u.toString());
+    }
+  } catch {}
 
   const socket = io();
   const logPanel  = document.getElementById('logPanel');
