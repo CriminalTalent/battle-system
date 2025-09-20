@@ -1,32 +1,97 @@
+// packages/battle-server/index.js
+import express from 'express';
+import http from 'http';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath, pathToFileURL } from 'url';
+import multer from 'multer';
+import cors from 'cors';
+import { Server as SocketIOServer } from 'socket.io';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+const app  = express();
+const server = http.createServer(app);
+const io = new SocketIOServer(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
+});
+
+app.set('trust proxy', true);
+app.use(cors());
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
 // ─────────────────────────────────────────
-// 외부 엔진 자동 로드 (있으면 우선 사용)  ⟵ 이 블록만 교체
+// 정적 파일
 // ─────────────────────────────────────────
-async function tryLoadExternalEngine(io) {
-  const candidate = path.join(__dirname, 'src/engine/BattleEngine.js');
-  try {
-    await fs.promises.access(candidate, fs.constants.R_OK);
-  } catch {
-    return null;
+const PUBLIC_DIR = path.join(__dirname, 'public');
+app.use(express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));
+
+app.get('/', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/player', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'player.html')));
+app.get('/spectator', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'spectator.html')));
+
+// 헬스체크(프록시 502 디버깅용)
+app.get('/api/health', (_req, res) => res.json({ ok: true, pid: process.pid, ts: Date.now() }));
+
+// ─────────────────────────────────────────
+// 업로드 (아바타)
+// ─────────────────────────────────────────
+const uploadDir = path.join(PUBLIC_DIR, 'uploads');
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '');
+    cb(null, `${Date.now()}_${Math.random().toString(36).slice(2)}${ext || '.png'}`);
   }
+});
+const upload = multer({ storage });
+
+app.post('/api/upload/avatar', upload.single('avatar'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: 'NO_FILE' });
+    const url = `/uploads/${req.file.filename}`;
+    return res.json({ ok: true, url });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// ─────────────────────────────────────────
+// 외부 엔진 로드(있으면 우선)
+// ─────────────────────────────────────────
+function pick(fn) { return (typeof fn === 'function') ? fn : null; }
+
+async function tryLoadExternalEngine(ioInstance) {
+  const candidate = path.join(__dirname, 'src/engine/BattleEngine.js');
+  try { await fs.promises.access(candidate, fs.constants.R_OK); }
+  catch { return null; }
 
   try {
     const mod = await import(pathToFileURL(candidate).href);
     if (typeof mod.createBattleStore !== 'function') return null;
 
-    // 외부 엔진 인스턴스 생성(가능하면 io/ctx 주입)
-    const ext = mod.createBattleStore(io) || mod.createBattleStore({ io }) || mod.createBattleStore();
+    const ext = mod.createBattleStore(ioInstance) ||
+                mod.createBattleStore({ io: ioInstance }) ||
+                mod.createBattleStore();
 
-    const bind = (name) => (typeof ext?.[name] === 'function' ? ext[name].bind(ext) : null);
-    const pick = (...names) => {
-      for (const n of names) {
-        const fn = bind(n);
-        if (fn) return fn;
-      }
-      return null;
-    };
+    const bind = (name) => pick(ext?.[name]?.bind?.(ext) ?? ext?.[name]?.bind?.(ext) ?? null) || (typeof ext?.[name] === 'function' ? ext[name].bind(ext) : null);
+    const _create = bind('createBattle') || bind('create');
+    const _add    = bind('addPlayer')   || bind('addPlayerToBattle');
+    const _remove = bind('deletePlayer')|| bind('removePlayer');
+    const _ready  = bind('setReady')    || bind('readyPlayer') || bind('playerReady');
+    const _start  = bind('start')       || bind('startBattle');
+    const _pause  = bind('pause')       || bind('pauseBattle');
+    const _resume = bind('resume')      || bind('resumeBattle');
+    const _end    = bind('end')         || bind('endBattle');
+    const _act    = bind('act')         || bind('applyAction') || bind('resolveAction');
 
-    // 다형 호출 도우미
     const tryMany = async (fn, variants) => {
+      if (!fn) throw new Error('method missing');
       let lastErr;
       for (const makeArgs of variants) {
         try {
@@ -37,23 +102,18 @@ async function tryLoadExternalEngine(io) {
       throw lastErr || new Error('No matching signature');
     };
 
-    // 원 함수들
-    const _create  = pick('createBattle', 'create');
-    const _add     = pick('addPlayer', 'addPlayerToBattle');
-    const _remove  = pick('deletePlayer', 'removePlayer');
-    const _ready   = pick('setReady', 'readyPlayer', 'playerReady');
-    const _start   = pick('start', 'startBattle');
-    const _pause   = pick('pause', 'pauseBattle');
-    const _resume  = pick('resume', 'resumeBattle');
-    const _end     = pick('end', 'endBattle');
-    const _act     = pick('act', 'applyAction', 'resolveAction');
-
     const adapter = {
       battles: ext.battles || ext.store || new Map(),
 
-      // createBattle: "mode" | {mode} | ... 지원
+      async snapshot(battleId) {
+        // 가장 그럴듯한 스냅샷 추출
+        if (typeof ext.getSnapshot === 'function') return await ext.getSnapshot(battleId);
+        if (typeof ext.getBattle === 'function')   return await ext.getBattle(battleId);
+        if (adapter.battles?.get) return adapter.battles.get(battleId);
+        return null;
+      },
+
       async createBattle(mode = '2v2') {
-        if (!_create) throw new Error('createBattle not found');
         return await tryMany(_create, [
           () => [mode],
           () => [{ mode }],
@@ -61,20 +121,17 @@ async function tryLoadExternalEngine(io) {
         ]);
       },
 
-      // addPlayer: (battleId, player) | ({battleId, player}) | JSON 문자열 등 지원
       async addPlayer(battleId, player) {
-        if (!_add) throw new Error('addPlayer not found');
-        const playerJson = JSON.stringify(player);
+        const pj = JSON.stringify(player);
         return await tryMany(_add, [
-          () => [battleId, player],                         // (id, obj)
-          () => [{ battleId, player }],                     // ({})
-          () => [battleId, playerJson],                     // (id, JSON)
-          () => [{ battleId, player: playerJson }],         // ({ JSON })
+          () => [battleId, player],
+          () => [{ battleId, player }],
+          () => [battleId, pj],
+          () => [{ battleId, player: pj }],
         ]);
       },
 
       async deletePlayer(battleId, playerId) {
-        if (!_remove) throw new Error('deletePlayer not found');
         return await tryMany(_remove, [
           () => [battleId, playerId],
           () => [{ battleId, playerId }],
@@ -82,7 +139,6 @@ async function tryLoadExternalEngine(io) {
       },
 
       async setReady(battleId, playerId) {
-        if (!_ready) throw new Error('setReady not found');
         return await tryMany(_ready, [
           () => [battleId, playerId],
           () => [{ battleId, playerId }],
@@ -90,7 +146,6 @@ async function tryLoadExternalEngine(io) {
       },
 
       async start(battleId) {
-        if (!_start) throw new Error('start not found');
         return await tryMany(_start, [
           () => [battleId],
           () => [{ battleId }],
@@ -98,7 +153,6 @@ async function tryLoadExternalEngine(io) {
       },
 
       async pause(battleId) {
-        if (!_pause) throw new Error('pause not found');
         return await tryMany(_pause, [
           () => [battleId],
           () => [{ battleId }],
@@ -106,7 +160,6 @@ async function tryLoadExternalEngine(io) {
       },
 
       async resume(battleId) {
-        if (!_resume) throw new Error('resume not found');
         return await tryMany(_resume, [
           () => [battleId],
           () => [{ battleId }],
@@ -114,7 +167,6 @@ async function tryLoadExternalEngine(io) {
       },
 
       async end(battleId, winner = null) {
-        if (!_end) throw new Error('end not found');
         return await tryMany(_end, [
           () => [battleId, winner],
           () => [{ battleId, winner }],
@@ -122,27 +174,259 @@ async function tryLoadExternalEngine(io) {
       },
 
       async act(battleId, playerId, action) {
-        if (!_act) throw new Error('act not found');
-        const actionJson = JSON.stringify(action || { type: 'pass' });
+        const aj = JSON.stringify(action || { type: 'pass' });
         return await tryMany(_act, [
-          () => [battleId, playerId, action],                  // (id, pid, obj)
-          () => [{ battleId, playerId, action }],              // ({})
-          () => [battleId, playerId, actionJson],              // (id, pid, JSON)
-          () => [{ battleId, playerId, action: actionJson }],  // ({ JSON })
+          () => [battleId, playerId, action],
+          () => [{ battleId, playerId, action }],
+          () => [battleId, playerId, aj],
+          () => [{ battleId, playerId, action: aj }],
         ]);
       },
 
-      // 외부 엔진이 제공하면 사용, 아니면 서버 기본 구현 사용
-      makeLinks: ext.makeLinks ? ext.makeLinks.bind(ext) : null,
-      authByToken: ext.authByToken ? ext.authByToken.bind(ext) : null,
+      makeLinks: pick(ext.makeLinks) ? ext.makeLinks.bind(ext) : null,
+      authByToken: pick(ext.authByToken) ? ext.authByToken.bind(ext) : null,
 
       __ext: ext
     };
 
-    console.log('[ENGINE] External BattleEngine.js 로드됨 (adapter: multi-signature enabled)');
+    console.log('[ENGINE] External BattleEngine.js loaded (multi-signature adapter)');
     return adapter;
   } catch (e) {
-    console.log('[ENGINE] External 로드 실패:', e.message);
+    console.log('[ENGINE] External load failed:', e.message);
     return null;
   }
 }
+
+// ─────────────────────────────────────────
+// 내부(폴백) 엔진 — 외부 없을 때만 사용
+// ─────────────────────────────────────────
+function createFallbackEngine() {
+  const store = new Map();
+  const rnd = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+
+  return {
+    battles: store,
+
+    async createBattle(mode = '2v2') {
+      const id = rnd();
+      const battle = {
+        id, mode, status: 'waiting',
+        players: [], logs: [],
+        createdAt: Date.now()
+      };
+      store.set(id, battle);
+      return battle;
+    },
+
+    async addPlayer(battleId, player) {
+      const b = store.get(battleId);
+      if (!b) throw new Error('BATTLE_NOT_FOUND');
+      b.players.push({
+        id: rnd(),
+        team: player.team || 'A',
+        name: player.name || '플레이어',
+        hp: player.hp ?? 100,
+        maxHp: player.maxHp ?? player.hp ?? 100,
+        stats: player.stats || { attack: 1, defense: 1, agility: 1, luck: 1 },
+        items: player.items || { dittany: 0, attackBooster: 0, defenseBooster: 0 },
+        avatar: player.avatar || ''
+      });
+      return { ok: true };
+    },
+
+    async deletePlayer(battleId, playerId) {
+      const b = store.get(battleId);
+      if (!b) throw new Error('BATTLE_NOT_FOUND');
+      b.players = b.players.filter(p => p.id !== playerId);
+      return { ok: true };
+    },
+
+    async setReady(_battleId, _playerId) { return { ok: true }; },
+    async start(battleId) { const b=store.get(battleId); if(b) b.status='active'; return { ok:true }; },
+    async pause(battleId) { const b=store.get(battleId); if(b) b.status='paused'; return { ok:true }; },
+    async resume(battleId){ const b=store.get(battleId); if(b) b.status='active'; return { ok:true }; },
+    async end(battleId)   { const b=store.get(battleId); if(b) b.status='ended'; return { ok:true }; },
+    async act() { return { ok: true }; },
+
+    async getBattle(id) { return store.get(id); },
+  };
+}
+
+// ─────────────────────────────────────────
+// 엔진 인스턴스 준비
+// ─────────────────────────────────────────
+let engine;
+const boot = async () => {
+  engine = await tryLoadExternalEngine(io);
+  if (!engine) {
+    console.log('[ENGINE] Fallback engine in use');
+    engine = createFallbackEngine();
+  }
+};
+await boot();
+
+// ─────────────────────────────────────────
+// 링크 생성 API
+// ─────────────────────────────────────────
+function absBase(req) {
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http');
+  const host  = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+app.get('/api/link/participant', async (req, res) => {
+  const { battleId, id } = req.query;
+  if (!battleId) return res.status(400).json({ ok: false, error: 'MISSING_battleId' });
+  const url = `${absBase(req)}/player?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(id || battleId)}`;
+  return res.json({ ok: true, url, battleId, role: 'player' });
+});
+
+app.get('/api/link/spectator', async (req, res) => {
+  const { battleId, id } = req.query;
+  if (!battleId) return res.status(400).json({ ok: false, error: 'MISSING_battleId' });
+  const url = `${absBase(req)}/spectator?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(id || battleId)}`;
+  return res.json({ ok: true, url, battleId, role: 'spectator' });
+});
+
+// 관리자에서 한 번에 링크 세트 요청
+app.post('/api/admin/battles/:battleId/links', async (req, res) => {
+  try {
+    const { battleId } = req.params;
+    let battle = await engine.snapshot?.(battleId);
+    if (!battle?.players && engine.getBattle) battle = await engine.getBattle(battleId);
+
+    const spectator = {
+      url: `${absBase(req)}/spectator?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(battleId)}`
+    };
+
+    const players = (battle?.players || []).map(p => ({
+      team: p.team,
+      playerId: p.id,
+      playerName: p.name,
+      url: `${absBase(req)}/player?battleId=${encodeURIComponent(battleId)}&id=${encodeURIComponent(p.id)}`
+    }));
+
+    return res.json({ ok: true, links: { spectator, players } });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// ─────────────────────────────────────────
+// 소켓 이벤트
+// ─────────────────────────────────────────
+io.on('connection', (socket) => {
+  console.log('[Socket] 새 연결:', socket.id);
+
+  socket.on('disconnect', () => {
+    console.log('[Socket] 연결 해제:', socket.id);
+  });
+
+  socket.on('join', async ({ battleId }) => {
+    if (!battleId) return;
+    socket.join(battleId);
+    const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+    if (snap) socket.emit('battle:update', snap);
+  });
+
+  socket.on('createBattle', async ({ mode }, cb) => {
+    try {
+      const battle = await engine.createBattle(mode || '2v2');
+      cb?.({ ok: true, battleId: battle.id, battle });
+      io.emit('battle:update', battle);
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('addPlayer', async ({ battleId, player }, cb) => {
+    try {
+      await engine.addPlayer(battleId, player);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('deletePlayer', async ({ battleId, playerId }, cb) => {
+    try {
+      await engine.deletePlayer(battleId, playerId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('setReady', async ({ battleId, playerId }, cb) => {
+    try {
+      await engine.setReady(battleId, playerId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('startBattle', async ({ battleId }, cb) => {
+    try {
+      await engine.start(battleId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('pauseBattle', async ({ battleId }, cb) => {
+    try {
+      await engine.pause(battleId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('resumeBattle', async ({ battleId }, cb) => {
+    try {
+      await engine.resume(battleId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('endBattle', async ({ battleId }, cb) => {
+    try {
+      await engine.end(battleId);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('act', async ({ battleId, playerId, action }, cb) => {
+    try {
+      await engine.act(battleId, playerId, action);
+      const snap = await (engine.snapshot?.(battleId) || engine.getBattle?.(battleId));
+      if (snap) io.to(battleId).emit('battle:update', snap);
+      cb?.({ ok: true });
+    } catch (e) { cb?.({ ok: false, error: String(e?.message || e) }); }
+  });
+
+  socket.on('chatMessage', ({ battleId, name, message }) => {
+    if (!battleId || !message) return;
+    io.to(battleId).emit('chatMessage', { name: name || '관리자', message, ts: Date.now() });
+  });
+});
+
+// ─────────────────────────────────────────
+// 에러 핸들러(마지막에)
+// ─────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error('[HTTP ERROR]', err);
+  res.status(500).send('Server error');
+});
+
+// ─────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[PYXIS] listening on http://0.0.0.0:${PORT}`);
+});
