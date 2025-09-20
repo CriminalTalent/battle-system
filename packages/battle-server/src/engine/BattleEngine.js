@@ -40,7 +40,7 @@ export function createBattleStore() {
 
   // 서버로 이벤트를 전달하기 위한 훅
   let onLog = null;     // (battleId, {ts,type,message})
-  let onUpdate = null;  // (battleId)  — 클라이언트 재스냅샷 유도
+  let onUpdate = null;  // (battleId)
 
   function setLogger(fn) { onLog = typeof fn === 'function' ? fn : null; }
   function setUpdate(fn) { onUpdate = typeof fn === 'function' ? fn : null; }
@@ -99,13 +99,10 @@ export function createBattleStore() {
     const deadline = now() + seconds * 1000;
     b.phaseEndsAt = deadline;
 
-    // 즉시 1회 업데이트
-    touch(b);
+    touch(b); // 즉시 1회 업데이트
 
     b._phaseTimer = setInterval(() => {
-      // 매초 업데이트(클라 카운트다운)
-      touch(b);
-
+      touch(b); // 매초 카운트다운 갱신
       if (now() >= deadline) {
         clearPhaseTimer(b);
         if (typeof onExpire === 'function') onExpire();
@@ -129,10 +126,11 @@ export function createBattleStore() {
       choices: { A: [], B: [] },
       logs: [],
       createdAt: now(),
-      hardLimitAt: now() + 60 * 60 * 1000, // 총 1시간 룰 (서버 단위)
+      hardLimitAt: now() + 60 * 60 * 1000, // 총 1시간
       turnCursor: null,
       phaseEndsAt: null,
-      _phaseTimer: null
+      _phaseTimer: null,
+      _newRound: false     // ← 다음 라운드 진입 플래그
     };
     battles.set(id, battle);
     return battle;
@@ -242,6 +240,15 @@ export function createBattleStore() {
     if (b.status !== 'active') return;
     clearPhaseTimer(b);
 
+    // 새 라운드 진입 시 초기화
+    if (b._newRound) {
+      b.selectionDone = { A: false, B: false };
+      b.choices.A = [];
+      b.choices.B = [];
+      pushLog(b, `${b.round}라운드 시작`, 'system');
+      b._newRound = false;
+    }
+
     b.phase = (team === 'A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
     b.choices[team] = []; // 해당 팀 의도 초기화
@@ -253,7 +260,6 @@ export function createBattleStore() {
 
     // 팀당 5분 타이머 — 만료 시 미선택자 자동 패스
     startPhaseTimer(b, 300, () => {
-      // 아직 완료가 아니라면 자동 마감
       autoFinalizeSelection(b, team);
       finishSelectOrNext(b);
     });
@@ -360,7 +366,7 @@ export function createBattleStore() {
         startSelectPhase(b, secondTeam);
         return;
       }
-      // (동시 완료) → 아래로
+      // 동시 완료 → 아래로
     }
 
     if (b.selectionDone.A && b.selectionDone.B) {
@@ -391,6 +397,9 @@ export function createBattleStore() {
     // 라운드 증가 및 선후공 교대
     b.round += 1;
     b.nextFirstTeam = (b.nextFirstTeam === 'A') ? 'B' : 'A';
+
+    // 다음 라운드 진입 준비 플래그
+    b._newRound = true;
 
     // 인터페이즈 5초
     b.phase = 'inter';
