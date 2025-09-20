@@ -400,9 +400,12 @@ export function createBattleStore() {
       }
     }
 
-    // 치명타: d10 ≥ (10 − 행운/2)
+    // ★ 치명타: 행운에 비례하되 최대 10%
+    // luck 0→0%, 1→2%, 2→4%, ... 5+ → 10% (상한)
     const luck = (actor.stats?.luck ?? 0);
-    const crit = d10() >= (10 - Math.floor(luck/2));
+    const critChance = Math.min(0.10, Math.max(0, luck) * 0.02);
+    const crit = Math.random() < critChance;
+
     const attackValue = crit ? (finalAttack * 2) : finalAttack;
 
     // 방어: 대상이 'defend' 선택한 경우에만 방어값 차감
