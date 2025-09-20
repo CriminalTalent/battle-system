@@ -85,6 +85,34 @@
     .cheer-grid{grid-template-columns:1fr}
     .current-avatar{height:360px}
   }
+
+  /* ▼▼ 추가: 전투 종료 오버레이 ▼▼ */
+  .gameover-overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.92);
+    display:flex; align-items:center; justify-content:center;
+    z-index:9999;
+    opacity:0; visibility:hidden; transition:opacity .25s ease, visibility .25s ease;
+    pointer-events:none;
+  }
+  .gameover-overlay.show{
+    opacity:1; visibility:visible; pointer-events:auto;
+  }
+  .gameover-box{
+    text-align:center;
+    background:var(--glass-1);
+    border:2px solid var(--gold);
+    border-radius:16px;
+    padding:28px 32px;
+    box-shadow:var(--shadow);
+  }
+  .gameover-title{
+    font-family:Cinzel,serif;
+    color:var(--gold);
+    font-size:24px;
+    letter-spacing:.06em;
+  }
+  /* ▲▲ 추가 끝 ▲▲ */
 </style>
 </head>
 <body>
@@ -149,6 +177,14 @@
   </div>
 </div>
 
+<!-- ▼▼ 추가: 전투 종료 오버레이 ▼▼ -->
+<div id="gameOver" class="gameover-overlay" aria-hidden="true">
+  <div class="gameover-box">
+    <div class="gameover-title">전투가 종료되었습니다.</div>
+  </div>
+</div>
+<!-- ▲▲ 추가 끝 ▲▲ -->
+
 <script>
 (()=> {
   // battle 파라미터 호환(battle|battleId|bid)
@@ -165,6 +201,7 @@
   const socket = io();
   const logPanel  = document.getElementById('logPanel');
   const chatPanel = document.getElementById('chatPanel');
+  const gameOverEl= document.getElementById('gameOver'); // ★ 추가
 
   let spectatorName = '';
   let battle = null;
@@ -289,6 +326,15 @@
     document.getElementById('timerSeconds').textContent = `${tl}초`;
   }
 
+  /* ★ 추가: 종료 오버레이 표시 */
+  function showGameOver(){
+    const el = gameOverEl;
+    if (!el.classList.contains('show')) {
+      el.classList.add('show');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
   function renderAll(){
     if (battle?.phase && battle.phase !== currentPhase) {
       currentPhase = battle.phase;
@@ -300,6 +346,9 @@
     }
     renderCenter();
     renderTeams();
+
+    // 스냅샷으로도 종료 감지
+    if (battle?.status === 'ended') showGameOver();
   }
 
   // 이름 입력 → 채팅용
@@ -327,6 +376,10 @@
   socket.on('battle:update', onSnap);
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
+
+  // ★ 추가: 서버 종료 이벤트 수신 시 오버레이
+  socket.on('battle:ended', showGameOver);
+  socket.on('battleEnded',  showGameOver);
 
   document.getElementById('nameInput').focus();
 })();
