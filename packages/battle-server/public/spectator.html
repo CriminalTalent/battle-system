@@ -92,7 +92,6 @@
   <div class="header">PYXIS 전투 시스템</div>
 
   <div class="main-grid">
-    <!-- 좌측: A팀 + 로그 -->
     <div>
       <div class="team-container" style="margin-bottom:12px">
         <div class="team-title">A팀</div>
@@ -105,7 +104,6 @@
       </div>
     </div>
 
-    <!-- 중앙: 현재 전투 + 응원 -->
     <div>
       <div class="card battle-main">
         <div class="current-player-info">
@@ -129,7 +127,6 @@
       </div>
     </div>
 
-    <!-- 우측: B팀 + 채팅뷰(입력 없음) -->
     <div>
       <div class="team-container" style="margin-bottom:12px">
         <div class="team-title">B팀</div>
@@ -144,7 +141,6 @@
   </div>
 </div>
 
-<!-- 이름 입력 오버레이 -->
 <div id="nameOverlay" class="name-overlay">
   <div class="name-box">
     <h2>관전자 이름 입력</h2>
@@ -155,20 +151,16 @@
 
 <script>
 (()=> {
+  // battle 파라미터 호환(battle|battleId|bid)
   const qs = new URLSearchParams(location.search);
-  // 기존 ?battle=... 과 예전 ?battleId=.../optional ?bid=... 모두 지원
   const battleId = qs.get('battle') || qs.get('battleId') || qs.get('bid');
   if (!battleId) { alert('올바르지 않은 URL입니다'); return; }
-
-  // 주소 정규화(표준 파라미터로 정리)
-  try {
-    if ((qs.get('battleId') || qs.get('bid')) && battleId) {
-      const u = new URL(location.href);
-      u.searchParams.set('battle', battleId);
-      ['battleId','bid'].forEach(k => u.searchParams.delete(k));
-      history.replaceState(null, '', u.toString());
-    }
-  } catch {}
+  try{
+    const u=new URL(location.href);
+    u.searchParams.set('battle',battleId);
+    ['battleId','bid'].forEach(k=>u.searchParams.delete(k));
+    history.replaceState(null,'',u.toString());
+  }catch{}
 
   const socket = io();
   const logPanel  = document.getElementById('logPanel');
@@ -310,28 +302,28 @@
     renderTeams();
   }
 
-  // 이름 입력 → 채팅 발송용 이름만 세팅 (관전자 인증 불필요)
+  // 이름 입력 → 채팅용
   document.getElementById('enterBtn').onclick = ()=>{
     const v = document.getElementById('nameInput').value.trim();
     if (!v) { alert('이름을 입력하세요'); return; }
     spectatorName = v;
     document.getElementById('nameOverlay').style.display = 'none';
   };
-  document.getElementById('nameInput').addEventListener('keydown', (e)=>{
-    if (e.key==='Enter'){ e.preventDefault(); document.getElementById('enterBtn').click(); }
+  document.getElementById('nameInput').addEventListener('keydown',(e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); document.getElementById('enterBtn').click(); }
   });
 
-  // 응원 버튼 → 일반 채팅 채널로 송출(서버가 중계만 하면 됨)
+  // 응원 버튼 → 일반 채팅으로 송출
   document.addEventListener('click',(e)=>{
-    const b = e.target.closest('.cheer-btn');
-    if (!b) return;
-    const msg = b.getAttribute('data-msg');
-    socket.emit('chatMessage', { battleId, name: spectatorName || '관전자', message: msg, type:'cheer' });
+    const b=e.target.closest('.cheer-btn');
+    if(!b) return;
+    const msg=b.getAttribute('data-msg');
+    socket.emit('chatMessage',{battleId,name:spectatorName||'관전자',message:msg,type:'cheer'});
   });
 
   // 소켓
-  socket.on('connect', ()=>{ socket.emit('join', { battleId }); });
-  const onSnap = (snap)=>{ battle = snap; renderAll(); };
+  socket.on('connect', ()=>{ socket.emit('join',{battleId}); });
+  const onSnap = (snap)=>{ battle=snap; renderAll(); };
   socket.on('battle:update', onSnap);
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
