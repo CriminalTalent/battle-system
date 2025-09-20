@@ -229,15 +229,18 @@
 
 <script>
 (()=> {
+  // ===== 파라미터: battleId/battle, id/token/name 모두 허용 =====
   const qs = new URLSearchParams(location.search);
-  const battleId = qs.get('battle');
-  const token    = qs.get('token');
-  const urlName  = qs.get('name');
+  const battleId = qs.get('battleId') || qs.get('battle') || '';
+  const token    = qs.get('token')    || '';
+  const idParam  = qs.get('id') || qs.get('name') || token || '';
 
-  if (!battleId || !token) {
+  if (!battleId || (!token && !idParam)) {
     alert('올바르지 않은 URL입니다');
     return;
   }
+
+  const urlName  = qs.get('name') || '';
 
   const socket = io();
   const logPanel  = document.getElementById('logPanel');
@@ -366,10 +369,22 @@
   function render() {
     if (!battleState) return;
 
-    // 스냅샷에서 내 플레이어 동기화
-    if (myPlayerId && (!myPlayer || myPlayer.id !== myPlayerId)) {
-      myPlayer = (battleState.players || []).find(p => p.id === myPlayerId) || null;
+    // 스냅샷에서 내 플레이어 동기화 (id/token/urlId/name 대비)
+    if (!myPlayer && (battleState.players && battleState.players.length)) {
+      myPlayer =
+        (battleState.players || []).find(p =>
+          p.id === myPlayerId ||
+          p.id === idParam ||
+          p.token === idParam ||
+          p.urlId === idParam ||
+          p.name === idParam
+        ) || null;
+      if (myPlayer && !myPlayerId) myPlayerId = myPlayer.id;
     }
+    if (myPlayerId && (!myPlayer || myPlayer.id !== myPlayerId)) {
+      myPlayer = (battleState.players || []).find(p => p.id === myPlayerId) || myPlayer;
+    }
+
     updateMyInfo();
 
     const turnInfo = battleState.currentTurn;
@@ -444,14 +459,12 @@
   function addLog({ts, type, message}) {
     if (!message) return;
 
-    // “라운드 해석” 같은 초에 중복 방지
     if (/^라운드 해석/.test(message)) {
-      const sec = new Date(ts).toISOString().slice(0,19); // YYYY-MM-DDTHH:mm:ss
+      const sec = new Date(ts).toISOString().slice(0,19);
       if (sec === lastResolveSecond) return;
       lastResolveSecond = sec;
     }
 
-    // 같은 라운드 시작/종료가 연속으로 반복될 때 숨김
     const startMatch = message.match(/^(\d+)라운드 시작$/);
     if (startMatch) {
       const no = startMatch[1];
@@ -619,12 +632,17 @@
   }
 
   socket.on('connect', () => {
-    socket.emit('join', { battleId });
-  });
+    // idParam이 있으면 함께 조인, 없으면 배틀만 조인
+    const joinPayload = { battleId };
+    if (idParam) joinPayload.id = idParam;
+    socket.emit('join', joinPayload);
 
-  socket.emit('playerAuth', { battleId, token }, (res) => {
-    if (!res?.ok) { alert('인증 실패'); return; }
-    applyAuthed(res);
+    // 토큰 있으면 인증 유지
+    if (token) {
+      socket.emit('playerAuth', { battleId, token }, (res) => {
+        if (res?.ok) applyAuthed(res);
+      });
+    }
   });
 
   socket.on('authSuccess', (d) => applyAuthed(d));
@@ -633,7 +651,7 @@
   // 스냅샷
   const onSnap = (snap) => {
     battleState = snap;
-    if (myPlayerId) myPlayer = (battleState.players || []).find(p => p.id === myPlayerId) || null;
+    if (myPlayerId) myPlayer = (battleState.players || []).find(p => p.id === myPlayerId) || myPlayer;
     render();
     hasActedThisTurn = false;
   };
@@ -654,7 +672,6 @@
   window.addEventListener('beforeunload', () => { socket.disconnect(); });
 
   setupEventListeners();
-  socket.emit('join', { battleId });
 })();
 </script>
 </body>
