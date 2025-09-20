@@ -217,7 +217,7 @@ export function createBattleStore() {
 
     const alive = sortByInitiative(b.players.filter(p => p.team === team && p.hp > 0));
     b.turnCursor = { team, order: alive.map(p=>p.id), index: 0, playerId: alive[0]?.id || null };
-    b.phaseEndsAt = now() + 30_000;
+    b.phaseEndsAt = now() + 300_000;
 
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
     touch(b);
