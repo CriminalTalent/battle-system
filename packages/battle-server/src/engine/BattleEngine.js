@@ -1,4 +1,5 @@
-/* ESM BattleEngine – 선택 페이즈는 '의도 로그', 해석 페이즈에서만 '결과+적용' */
+/* ESM BattleEngine – 선택 페이즈는 '의도 로그', 해석 페이즈에서만 '결과+적용'
+   팀당 선택 페이즈 제한시간 5분(300초), 1초 단위 카운트다운 송출 */
 
 import { randomUUID } from 'node:crypto';
 
@@ -39,7 +40,7 @@ export function createBattleStore() {
 
   // 서버로 이벤트를 전달하기 위한 훅
   let onLog = null;     // (battleId, {ts,type,message})
-  let onUpdate = null;  // (battleId)
+  let onUpdate = null;  // (battleId)  — 클라이언트 재스냅샷 유도
 
   function setLogger(fn) { onLog = typeof fn === 'function' ? fn : null; }
   function setUpdate(fn) { onUpdate = typeof fn === 'function' ? fn : null; }
@@ -47,7 +48,7 @@ export function createBattleStore() {
   function pushLog(battle, message, type = 'system') {
     const entry = { ts: now(), type, message };
     battle.logs.push(entry);
-    // 서버로 즉시 브로드캐스트
+    if (battle.logs.length > 1000) battle.logs.shift();
     if (onLog) onLog(battle.id, entry);
   }
 
@@ -86,6 +87,32 @@ export function createBattleStore() {
     };
   }
 
+  /** 내부: 페이즈 타이머 시작/중지 */
+  function clearPhaseTimer(b) {
+    if (b._phaseTimer) {
+      clearInterval(b._phaseTimer);
+      b._phaseTimer = null;
+    }
+  }
+  function startPhaseTimer(b, seconds, onExpire) {
+    clearPhaseTimer(b);
+    const deadline = now() + seconds * 1000;
+    b.phaseEndsAt = deadline;
+
+    // 즉시 1회 업데이트
+    touch(b);
+
+    b._phaseTimer = setInterval(() => {
+      // 매초 업데이트(클라 카운트다운)
+      touch(b);
+
+      if (now() >= deadline) {
+        clearPhaseTimer(b);
+        if (typeof onExpire === 'function') onExpire();
+      }
+    }, 1000);
+  }
+
   /** 전투 생성 */
   function create(mode = '2v2') {
     const id = randomUUID();
@@ -102,9 +129,10 @@ export function createBattleStore() {
       choices: { A: [], B: [] },
       logs: [],
       createdAt: now(),
-      hardLimitAt: now() + 60 * 60 * 1000, // 1시간
+      hardLimitAt: now() + 60 * 60 * 1000, // 총 1시간 룰 (서버 단위)
       turnCursor: null,
-      phaseEndsAt: null
+      phaseEndsAt: null,
+      _phaseTimer: null
     };
     battles.set(id, battle);
     return battle;
@@ -209,18 +237,42 @@ export function createBattleStore() {
     return { b };
   }
 
+  /** 선택 페이즈 시작 */
   function startSelectPhase(b, team) {
     if (b.status !== 'active') return;
+    clearPhaseTimer(b);
+
     b.phase = (team === 'A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
     b.choices[team] = []; // 해당 팀 의도 초기화
 
     const alive = sortByInitiative(b.players.filter(p => p.team === team && p.hp > 0));
     b.turnCursor = { team, order: alive.map(p=>p.id), index: 0, playerId: alive[0]?.id || null };
-    b.phaseEndsAt = now() + 300_000;
 
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
+
+    // 팀당 5분 타이머 — 만료 시 미선택자 자동 패스
+    startPhaseTimer(b, 300, () => {
+      // 아직 완료가 아니라면 자동 마감
+      autoFinalizeSelection(b, team);
+      finishSelectOrNext(b);
+    });
+
     touch(b);
+  }
+
+  /** 아직 선택 안 한 생존자들을 자동 패스 처리 */
+  function autoFinalizeSelection(b, team) {
+    const aliveIds = new Set(b.players.filter(x => x.team === team && x.hp > 0).map(x => x.id));
+    const chosenIds = new Set(b.choices[team].map(c => c.playerId));
+    const remain = [...aliveIds].filter(id => !chosenIds.has(id));
+    for (const id of remain) {
+      b.choices[team].push({ playerId: id, type: 'pass', targetId: null, raw: { type: 'pass' } });
+      const actor = b.players.find(p => p.id === id);
+      if (actor) pushLog(b, `→ ${actor.name}이(가) 시간초과로 패스`, team === 'A' ? 'teamA' : 'teamB');
+    }
+    b.selectionDone[team] = true;
+    clearPhaseTimer(b);
   }
 
   /** 선택(의도만 저장 & 의도 로그만 송출) */
@@ -259,9 +311,10 @@ export function createBattleStore() {
     } else if (intent.type === 'dodge') {
       pushLog(b, `→ ${p.name}이(가) 회피를 준비`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'item') {
-      const itemName = intent.raw.item === 'dittany' || intent.raw.item === 'ditany' ? '디터니'
-        : intent.raw.item === 'attackBooster' ? '공격 보정기'
-        : intent.raw.item === 'defenseBooster' ? '방어 보정기' : '아이템';
+      const itemName =
+        intent.raw.item === 'dittany' || intent.raw.item === 'ditany' ? '디터니' :
+        intent.raw.item === 'attackBooster' ? '공격 보정기' :
+        intent.raw.item === 'defenseBooster' ? '방어 보정기' : '아이템';
       const tgt = intent.raw.targetId ? (b.players.find(x=>x.id===intent.raw.targetId)?.name ?? '대상') : '자신';
       pushLog(b, `→ ${p.name}이(가) ${itemName} 사용 예정 (${tgt})`, team === 'A' ? 'teamA' : 'teamB');
     } else if (intent.type === 'pass') {
@@ -284,6 +337,7 @@ export function createBattleStore() {
 
     if (done && !b.selectionDone[team]) {
       b.selectionDone[team] = true;
+      clearPhaseTimer(b); // 다 고르면 타이머 종료
       pushLog(b, `[${team}] ${team}팀 선택 완료`, team === 'A' ? 'teamA' : 'teamB');
       touch(b);
       finishSelectOrNext(b);
@@ -306,7 +360,7 @@ export function createBattleStore() {
         startSelectPhase(b, secondTeam);
         return;
       }
-      // 이 경우 동시 완료 → 아래로
+      // (동시 완료) → 아래로
     }
 
     if (b.selectionDone.A && b.selectionDone.B) {
@@ -317,13 +371,13 @@ export function createBattleStore() {
   /** 해석 – 수치 적용 및 결과 로그 */
   function startResolve(b) {
     if (b.status !== 'active') return;
+    clearPhaseTimer(b);
+
     b.phase = 'resolve';
     b.currentTeam = null;
     b.turnCursor = null;
-    b.phaseEndsAt = now() + 3_000;
 
     pushLog(b, '라운드 해석', 'result');
-    touch(b);
 
     const first = b.nextFirstTeam || 'A';
     const second = first === 'A' ? 'B' : 'A';
@@ -332,23 +386,18 @@ export function createBattleStore() {
     resolveTeam(b, second);
 
     pushLog(b, `=== ${b.round}라운드 종료 ===`, 'result');
+    touch(b);
 
     // 라운드 증가 및 선후공 교대
     b.round += 1;
     b.nextFirstTeam = (b.nextFirstTeam === 'A') ? 'B' : 'A';
 
-    // 다음 라운드 준비
-    b.selectionDone = { A: false, B: false };
+    // 인터페이즈 5초
     b.phase = 'inter';
-    b.phaseEndsAt = now() + 5_000;
-    pushLog(b, '5초 후 다음 라운드 시작...', 'system');
-    touch(b);
-
-    // 약간의 지연 후 다음 라운드 진입
-    setTimeout(() => {
+    startPhaseTimer(b, 5, () => {
       if (b.status !== 'active') return;
       startSelectPhase(b, b.nextFirstTeam);
-    }, 50);
+    });
   }
 
   /** 팀 해석: 팀 내부 이니시 순으로 실행 */
@@ -443,6 +492,7 @@ export function createBattleStore() {
     b.phase = 'idle';
     b.turnCursor = null;
     b.phaseEndsAt = null;
+    clearPhaseTimer(b);
     touch(b);
     return b;
   }
