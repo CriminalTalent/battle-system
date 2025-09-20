@@ -336,6 +336,14 @@ export function createBattleStore() {
       b.turnCursor.playerId = nextId;
     }
 
+    // ★ 커서가 끝났다면 자동 마감 (팀 내 남은 플레이어가 없거나 인식 문제로 못 잡는 경우 방지)
+    if (!b.turnCursor?.playerId) {
+      autoFinalizeSelection(b, team);
+      touch(b);
+      finishSelectOrNext(b);
+      return { b, result: { queued: true, autoClosed: true } };
+    }
+
     // 완료 판정
     const aliveIds = new Set(b.players.filter(x => x.team === team && x.hp > 0).map(x => x.id));
     const chosenIds = new Set(b.choices[team].map(c => c.playerId));
