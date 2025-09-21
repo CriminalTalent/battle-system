@@ -1,12 +1,13 @@
 /* ESM BattleEngine
  * - 선택 페이즈: '의도 로그'만 송출
  * - 해석 페이즈(resolve): 수치 적용 + '결과 로그' 일괄 송출
- * - 팀당 선택 제한: 5분(만료 시 해당 팀 선택 자동 종료 → 상대 팀/해석으로 진행)
+ * - 팀당 선택 제한: 5분
  * - 선후공: 라운드마다 교대
  * - 팀 내부 실행 순서: 민첩 내림차순, 동률 시 이름 오름차순(ABC)
  * - 전투 하드리밋: 1시간 (시간 종료 시 생존 HP 합산 승자)
  * - 아이템: 1회용(디터니 고정10, 공격 보정기 1회 강화공격, 방어 보정기 방어×2)
  * - 회피/방어는 '선택했을 때만' 적용 (자동 없음)
+ * - ✅ 집중공격 규칙: 한 대상에게 들어오는 여러 공격 중 '최초 1회'만 회피/방어/방어보정기 적용
  */
 
 import { randomUUID } from 'node:crypto';
@@ -31,8 +32,8 @@ function sortByInitiative(players) {
 export function createBattleStore() {
   const battles = new Map();
 
-  let onLog = null;
-  let onUpdate = null;
+  let onLog = null;     // (battleId, entry)
+  let onUpdate = null;  // (battleId) => void
   const setLogger = fn => { onLog = typeof fn === 'function' ? fn : null; };
   const setUpdate = fn => { onUpdate = typeof fn === 'function' ? fn : null; };
 
@@ -92,15 +93,10 @@ export function createBattleStore() {
       createdAt: now(),
       hardLimitAt: now() + 60*60*1000, // 1시간
       turnCursor: null,          // {team, order:[ids], index, playerId}
-      phaseEndsAt: null,
-      _phaseTimer: null
+      phaseEndsAt: null
     };
     battles.set(id, b);
     return b;
-  }
-
-  function clearPhaseTimer(b) {
-    if (b._phaseTimer) { clearTimeout(b._phaseTimer); b._phaseTimer = null; }
   }
 
   function addPlayer(battleId, player) {
@@ -192,28 +188,8 @@ export function createBattleStore() {
     return { b };
   }
 
-  function scheduleSelectTimeout(b) {
-    clearPhaseTimer(b);
-    const team = b.currentTeam;
-    if (!(b.phase==='A_select' || b.phase==='B_select')) return;
-    const ms = Math.max(0, (b.phaseEndsAt || now()) - now());
-    b._phaseTimer = setTimeout(() => {
-      if (b.status!=='active') return;
-      if (!(b.phase==='A_select' || b.phase==='B_select')) return;
-      const t = team;
-      if (!b.selectionDone[t]) {
-        b.selectionDone[t] = true;
-        pushLog(b, `[${t}] ${t}팀 선택 시간 종료`, t==='A'?'teamA':'teamB');
-        touch(b);
-        finishSelectOrNext(b);
-      }
-    }, ms);
-  }
-
   function startSelectPhase(b, team) {
     if (b.status!=='active') return;
-    clearPhaseTimer(b);
-
     b.phase = (team==='A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
     b.choices[team] = [];
@@ -224,7 +200,6 @@ export function createBattleStore() {
 
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team==='A'?'teamA':'teamB');
     touch(b);
-    scheduleSelectTimeout(b);
   }
 
   // 선택(의도만 저장, 의도 로그만 송출)
@@ -299,8 +274,6 @@ export function createBattleStore() {
     if (b.status!=='active') return;
     if (!(b.phase==='A_select' || b.phase==='B_select')) return;
 
-    clearPhaseTimer(b);
-
     const first  = b.nextFirstTeam || 'A';
     const second = first==='A' ? 'B' : 'A';
 
@@ -315,8 +288,6 @@ export function createBattleStore() {
 
   function startResolve(b) {
     if (b.status!=='active') return;
-    clearPhaseTimer(b);
-
     b.phase = 'resolve';
     b.currentTeam = null;
     b.turnCursor = null;
@@ -330,9 +301,16 @@ export function createBattleStore() {
 
     const allIntents = [...(b.choices.A||[]), ...(b.choices.B||[])];
 
-    // === 1) 아이템 선처리: 회복/방어 선적용, 공격보정기는 공격 페이즈 대기 ===
-    const defBoost = new Set();    // 방어 보정기 적용 대상
-    const atkBoostMap = new Map(); // actorId -> { targetId }
+    // ✅ 방어/회피/방어보정기 '최초 1회' 적용 제어용(라운드 단위)
+    const once = {
+      dodgeTried: new Set(),       // targetId: 첫 회피 판정 시도 여부(성공/실패 불문)
+      defendTried: new Set(),      // targetId: 첫 방어 판정 시도 여부(성공/실패 불문)
+      defBoostApplied: new Set(),  // targetId: 방어보정 배수 적용이 이미 쓰였는지
+    };
+
+    // 방어 보정기 예정자 집합(의도로 방어를 선택한 경우에만 의미 있게 적용)
+    const defBoostIntended = new Set();
+    // 아이템 선처리: 소비 + 즉시효과(치유/공격보정 즉시공격/방어보정 '준비')
     for (const it of allIntents) {
       if (it.type !== 'item') continue;
       const actor = b.players.find(p=>p.id===it.playerId);
@@ -354,13 +332,19 @@ export function createBattleStore() {
       } else if (kind==='defenseBooster') {
         if ((actor.items.defenseBooster ?? 0) > 0) {
           actor.items.defenseBooster -= 1;
-          const tgt = it.raw?.targetId ? (b.players.find(p=>p.id===it.raw.targetId) || actor) : actor;
-          const targetHasDefend = allIntents.some(c=>c.playerId===tgt.id && c.type==='defend');
-          if (tgt.id === actor.id || targetHasDefend) {
-            defBoost.add(tgt.id);
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — ${tgt.name} 방어 강화`, 'result');
+          // 방어 의도가 있으면 배수 적용 대상에 등록(첫 방어 1회만 배수)
+          const hasDefend = allIntents.some(c=>c.playerId===actor.id && c.type==='defend');
+          if (hasDefend) {
+            defBoostIntended.add(actor.id);
+            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화(첫 피격 1회)`, 'result');
           } else {
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용(대상 방어 의도 없음)`, 'result');
+            // 본인 대상 선택(=자기에게 적용) 이었으면 의도 없어도 허용
+            if (!it.raw?.targetId || it.raw.targetId === actor.id) {
+              defBoostIntended.add(actor.id);
+              pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화(자기 적용, 첫 피격 1회)`, 'result');
+            } else {
+              pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용(방어 의도 없음)`, 'result');
+            }
           }
         } else {
           pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 실패(재고 없음)`, 'result');
@@ -369,24 +353,20 @@ export function createBattleStore() {
         if ((actor.items.attackBooster ?? 0) > 0) {
           actor.items.attackBooster -= 1;
           const tgt = it.raw?.targetId ? (b.players.find(p=>p.id===it.raw.targetId) || null) : null;
-          atkBoostMap.set(actor.id, { targetId: tgt?.id || null });
-          pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용 — 강화공격 대기`, 'result');
+          if (tgt && tgt.hp>0) {
+            resolveSingleAttack(b, actor, tgt, /*useAtkBoost*/true, defBoostIntended, allIntents, once);
+          } else {
+            pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용(대상 부재)`, 'result');
+          }
         } else {
           pushLog(b, `→ ${actor.name}이(가) 공격 보정기 사용 실패(재고 없음)`, 'result');
         }
       }
     }
 
-    // === 2) 비피해 행동 로그(방어/회피) 확정
-    resolveTeamNonDamage(b, first,  allIntents);
-    resolveTeamNonDamage(b, second, allIntents);
-
-    // === 3) 공격: 강화공격 → 일반공격 (팀/이니시 순)
-    resolveTeamBoostedAttacks(b, first,  atkBoostMap, defBoost, allIntents);
-    resolveTeamBoostedAttacks(b, second, atkBoostMap, defBoost, allIntents);
-
-    resolveTeamNormalAttacks(b, first,  defBoost, allIntents);
-    resolveTeamNormalAttacks(b, second, defBoost, allIntents);
+    // 선/후 팀 순으로 의도 실행(일반 공격/방어/회피/패스)
+    resolveTeamByOrder(b, first,  defBoostIntended, allIntents, once);
+    resolveTeamByOrder(b, second, defBoostIntended, allIntents, once);
 
     // 라운드 종료/판정
     pushLog(b, `=== ${b.round}라운드 종료 ===`, 'result');
@@ -403,7 +383,7 @@ export function createBattleStore() {
       }
     }
 
-    // 다음 라운드 세팅(★ 5초 대기 실제 적용)
+    // 다음 라운드 세팅
     b.round += 1;
     b.nextFirstTeam = (b.nextFirstTeam==='A') ? 'B' : 'A';
     b.selectionDone = {A:false,B:false};
@@ -416,77 +396,20 @@ export function createBattleStore() {
       if (b.status!=='active') return;
       pushLog(b, `${b.round}라운드 시작`, 'system');
       startSelectPhase(b, b.nextFirstTeam);
-    }, ROUND_BREAK_MS); // ★ 여기! 실제 5초 대기
+    }, 50);
   }
 
-  // === 비피해 행동(방어/회피) 로그만 확정 ===
-  function resolveTeamNonDamage(b, team, allIntents) {
-    const intents = (b.choices[team] || []).filter(x => x.type==='defend' || x.type==='dodge');
-    if (!intents.length) return;
-    const order = sortByInitiative(
-      intents.map(c => b.players.find(p=>p.id===c.playerId)).filter(Boolean)
-    ).map(p=>p.id);
-
-    for (const pid of order) {
-      const intent = intents.find(c=>c.playerId===pid);
-      const actor = b.players.find(p=>p.id===pid);
-      if (!intent || !actor || actor.hp<=0) continue;
-      if (intent.type==='defend') pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
-      if (intent.type==='dodge')  pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
-    }
-  }
-
-  // === 강화공격(공격 보정기) 먼저 처리 ===
-  function resolveTeamBoostedAttacks(b, team, atkBoostMap, defBoostSet, allIntents) {
-    const intents = (b.choices[team] || []);
-    const boostedActors = intents
-      .map(c => b.players.find(p=>p.id===c.playerId))
-      .filter(p => p && atkBoostMap.has(p.id) && p.hp>0);
-
-    if (!boostedActors.length) return;
-
-    const order = sortByInitiative(boostedActors).map(p=>p.id);
-    for (const pid of order) {
-      const actor = b.players.find(p=>p.id===pid);
-      const targetId = atkBoostMap.get(pid)?.targetId || null;
-      const tgt = targetId ? b.players.find(p=>p.id===targetId) : null;
-      if (!actor || actor.hp<=0) continue;
-      if (!tgt || tgt.hp<=0) continue;
-      resolveSingleAttack(b, actor, tgt, /*useAtkBoost*/true, defBoostSet, allIntents);
-    }
-    order.forEach(pid => atkBoostMap.delete(pid));
-  }
-
-  // === 일반 공격 처리 ===
-  function resolveTeamNormalAttacks(b, team, defBoostSet, allIntents) {
-    const intents = (b.choices[team] || []).filter(x => x.type==='attack');
-    if (!intents.length) return;
-
-    const order = sortByInitiative(
-      intents.map(c => b.players.find(p=>p.id===c.playerId)).filter(Boolean)
-    ).map(p=>p.id);
-
-    for (const pid of order) {
-      const intent = intents.find(c=>c.playerId===pid);
-      const actor  = b.players.find(p=>p.id===pid);
-      if (!intent || !actor || actor.hp<=0) continue;
-      const tgt = intent.targetId ? b.players.find(p=>p.id===intent.targetId) : null;
-      if (tgt && tgt.hp>0) resolveSingleAttack(b, actor, tgt, /*useAtkBoost*/false, defBoostSet, allIntents);
-    }
-    const arr = b.choices[team] || [];
-    b.choices[team] = arr.filter(x => x.type!=='attack');
-  }
-
-  // 단일 공격 처리: 회피/방어는 '의도했을 때만' 적용 + 치명타 상한 10%
-  function resolveSingleAttack(b, actor, target, useAtkBoost, defBoostSet, allIntents) {
+  // 단일 공격 처리(집중공격 규칙 포함)
+  function resolveSingleAttack(b, actor, target, useAtkBoost, defBoostIntended, allIntents, once) {
     if (!actor || !target || actor.hp<=0 || target.hp<=0) return;
 
     // 최종공격력 = 공격 × (보정기면×2) + d10
     const finalAttack = (actor.stats?.attack ?? 0) * (useAtkBoost ? 2 : 1) + d10();
 
-    // 회피: 대상이 'dodge' 선택한 경우에만 판정
-    const hasDodge = allIntents.some(c => c.playerId===target.id && c.type==='dodge');
-    if (hasDodge) {
+    // 회피: 대상이 'dodge' 선택한 경우 + 아직 첫 시도 전이면 1회 판정
+    const hasDodgeIntent = allIntents.some(c => c.playerId===target.id && c.type==='dodge');
+    if (hasDodgeIntent && !once.dodgeTried.has(target.id)) {
+      once.dodgeTried.add(target.id); // 성공/실패 관계없이 소모
       const dodgeScore = (target.stats?.agility ?? 0) + d10();
       if (dodgeScore >= finalAttack) {
         pushLog(b, `→ ${actor.name}의 공격을 ${target.name}이(가) 회피`, 'result');
@@ -494,24 +417,64 @@ export function createBattleStore() {
       }
     }
 
-    // 치명타: luck 기반 최대 10%
+    // 치명타: 행운 기반 최대 10%
     const luck = (actor.stats?.luck ?? 0);
     const critChance = Math.min(0.10, Math.max(0, luck) * 0.02);
-    const crit = Math.random() < critChance;
+    const isCrit = Math.random() < critChance;
+    const attackValue = isCrit ? (finalAttack * 2) : finalAttack;
 
-    const attackValue = crit ? (finalAttack * 2) : finalAttack;
-
-    // 방어: 대상이 'defend' 선택한 경우에만 방어값 차감 (보정기 적용 시 ×2)
+    // 방어: 대상이 'defend' 선택했거나, 자기에게 방어보정기를 쓴 경우를 허용
+    const hasDefendIntent = allIntents.some(c => c.playerId===target.id && c.type==='defend');
+    const canDefend = hasDefendIntent || defBoostIntended.has(target.id);
     let damage = attackValue;
-    const hasDefend = allIntents.some(c => c.playerId===target.id && c.type==='defend');
-    if (hasDefend) {
-      const defMul = defBoostSet.has(target.id) ? 2 : 1;
+
+    if (canDefend && !once.defendTried.has(target.id)) {
+      once.defendTried.add(target.id); // 첫 방어 시도 소모
+
+      // 방어 보정기 배수는 첫 방어 1회만 ×2
+      const useDefBoost = defBoostIntended.has(target.id) && !once.defBoostApplied.has(target.id);
+      const defMul = useDefBoost ? 2 : 1;
+      if (useDefBoost) once.defBoostApplied.add(target.id);
+
       const defenseValue = (target.stats?.defense ?? 0) * defMul + d10();
       damage = Math.max(1, attackValue - defenseValue);
     }
+    // 두 번째 이후의 공격은 방어/보정기 적용 없음(정면 피해)
 
     target.hp = clamp(target.hp - damage, 0, target.maxHp);
-    pushLog(b, `→ ${actor.name}이(가) ${target.name}에게 ${crit ? '치명타 ' : ''}공격 (피해 ${damage}) → HP ${target.hp}`, 'result');
+    pushLog(b, `→ ${actor.name}이(가) ${target.name}에게 ${isCrit ? '치명타 ' : ''}공격 (피해 ${damage}) → HP ${target.hp}`, 'result');
+  }
+
+  // 팀 해석(이니시 순) – attack/defend/dodge/pass
+  function resolveTeamByOrder(b, team, defBoostIntended, allIntents, once) {
+    const intents = (b.choices[team] || []).slice();
+    if (!intents.length) return;
+
+    const order = sortByInitiative(
+      intents.map(c => b.players.find(p=>p.id===c.playerId)).filter(Boolean)
+    ).map(p=>p.id);
+
+    for (const pid of order) {
+      const intent = intents.find(c=>c.playerId===pid);
+      if (!intent) continue;
+
+      const actor = b.players.find(p=>p.id===pid);
+      if (!actor || actor.hp<=0) continue;
+
+      if (intent.type==='attack') {
+        const tgt = intent.targetId ? b.players.find(p=>p.id===intent.targetId) : null;
+        if (tgt && tgt.hp>0) resolveSingleAttack(b, actor, tgt, /*useAtkBoost*/false, defBoostIntended, allIntents, once);
+      } else if (intent.type==='defend') {
+        pushLog(b, `→ ${actor.name}이(가) 방어 태세`, 'result');
+      } else if (intent.type==='dodge') {
+        pushLog(b, `→ ${actor.name}이(가) 회피 태세`, 'result');
+      } else if (intent.type==='item') {
+        // 아이템은 이미 위에서 처리/소비됨
+      } else if (intent.type==='pass') {
+        pushLog(b, `→ ${actor.name}이(가) 행동을 생략`, 'result');
+      }
+    }
+    b.choices[team] = [];
   }
 
   // 1시간 종료 시 HP 합산 승부
@@ -522,13 +485,11 @@ export function createBattleStore() {
     if (sumA===sumB) pushLog(b, '무승부 처리', 'result');
     else pushLog(b, `${sumA>sumB?'A':'B'}팀 승리!`, 'result');
     b.status='ended'; b.phase='idle'; b.turnCursor=null; b.phaseEndsAt=null;
-    clearPhaseTimer(b);
   }
 
   function end(battleId) {
     const b = get(battleId); if (!b) return null;
     b.status='ended'; b.phase='idle'; b.turnCursor=null; b.phaseEndsAt=null;
-    clearPhaseTimer(b);
     touch(b);
     return b;
   }
