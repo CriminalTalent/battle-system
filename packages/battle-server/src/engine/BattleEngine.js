@@ -1,7 +1,7 @@
 /* ESM BattleEngine
  * - 선택 페이즈: '의도 로그'만 송출
  * - 해석 페이즈(resolve): 수치 적용 + '결과 로그' 일괄 송출
- * - 팀당 선택 제한: 5분
+ * - 팀당 선택 제한: 5분(만료 시 해당 팀 선택 자동 종료 → 상대 팀/해석으로 진행)
  * - 선후공: 라운드마다 교대
  * - 팀 내부 실행 순서: 민첩 내림차순, 동률 시 이름 오름차순(ABC)
  * - 전투 하드리밋: 1시간 (시간 종료 시 생존 HP 합산 승자)
@@ -92,10 +92,15 @@ export function createBattleStore() {
       createdAt: now(),
       hardLimitAt: now() + 60*60*1000, // 1시간
       turnCursor: null,          // {team, order:[ids], index, playerId}
-      phaseEndsAt: null
+      phaseEndsAt: null,
+      _phaseTimer: null          // 내부 타임아웃 핸들
     };
     battles.set(id, b);
     return b;
+  }
+
+  function clearPhaseTimer(b) {
+    if (b._phaseTimer) { clearTimeout(b._phaseTimer); b._phaseTimer = null; }
   }
 
   function addPlayer(battleId, player) {
@@ -187,8 +192,29 @@ export function createBattleStore() {
     return { b };
   }
 
+  function scheduleSelectTimeout(b) {
+    clearPhaseTimer(b);
+    const team = b.currentTeam;
+    if (!(b.phase==='A_select' || b.phase==='B_select')) return;
+    const ms = Math.max(0, (b.phaseEndsAt || now()) - now());
+    b._phaseTimer = setTimeout(() => {
+      // 팀당 5분 만료 → 해당 팀 선택 강제 종료
+      if (b.status!=='active') return;
+      if (!(b.phase==='A_select' || b.phase==='B_select')) return;
+      const t = team;
+      if (!b.selectionDone[t]) {
+        b.selectionDone[t] = true;
+        pushLog(b, `[${t}] ${t}팀 선택 시간 종료`, t==='A'?'teamA':'teamB');
+        touch(b);
+        finishSelectOrNext(b);
+      }
+    }, ms);
+  }
+
   function startSelectPhase(b, team) {
     if (b.status!=='active') return;
+    clearPhaseTimer(b);
+
     b.phase = (team==='A') ? 'A_select' : 'B_select';
     b.currentTeam = team;
     b.choices[team] = [];
@@ -199,6 +225,7 @@ export function createBattleStore() {
 
     pushLog(b, `=== ${team}팀 선택 페이즈 시작 ===`, team==='A'?'teamA':'teamB');
     touch(b);
+    scheduleSelectTimeout(b);
   }
 
   // 선택(의도만 저장, 의도 로그만 송출)
@@ -273,6 +300,8 @@ export function createBattleStore() {
     if (b.status!=='active') return;
     if (!(b.phase==='A_select' || b.phase==='B_select')) return;
 
+    clearPhaseTimer(b);
+
     const first  = b.nextFirstTeam || 'A';
     const second = first==='A' ? 'B' : 'A';
 
@@ -287,6 +316,8 @@ export function createBattleStore() {
 
   function startResolve(b) {
     if (b.status!=='active') return;
+    clearPhaseTimer(b);
+
     b.phase = 'resolve';
     b.currentTeam = null;
     b.turnCursor = null;
@@ -300,9 +331,9 @@ export function createBattleStore() {
 
     const allIntents = [...(b.choices.A||[]), ...(b.choices.B||[])];
 
-    // === 1) 아이템 선처리: 회복/방어만 '우선 적용', 공격보정기는 '공격 페이즈'로 이월 ===
-    const defBoost = new Set();            // 방어 보정기 적용자(해당 라운드 방어×2)
-    const atkBoostMap = new Map();         // playerId -> { targetId }
+    // === 1) 아이템 선처리: 회복/방어 선적용, 공격보정기는 공격 페이즈로 큐 ===
+    const defBoost = new Set();            // 방어 보정기 적용 대상
+    const atkBoostMap = new Map();         // actorId -> { targetId }
     for (const it of allIntents) {
       if (it.type !== 'item') continue;
       const actor = b.players.find(p=>p.id===it.playerId);
@@ -324,12 +355,18 @@ export function createBattleStore() {
       } else if (kind==='defenseBooster') {
         if ((actor.items.defenseBooster ?? 0) > 0) {
           actor.items.defenseBooster -= 1;
-          const hasDefend = allIntents.some(c=>c.playerId===actor.id && c.type==='defend');
-          if (hasDefend) {
-            defBoost.add(actor.id);
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — 방어 강화`, 'result');
+
+          // 보정기 대상: 지정됐으면 그 대상, 아니면 본인
+          const tgt = it.raw?.targetId ? (b.players.find(p=>p.id===it.raw.targetId) || actor) : actor;
+
+          // 본인을 선택한 경우: 방어 의도 없어도 적용
+          // 타인을 선택한 경우: 해당 타인이 defend를 선택했을 때만 적용
+          const targetHasDefend = allIntents.some(c=>c.playerId===tgt.id && c.type==='defend');
+          if (tgt.id === actor.id || targetHasDefend) {
+            defBoost.add(tgt.id);
+            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 — ${tgt.name} 방어 강화`, 'result');
           } else {
-            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용(방어 의도 없음)`, 'result');
+            pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용(대상 방어 의도 없음)`, 'result');
           }
         } else {
           pushLog(b, `→ ${actor.name}이(가) 방어 보정기 사용 실패(재고 없음)`, 'result');
@@ -351,7 +388,7 @@ export function createBattleStore() {
     resolveTeamNonDamage(b, first,  allIntents);
     resolveTeamNonDamage(b, second, allIntents);
 
-    // === 3) 공격 페이즈: (a) 강화공격(보정기) → (b) 일반 공격, 둘 다 팀/이니시 순 ===
+    // === 3) 공격 페이즈: (a) 강화공격 → (b) 일반 공격, 둘 다 팀/이니시 순 ===
     resolveTeamBoostedAttacks(b, first,  atkBoostMap, defBoost, allIntents);
     resolveTeamBoostedAttacks(b, second, atkBoostMap, defBoost, allIntents);
 
@@ -494,11 +531,13 @@ export function createBattleStore() {
     if (sumA===sumB) pushLog(b, '무승부 처리', 'result');
     else pushLog(b, `${sumA>sumB?'A':'B'}팀 승리!`, 'result');
     b.status='ended'; b.phase='idle'; b.turnCursor=null; b.phaseEndsAt=null;
+    clearPhaseTimer(b);
   }
 
   function end(battleId) {
     const b = get(battleId); if (!b) return null;
     b.status='ended'; b.phase='idle'; b.turnCursor=null; b.phaseEndsAt=null;
+    clearPhaseTimer(b);
     touch(b);
     return b;
   }
