@@ -21,6 +21,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:linear-gradient(135deg,#000813,#001122);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:8px}
+  body.battle-ended{overflow:hidden}
   .container{max-width:1400px;margin:0 auto}
   .header{text-align:center;padding:16px;font-family:Cinzel,serif;color:var(--gold);font-size:24px;letter-spacing:.1em}
 
@@ -48,7 +49,7 @@
   /* 중앙 영역 */
   .center-section{display:flex;flex-direction:column;gap:12px}
 
-  /* 내 정보(상단) */
+  /* 내 정보(상단) — 기존 작은 카드 스타일 */
   .my-info{background:var(--glass-1);border:1px solid var(--border);border-radius:12px;padding:12px}
   .my-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
   .my-avatar{width:40px;height:40px;border-radius:8px;object-fit:cover;border:2px solid var(--gold);background:#000}
@@ -68,7 +69,7 @@
   .battle-main{text-align:center}
   .current-player{display:flex;align-items:center;justify-content:center;margin-bottom:10px}
   .current-avatar{
-    width:220px;height:220px; /* 정사각 */
+    width:220px;height:220px; /* 정사각, 기존 느낌 */
     border-radius:16px;object-fit:cover;border:4px solid var(--gold);background:#000
   }
   @media (max-width:767px){
@@ -82,7 +83,7 @@
   .act:hover:not(:disabled){background:var(--gold);color:#000}
   .act:disabled{opacity:.4;cursor:not-allowed}
 
-  /* 로그/채팅 */
+  /* 로그/채팅 — 예전 골드 테두리감 */
   .logs-section{height:400px;overflow-y:auto;background:var(--glass-2);border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:12px}
   .chat-section{height:260px;overflow-y:auto;background:var(--glass-2);border:1px solid var(--border);padding:8px;border-radius:8px;margin-bottom:8px}
   .log-item{margin-bottom:4px;font-size:11px;line-height:1.4;padding:2px 4px;border-radius:4px}
@@ -115,13 +116,11 @@
   .cancel-btn{background:var(--bad);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;margin-top:12px;width:100%}
 
   /* 게임 종료 오버레이 */
-  .game-over-overlay{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;visibility:hidden;transition:all .25s}
+  .game-over-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;visibility:hidden;transition:all .3s}
   .game-over-overlay.show{opacity:1;visibility:visible}
-  .game-over-content{text-align:center;background:var(--glass-1);border:2px solid var(--gold);border-radius:16px;padding:32px;max-width:440px;width:92%}
-  .game-over-title{font-family:Cinzel,serif;font-size:28px;color:var(--gold);margin-bottom:8px}
-  .game-over-message{color:var(--muted);font-size:14px;margin-top:4px}
-  .winner-row{font-size:16px;margin-bottom:8px}
-  .winner-team{color:var(--gold);font-weight:700}
+  .game-over-card{background:var(--glass-1);border:2px solid var(--gold);border-radius:16px;padding:28px;text-align:center;max-width:420px;width:90%}
+  .game-over-title{font-family:Cinzel,serif;font-size:26px;color:var(--gold);margin-bottom:8px}
+  .game-over-sub{font-size:14px;color:var(--muted)}
 
   @media (max-width:767px){
     .main-grid{grid-template-columns:1fr}
@@ -215,12 +214,11 @@
   </div>
 </div>
 
-<!-- 전투 종료 오버레이 -->
-<div id="gameOverOverlay" class="game-over-overlay" aria-hidden="true">
-  <div class="game-over-content">
+<!-- 게임 종료 오버레이 -->
+<div id="gameOverOverlay" class="game-over-overlay">
+  <div class="game-over-card">
     <div class="game-over-title">전투가 종료되었습니다.</div>
-    <div class="winner-row">승리 팀: <span id="winnerTeam" class="winner-team">-</span></div>
-    <div class="game-over-message">모든 입력이 비활성화되었습니다.</div>
+    <div class="game-over-sub">잠시 후 결과를 확인하세요.</div>
   </div>
 </div>
 
@@ -243,7 +241,6 @@
   let selectedAction = null;
 
   const seenLogIds = new Set();
-  const seenChats  = new Set();
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 
   /* 팀별 로그 색상 */
@@ -285,13 +282,6 @@
     document.getElementById('myItems').textContent = items.length ? items.join(', ') : '아이템 없음';
 
     if (myPlayer.avatar) document.getElementById('myPortrait').src = myPlayer.avatar;
-  }
-
-  /* 스냅샷에서 내 데이터 동기화 (HP/아이템/스탯 즉시 반영) */
-  function syncMineFromState(){
-    if (!battleState || !myPlayer) return;
-    const fresh = battleState.players?.find(p => p.id === myPlayer.id);
-    if (fresh) myPlayer = fresh;
   }
 
   /* 팀 리스트 렌더 */
@@ -360,29 +350,24 @@
     });
   }
 
-  function renderAll(){
-    if(!battleState) return;
-    syncMineFromState();  // 스냅샷 반영
-    updateMine();
-    renderTurn();
-    renderTeams();
-  }
+  function renderAll(){ if(!battleState) return; updateMine(); renderTurn(); renderTeams(); }
 
-  /* 채팅 */
-  function addChat({name, message}) {
-    if (!name || !message) return;
-    const key = `${name}|${message}`;
-    if (seenChats.has(key)) return;
-    seenChats.add(key);
-    if (seenChats.size > 120) { const first = seenChats.values().next().value; seenChats.delete(first); }
+  /* 채팅 (중복 필터 제거: 동일 문구도 모두 표시) */
+  function addChat(payload) {
+    const { name, message } = payload || {};
+    if (!message) return;
 
     const div = document.createElement('div');
     div.className = 'chat-item';
-    div.innerHTML = `<span class="chat-name">${esc(name)}</span>: ${esc(message)}`;
+    div.innerHTML = `<span class="chat-name">${esc(name || '관전자')}</span>: ${esc(message)}`;
     chatPanel.appendChild(div);
     chatPanel.scrollTop = chatPanel.scrollHeight;
-    while (chatPanel.children.length > 100) chatPanel.removeChild(chatPanel.firstChild);
+
+    while (chatPanel.children.length > 200) {
+      chatPanel.removeChild(chatPanel.firstChild);
+    }
   }
+
   function sendChat(){
     const input=document.getElementById('chatInput');
     const msg=input.value.trim(); if(!msg) return;
@@ -440,7 +425,7 @@
     overlayTitle.textContent = '아이템 선택';
     const it = myPlayer?.items || {};
     const opts = [];
-    if ((it.dittany ?? 0) > 0)        opts.push(`<div class="target" onclick="selectItem('dittany')"><div>디터니</div><div>체력 +10</div></div>`);
+    if ((it.dittany ?? 0) > 0)        opts.push(`<div class="target" onclick="selectItem('dittany')"><div>디터니</div><div>체력 회복</div></div>`);
     if ((it.attackBooster ?? 0) > 0)  opts.push(`<div class="target" onclick="selectItem('attackBooster')"><div>공격 보정기</div><div>강화 공격</div></div>`);
     if ((it.defenseBooster ?? 0) > 0) opts.push(`<div class="target" onclick="selectItem('defenseBooster')"><div>방어 보정기</div><div>방어 강화</div></div>`);
     overlayTargets.innerHTML = opts.length ? opts.join('') : `<div class="target disabled">사용 가능한 아이템이 없습니다</div>`;
@@ -531,29 +516,21 @@
 
   socket.on('battle:log', addLog);
 
-  // ✅ 일반 채팅 + 응원 채널 모두 수신
+  /* 채팅 수신: 일반 채팅 + 관전자 응원(cheerMessage) 모두 표시 */
   socket.on('chatMessage', addChat);
   socket.on('cheerMessage', (p)=> addChat({ name: p?.name || '관전자', message: p?.message || '' }));
 
-  // 액션 성공 시 버튼 비활성화
-  function disableActions(){ ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'].forEach(id=>document.getElementById(id).disabled=true); }
-  socket.on('actionSuccess', ()=>{ hasActedThisTurn = true; disableActions(); });
-  socket.on('player:action:success', ()=>{ hasActedThisTurn = true; disableActions(); });
+  /* 액션 성공 시 버튼 잠금 */
+  socket.on('actionSuccess', ()=>{ hasActedThisTurn = true; ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'].forEach(id=>document.getElementById(id).disabled=true); });
+  socket.on('player:action:success', ()=>{ hasActedThisTurn = true; ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn'].forEach(id=>document.getElementById(id).disabled=true); });
 
-  // 게임 종료 오버레이
-  function showGameOverOverlay(winnerText){
-    const overlay = document.getElementById('gameOverOverlay');
-    const span = document.getElementById('winnerTeam');
-    span.textContent = winnerText || '-';
-    overlay.classList.add('show');
-    // 모든 입력 비활성
-    disableActions();
-    document.getElementById('readyBtn')?.classList.add('done');
-    document.getElementById('chatInput').disabled = true;
-    document.getElementById('chatSend').disabled = true;
+  /* 전투 종료 오버레이 */
+  function showGameOverOverlay(){
+    document.getElementById('gameOverOverlay').classList.add('show');
+    document.body.classList.add('battle-ended');
   }
-  socket.on('battle:ended', (data)=> showGameOverOverlay(data?.winner ? `${data.winner}팀` : ''));
-  socket.on('battleEnded',  (data)=> showGameOverOverlay(data?.winner ? `${data.winner}팀` : ''));
+  socket.on('battle:ended', showGameOverOverlay);
+  socket.on('battleEnded',  showGameOverOverlay);
 
   window.addEventListener('beforeunload', ()=>{ socket.disconnect(); });
 
