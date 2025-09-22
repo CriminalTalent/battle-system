@@ -189,6 +189,9 @@
   let timerDisplayLeft = 0;
   let timerTick = null;
 
+  let lastWinnerTeam = null;
+  let gameOverShown = false;
+
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 
   function classForLog(type, message){
@@ -224,6 +227,13 @@
 
   function addLog({ts, type, message}){
     if (!message) return;
+
+    // 승자 문구 감지하여 저장(fallback)
+    if (/([AB])팀\s*승리/.test(message)) {
+      const m = message.match(/([AB])팀\s*승리/);
+      if (m) lastWinnerTeam = m[1];
+    }
+
     const phase = battle?.phase || currentPhase;
     const isSelect = (phase === 'A_select' || phase === 'B_select');
     const hasDetail = /(피해\s*\d+|회복\s*\d+|→\s*HP\s*\d+)/.test(message);
@@ -280,9 +290,14 @@
     render(teamB,'teamB');
   }
 
+  /* 타이머(1초 감산, inter는 최소 5초 보장) */
   function startLocalTimer(seconds){
     clearInterval(timerTick);
-    timerDisplayLeft = Math.max(0, seconds|0);
+    const phase = battle?.phase;
+    let startSec = Math.max(0, seconds|0);
+    if (phase === 'inter' && startSec < 5) startSec = 5;
+
+    timerDisplayLeft = startSec;
     drawTimer(timerDisplayLeft);
     timerTick = setInterval(()=>{
       if (timerDisplayLeft > 0) {
@@ -333,6 +348,7 @@
     }
     renderCenter();
     renderTeams();
+    maybeShowGameOverByStatus();
   }
 
   // 이름 입력 → 채팅용
@@ -361,8 +377,10 @@
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
 
-  // 전투 종료 오버레이 (승리팀 표시)
+  // === 종료 오버레이 표시 ===
   function showGameOverOverlay(winnerTeam){
+    if (gameOverShown) return;
+    gameOverShown = true;
     const ov = document.getElementById('gameOver');
     const wt = document.getElementById('winnerText');
     wt.textContent = winnerTeam ? `${winnerTeam}팀 승리` : '';
@@ -370,6 +388,13 @@
   }
   socket.on('battle:ended', (d)=> showGameOverOverlay(d?.winner));
   socket.on('battleEnded',  (d)=> showGameOverOverlay(d?.winner));
+
+  function maybeShowGameOverByStatus(){
+    if (!battle) return;
+    if (battle.status === 'ended') {
+      showGameOverOverlay(lastWinnerTeam);
+    }
+  }
 
   document.getElementById('nameInput').focus();
 })();
