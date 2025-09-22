@@ -80,12 +80,12 @@
   .enter-btn{background:var(--gold);color:#000;border:none;padding:10px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:700;width:100%}
   .enter-btn:hover{background:var(--gold2)}
 
-  /* 종료 오버레이(우승 팀 표시) */
+  /* 게임 종료 오버레이 */
   .game-over-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;visibility:hidden;transition:all .25s}
   .game-over-overlay.show{opacity:1;visibility:visible}
-  .game-over-box{background:var(--glass-1);border:2px solid var(--gold);border-radius:16px;padding:28px 32px;text-align:center;max-width:460px;width:90%}
-  .game-over-title{font-family:Cinzel,serif;color:var(--gold);font-size:22px;font-weight:700;margin-bottom:8px}
-  .game-over-winner{font-size:18px;color:var(--gold);margin-top:4px}
+  .game-over-box{background:var(--glass-1);border:2px solid var(--gold);border-radius:16px;padding:28px;text-align:center;max-width:420px;width:92%}
+  .game-over-title{font-family:Cinzel,serif;color:var(--gold);font-size:24px;margin-bottom:8px}
+  .game-over-winner{color:var(--gold);font-size:18px;font-weight:700}
 
   @media (max-width:767px){
     .main-grid{grid-template-columns:1fr}
@@ -148,7 +148,6 @@
   </div>
 </div>
 
-<!-- 이름 입력 오버레이 -->
 <div id="nameOverlay" class="name-overlay">
   <div class="name-box">
     <h2>관전자 이름 입력</h2>
@@ -157,20 +156,26 @@
   </div>
 </div>
 
-<!-- 전투 종료 오버레이(우승 팀 표시) -->
-<div id="gameOverOverlay" class="game-over-overlay" aria-hidden="true">
+<!-- 게임 종료 오버레이 -->
+<div id="gameOver" class="game-over-overlay" aria-hidden="true">
   <div class="game-over-box">
     <div class="game-over-title">전투가 종료되었습니다.</div>
-    <div class="game-over-winner"><span id="winnerTeamText">결과 집계 중...</span></div>
+    <div class="game-over-winner" id="winnerText"></div>
   </div>
 </div>
 
 <script>
 (()=> {
+  // battle 파라미터 호환(battle|battleId|bid)
   const qs = new URLSearchParams(location.search);
   const battleId = qs.get('battle') || qs.get('battleId') || qs.get('bid');
   if (!battleId) { alert('올바르지 않은 URL입니다'); return; }
-  try{ const u=new URL(location.href); u.searchParams.set('battle',battleId); ['battleId','bid'].forEach(k=>u.searchParams.delete(k)); history.replaceState(null,'',u.toString()); }catch{}
+  try{
+    const u=new URL(location.href);
+    u.searchParams.set('battle',battleId);
+    ['battleId','bid'].forEach(k=>u.searchParams.delete(k));
+    history.replaceState(null,'',u.toString());
+  }catch{}
 
   const socket = io();
   const logPanel  = document.getElementById('logPanel');
@@ -180,6 +185,9 @@
   let battle = null;
   let currentPhase = null;
   const bufferedResolutionLogs = [];
+
+  let timerDisplayLeft = 0;
+  let timerTick = null;
 
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 
@@ -211,6 +219,7 @@
     div.innerHTML = `<span class="log-time">[${time}]</span> ${esc(text)}`;
     logPanel.appendChild(div);
     logPanel.scrollTop = logPanel.scrollHeight;
+    while (logPanel.children.length > 700) logPanel.removeChild(logPanel.firstChild);
   }
 
   function addLog({ts, type, message}){
@@ -271,6 +280,24 @@
     render(teamB,'teamB');
   }
 
+  function startLocalTimer(seconds){
+    clearInterval(timerTick);
+    timerDisplayLeft = Math.max(0, seconds|0);
+    drawTimer(timerDisplayLeft);
+    timerTick = setInterval(()=>{
+      if (timerDisplayLeft > 0) {
+        timerDisplayLeft -= 1;
+        drawTimer(timerDisplayLeft);
+      }
+    }, 1000);
+  }
+  function drawTimer(t){
+    const mm = Math.floor(t/60);
+    const ss = String(t%60).padStart(2,'0');
+    document.getElementById('timerDisplay').textContent = `${mm}:${ss}`;
+    document.getElementById('timerSeconds').textContent = `${t}초`;
+  }
+
   function renderCenter(){
     const turn = battle?.currentTurn || {};
     const current = turn.currentPlayer;
@@ -292,14 +319,18 @@
       img.removeAttribute('src'); img.style.background='#000';
     }
 
-    const tl = turn.timeLeftSec||0;
-    const mm = Math.floor(tl/60);
-    const ss = String(tl%60).padStart(2,'0');
-    document.getElementById('timerDisplay').textContent = `${mm}:${ss}`;
-    document.getElementById('timerSeconds').textContent = `${tl}초`;
+    startLocalTimer(turn.timeLeftSec||0);
   }
 
   function renderAll(){
+    if (battle?.phase && battle.phase !== currentPhase) {
+      currentPhase = battle.phase;
+      if (currentPhase === 'resolve' && bufferedResolutionLogs.length) {
+        pushLog('라운드 해석', 'log-result');
+        bufferedResolutionLogs.forEach(x => pushLog(x.text, 'log-result', x.ts));
+        bufferedResolutionLogs.length = 0;
+      }
+    }
     renderCenter();
     renderTeams();
   }
@@ -315,7 +346,7 @@
     if(e.key==='Enter'){ e.preventDefault(); document.getElementById('enterBtn').click(); }
   });
 
-  // 응원 버튼 → 일반 채팅으로 송출
+  // 응원 버튼 → 일반 채팅으로 송출(중복 제거 없이 계속 보이게)
   document.addEventListener('click',(e)=>{
     const b=e.target.closest('.cheer-btn');
     if(!b) return;
@@ -323,39 +354,22 @@
     socket.emit('chatMessage',{battleId,name:spectatorName||'관전자',message:msg,type:'cheer'});
   });
 
-  // 우승 팀 추정(페일세이프)
-  function inferWinnerFromSnapshot() {
-    if (!battle?.players) return null;
-    const sumA = battle.players.filter(p=>p.team==='A' && p.hp>0).reduce((s,p)=>s+p.hp,0);
-    const sumB = battle.players.filter(p=>p.team==='B' && p.hp>0).reduce((s,p)=>s+p.hp,0);
-    if (sumA===0 && sumB===0) return '무승부';
-    if (sumA===sumB) return '무승부';
-    return (sumA>sumB ? 'A팀' : 'B팀');
-  }
-
-  // 종료 오버레이 표시(우승 팀 포함)
-  function showGameOverOverlay(payload){
-    const ov = document.getElementById('gameOverOverlay');
-    const span = document.getElementById('winnerTeamText');
-    let winnerLabel = null;
-    if (payload) {
-      const w = typeof payload === 'string' ? payload : payload.winner;
-      if (w === 'A' || w === 'B') winnerLabel = w + '팀';
-    }
-    if (!winnerLabel) winnerLabel = inferWinnerFromSnapshot() || '결과 집계 중';
-    span.textContent = (winnerLabel === '무승부') ? '무승부' : `${winnerLabel} 승리!`;
-    ov.classList.add('show');
-    ov.setAttribute('aria-hidden','false');
-  }
-
   // 소켓
   socket.on('connect', ()=>{ socket.emit('join',{battleId}); });
   const onSnap = (snap)=>{ battle=snap; renderAll(); };
   socket.on('battle:update', onSnap);
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
-  socket.on('battle:ended', showGameOverOverlay);
-  socket.on('battleEnded',  showGameOverOverlay);
+
+  // 전투 종료 오버레이 (승리팀 표시)
+  function showGameOverOverlay(winnerTeam){
+    const ov = document.getElementById('gameOver');
+    const wt = document.getElementById('winnerText');
+    wt.textContent = winnerTeam ? `${winnerTeam}팀 승리` : '';
+    ov.classList.add('show');
+  }
+  socket.on('battle:ended', (d)=> showGameOverOverlay(d?.winner));
+  socket.on('battleEnded',  (d)=> showGameOverOverlay(d?.winner));
 
   document.getElementById('nameInput').focus();
 })();
