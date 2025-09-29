@@ -171,6 +171,6 @@
     applyHeal,
   };
 
-  root.PYXIS_RULES = API;
+  root.RULES = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);
