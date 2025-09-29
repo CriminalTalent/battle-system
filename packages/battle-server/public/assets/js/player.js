@@ -1,5 +1,5 @@
 // packages/battle-server/public/assets/js/player.js
-// PYXIS 배틀 시스템 - 플레이어 페이지 (개선된 버전)
+// 배틀 시스템 - 플레이어 페이지 (개선된 버전)
 (function() {
   'use strict';
 
@@ -267,14 +267,14 @@
     if (!myPlayer) return;
 
     const myTeam = myPlayer.team;
-    const teamA = battle.players.filter(p => p.team === 'A');
-    const teamB = battle.players.filter(p => p.team === 'B');
+    const teamA = battle.players.filter(p => p.team === '불사조 기사단');
+    const teamB = battle.players.filter(p => p.team === '죽음을 먹는 자');
 
     // A팀 표시
-    updateTeamContainer('#teamAContainer', teamA, myTeam === 'A');
+    updateTeamContainer('#teamAContainer', teamA, myTeam === '불사조 기사단');
 
     // B팀 표시
-    updateTeamContainer('#teamBContainer', teamB, myTeam === 'B');
+    updateTeamContainer('#teamBContainer', teamB, myTeam === '죽음을 먹는 자');
   }
 
   // 팀 컨테이너 업데이트
@@ -282,7 +282,7 @@
     const container = $(containerId);
     if (!container) return;
 
-    const teamLetter = containerId.includes('A') ? 'A' : 'B';
+    const teamLetter = containerId.includes('불사조 기사단') ? '불사조 기사단' : '죽음을 먹는 자';
 
     let html = `<h3>${teamLetter}팀 ${isMyTeam ? '(내 팀)' : '(상대팀)'}</h3>`;
     html += '<div class="team-players">';
