@@ -9,6 +9,20 @@
   let battleData = null;
   let connected = false;
 
+  // ──────────────────────────────────────────────
+  // 팀 표기 전용 유틸 (표시는 팀명 고정)
+  // ──────────────────────────────────────────────
+  function toAB(team) {
+    const s = String(team || '').toLowerCase().trim();
+    if (['a','team_a','team-a','phoenix','불사조 기사단'].includes(s)) return 'A';
+    if (['b','team_b','team-b','eaters','death','죽음을 먹는 자'].includes(s)) return 'B';
+    return '-';
+  }
+  function teamLabel(teamLike) {
+    const ab = toAB(teamLike);
+    return ab === 'A' ? '불사조 기사단' : ab === 'B' ? '죽음을 먹는 자' : '-';
+  }
+
   // 고정 응원 멘트
   const cheerMessages = [
     '멋지다!',
@@ -95,12 +109,8 @@
     socket.on('battle:chat', handleChat);
 
     // 응원 메시지 수신 (채팅에만 표시)
-    socket.on('spectator:cheer', () => {
-      // 응원은 채팅으로만 표시되므로 별도 처리 불필요
-    });
-    socket.on('cheerMessage', () => {
-      // 호환성 유지
-    });
+    socket.on('spectator:cheer', () => {});
+    socket.on('cheerMessage', () => {});
 
     return socket;
   }
@@ -207,34 +217,38 @@
     }
   }
 
-  // 팀 컨테이너 업데이트
+  // 팀 컨테이너 업데이트 (입력은 A/B/영문/한글 모두 허용, 표시는 팀명 고정)
   function updateTeamContainers(battle) {
-    const teamA = battle.players.filter(p => p.team === '불사조 기사단');
-    const teamB = battle.players.filter(p => p.team === '죽음을 먹는 자');
+    // 원본 데이터가 어떤 표기든 A/B로 정규화해서 분류
+    const teamA = battle.players.filter(p => toAB(p.team) === 'A');
+    const teamB = battle.players.filter(p => toAB(p.team) === 'B');
 
-    updateTeamContainer('#teamAContainer', teamA, '불사조 기사단');
-    updateTeamContainer('#teamBContainer', teamB, '죽음을 먹는 자');
+    updateTeamContainer('#teamAContainer', teamA, 'A');
+    updateTeamContainer('#teamBContainer', teamB, 'B');
   }
 
   // 개별 팀 컨테이너 업데이트
-  function updateTeamContainer(containerId, players, teamLetter) {
+  function updateTeamContainer(containerId, players, teamKeyLike) {
     const container = $(containerId);
     if (!container) return;
 
-    let html = `<h3>${teamLetter}팀</h3>`;
+    const label = teamLabel(teamKeyLike);
+    let html = `<h3>${label}</h3>`;
     html += '<div class="team-players">';
 
     players.forEach(player => {
-      const hpPercent = (player.hp / player.maxHp) * 100;
+      const maxHp = Math.max(1, Number(player.maxHp || 100));
+      const hp = Math.max(0, Number(player.hp || 0));
+      const hpPercent = Math.round((hp / maxHp) * 100);
       let hpClass = 'hp-high';
       if (hpPercent <= 30) hpClass = 'hp-low';
       else if (hpPercent <= 60) hpClass = 'hp-medium';
 
       html += `
-        <div class="spectator-player ${player.hp <= 0 ? 'dead' : ''}">
+        <div class="spectator-player ${hp <= 0 ? 'dead' : ''}">
           <div class="player-avatar-spectator">
-            <img src="${player.avatar || '/uploads/avatars/default.svg'}" 
-                 alt="${player.name}" 
+            <img src="${player.avatar || '/uploads/avatars/default.svg'}"
+                 alt="${player.name}"
                  onerror="this.src='/uploads/avatars/default.svg'">
           </div>
           <div class="player-info-spectator">
@@ -243,16 +257,16 @@
               <div class="hp-bar-spectator">
                 <div class="hp-fill ${hpClass}" style="width: ${hpPercent}%"></div>
               </div>
-              <div class="hp-text-spectator">${player.hp}/${player.maxHp}</div>
+              <div class="hp-text-spectator">${hp}/${maxHp}</div>
             </div>
             <div class="stats-spectator">
-              공:${player.stats.attack} 방:${player.stats.defense} 
-              민:${player.stats.agility} 행:${player.stats.luck}
+              공:${player.stats?.attack ?? 0} 방:${player.stats?.defense ?? 0}
+              민:${player.stats?.agility ?? 0} 행:${player.stats?.luck ?? 0}
             </div>
             <div class="items-spectator">
-              디터니:${player.items.dittany || player.items.ditany || 0}
-              공격:${player.items.attackBooster || player.items.attack_boost || 0}
-              방어:${player.items.defenseBooster || player.items.defense_boost || 0}
+              디터니:${(player.items?.dittany ?? player.items?.ditany) ?? 0}
+              공격:${(player.items?.attackBooster ?? player.items?.attack_boost) ?? 0}
+              방어:${(player.items?.defenseBooster ?? player.items?.defense_boost) ?? 0}
             </div>
             ${player.ready ? '<div class="ready-indicator">준비완료</div>' : ''}
           </div>
@@ -264,7 +278,7 @@
     container.innerHTML = html;
   }
 
-  // 턴 정보 업데이트
+  // 턴 정보 업데이트 (표시는 팀명 고정)
   function updateTurnInfo(battle) {
     const turnInfoEl = $('#turnInfo');
     if (turnInfoEl && battle.currentTurn) {
@@ -279,10 +293,12 @@
         default: phaseText = turn.phase || '';
       }
 
+      const label = teamLabel(turn.currentTeam);
+
       turnInfoEl.innerHTML = `
         <div class="turn-display">
           <div class="turn-number">${turn.turnNumber || 0}턴</div>
-          <div class="current-team">${turn.currentTeam || ''}팀 차례</div>
+          <div class="current-team">${label} 차례</div>
           <div class="phase">${phaseText}</div>
           <div class="time-left">${turn.timeLeftSec || 0}초 남음</div>
         </div>
