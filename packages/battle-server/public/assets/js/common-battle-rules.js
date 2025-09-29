@@ -70,7 +70,8 @@
     }
     const score = atkStat + roll;
     const { crit } = isCritical(luck);
-    return { score, roll, crit, boosterUsed: !useAtkBooster, boosterSuccess: booster.success };
+    // FIX: boosterUsed가 반대로 기록되던 문제 수정 (!useAtkBooster → !!useAtkBooster)
+    return { score, roll, crit, boosterUsed: !!useAtkBooster, boosterSuccess: booster.success };
   }
 
   // 방어 수치 = (방어 스탯 × defenseMult)
