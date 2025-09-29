@@ -1,5 +1,5 @@
 /* packages/battle-server/public/assets/js/target-selector.js
-   PYXIS Target Selector Component - Enhanced Gaming Edition (final)
+   Target Selector Component - Enhanced Gaming Edition (final)
    - 팀 표기: 내부/표시는 항상 A/B (phoenix/eaters 입력도 자동 정규화)
    - 키보드 내비게이션, 포커스 복원, 모션 감축 대응, 오디오 컨텍스트 재사용
    - 단일/다중 선택 지원 (멀티셀렉트일 때 Ctrl+Enter로 확인)
@@ -47,8 +47,8 @@ class PyxisTargetSelector {
 
   _toAB(team) {
     const s = String(team || '').toLowerCase();
-    if (s === 'phoenix' || s === 'a' || s === 'team_a' || s === 'team-a') return 'A';
-    if (s === 'eaters'  || s === 'b' || s === 'death'  || s === 'team_b' || s === 'team-b') return 'B';
+    if (s === 'phoenix' || s === '불사조 기사단' || s === '불사조 기사단' || s === '불사조 기사단') return '불사조 기사단';
+    if (s === 'eaters'  || s === 'b' || s === '죽음을 먹는 자'  || s === '죽음을 먹는 자' || s === '죽음을 먹는 자') return '죽음을 먹는 자';
     return '-';
   }
 
