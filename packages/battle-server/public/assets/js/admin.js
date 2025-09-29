@@ -6,6 +6,20 @@
   let currentBattleId = null;
   let connected = false;
 
+  // ─────────────────────────────────────────
+  // 팀 정규화/표기: 입력은 혼용 허용 → 표시는 고정 팀명
+  // ─────────────────────────────────────────
+  function toAB(t) {
+    const s = String(t || '').toLowerCase().trim();
+    if (['a', 'team_a', 'team-a', 'phoenix', '불사조 기사단'].includes(s)) return 'A';
+    if (['b', 'team_b', 'team-b', 'eaters', 'death', '죽음을 먹는 자'].includes(s)) return 'B';
+    return '-';
+  }
+  function teamLabel(t) {
+    const ab = toAB(t);
+    return ab === 'A' ? '불사조 기사단' : ab === 'B' ? '죽음을 먹는 자' : '-';
+  }
+
   // DOM 헬퍼
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -172,7 +186,7 @@
     }
 
     const name = $('#playerName')?.value?.trim();
-    const team = $('#playerTeam')?.value;
+    const teamRaw = $('#playerTeam')?.value; // A/B 혹은 기타 문자열 가능
     const hp = parseInt($('#playerHp')?.value, 10) || 100;
     const attack = parseInt($('#playerAttack')?.value, 10) || 1;
     const defense = parseInt($('#playerDefense')?.value, 10) || 1;
@@ -215,7 +229,7 @@
 
     const playerData = {
       name,
-      team,
+      team: teamLabel(teamRaw), // ← 입력값 정규화하여 고정 표기로 저장
       hp,
       maxHp: hp,
       stats: { attack, defense, agility, luck },
@@ -326,7 +340,7 @@
     // 절대/상대 URL 보정
     const toAbsolute = (u) => {
       if (!u) return '';
-      return /^https?:\/\//i.test(u) ? u : `${baseUrl}${u.startsWith('/') ? '' : '/'}${u}`;
+      return /^https?:\/\//i.test(u) ? u : `${baseUrl}${u.startsWith('/') ? '' : '/'}${u}`.replace(/([^:]\/)\/+/g, '$1');
     };
 
     let html = '<div class="link-section">';
@@ -364,7 +378,7 @@
 
         html += `
           <div class="player-link-item">
-            <span class="player-info">${player.name || '이름 없음'} (${player.team || '-' }팀)</span>
+            <span class="player-info">${player.name || '이름 없음'} (${teamLabel(player.team)}팀)</span>
             <div class="link-url">
               <input type="text" value="${playerUrl}" readonly onclick="this.select()">
               <button onclick="copyLink('${playerUrl}')">복사</button>
@@ -392,11 +406,9 @@
       $('#battleMode').value = battle.mode;
     }
 
-    // 턴 정보 표시
+    // 턴 정보 표시 (표시는 고정 팀명)
     if (battle.currentTurn) {
-      const turnInfo = `${battle.currentTurn.turnNumber || 0}턴 - ${
-        battle.currentTurn.currentTeam || 'N/A'
-      }팀 턴`;
+      const turnInfo = `${battle.currentTurn.turnNumber || 0}턴 - ${teamLabel(battle.currentTurn.currentTeam)}팀 턴`;
       if ($('#turnInfo')) {
         $('#turnInfo').textContent = turnInfo;
       }
@@ -410,9 +422,9 @@
 
     let html = '';
 
-    // A팀과 B팀으로 분리
-    const teamA = (players || []).filter((p) => p.team === '불사조 기사단');
-    const teamB = (players || []).filter((p) => p.team === '죽음을 먹는 자');
+    // A/B 기준으로 분리(입력 혼용 허용)
+    const teamA = (players || []).filter((p) => toAB(p.team) === 'A');
+    const teamB = (players || []).filter((p) => toAB(p.team) === 'B');
 
     html += '<div class="team-section">';
     html += '<h3>불사조 기사단</h3>';
