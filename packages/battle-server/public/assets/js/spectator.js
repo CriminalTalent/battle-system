@@ -1,5 +1,5 @@
 // packages/battle-server/public/assets/js/spectator.js
-// PYXIS 배틀 시스템 - 관전자 페이지 (개선된 버전)
+// 배틀 시스템 - 관전자 페이지 (개선된 버전)
 (function() {
   'use strict';
 
@@ -209,11 +209,11 @@
 
   // 팀 컨테이너 업데이트
   function updateTeamContainers(battle) {
-    const teamA = battle.players.filter(p => p.team === 'A');
-    const teamB = battle.players.filter(p => p.team === 'B');
+    const teamA = battle.players.filter(p => p.team === '불사조 기사단');
+    const teamB = battle.players.filter(p => p.team === '죽음을 먹는 자');
 
-    updateTeamContainer('#teamAContainer', teamA, 'A');
-    updateTeamContainer('#teamBContainer', teamB, 'B');
+    updateTeamContainer('#teamAContainer', teamA, '불사조 기사단');
+    updateTeamContainer('#teamBContainer', teamB, '죽음을 먹는 자');
   }
 
   // 개별 팀 컨테이너 업데이트
