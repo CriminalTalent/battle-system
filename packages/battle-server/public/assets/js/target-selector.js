@@ -1,6 +1,5 @@
 /* packages/battle-server/public/assets/js/target-selector.js
    Target Selector Component - Enhanced Gaming Edition (final)
-   - 팀 표기: 내부/표시는 항상 A/B (phoenix/eaters 입력도 자동 정규화)
    - 키보드 내비게이션, 포커스 복원, 모션 감축 대응, 오디오 컨텍스트 재사용
    - 단일/다중 선택 지원 (멀티셀렉트일 때 Ctrl+Enter로 확인)
 */
