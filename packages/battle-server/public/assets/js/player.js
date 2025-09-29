@@ -10,6 +10,20 @@
   let battleData = null;
   let connected = false;
 
+  // ──────────────────────────────────────────────
+  // 팀 표기 유틸 (표시는 고정 팀명으로)
+  // ──────────────────────────────────────────────
+  function toAB(team) {
+    const s = String(team || '').toLowerCase().trim();
+    if (['a','team_a','team-a','phoenix','불사조 기사단'].includes(s)) return 'A';
+    if (['b','team_b','team-b','eaters','death','죽음을 먹는 자'].includes(s)) return 'B';
+    return '-';
+  }
+  function teamLabel(teamLike) {
+    const ab = toAB(teamLike);
+    return ab === 'A' ? '불사조 기사단' : ab === 'B' ? '죽음을 먹는 자' : '-';
+  }
+
   // DOM 헬퍼
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -207,9 +221,11 @@
     const hpBarEl = $('#playerHpBar');
     const hpTextEl = $('#playerHpText');
     if (hpBarEl && hpTextEl) {
-      const hpPercent = (player.hp / player.maxHp) * 100;
+      const maxHp = Math.max(1, Number(player.maxHp || 100));
+      const hp = Math.max(0, Number(player.hp || 0));
+      const hpPercent = Math.round((hp / maxHp) * 100);
       hpBarEl.style.width = `${hpPercent}%`;
-      hpTextEl.textContent = `${player.hp}/${player.maxHp}`;
+      hpTextEl.textContent = `${hp}/${maxHp}`;
 
       // HP 색상
       if (hpPercent > 60) {
@@ -261,34 +277,33 @@
     }
   }
 
-  // 팀 정보 업데이트
+  // 팀 정보 업데이트 (표시는 고정 팀명)
   function updateTeamInfo(battle) {
     const myPlayer = battle.players.find(p => p.id === currentPlayerId);
     if (!myPlayer) return;
 
-    const myTeam = myPlayer.team;
-    const teamA = battle.players.filter(p => p.team === '불사조 기사단');
-    const teamB = battle.players.filter(p => p.team === '죽음을 먹는 자');
+    const myTeamAB = toAB(myPlayer.team);
 
-    // A팀 표시
-    updateTeamContainer('#teamAContainer', teamA, myTeam === '불사조 기사단');
+    const teamA = battle.players.filter(p => toAB(p.team) === 'A');
+    const teamB = battle.players.filter(p => toAB(p.team) === 'B');
 
-    // B팀 표시
-    updateTeamContainer('#teamBContainer', teamB, myTeam === '죽음을 먹는 자');
+    updateTeamContainer('#teamAContainer', teamA, myTeamAB === 'A', 'A');
+    updateTeamContainer('#teamBContainer', teamB, myTeamAB === 'B', 'B');
   }
 
   // 팀 컨테이너 업데이트
-  function updateTeamContainer(containerId, players, isMyTeam) {
+  function updateTeamContainer(containerId, players, isMyTeam, teamKeyLike) {
     const container = $(containerId);
     if (!container) return;
 
-    const teamLetter = containerId.includes('불사조 기사단') ? '불사조 기사단' : '죽음을 먹는 자';
-
-    let html = `<h3>${teamLetter}팀 ${isMyTeam ? '(내 팀)' : '(상대팀)'}</h3>`;
+    const label = teamLabel(teamKeyLike);
+    let html = `<h3>${label} ${isMyTeam ? '(내 팀)' : '(상대팀)'}</h3>`;
     html += '<div class="team-players">';
 
     players.forEach(player => {
-      const hpPercent = (player.hp / player.maxHp) * 100;
+      const maxHp = Math.max(1, Number(player.maxHp || 100));
+      const hp = Math.max(0, Number(player.hp || 0));
+      const hpPercent = Math.round((hp / maxHp) * 100);
       const isCurrentPlayer = player.id === currentPlayerId;
 
       html += `
@@ -304,7 +319,7 @@
               <div class="hp-bar-small">
                 <div class="hp-fill" style="width: ${hpPercent}%"></div>
               </div>
-              <div class="hp-text-small">${player.hp}/${player.maxHp}</div>
+              <div class="hp-text-small">${hp}/${maxHp}</div>
             </div>
             <div class="stats-small">
               ${player.stats.attack}/${player.stats.defense}/${player.stats.agility}/${player.stats.luck}
@@ -318,7 +333,7 @@
     container.innerHTML = html;
   }
 
-  // 턴 정보 업데이트
+  // 턴 정보 업데이트 (팀명 표시 고정)
   function updateTurnInfo(battle) {
     const turnInfoEl = $('#turnInfo');
     if (turnInfoEl && battle.currentTurn) {
@@ -333,9 +348,11 @@
         default: phaseText = turn.phase || '';
       }
 
+      const label = teamLabel(turn.currentTeam);
+
       turnInfoEl.innerHTML = `
         <div class="turn-number">${turn.turnNumber || 0}턴</div>
-        <div class="current-team">${turn.currentTeam || ''}팀 턴</div>
+        <div class="current-team">${label} 턴</div>
         <div class="phase">${phaseText}</div>
         <div class="time-left">${turn.timeLeftSec || 0}초 남음</div>
       `;
@@ -361,9 +378,9 @@
     const myPlayer = battle.players.find(p => p.id === currentPlayerId);
     if (!myPlayer) return;
 
-    const isMyTurn = battle.currentTurn && battle.currentTurn.currentTeam === myPlayer.team;
+    const isMyTurn = battle.currentTurn && toAB(battle.currentTurn.currentTeam) === toAB(myPlayer.team);
     const isActive = battle.status === 'active';
-    const isAlive = myPlayer.hp > 0;
+    const isAlive = (myPlayer.hp || 0) > 0;
 
     // 이미 행동했는지 확인 (실제로는 서버에서 확인해야 함)
     const hasActed = false; // TODO: 서버에서 수신 시 반영
@@ -440,7 +457,7 @@
     if (!myPlayer) return;
 
     const enemies = battleData.players.filter(p =>
-      p.team !== myPlayer.team && p.hp > 0
+      toAB(p.team) !== toAB(myPlayer.team) && (p.hp || 0) > 0
     );
 
     if (enemies.length === 0) {
@@ -457,6 +474,8 @@
     html += '<div class="target-list">';
 
     enemies.forEach(enemy => {
+      const maxHp = Math.max(1, Number(enemy.maxHp || 100));
+      const hp = Math.max(0, Number(enemy.hp || 0));
       html += `
         <div class="target-option" onclick="selectTarget('${enemy.id}', '${actionType}')">
           <div class="target-avatar">
@@ -466,7 +485,7 @@
           </div>
           <div class="target-info">
             <div class="target-name">${enemy.name}</div>
-            <div class="target-hp">HP: ${enemy.hp}/${enemy.maxHp}</div>
+            <div class="target-hp">HP: ${hp}/${maxHp}</div>
           </div>
         </div>
       `;
