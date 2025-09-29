@@ -40,9 +40,9 @@
 
   // 팀 키 정규화: 항상 'A' / 'B' 로만
   function toAB(t) {
-    const s = String(t || "").toLowerCase();
-    if (s === "phoenix" || s === "불사조 기사단" || s === "불사조 기사단" || s === "불사조 기사단") return "불사조 기사단";
-    if (s === "eaters" || s === "죽음을 먹는 자" || s === "death" || s === "죽음을 먹는 자" || s === "죽음을 먹는 자") return "죽음을 먹는 자";
+    const s = String(t || "").toLowerCase().trim();
+    if (["a", "team_a", "team-a", "phoenix", "불사조 기사단"].includes(s)) return "A";
+    if (["b", "team_b", "team-b", "eaters", "death", "죽음을 먹는 자"].includes(s)) return "B";
     return "";
   }
 
@@ -255,7 +255,7 @@
       };
       if (!payload.battleId || !payload.message) return;
       // 구/신 이벤트 동시 전송
-this.socket.emit("chatMessage", payload);
+      this.socket.emit("chatMessage", payload);
     }
 
     sendCheer(cheer, opt = {}) {
@@ -400,7 +400,7 @@ this.socket.emit("chatMessage", payload);
       const id = battleId || this.ctx.battleId; if (!id || !playerId || !action) return;
 
       // 신규this.socket.emit("player:action", { battleId: id, playerId, action });
-}
+    }
 
     /* -----------------------------
      * 관전자
