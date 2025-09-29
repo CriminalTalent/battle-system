@@ -1,6 +1,7 @@
 /* UI Helpers (browser)
    - 관리자/플레이어/관전자 공용 헬퍼
-   - Notify(알림) 연동, 없으면 자체 토스트 폴백
+   - PyxisNotify(알림) 연동, 없으면 자체 토스트 폴백
+   - 팀 표기는 A/B만 사용 (표시는 '불사조 기사단' / '죽음을 먹는 자')
    - 이모지 금지
 */
 (function (root, factory) {
@@ -127,9 +128,10 @@
     if (s === "eaters"  || s === "b" || s === "death"  || s === "team_b" || s === "team-b") return "B";
     return "-";
   }
+  // ✅ 화면 표기 전용: A→불사조 기사단, B→죽음을 먹는 자
   function getTeamName(key) {
     const ab = toAB(key);
-    return ab === "A" ? "팀 A" : ab === "B" ? "팀 B" : "-";
+    return ab === "A" ? "불사조 기사단" : ab === "B" ? "죽음을 먹는 자" : "-";
   }
 
   // ──────────────────────────────────────────────
