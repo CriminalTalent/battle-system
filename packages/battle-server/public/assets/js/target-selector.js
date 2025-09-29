@@ -44,11 +44,19 @@ class PyxisTargetSelector {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
+  // ✅ 내부 로직은 A/B로 통일
   _toAB(team) {
-    const s = String(team || '').toLowerCase();
-    if (s === 'phoenix' || s === '불사조 기사단' || s === '불사조 기사단' || s === '불사조 기사단') return '불사조 기사단';
-    if (s === 'eaters'  || s === 'b' || s === '죽음을 먹는 자'  || s === '죽음을 먹는 자' || s === '죽음을 먹는 자') return '죽음을 먹는 자';
+    const s = String(team || '').toLowerCase().trim();
+    if (['phoenix','a','team_a','team-a','불사조 기사단'].includes(s)) return 'A';
+    if (['eaters','b','team_b','team-b','death','죽음을 먹는 자'].includes(s)) return 'B';
     return '-';
+  }
+
+  // ✅ 화면 표시용 라벨: A→불사조 기사단, B→죽음을 먹는 자
+  _teamLabel(ab) {
+    if (ab === 'A') return '불사조 기사단';
+    if (ab === 'B') return '죽음을 먹는 자';
+    return '미지정';
   }
 
   init() {
@@ -387,13 +395,13 @@ class PyxisTargetSelector {
     this.selectedTargets = [];
     this._focusedIndex = 0;
 
-    // 배틀 정보 UI (A/B 표기)
+    // 배틀 정보 UI (표시는 팀명으로)
     if (this.battleInfoEl && battleData) {
       this.battleInfoEl.style.display = '';
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
       const ab = this._toAB(battleData.currentTeam);
       const parts = [`턴 ${battleData.currentTurn || 1}`];
-      if (ab === 'A' || ab === 'B') parts.push(`팀 ${ab} 차례`);
+      if (ab === 'A' || ab === 'B') parts.push(`${this._teamLabel(ab)} 차례`);
       this.battleInfoEl.querySelector('.turn-info').textContent = parts.join(' • ');
     } else if (this.battleInfoEl) {
       this.battleInfoEl.style.display = 'none';
@@ -454,13 +462,13 @@ class PyxisTargetSelector {
     const info = document.createElement('div');
     info.className = 'target-info';
 
-    // 팀 뱃지(항상 A/B)
+    // 팀 뱃지(표시는 팀명)
     if (this.options.showTeam && (target.team || target.teamAB)) {
       const ab = this._toAB(target.teamAB || target.team);
       if (ab === 'A' || ab === 'B') {
         const team = document.createElement('div');
         team.className = `target-team team-${ab}`;
-        team.textContent = `팀 ${ab}`;
+        team.textContent = this._teamLabel(ab); // ← 표시만 팀명으로
         info.appendChild(team);
       }
     }
@@ -723,7 +731,7 @@ class PyxisTargetSelector {
       this.battleInfoEl.querySelector('.battle-mode').textContent = `${battleData.mode || '2v2'} 전투`;
       const ab = this._toAB(battleData.currentTeam);
       const parts = [`턴 ${battleData.currentTurn || 1}`];
-      if (ab === 'A' || ab === 'B') parts.push(`팀 ${ab} 차례`);
+      if (ab === 'A' || ab === 'B') parts.push(`${this._teamLabel(ab)} 차례`);
       this.battleInfoEl.querySelector('.turn-info').textContent = parts.join(' • ');
     }
   }
@@ -838,9 +846,9 @@ window.PYXISTargetSelector = {
 /* 유틸리티: A/B·phoenix/eaters 모두 허용 */
 window.PyxisTargetUtils = window.PyxisTargetUtils || {
   _toAB(team) {
-    const s = String(team || '').toLowerCase();
-    if (s === 'phoenix' || s === 'a' || s === 'team_a' || s === 'team-a') return 'A';
-    if (s === 'eaters'  || s === 'b' || s === 'death'  || s === 'team_b' || s === 'team-b') return 'B';
+    const s = String(team || '').toLowerCase().trim();
+    if (['phoenix','a','team_a','team-a','불사조 기사단'].includes(s)) return 'A';
+    if (['eaters','b','team_b','team-b','death','죽음을 먹는 자'].includes(s)) return 'B';
     return '-';
   },
   filterByTeam: (targets, team) => {
