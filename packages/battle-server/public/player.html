@@ -222,7 +222,7 @@
 
   if (!battleId || !token) { alert('올바르지 않은 URL입니다'); return; }
 
-  const socket    = io();
+  const socket    = io({ path: '/socket.io' });
   const logPanel  = document.getElementById('logPanel');
   const chatPanel = document.getElementById('chatPanel');
 
@@ -236,10 +236,12 @@
   let lastWinnerTeam = null;          // 로그에서 감지한 승자(서버 이벤트 fallback)
   let gameOverShown = false;
 
-  const seenLogIds = new Set(); // 로그 중복만 제한(채팅은 중복 제한 X)
+  const seenLogIds = new Set(); // 로그 중복 제한
   const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
 
-  /* 로그 색상 분류 */
+  // ─────────────────────────────────────────
+  // 로그 색상 분류
+  // ─────────────────────────────────────────
   function classForLog(type, message) {
     if (type === 'teamA') return 'log-team-a';
     if (type === 'teamB') return 'log-team-b';
@@ -254,7 +256,9 @@
     return 'log-system';
   }
 
-  /* 내 정보 렌더(스냅샷에 맞춰 항상 갱신) */
+  // ─────────────────────────────────────────
+  // 내 정보 렌더
+  // ─────────────────────────────────────────
   function updateMine() {
     if (!myPlayer || !battleState?.players) return;
     // 스냅샷에서 내 최신 상태 반영
@@ -284,7 +288,9 @@
     if (myPlayer.avatar) document.getElementById('myPortrait').src = myPlayer.avatar;
   }
 
-  /* 팀 렌더 */
+  // ─────────────────────────────────────────
+  // 팀 렌더
+  // ─────────────────────────────────────────
   function renderTeams(){
     if(!battleState?.players) return;
     const teamA = battleState.players.filter(p => p.team === 'A');
@@ -319,10 +325,11 @@
     document.getElementById('teamB').innerHTML = teamB.map(row).join('');
   }
 
-  /* 타이머 표시(1초 감산, inter 페이즈는 최소 5초 보장) */
+  // ─────────────────────────────────────────
+  // 타이머 표시(1초 감산, inter 페이즈는 최소 5초 보장)
+  // ─────────────────────────────────────────
   function startLocalTimer(seconds){
     clearInterval(timerTick);
-    // inter(라운드 간) 페이즈는 최소 5초 보장 표시
     const phase = battleState?.phase;
     let startSec = Math.max(0, seconds|0);
     if (phase === 'inter' && startSec < 5) startSec = 5;
@@ -343,7 +350,9 @@
     document.getElementById('timerSeconds').textContent = `${t}초`;
   }
 
-  /* 현재 턴 & 버튼 활성화 */
+  // ─────────────────────────────────────────
+  // 현재 턴 & 버튼 활성화
+  // ─────────────────────────────────────────
   function renderTurn(){
     const turn = battleState?.currentTurn || {};
     const phase = battleState?.phase;
@@ -361,7 +370,7 @@
     const curImg = document.getElementById('currentPortrait');
     if (cp?.avatar) { curImg.src = cp.avatar; } else { curImg.removeAttribute('src'); curImg.style.background = '#000'; }
 
-    // 타이머(서버 값으로 재동기화 후 매초 감산; inter는 최소 5초 보장)
+    // 타이머
     const t = Math.max(0, turn?.timeLeftSec|0);
     startLocalTimer(t);
 
@@ -376,7 +385,9 @@
 
   function renderAll(){ if(!battleState) return; updateMine(); renderTurn(); renderTeams(); maybeShowGameOverByStatus(); }
 
-  /* 채팅 — 중복 제거 없이 모두 노출(응원 연타 반영) */
+  // ─────────────────────────────────────────
+  // 채팅
+  // ─────────────────────────────────────────
   function addChat({name, message}) {
     if (!name || !message) return;
     const div = document.createElement('div');
@@ -393,7 +404,9 @@
     input.value='';
   }
 
-  /* 로그 */
+  // ─────────────────────────────────────────
+  // 로그
+  // ─────────────────────────────────────────
   function addLog({ts,type,message}) {
     if (!message) return;
 
@@ -408,7 +421,7 @@
     seenLogIds.add(idKey);
     if (seenLogIds.size > 2000) { const first = seenLogIds.values().next().value; seenLogIds.delete(first); }
 
-    const time = new Date(ts).toLocaleTimeString('ko-KR',{hour12:false});
+    const time = new Date(ts || Date.now()).toLocaleTimeString('ko-KR',{hour12:false});
     const div  = document.createElement('div');
     div.className = `log-item ${classForLog(type,message)}`;
     div.innerHTML = `<span class="log-time">[${time}]</span> ${esc(message)}`;
@@ -417,7 +430,9 @@
     while (logPanel.children.length > 700) logPanel.removeChild(logPanel.firstChild);
   }
 
-  /* 액션 오버레이 */
+  // ─────────────────────────────────────────
+  // 액션 오버레이
+  // ─────────────────────────────────────────
   const overlayEl = document.getElementById('actionOverlay');
   const overlayTitle = document.getElementById('actionTitle');
   const overlayTargets = document.getElementById('overlayTargets');
@@ -495,7 +510,9 @@
     });
   }
 
-  /* 준비 버튼 */
+  // ─────────────────────────────────────────
+  // 준비 버튼
+  // ─────────────────────────────────────────
   function setReady(){
     const btn=document.getElementById('readyBtn');
     if (btn.classList.contains('done')) return;
@@ -504,7 +521,9 @@
     btn.classList.add('done'); btn.textContent='준비 완료됨';
   }
 
-  /* 이벤트 바인딩 */
+  // ─────────────────────────────────────────
+  // 이벤트 바인딩
+  // ─────────────────────────────────────────
   function bind(){
     document.getElementById('attackBtn').addEventListener('click', ()=>showActionOverlay('attack'));
     document.getElementById('defendBtn').addEventListener('click', ()=>showActionOverlay('defend'));
@@ -522,12 +541,16 @@
     window.selectItem   = selectItem;
   }
 
-  /* 인증·조인 */
+  // ─────────────────────────────────────────
+  // 인증·조인
+  // ─────────────────────────────────────────
   function applyAuthed(d){
     const p = d?.player || d;
     if (!p) return;
     if (!p.name && urlName) p.name = urlName;
     myPlayer = p; // id/토큰 보관
+    // PyxisNotify용 현재 사용자 id 제공(선택사항)
+    window.__PYXIS_PLAYER_ID = p.id;
   }
 
   socket.on('connect', ()=>{ socket.emit('join',{ battleId }); });
@@ -575,8 +598,18 @@
   function maybeShowGameOverByStatus(){
     if (!battleState) return;
     if (battleState.status === 'ended') {
-      showGameOverOverlay(lastWinnerTeam); // 없으면 빈 문자열(문구 미표시)로 처리
+      showGameOverOverlay(lastWinnerTeam); // 없으면 빈 문자열
     }
+  }
+
+  // 옵션: 데스크톱 알림(존재 시)
+  if (window.PyxisNotify) {
+    try { window.PyxisNotify.init({ socket, enabled:true, volume:0.5 }); } catch(_) {}
+  }
+
+  // 옵션: 시각 효과(존재 시)
+  if (window.PyxisEffects) {
+    try { window.PyxisEffects.init?.(); } catch(_) {}
   }
 
   window.addEventListener('beforeunload', ()=>{ socket.disconnect(); clearInterval(timerTick); });
