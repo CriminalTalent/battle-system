@@ -1,4 +1,4 @@
-/* PYXIS Effects.js
+/* Effects.js
    - 전투 UI 보조 애니메이션 / 시각 효과 컨트롤러
    - /assets/css/effects.css 와 연동
    - 이모지 금지 (유니코드 장식은 CSS로만)
@@ -125,21 +125,21 @@
      * 규정 이벤트 배너(팀 표기 A/B 고정)
      * ───────────────────────────── */
     bannerFirst: function (teamAB) {
-      var t = teamAB === "A" ? "A" : teamAB === "B" ? "B" : "?";
+      var t = teamAB === "불사조 기사단" ? "불사조 기사단" : teamAB === "죽음을 먹는 자" ? "죽음을 먹는 자" : "?";
       this.showResultBanner("선공: " + t + "팀", "first");
     },
     bannerKill: function (name) {
       this.showResultBanner(String(name || "") + " 사망", "kill");
     },
     bannerWin: function (teamAB) {
-      var t = teamAB === "A" ? "A" : teamAB === "B" ? "B" : "?";
+      var t = teamAB === "불사조 기사단" ? "불사조 기사단" : teamAB === "죽음을 먹는 자" ? "죽음을 먹는 자" : "?";
       this.showResultBanner(t + "팀 승리", "win", 2000);
     },
     bannerResolve: function () {
       this.showResultBanner("라운드 해석", "resolve");
     },
     bannerCommit: function (teamAB) {
-      var t = teamAB === "A" ? "A" : teamAB === "B" ? "B" : "?";
+      var t = teamAB === "불사조 기사단" ? "불사조 기사단" : teamAB === "죽음을 먹는 자" ? "죽음을 먹는 자" : "?";
       this.showResultBanner("커밋 시작: " + t + "팀", "commit");
     },
 
