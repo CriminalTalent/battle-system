@@ -177,7 +177,7 @@
     history.replaceState(null,'',u.toString());
   }catch{}
 
-  const socket = io();
+  const socket = io({ path: '/socket.io' });
   const logPanel  = document.getElementById('logPanel');
   const chatPanel = document.getElementById('chatPanel');
 
@@ -394,6 +394,14 @@
     if (battle.status === 'ended') {
       showGameOverOverlay(lastWinnerTeam);
     }
+  }
+
+  // 선택: 데스크톱 알림/효과 모듈이 로드되어 있다면 사용
+  if (window.PyxisNotify) {
+    try { window.PyxisNotify.init({ socket, enabled:true, volume:0.5 }); } catch(_) {}
+  }
+  if (window.PyxisEffects) {
+    try { window.PyxisEffects.init?.(); } catch(_) {}
   }
 
   document.getElementById('nameInput').focus();
