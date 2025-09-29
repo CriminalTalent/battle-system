@@ -1,5 +1,4 @@
-// PYXIS 배틀 시스템 - 관리자 페이지
-// (오탈자/중복/문법만 정리하여 보수, 기존 로직/흐름 유지)
+// 배틀 시스템 - 관리자 페이지
 (function () {
   'use strict';
 
@@ -15,7 +14,7 @@
   function initSocket() {
     if (socket && connected) return socket;
 
-    // ✅ 클라이언트 초기화 방식 보수: 경로는 path 옵션으로 지정
+    // 클라이언트 초기화 방식 보수: 경로는 path 옵션으로 지정
     socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
@@ -412,11 +411,11 @@
     let html = '';
 
     // A팀과 B팀으로 분리
-    const teamA = (players || []).filter((p) => p.team === 'A');
-    const teamB = (players || []).filter((p) => p.team === 'B');
+    const teamA = (players || []).filter((p) => p.team === '불사조 기사단');
+    const teamB = (players || []).filter((p) => p.team === '죽음을 먹는 자');
 
     html += '<div class="team-section">';
-    html += '<h3>A팀</h3>';
+    html += '<h3>불사조 기사단</h3>';
     html += '<div class="team-players">';
 
     teamA.forEach((player) => {
@@ -451,7 +450,7 @@
     html += '</div></div>';
 
     html += '<div class="team-section">';
-    html += '<h3>B팀</h3>';
+    html += '<h3>죽음을 먹는 자</h3>';
     html += '<div class="team-players">';
 
     teamB.forEach((player) => {
