@@ -1,5 +1,5 @@
 /* packages/battle-server/public/assets/js/socket-manager.js
-   PYXIS Socket Manager (browser)
+   Socket Manager (browser)
    - 서버(index.js) 이벤트와 1:1 매칭 + 구/신 이벤트 양쪽 호환
    - 관리자 새로고침 경고(leave confirm) 강제 해제
    - Admin/Player/Spectator 공용 래퍼
@@ -41,8 +41,8 @@
   // 팀 키 정규화: 항상 'A' / 'B' 로만
   function toAB(t) {
     const s = String(t || "").toLowerCase();
-    if (s === "phoenix" || s === "a" || s === "team_a" || s === "team-a") return "A";
-    if (s === "eaters" || s === "b" || s === "death" || s === "team_b" || s === "team-b") return "B";
+    if (s === "phoenix" || s === "불사조 기사단" || s === "불사조 기사단" || s === "불사조 기사단") return "불사조 기사단";
+    if (s === "eaters" || s === "죽음을 먹는 자" || s === "death" || s === "죽음을 먹는 자" || s === "죽음을 먹는 자") return "죽음을 먹는 자";
     return "";
   }
 
