@@ -1,11 +1,11 @@
 // packages/battle-server/public/assets/js/notifications.js
-/* PYXIS Notifications
+/* Notifications
    - 데스크톱 알림 + 사운드
    - 초기화: window.PyxisNotify.init({ socket, enabled?, volume? })
    - 기본 수신 이벤트: battle:update, battle:log, battle:started, battle:ended, turn:start, turn:end
    - 플레이어 턴 감지: window.__PYXIS_PLAYER_ID 값을 사용
    - 이모지 사용 금지
-   - 팀 표기는 A/B만 사용 (내부 값이 다른 문자열이어도 A/B로 정규화)
+   - 팀 내부 표기는 A/B로 정규화, 표시는 '불사조 기사단' / '죽음을 먹는 자'
 */
 (function () {
   "use strict";
@@ -38,7 +38,6 @@
     if (!("Notification" in window)) {
       console.warn("[PYXIS Notify] Notification API not supported.");
     } else if (Notification.permission === "default") {
-      // 사용자 제스처 문맥이 아닐 수 있으니, 거절되어도 무시
       try { Notification.requestPermission(); } catch (_) {}
     }
 
@@ -83,7 +82,6 @@
       // 내 턴 알림 (update 이벤트만으로도 처리 시도)
       const meId = window.__PYXIS_PLAYER_ID || null;
       if (meId && currentPlayerId && currentPlayerId === meId) {
-        // 턴 안내는 너무 자주 울릴 수 있으니 스로틀
         this._throttledShow("당신의 턴입니다", "지금 행동하세요.", 1500);
       }
 
@@ -116,11 +114,10 @@
 
     socket.on("battle:ended", (p = {}) => {
       const winnerAB = normalizeTeam(p.winner);
+      const winnerLabel = teamLabel(winnerAB);
       const msg = p.message
         ? p.message
-        : (typeof winnerAB === "string"
-            ? `${winnerAB}팀의 승리입니다.`
-            : "전투가 종료되었습니다.");
+        : (winnerLabel ? `${winnerLabel}의 승리입니다.` : "전투가 종료되었습니다.");
       this.show("전투 종료", msg);
       this._last.status = "ended";
     });
@@ -144,13 +141,11 @@
           this._throttledShow("응원", message, 600);
           break;
         case "system":
-          // 시스템 로그는 너무 잦을 수 있어 표시만 조건부
           if (shouldShowSystem(message)) {
             this._throttledShow("알림", message, 800);
           }
           break;
         default:
-          // 기타 타입은 무시
           break;
       }
     });
@@ -174,18 +169,19 @@
     }
   }
 
-  // 팀 표기 통일(A/B)
+  // 팀 표기 통일(A/B) — 내부 값은 A/B로, 표시는 teamLabel 사용
   function normalizeTeam(raw) {
     const s = String(raw || "").toLowerCase();
     if (!s) return null;
-    if (s === "a" || s === "phoenix" || s === "team_a" || s === "team-a") return "A";
-    if (s === "b" || s === "eaters"  || s === "team_b" || s === "team-b" || s === "death") return "B";
-    // 미지정/알 수 없음
+    if (s === "a" || s === "phoenix" || s === "team_a" || s === "team-a" || s === "불사조 기사단") return "A";
+    if (s === "b" || s === "eaters"  || s === "team_b" || s === "team-b" || s === "death" || s === "죽음을 먹는 자") return "B";
     return null;
+  }
+  function teamLabel(ab) {
+    return ab === "A" ? "불사조 기사단" : ab === "B" ? "죽음을 먹는 자" : null;
   }
 
   function shouldShowSystem(message = "") {
-    // 너무 일반적인 메시지는 생략
     const m = String(message);
     if (!m) return false;
     const low = m.toLowerCase();
