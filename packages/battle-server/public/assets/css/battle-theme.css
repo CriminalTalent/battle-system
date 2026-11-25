@@ -408,3 +408,60 @@ img.preview:not([src]),img.preview[src=""],.target img:not([src]),.target img[sr
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none !important;transition:none !important}
 }
+
+/* =====================================================================
+   세로 꽉 찬 레이아웃 (데스크톱)
+   - 참가자·관전자: 세 열이 화면 높이를 채우고, 채팅·로그·팀 목록은 안에서 스크롤
+   - 관리자: 오른쪽 로그·채팅 열만 화면 높이에 고정
+   ===================================================================== */
+:root{--topbar-h:57px;--page-gap:12px}
+@media (min-width:768px) and (min-height:600px){
+  .page-player .main-grid,.page-spectator .main-grid{
+    height:calc(100vh - var(--topbar-h) - var(--page-gap) - 16px);
+    height:calc(100dvh - var(--topbar-h) - var(--page-gap) - 16px);
+    align-items:stretch
+  }
+  .page-player .main-grid > div,.page-spectator .main-grid > div{
+    display:flex;flex-direction:column;gap:12px;min-height:0
+  }
+  .page-player .main-grid > div > *,.page-spectator .main-grid > div > *{margin-bottom:0}
+
+  /* 팀 목록: 내용만큼, 최대 화면의 절반까지 늘고 넘치면 스크롤 */
+  .page-player .team-container,.page-spectator .team-container{
+    flex:0 1 auto;max-height:50%;min-height:0;display:flex;flex-direction:column
+  }
+  .page-player .team-container > [id^="team"],.page-spectator .team-container > [id^="team"]{overflow-y:auto;min-height:0}
+
+  /* 채팅·로그 카드: 남은 높이를 모두 사용 */
+  .page-player .main-grid > div > .card:last-child,
+  .page-spectator .main-grid > div:not(:nth-child(2)) > .card:last-child{
+    flex:1 1 auto;min-height:180px;display:flex;flex-direction:column
+  }
+  .page-player .logs-section,.page-player .chat-section,
+  .page-spectator .logs-section,.page-spectator .chat-section{flex:1 1 auto;height:auto;min-height:0}
+
+  /* 가운데 전투 카드: 남은 높이를 채우고, 초상은 높이에 맞춰 정사각형 */
+  .page-player .battle-main,.page-spectator .battle-main{
+    flex:1 1 auto;min-height:0;display:flex;flex-direction:column
+  }
+  .page-player .current-player,.page-spectator .current-player-info{
+    flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center
+  }
+  .page-player .current-player{margin-bottom:12px}
+  .page-player .current-stage,.page-spectator .current-stage{
+    flex:1 1 auto;min-height:160px;height:auto;width:auto;max-width:100%;aspect-ratio:1/1;margin:0 auto
+  }
+  .page-spectator .current-player-info .current-stage{margin-bottom:12px}
+  .page-spectator .main-grid > div:nth-child(2) > .card:last-child{flex:0 0 auto}
+
+  /* 관리자: 오른쪽 열을 화면 높이에 고정 */
+  .page-admin .main-grid > div:last-child{
+    position:sticky;top:calc(var(--topbar-h) + var(--page-gap));
+    height:calc(100vh - var(--topbar-h) - var(--page-gap) - 16px);
+    display:flex;flex-direction:column;gap:12px;min-height:0
+  }
+  .page-admin .main-grid > div:last-child > .card{margin-bottom:0;display:flex;flex-direction:column;min-height:0}
+  .page-admin .main-grid > div:last-child > .card:first-child{flex:3 1 0}
+  .page-admin .main-grid > div:last-child > .card:last-child{flex:2 1 0}
+  .page-admin .logs-section,.page-admin .chat-section{flex:1 1 auto;height:auto;min-height:0}
+}
