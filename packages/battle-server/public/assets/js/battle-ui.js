@@ -20,45 +20,30 @@
   }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // 대기 이미지: 모래시계 (색은 CSS 토큰을 따라 라이트/다크 자동 전환)
   const WAIT_SVG = `
-<svg viewBox="0 0 200 200" aria-hidden="true">
-  <defs>
-    <radialGradient id="wcore" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#FFF4D0"/><stop offset="55%" stop-color="#F5D58A"/><stop offset="100%" stop-color="#C99A3B" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="wring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#FF5A6E"/><stop offset="50%" stop-color="#F5D58A"/><stop offset="100%" stop-color="#4F8BFF"/>
-    </linearGradient>
-  </defs>
-  <g class="wait-ring"><circle cx="100" cy="100" r="86" fill="none" stroke="url(#wring)" stroke-width="2" stroke-dasharray="4 10" opacity=".8"/></g>
-  <g class="wait-ring rev"><circle cx="100" cy="100" r="70" fill="none" stroke="#B98CFF" stroke-width="1.5" stroke-dasharray="22 12" opacity=".7"/></g>
-  <circle cx="100" cy="100" r="54" fill="rgba(10,8,30,.85)" stroke="#F5D58A" stroke-width="2"/>
-  <g stroke="#F5D58A" stroke-width="2" opacity=".8">
-    <line x1="100" y1="50" x2="100" y2="58"/><line x1="100" y1="142" x2="100" y2="150"/>
-    <line x1="50" y1="100" x2="58" y2="100"/><line x1="142" y1="100" x2="150" y2="100"/>
+<svg viewBox="0 0 100 120" aria-hidden="true">
+  <g class="hg-turn">
+    <path class="hg-glass" d="M30 18 H70 C70 40 56 50 52 60 C56 70 70 80 70 102 H30 C30 80 44 70 48 60 C44 50 30 40 30 18 Z"/>
+    <path class="hg-sand" d="M38 30 H62 C60 40 54 46 50 50 C46 46 40 40 38 30 Z"/>
+    <path class="hg-sand" d="M36 100 C38 88 44 84 50 82 C56 84 62 88 64 100 Z"/>
+    <line class="hg-stream" x1="50" y1="54" x2="50" y2="82"/>
   </g>
-  <g class="wait-hand"><line x1="100" y1="100" x2="100" y2="62" stroke="#FFE7A8" stroke-width="3" stroke-linecap="round"/></g>
-  <circle class="wait-core" cx="100" cy="100" r="16" fill="url(#wcore)"/>
-  <path class="wait-spark" d="M30 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="#FFE7A8"/>
-  <path class="wait-spark" d="M168 48 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#B98CFF"/>
-  <path class="wait-spark" d="M160 160 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="#4F8BFF"/>
-  <path class="wait-spark" d="M36 158 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#FF5A6E"/>
+  <path class="hg-frame" d="M24 14 H76 M24 106 H76"/>
 </svg>`;
 
   const TROPHY_SVG = `
 <svg class="trophy" viewBox="0 0 64 64" aria-hidden="true">
-  <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFF1C2"/><stop offset="100%" stop-color="#C99A3B"/></linearGradient></defs>
-  <path d="M18 8h28v12c0 9-6 16-14 16S18 29 18 20z" fill="url(#tg)"/>
-  <path d="M18 12H8c0 9 5 14 11 14M46 12h10c0 9-5 14-11 14" fill="none" stroke="url(#tg)" stroke-width="4"/>
-  <rect x="28" y="36" width="8" height="10" fill="url(#tg)"/>
-  <rect x="18" y="46" width="28" height="8" rx="2" fill="url(#tg)"/>
-  <path d="M32 14l2.4 4.8 5.3.8-3.8 3.7.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.8-3.7 5.3-.8z" fill="#fff" opacity=".85"/>
+  <path class="trophy-line" d="M19 14H9c0 8 4.5 13 11 13M45 14h10c0 8-4.5 13-11 13"/>
+  <path class="trophy-cup" d="M18 8h28v12c0 9-6 16-14 16S18 29 18 20z"/>
+  <rect class="trophy-cup" x="28.5" y="35" width="7" height="10" rx="1"/>
+  <rect class="trophy-cup" x="19" y="45" width="26" height="8" rx="2.5"/>
+  <path class="trophy-star" d="M32 13l2.2 4.4 4.8.7-3.5 3.4.8 4.8-4.3-2.3-4.3 2.3.8-4.8-3.5-3.4 4.8-.7z"/>
 </svg>`;
 
   const DRAW_SVG = `
 <svg class="trophy" viewBox="0 0 64 64" aria-hidden="true">
-  <path d="M14 50 L42 14 M50 50 L22 14" stroke="#F5D58A" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="14" cy="50" r="5" fill="#C99A3B"/><circle cx="50" cy="50" r="5" fill="#C99A3B"/>
+  <path class="draw-line" d="M14 50 L42 14 M50 50 L22 14"/>
 </svg>`;
 
   const PHASE_WAIT_TEXT = {
@@ -74,7 +59,7 @@
       stage.innerHTML = `
         <img class="stage-img" alt="현재 플레이어" hidden/>
         <div class="stage-initial" hidden></div>
-        <div class="stage-waiting">${WAIT_SVG}<div class="wait-label"></div></div>`;
+        <div class="stage-waiting">${WAIT_SVG}<div class="wait-label"></div><div class="wait-sub"></div></div>`;
       const img = stage.querySelector('.stage-img');
       img.addEventListener('error', () => { img.hidden = true; if (img.dataset.name) { const ini = stage.querySelector('.stage-initial'); ini.textContent = img.dataset.name; ini.hidden = false; } });
       stage.dataset.ready = '1';
@@ -106,6 +91,7 @@
     else if (battle?.status === 'ended') label = '전투 종료';
     else if (!battle || battle.status === 'waiting') label = '전투 시작 대기 중';
     wait.querySelector('.wait-label').textContent = label;
+    wait.querySelector('.wait-sub').textContent = battle?.round && battle.status !== 'waiting' ? `${battle.round}라운드` : '';
   }
 
   /** HP 퍼센트에 따른 막대 색 클래스 */
@@ -131,23 +117,12 @@
     overlay.classList.remove('win-a', 'win-b');
     if (w) overlay.classList.add(w === 'A' ? 'win-a' : 'win-b');
 
-    let confetti = '';
-    if (w) {
-      const colors = ['#F5D58A', '#FFE7A8', w === 'A' ? '#FF5A6E' : '#4F8BFF', w === 'A' ? '#FF9A5A' : '#36E0C8', '#B98CFF'];
-      for (let i = 0; i < 36; i++) {
-        confetti += `<i style="left:${(i * 37) % 100}%;background:${colors[i % colors.length]};animation-duration:${3 + (i % 5)}s;animation-delay:${(i % 9) * 0.35}s"></i>`;
-      }
-    }
-
     box.innerHTML = `
       ${w ? TROPHY_SVG : DRAW_SVG}
       <div class="game-over-title">전투 종료</div>
       <div class="game-over-winner">${w ? `${esc(TEAM_NAMES[w])} 승리!` : '무승부'}</div>
       <div class="game-over-detail">${detail}</div>
       ${opts.closable === false ? '' : '<button type="button" class="game-over-close">결과 닫기</button>'}`;
-    let cf = overlay.querySelector('.confetti');
-    if (!cf) { cf = document.createElement('div'); cf.className = 'confetti'; overlay.prepend(cf); }
-    cf.innerHTML = confetti;
     const close = box.querySelector('.game-over-close');
     if (close) close.addEventListener('click', () => { overlay.classList.remove('show'); overlay.setAttribute('aria-hidden', 'true'); });
     overlay.classList.add('show');
@@ -158,5 +133,40 @@
     return winner === 'A' || winner === 'B' ? `${TEAM_NAMES[winner]} 승리` : '무승부';
   }
 
-  window.BattleUI = { TEAM_NAMES, teamName, applyTeamNames, renderStage, hpClass, fillVictory, winnerText };
+  // ── 테마 (라이트/다크) ──
+  const THEME_KEY = 'battle-theme';
+  function currentTheme() { return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; }
+  function setTheme(t) {
+    const v = t === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', v);
+    try { localStorage.setItem(THEME_KEY, v); } catch (_) {}
+    document.querySelectorAll('.theme-toggle').forEach(b => {
+      b.setAttribute('aria-label', v === 'dark' ? '밝은 화면으로' : '어두운 화면으로');
+      b.title = b.getAttribute('aria-label');
+    });
+  }
+  (function initTheme() {
+    let saved = null;
+    try { saved = localStorage.getItem(THEME_KEY); } catch (_) {}
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', saved === 'dark' || saved === 'light' ? saved : (prefersDark ? 'dark' : 'light'));
+  })();
+  document.addEventListener('DOMContentLoaded', () => {
+    setTheme(currentTheme());
+    document.querySelectorAll('.theme-toggle').forEach(b => b.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark')));
+  });
+
+  // ── 상단 상태 칩 ──
+  const STATUS_TEXT = { waiting: '대기 중', active: '진행 중', paused: '일시정지', ended: '종료' };
+  function renderChips(battle) {
+    document.querySelectorAll('[data-battle-chips]').forEach(box => {
+      const s = battle?.status;
+      const parts = [`<span class="chip ${s || ''}"><span class="dot"></span>${esc(STATUS_TEXT[s] || '연결 중')}</span>`];
+      if (battle?.round) parts.push(`<span class="chip">${battle.round | 0}라운드</span>`);
+      if (battle?.mode) parts.push(`<span class="chip">${esc(battle.mode)}</span>`);
+      box.innerHTML = parts.join('');
+    });
+  }
+
+  window.BattleUI = { TEAM_NAMES, teamName, applyTeamNames, renderStage, hpClass, fillVictory, winnerText, setTheme, renderChips };
 })();
