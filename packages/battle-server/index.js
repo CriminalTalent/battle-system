@@ -277,6 +277,18 @@ io.on('connection', (socket) => {
     broadcastSnapshot(battleId);
     callback({ ok: true, player: added });
   });
+  onAdmin('updatePlayer', ({ battleId, playerId, patch }, callback) => {
+    const updated = battleEngine.updatePlayer(battleId, playerId, patch);
+    if (!updated) return callback({ ok: false, error: '수정할 수 없습니다(대기 중 전투에서 준비 전인 참가자만 가능)' });
+    broadcastSnapshot(battleId);
+    callback({ ok: true, player: updated });
+  });
+  onAdmin('setTeamNames', ({ battleId, teamNames }, callback) => {
+    const names = battleEngine.setTeamNames(battleId, teamNames);
+    if (!names) return callback({ ok: false, error: '팀 이름을 바꿀 수 없습니다(두 팀 이름이 같거나 종료된 전투)' });
+    broadcastSnapshot(battleId);
+    callback({ ok: true, teamNames: names });
+  });
   for (const event of ['deletePlayer', 'removePlayer']) {
     onAdmin(event, ({ battleId, playerId }, callback) => {
       if (!battleEngine.removePlayer(battleId, playerId)) return callback({ ok: false, error: '플레이어 제거 실패' });
