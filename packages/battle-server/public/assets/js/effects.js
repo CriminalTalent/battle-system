@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var BANNER_ID = "pyxis-result-banner";
+  var BANNER_ID = "battle-result-banner";
 
   // ─────────────────────────────
   // 팀 정규화/표기 유틸
@@ -111,7 +111,7 @@
       if (document.getElementById(BANNER_ID)) return;
       var el = document.createElement("div");
       el.id = BANNER_ID;
-      el.className = "pyxis-banner";
+      el.className = "battle-banner";
       document.body.appendChild(el);
     },
 
@@ -119,10 +119,10 @@
       var el = document.getElementById(BANNER_ID);
       if (!el) return;
       el.textContent = String(text || "");
-      el.className = "pyxis-banner show " + (type || "info");
+      el.className = "battle-banner show " + (type || "info");
       clearTimeout(this._bannerTimer);
       this._bannerTimer = setTimeout(function () {
-        el.className = "pyxis-banner";
+        el.className = "battle-banner";
       }, Math.max(holdMs || 1400, 1200));
     },
 
@@ -174,6 +174,6 @@
     }
   };
 
-  window.PyxisEffects = Effects;
+  window.BattleEffects = Effects;
   window.addEventListener("DOMContentLoaded", function () { Effects.init(); });
 })();

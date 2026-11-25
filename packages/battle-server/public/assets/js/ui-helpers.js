@@ -1,6 +1,6 @@
 /* UI Helpers (browser)
    - 관리자/플레이어/관전자 공용 헬퍼
-   - PyxisNotify(알림) 연동, 없으면 자체 토스트 폴백
+   - BattleNotify(알림) 연동, 없으면 자체 토스트 폴백
    - 팀 표기는 A/B만 사용 (표시는 '불사조 기사단' / '죽음을 먹는 자')
    - 이모지 금지
 */
@@ -294,11 +294,11 @@
   }
 
   // ──────────────────────────────────────────────
-  // 토스트: PyxisNotify 연동 + 폴백
+  // 토스트: BattleNotify 연동 + 폴백
   // ──────────────────────────────────────────────
   function toast(message, opts = {}) {
-    if (typeof window !== "undefined" && window.PyxisNotify && typeof window.PyxisNotify.toast === "function") {
-      return window.PyxisNotify.toast(String(message), {
+    if (typeof window !== "undefined" && window.BattleNotify && typeof window.BattleNotify.toast === "function") {
+      return window.BattleNotify.toast(String(message), {
         title: opts.title || "알림",
         tone: mapTone(opts.tone),
         durationMs: opts.duration || opts.durationMs,

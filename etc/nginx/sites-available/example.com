@@ -1,4 +1,4 @@
-# /etc/nginx/sites-available/pyxisbattlesystem.monster
+# /etc/nginx/sites-available/example.com
 
 # ── WebSocket 업그레이드 헤더 매핑(HTTP 컨텍스트) ────────────────
 #   ※ 이 파일은 http{} 블록 안에서 include 되므로 map 사용 가능
@@ -11,7 +11,7 @@ map $http_upgrade $connection_upgrade {
 server {
     listen 80;
     listen [::]:80;
-    server_name pyxisbattlesystem.monster;
+    server_name example.com;
 
     # Let’s Encrypt HTTP-01 챌린지 처리 (certbot webroot 사용 시)
     location ^~ /.well-known/acme-challenge/ {
@@ -26,20 +26,20 @@ server {
         return 200 "ok\n";
     }
 
-    return 301 https://pyxisbattlesystem.monster$request_uri;
+    return 301 https://example.com$request_uri;
 }
 
 # ── HTTPS 메인 사이트 ───────────────────────────────────────────
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name pyxisbattlesystem.monster;
+    server_name example.com;
 
     # ── TLS ─────────────────────────────────────────────────────
-    ssl_certificate           /etc/letsencrypt/live/pyxisbattlesystem.monster/fullchain.pem;
-    ssl_certificate_key       /etc/letsencrypt/live/pyxisbattlesystem.monster/privkey.pem;
+    ssl_certificate           /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key       /etc/letsencrypt/live/example.com/privkey.pem;
     include                   /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_trusted_certificate   /etc/letsencrypt/live/pyxisbattlesystem.monster/chain.pem;
+    ssl_trusted_certificate   /etc/letsencrypt/live/example.com/chain.pem;
 
     # OCSP Stapling (권장)
     ssl_stapling on;
@@ -85,8 +85,8 @@ server {
         font/woff2;
 
     # 로그(선택)
-    access_log /var/log/nginx/pyxisbattlesystem.access.log;
-    error_log  /var/log/nginx/pyxisbattlesystem.error.log warn;
+    access_log /var/log/nginx/battle-system.access.log;
+    error_log  /var/log/nginx/battle-system.error.log warn;
 
     # ── 기본: Node(Express:3001) 프록시 ─────────────────────────
     location / {

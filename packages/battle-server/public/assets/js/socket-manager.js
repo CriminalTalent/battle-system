@@ -29,7 +29,7 @@
   /* ──────────────────────────────────────────────
    * 유틸
    * ────────────────────────────────────────────── */
-  const LOGPFX = "[PYXIS/socket]";
+  const LOGPFX = "[battle/socket]";
   const NOOP = () => {};
 
   function clampLen(str, n) {
@@ -71,7 +71,7 @@
      * 연결
      * ----------------------------- */
     connect(url) {
-      this.url = url || (root.PyxisSocket && root.PyxisSocket.url) || undefined;
+      this.url = url || (root.BattleSocket && root.BattleSocket.url) || undefined;
 
       if (!root.io) {
         console.error(LOGPFX, "Socket.IO가 로드되지 않았습니다.");
@@ -415,44 +415,44 @@
   }
 
   // 싱글턴 제공
-  root.PyxisSocketManager = new SocketManager();
+  root.BattleSocketManager = new SocketManager();
 
   // 편의 노출
-  root.PyxisSocketAPI = {
-    connect: (url) => root.PyxisSocketManager.connect(url),
-    disconnect: () => root.PyxisSocketManager.disconnect(),
+  root.BattleSocketAPI = {
+    connect: (url) => root.BattleSocketManager.connect(url),
+    disconnect: () => root.BattleSocketManager.disconnect(),
 
     // 공통
-    join: (id) => root.PyxisSocketManager.join(id),
-    sendChat: (msg, opt) => root.PyxisSocketManager.sendChat(msg, opt),
-    sendCheer: (msg, opt) => root.PyxisSocketManager.sendCheer(msg, opt),
-    on: (evt, fn) => root.PyxisSocketManager.on(evt, fn),
-    once: (evt, fn) => root.PyxisSocketManager.once(evt, fn),
-    off: (evt, fn) => root.PyxisSocketManager.off(evt, fn),
-    offAll: () => root.PyxisSocketManager.offAll(),
-    ping: () => root.PyxisSocketManager.ping(),
-    getContext: () => root.PyxisSocketManager.getContext(),
-    setContextPatch: (p) => root.PyxisSocketManager.setContextPatch(p),
+    join: (id) => root.BattleSocketManager.join(id),
+    sendChat: (msg, opt) => root.BattleSocketManager.sendChat(msg, opt),
+    sendCheer: (msg, opt) => root.BattleSocketManager.sendCheer(msg, opt),
+    on: (evt, fn) => root.BattleSocketManager.on(evt, fn),
+    once: (evt, fn) => root.BattleSocketManager.once(evt, fn),
+    off: (evt, fn) => root.BattleSocketManager.off(evt, fn),
+    offAll: () => root.BattleSocketManager.offAll(),
+    ping: () => root.BattleSocketManager.ping(),
+    getContext: () => root.BattleSocketManager.getContext(),
+    setContextPatch: (p) => root.BattleSocketManager.setContextPatch(p),
 
     // 관리자
-    adminAuth: (id, token) => root.PyxisSocketManager.adminAuth(id, token),
-    createBattle: (mode) => root.PyxisSocketManager.createBattle(mode),
-    startBattle: (id) => root.PyxisSocketManager.startBattle(id),
-    pauseBattle: (id) => root.PyxisSocketManager.pauseBattle(id),
-    resumeBattle: (id) => root.PyxisSocketManager.resumeBattle(id),
-    endBattle: (id) => root.PyxisSocketManager.endBattle(id),
-    addPlayer: (id, data) => root.PyxisSocketManager.addPlayer(id, data),
-    removePlayer: (id, pid) => root.PyxisSocketManager.removePlayer(id, pid),
-    updatePlayer: (id, pid, up) => root.PyxisSocketManager.updatePlayer(id, pid, up),
-    generatePlayerLinks: (id) => root.PyxisSocketManager.generatePlayerLinks(id),
-    generateSpectatorUrl: (id) => root.PyxisSocketManager.generateSpectatorUrl(id),
+    adminAuth: (id, token) => root.BattleSocketManager.adminAuth(id, token),
+    createBattle: (mode) => root.BattleSocketManager.createBattle(mode),
+    startBattle: (id) => root.BattleSocketManager.startBattle(id),
+    pauseBattle: (id) => root.BattleSocketManager.pauseBattle(id),
+    resumeBattle: (id) => root.BattleSocketManager.resumeBattle(id),
+    endBattle: (id) => root.BattleSocketManager.endBattle(id),
+    addPlayer: (id, data) => root.BattleSocketManager.addPlayer(id, data),
+    removePlayer: (id, pid) => root.BattleSocketManager.removePlayer(id, pid),
+    updatePlayer: (id, pid, up) => root.BattleSocketManager.updatePlayer(id, pid, up),
+    generatePlayerLinks: (id) => root.BattleSocketManager.generatePlayerLinks(id),
+    generateSpectatorUrl: (id) => root.BattleSocketManager.generateSpectatorUrl(id),
 
     // 플레이어
-    playerAuth: (args) => root.PyxisSocketManager.playerAuth(args),
-    playerReady: (pid, id) => root.PyxisSocketManager.playerReady(pid, id),
-    playerAction: (pid, action, id) => root.PyxisSocketManager.playerAction(pid, action, id),
+    playerAuth: (args) => root.BattleSocketManager.playerAuth(args),
+    playerReady: (pid, id) => root.BattleSocketManager.playerReady(pid, id),
+    playerAction: (pid, action, id) => root.BattleSocketManager.playerAction(pid, action, id),
 
     // 관전자
-    spectatorAuth: (args) => root.PyxisSocketManager.spectatorAuth(args),
+    spectatorAuth: (args) => root.BattleSocketManager.spectatorAuth(args),
   };
 })(typeof window !== "undefined" ? window : this);

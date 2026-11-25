@@ -283,7 +283,7 @@
     );
   }
 
-  // 링크 생성 - URL을 pyxisbattlesystem.monster로 변경
+  // 링크 생성 - 기본 도메인(example.com 자리표시자)
   function generateLinks() {
     if (!currentBattleId) {
       alert('전투 ID가 필요합니다');
@@ -325,7 +325,7 @@
       });
   }
 
-  // 링크 표시 - 도메인을 pyxisbattlesystem.monster로 변경
+  // 링크 표시 - 기본 도메인(example.com 자리표시자)
   function displayLinks(data) {
     const container = $('#linkContainer');
     if (!container) return;
@@ -335,7 +335,7 @@
     const spectator = payload?.spectator;
     const players = payload?.players;
 
-    const baseUrl = 'https://pyxisbattlesystem.monster';
+    const baseUrl = 'https://example.com';
 
     // 절대/상대 URL 보정
     const toAbsolute = (u) => {

@@ -9,7 +9,7 @@
 // - 방어: 피해 = max(0, (공격치 - 방어치) × (치명타?2:1))
 // - 회피: 수비측 (민첩 + D10) ≥ 공격치 → 피해 0
 
-;(function initPyxisRules (root) {
+;(function initBattleRules (root) {
   const RULES = {
     ATK_BOOSTER_SUCCESS: 0.60,  // 60% 성공률
     DEF_BOOSTER_SUCCESS: 0.60,  // 60% 성공률
