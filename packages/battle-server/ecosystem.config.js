@@ -1,5 +1,5 @@
 /**
- * PYXIS Battle System - PM2 통합 설정 (ESM)
+ * Battle System - PM2 통합 설정 (ESM)
  */
 const config = {
   apps: [

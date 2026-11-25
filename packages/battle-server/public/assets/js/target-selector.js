@@ -4,7 +4,7 @@
    - 단일/다중 선택 지원 (멀티셀렉트일 때 Ctrl+Enter로 확인)
 */
 
-class PyxisTargetSelector {
+class BattleTargetSelector {
   constructor(options = {}) {
     this.options = {
       showStats: true,
@@ -66,21 +66,21 @@ class PyxisTargetSelector {
   }
 
   injectStyles() {
-    if (document.getElementById('pyxis-target-selector-enhanced-styles')) return;
+    if (document.getElementById('battle-target-selector-enhanced-styles')) return;
 
     const styleSheet = document.createElement('style');
-    styleSheet.id = 'pyxis-target-selector-enhanced-styles';
+    styleSheet.id = 'battle-target-selector-enhanced-styles';
     styleSheet.textContent = `
       :root {
-        --pyxis-deep-navy: #00080D;
-        --pyxis-navy-light: #001E35;
-        --pyxis-gold-bright: #DCC7A2;
-        --pyxis-gold-warm: #D4BA8D;
-        --pyxis-border-subtle: rgba(220, 199, 162, 0.2);
-        --pyxis-glass-light: rgba(0, 30, 53, 0.8);
-        --pyxis-combat-red: #C73E1D;
-        --pyxis-success-green: #2D5A27;
-        --pyxis-warning-amber: #B8860B;
+        --battle-deep-navy: #00080D;
+        --battle-navy-light: #001E35;
+        --battle-gold-bright: #DCC7A2;
+        --battle-gold-warm: #D4BA8D;
+        --battle-border-subtle: rgba(220, 199, 162, 0.2);
+        --battle-glass-light: rgba(0, 30, 53, 0.8);
+        --battle-combat-red: #C73E1D;
+        --battle-success-green: #2D5A27;
+        --battle-warning-amber: #B8860B;
       }
 
       .target-overlay {
@@ -98,7 +98,7 @@ class PyxisTargetSelector {
       .target-panel {
         background: linear-gradient(145deg, rgba(0, 30, 53, 0.95) 0%, rgba(42, 52, 65, 0.9) 100%);
         backdrop-filter: blur(20px);
-        border: 2px solid var(--pyxis-border-subtle);
+        border: 2px solid var(--battle-border-subtle);
         border-radius: 20px;
         padding: 32px;
         max-width: 90vw; max-height: 85vh; width: 100%; max-width: 900px;
@@ -111,13 +111,13 @@ class PyxisTargetSelector {
 
       .target-panel::before {
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent); opacity: 0.6;
+        background: linear-gradient(90deg, transparent, var(--battle-gold-bright), transparent); opacity: 0.6;
       }
 
       .target-title {
         font-family: 'Cinzel', serif;
         font-size: clamp(24px, 4vw, 32px);
-        font-weight: 600; color: var(--pyxis-gold-bright); text-align: center; margin-bottom: 8px;
+        font-weight: 600; color: var(--battle-gold-bright); text-align: center; margin-bottom: 8px;
         text-shadow: 0 2px 8px rgba(220,199,162,0.3);
       }
 
@@ -128,98 +128,98 @@ class PyxisTargetSelector {
       .target-list {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 16px; max-height: 60vh; overflow-y: auto; padding: 8px; margin-bottom: 24px;
-        scrollbar-width: thin; scrollbar-color: var(--pyxis-gold-warm) transparent;
+        scrollbar-width: thin; scrollbar-color: var(--battle-gold-warm) transparent;
       }
       .target-list::-webkit-scrollbar { width: 8px; }
       .target-list::-webkit-scrollbar-track { background: rgba(0,30,53,0.3); border-radius: 4px; }
       .target-list::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm)); border-radius: 4px;
+        background: linear-gradient(180deg, var(--battle-gold-bright), var(--battle-gold-warm)); border-radius: 4px;
       }
 
       .target-card {
         background: linear-gradient(145deg, rgba(0,30,53,0.9) 0%, rgba(42,52,65,0.8) 100%);
         backdrop-filter: blur(10px);
-        border: 1.5px solid var(--pyxis-border-subtle);
+        border: 1.5px solid var(--battle-border-subtle);
         border-radius: 16px; padding: 20px; cursor: pointer;
         transition: all 0.3s cubic-bezier(0.4,0,0.2,1); position: relative; overflow: hidden;
         transform: translateY(0);
       }
       .target-card::before {
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-        background: linear-gradient(90deg, transparent, var(--pyxis-gold-bright), transparent); opacity: 0.3;
+        background: linear-gradient(90deg, transparent, var(--battle-gold-bright), transparent); opacity: 0.3;
       }
       .target-card:hover:not(.disabled) {
-        transform: translateY(-4px); border-color: var(--pyxis-gold-bright);
+        transform: translateY(-4px); border-color: var(--battle-gold-bright);
         background: linear-gradient(145deg, rgba(0,30,53,0.95), rgba(42,52,65,0.9));
-        box-shadow: 0 12px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--pyxis-gold-bright), 0 0 20px rgba(220,199,162,0.2);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.3), 0 0 0 1px var(--battle-gold-bright), 0 0 20px rgba(220,199,162,0.2);
       }
       .target-card.focused {
-        border-color: var(--pyxis-gold-bright);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), 0 0 20px rgba(220,199,162,0.3);
+        border-color: var(--battle-gold-bright);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--battle-gold-bright), 0 0 20px rgba(220,199,162,0.3);
       }
       .target-card.selected {
-        border-color: var(--pyxis-gold-bright)!important;
+        border-color: var(--battle-gold-bright)!important;
         background: linear-gradient(145deg, rgba(220,199,162,0.15), rgba(212,183,126,0.1))!important;
-        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--pyxis-gold-bright), inset 0 0 20px rgba(220,199,162,0.1)!important;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 0 2px var(--battle-gold-bright), inset 0 0 20px rgba(220,199,162,0.1)!important;
       }
       .target-card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.8);
         background: linear-gradient(145deg, rgba(42,52,65,.5), rgba(26,31,42,.6)); }
-      .target-card.disabled:hover { transform: none!important; border-color: var(--pyxis-border-subtle)!important; box-shadow: none!important; }
+      .target-card.disabled:hover { transform: none!important; border-color: var(--battle-border-subtle)!important; box-shadow: none!important; }
 
       .target-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
       .target-avatar { width: 48px; height: 48px; border-radius: 12px;
-        background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright));
-        display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; color: var(--pyxis-deep-navy);
-        border: 2px solid var(--pyxis-border-subtle); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
+        background: linear-gradient(145deg, var(--battle-gold-warm), var(--battle-gold-bright));
+        display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; color: var(--battle-deep-navy);
+        border: 2px solid var(--battle-border-subtle); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
       .target-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
       .target-info { flex: 1; min-width: 0; }
       .target-name { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 600;
-        color: var(--pyxis-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        color: var(--battle-gold-bright); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       .target-team { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 8px; display: inline-block; margin-bottom: 8px; }
       .target-team.team-A { background: rgba(199,62,29,0.2); color: #FF6B4A; border: 1px solid rgba(199,62,29,0.3); }
       .target-team.team-B { background: rgba(45,90,39,0.2);  color: #66BB6A; border: 1px solid rgba(45,90,39,0.3); }
 
       .target-hp { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-      .target-hp-text { font-size: 14px; font-weight: 500; color: var(--pyxis-gold-warm); min-width: fit-content; }
-      .target-hp-bar-container { flex: 1; height: 8px; background: rgba(0,30,53,0.8); border-radius: 4px; border: 1px solid var(--pyxis-border-subtle); overflow: hidden; position: relative; }
+      .target-hp-text { font-size: 14px; font-weight: 500; color: var(--battle-gold-warm); min-width: fit-content; }
+      .target-hp-bar-container { flex: 1; height: 8px; background: rgba(0,30,53,0.8); border-radius: 4px; border: 1px solid var(--battle-border-subtle); overflow: hidden; position: relative; }
       .target-hp-bar { height: 100%; border-radius: 3px; transition: width .4s cubic-bezier(.4,0,.2,1); position: relative;
-        background: linear-gradient(90deg, var(--pyxis-success-green), var(--pyxis-gold-warm), var(--pyxis-gold-bright)); }
-      .target-hp-bar.low { background: linear-gradient(90deg, var(--pyxis-combat-red), var(--pyxis-warning-amber)); }
+        background: linear-gradient(90deg, var(--battle-success-green), var(--battle-gold-warm), var(--battle-gold-bright)); }
+      .target-hp-bar.low { background: linear-gradient(90deg, var(--battle-combat-red), var(--battle-warning-amber)); }
       .target-hp-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent); animation: shimmer 2s infinite; }
       @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
       .target-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px; color: rgba(220,199,162,.8); margin-bottom: 12px; }
-      .target-stat { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,30,53,.5); border-radius: 6px; border: 1px solid var(--pyxis-border-subtle); }
+      .target-stat { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,30,53,.5); border-radius: 6px; border: 1px solid var(--battle-border-subtle); }
 
       .target-status { display: flex; gap: 6px; flex-wrap: wrap; }
       .status-pill { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
       .status-pill.alive { background: rgba(45,90,39,.3); color: #66BB6A; border: 1px solid rgba(45,90,39,.5); }
       .status-pill.dead  { background: rgba(199,62,29,.3); color: #FF6B4A; border: 1px solid rgba(199,62,29,.5); }
-      .status-pill.boosted { background: rgba(184,134,11,.3); color: var(--pyxis-warning-amber); border: 1px solid rgba(184,134,11,.5); }
+      .status-pill.boosted { background: rgba(184,134,11,.3); color: var(--battle-warning-amber); border: 1px solid rgba(184,134,11,.5); }
 
       .target-actions { display: flex; gap: 12px; justify-content: center; align-items: center; margin-top: 24px; }
-      .btn { padding: 12px 24px; border: 2px solid var(--pyxis-border-subtle); border-radius: 12px;
-        background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(42,52,65,.8)); color: var(--pyxis-gold-bright);
+      .btn { padding: 12px 24px; border: 2px solid var(--battle-border-subtle); border-radius: 12px;
+        background: linear-gradient(145deg, rgba(0,30,53,.9), rgba(42,52,65,.8)); color: var(--battle-gold-bright);
         font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all .3s cubic-bezier(.4,0,.2,1);
         text-transform: uppercase; letter-spacing: .5px; position: relative; overflow: hidden; min-width: 100px; }
       .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
         background: linear-gradient(90deg, transparent, rgba(220,199,162,.2), transparent); transition: left .5s cubic-bezier(.4,0,.2,1); }
       .btn:hover::before { left: 100%; }
-      .btn:hover:not(:disabled) { border-color: var(--pyxis-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95), rgba(42,52,65,.9));
+      .btn:hover:not(:disabled) { border-color: var(--battle-gold-bright); background: linear-gradient(145deg, rgba(0,30,53,.95), rgba(42,52,65,.9));
         box-shadow: 0 8px 16px rgba(0,0,0,.2), 0 0 20px rgba(220,199,162,.2); transform: translateY(-2px); }
-      .btn.btn-gold { background: linear-gradient(145deg, var(--pyxis-gold-warm), var(--pyxis-gold-bright)); color: var(--pyxis-deep-navy); border-color: var(--pyxis-gold-bright); }
-      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--pyxis-gold-bright), var(--pyxis-gold-warm));
+      .btn.btn-gold { background: linear-gradient(145deg, var(--battle-gold-warm), var(--battle-gold-bright)); color: var(--battle-deep-navy); border-color: var(--battle-gold-bright); }
+      .btn.btn-gold:hover:not(:disabled) { background: linear-gradient(145deg, var(--battle-gold-bright), var(--battle-gold-warm));
         box-shadow: 0 8px 16px rgba(0,0,0,.3), 0 0 20px rgba(220,199,162,.4); }
       .btn:disabled { opacity: .5; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
 
       .no-targets { text-align: center; color: rgba(220,199,162,.6); font-style: italic; padding: 60px 20px; font-size: 18px;
-        background: linear-gradient(145deg, rgba(0,30,53,.5), rgba(42,52,65,.3)); border: 2px dashed var(--pyxis-border-subtle); border-radius: 16px; margin: 20px 0; }
+        background: linear-gradient(145deg, rgba(0,30,53,.5), rgba(42,52,65,.3)); border: 2px dashed var(--battle-border-subtle); border-radius: 16px; margin: 20px 0; }
 
       .battle-info { text-align: center; margin-bottom: 20px; padding: 16px; background: linear-gradient(145deg, rgba(0,30,53,.7), rgba(42,52,65,.5));
-        border: 1px solid var(--pyxis-border-subtle); border-radius: 12px; }
-      .battle-mode { font-size: 14px; color: var(--pyxis-gold-warm); font-weight: 500; margin-bottom: 8px; }
+        border: 1px solid var(--battle-border-subtle); border-radius: 12px; }
+      .battle-mode { font-size: 14px; color: var(--battle-gold-warm); font-weight: 500; margin-bottom: 8px; }
       .turn-info { font-size: 12px; color: rgba(220,199,162,.7); }
 
       @media (max-width: 768px) {
@@ -240,11 +240,11 @@ class PyxisTargetSelector {
   }
 
   createOverlay() {
-    const existing = document.getElementById('pyxis-target-overlay');
+    const existing = document.getElementById('battle-target-overlay');
     if (existing) existing.remove();
 
     this.overlay = document.createElement('div');
-    this.overlay.id = 'pyxis-target-overlay';
+    this.overlay.id = 'battle-target-overlay';
     this.overlay.className = 'target-overlay';
     this.overlay.style.display = 'none';
     this.overlay.setAttribute('role', 'dialog');
@@ -375,7 +375,7 @@ class PyxisTargetSelector {
     cards.forEach((card, index) => {
       card.classList.toggle('focused', index === this._focusedIndex);
     });
-    const behavior = PyxisTargetSelector._shouldReduceMotion() ? 'auto' : 'smooth';
+    const behavior = BattleTargetSelector._shouldReduceMotion() ? 'auto' : 'smooth';
     cards[this._focusedIndex]?.scrollIntoView({ behavior, block: 'nearest' });
   }
 
@@ -611,9 +611,9 @@ class PyxisTargetSelector {
   hide() {
     if (!this.overlay) return;
 
-    if (!PyxisTargetSelector._shouldReduceMotion()) this.overlay.style.opacity = '0';
+    if (!BattleTargetSelector._shouldReduceMotion()) this.overlay.style.opacity = '0';
     const panel = this.overlay.querySelector('.target-panel');
-    if (panel && !PyxisTargetSelector._shouldReduceMotion()) {
+    if (panel && !BattleTargetSelector._shouldReduceMotion()) {
       panel.style.transform = 'scale(0.9) translateY(20px)';
     }
 
@@ -633,7 +633,7 @@ class PyxisTargetSelector {
 
       this.overlay.style.opacity = '';
       if (panel) panel.style.transform = '';
-    }, PyxisTargetSelector._shouldReduceMotion() ? 0 : 200);
+    }, BattleTargetSelector._shouldReduceMotion() ? 0 : 200);
   }
 
   playSound(type) {
@@ -755,7 +755,7 @@ class PyxisTargetSelector {
   toggleAnimations(enabled) {
     this.options.enableAnimations = enabled;
     if (this.overlay) {
-      if (!enabled || PyxisTargetSelector._shouldReduceMotion()) {
+      if (!enabled || BattleTargetSelector._shouldReduceMotion()) {
         this.overlay.style.transition = 'none';
         const panel = this.overlay.querySelector('.target-panel');
         if (panel) panel.style.transition = 'none';
@@ -798,7 +798,7 @@ class PyxisTargetSelector {
   destroy() {
     this.teardownEventListeners();
     if (this.overlay && this.overlay.parentNode) this.overlay.parentNode.removeChild(this.overlay);
-    const styleSheet = document.getElementById('pyxis-target-selector-enhanced-styles');
+    const styleSheet = document.getElementById('battle-target-selector-enhanced-styles');
     if (styleSheet) styleSheet.remove();
     this.targets = []; this.selectedTargets = []; this.callback = null; this.battleData = null; this.isVisible = false; this._focusedIndex = 0;
     try { this._audioCtx?.close(); } catch(_) {}
@@ -807,10 +807,10 @@ class PyxisTargetSelector {
 }
 
 /* 전역 바인딩 */
-window.PyxisTargetSelector = PyxisTargetSelector;
+window.BattleTargetSelector = BattleTargetSelector;
 
 /* 싱글톤 */
-window.PyxisTarget = new PyxisTargetSelector({
+window.BattleTarget = new BattleTargetSelector({
   enableAnimations: true,
   enableSoundEffects: false,
   showStats: true,
@@ -820,31 +820,31 @@ window.PyxisTarget = new PyxisTargetSelector({
 });
 
 /* 플레이어 클라이언트 호환용 래퍼
-   - 기대 시그니처: window.PYXISTargetSelector.open({ players, onPick, title?, battleData?, allowMultiSelect? })
+   - 기대 시그니처: window.BattleTargetPicker.open({ players, onPick, title?, battleData?, allowMultiSelect? })
    - 단일 선택: onPick(선택 id)
    - 다중 선택: onPick(선택된 target 배열)  ← (기존 요구에 맞춰 객체 배열 전달; 필요 시 id 배열로 변환 가능)
 */
-window.PYXISTargetSelector = {
+window.BattleTargetPicker = {
   open({ players = [], onPick, title = '전투 대상 선택', battleData = null, allowMultiSelect = false } = {}) {
     try {
-      window.PyxisTarget.updateOptions({ allowMultiSelect });
-      const normalized = (players || []).map(window.PyxisTargetUtils
-        ? window.PyxisTargetUtils.normalizeTarget
+      window.BattleTarget.updateOptions({ allowMultiSelect });
+      const normalized = (players || []).map(window.BattleTargetUtils
+        ? window.BattleTargetUtils.normalizeTarget
         : (t) => t
       );
-      window.PyxisTarget.show(title, normalized, (selected) => {
+      window.BattleTarget.show(title, normalized, (selected) => {
         if (!onPick || typeof onPick !== 'function') return;
         onPick(selected);
       }, battleData);
     } catch (e) {
-      console.error('PYXISTargetSelector.open 에러:', e);
+      console.error('BattleTargetPicker.open 에러:', e);
     }
   },
-  close() { try { window.PyxisTarget.hide(); } catch (_) {} }
+  close() { try { window.BattleTarget.hide(); } catch (_) {} }
 };
 
 /* 유틸리티: A/B·phoenix/eaters 모두 허용 */
-window.PyxisTargetUtils = window.PyxisTargetUtils || {
+window.BattleTargetUtils = window.BattleTargetUtils || {
   _toAB(team) {
     const s = String(team || '').toLowerCase().trim();
     if (['phoenix','a','team_a','team-a','불사조 기사단'].includes(s)) return 'A';
@@ -852,8 +852,8 @@ window.PyxisTargetUtils = window.PyxisTargetUtils || {
     return '-';
   },
   filterByTeam: (targets, team) => {
-    const ab = window.PyxisTargetUtils._toAB(team);
-    return targets.filter(t => window.PyxisTargetUtils._toAB(t.team || t.teamAB) === ab);
+    const ab = window.BattleTargetUtils._toAB(team);
+    return targets.filter(t => window.BattleTargetUtils._toAB(t.team || t.teamAB) === ab);
   },
   filterAlive: (targets) => targets.filter(target => target.alive !== false && target.hp > 0),
   sortByHp: (targets, ascending = true) => [...targets].sort((a, b) => {
@@ -874,7 +874,7 @@ window.PyxisTargetUtils = window.PyxisTargetUtils || {
       id: target.id || target.name || Math.random().toString(36),
       name: target.name || '무명의 전사',
       team: target.team || target.teamAB || 'phoenix', // 원본 유지(표시는 AB로 변환)
-      teamAB: window.PyxisTargetUtils._toAB(target.team || target.teamAB),
+      teamAB: window.BattleTargetUtils._toAB(target.team || target.teamAB),
       hp, maxHp,
       stats: {
         attack:  clamp5(target.stats?.attack  ?? target.stats?.atk  ?? 3),

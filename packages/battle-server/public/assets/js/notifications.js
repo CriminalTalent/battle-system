@@ -1,16 +1,16 @@
 // packages/battle-server/public/assets/js/notifications.js
 /* Notifications
    - 데스크톱 알림 + 사운드
-   - 초기화: window.PyxisNotify.init({ socket, enabled?, volume? })
+   - 초기화: window.BattleNotify.init({ socket, enabled?, volume? })
    - 기본 수신 이벤트: battle:update, battle:log, battle:started, battle:ended, turn:start, turn:end
-   - 플레이어 턴 감지: window.__PYXIS_PLAYER_ID 값을 사용
+   - 플레이어 턴 감지: window.__BATTLE_PLAYER_ID 값을 사용
    - 이모지 사용 금지
    - 팀 내부 표기는 A/B로 정규화, 표시는 '불사조 기사단' / '죽음을 먹는 자'
 */
 (function () {
   "use strict";
 
-  const TITLE_PREFIX = "PYXIS";
+  const TITLE_PREFIX = "전투";
 
   const Notify = {
     socket: null,
@@ -36,7 +36,7 @@
 
     // 데스크톱 알림 권한 확인/요청
     if (!("Notification" in window)) {
-      console.warn("[PYXIS Notify] Notification API not supported.");
+      console.warn("[Notify] Notification API not supported.");
     } else if (Notification.permission === "default") {
       try { Notification.requestPermission(); } catch (_) {}
     }
@@ -47,7 +47,7 @@
       audio.volume = this.volume;
       this.audio = audio;
     } catch (e) {
-      console.warn("[PYXIS Notify] Audio init failed", e);
+      console.warn("[Notify] Audio init failed", e);
       this.audio = null;
     }
 
@@ -80,7 +80,7 @@
       handleStatusTransition.call(this, battleId, status);
 
       // 내 턴 알림 (update 이벤트만으로도 처리 시도)
-      const meId = window.__PYXIS_PLAYER_ID || null;
+      const meId = window.__BATTLE_PLAYER_ID || null;
       if (meId && currentPlayerId && currentPlayerId === meId) {
         this._throttledShow("당신의 턴입니다", "지금 행동하세요.", 1500);
       }
@@ -93,7 +93,7 @@
 
     // 명시적 턴 시작 이벤트가 있는 경우 우선 사용
     socket.on("turn:start", (p) => {
-      const meId = window.__PYXIS_PLAYER_ID || null;
+      const meId = window.__BATTLE_PLAYER_ID || null;
       const pid = p && (p.playerId || p.id);
       if (meId && pid && meId === pid) {
         this._throttledShow("당신의 턴입니다", "지금 행동하세요.", 800);
@@ -234,5 +234,5 @@
   // ----------------------------------
   // Export
   // ----------------------------------
-  window.PyxisNotify = Notify;
+  window.BattleNotify = Notify;
 })();

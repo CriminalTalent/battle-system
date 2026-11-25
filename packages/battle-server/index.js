@@ -347,5 +347,5 @@ io.on('connection', (socket) => {
 
 /* ─────────────────────────── 서버 시작 ─────────────────────────── */
 server.listen(PORT, HOST, () => {
-  console.log(`PYXIS Battle System up on http://${HOST}:${PORT}`);
+  console.log(`Battle System up on http://${HOST}:${PORT}`);
 });
