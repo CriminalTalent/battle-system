@@ -103,11 +103,13 @@ export function createBattleStore() {
     const timeLeftSec = Math.max(0, Math.ceil(((b.phaseEndsAt || ref) - ref) / 1000));
     const cur = b.turnCursor?.playerId ? b.players.find(p => p.id === b.turnCursor.playerId) : null;
     const currentPlayer = cur ? { id: cur.id, name: cur.name, team: cur.team, avatar: cur.avatar } : null; // 토큰 제외
+    const selecting = b.phase === 'A_select' || b.phase === 'B_select';
+    const actedIds = selecting ? (b.choices[b.currentTeam] || []).map(c => c.playerId) : []; // 이번 선택 페이즈에 선택을 마친 참가자
     return {
       id: b.id, status: b.status, phase: b.phase, round: b.round,
       currentTeam: b.currentTeam, nextFirstTeam: b.nextFirstTeam,
       createdAt: b.createdAt, hardLimitAt: b.hardLimitAt, winner: b.winner,
-      currentTurn: { round: b.round, currentTeam: b.currentTeam, timeLeftSec, currentPlayer },
+      currentTurn: { round: b.round, currentTeam: b.currentTeam, timeLeftSec, currentPlayer, actedIds },
       players: b.players.map(p => ({
         id: p.id, name: p.name, team: p.team, avatar: p.avatar,
         hp: p.hp, maxHp: p.maxHp, ready: !!p.ready,

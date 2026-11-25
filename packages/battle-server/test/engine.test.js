@@ -65,3 +65,21 @@ test('1시간 제한 종료 시 HP 합산 승자', () => {
   assert.equal(b.winner, 'A');
   mock.timers.reset();
 });
+
+test('스냅샷에 이번 선택 페이즈의 선택 완료자가 표시된다', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const s = createBattleStore();
+  const b = s.create('2v2');
+  const ps = [['a1', 'A'], ['a2', 'A'], ['b1', 'B'], ['b2', 'B']].map(([name, team]) => s.addPlayer(b.id, { name, team }));
+  for (const p of ps) s.markReady(b.id, p.id);
+  s.start(b.id);
+  const team = b.currentTeam;
+  assert.deepEqual(s.snapshot(b.id).currentTurn.actedIds, []);
+  const me = b.turnCursor.playerId;
+  s.playerAction(b.id, me, { type: 'pass' });
+  const snap = s.snapshot(b.id);
+  assert.equal(snap.currentTeam, team);
+  assert.deepEqual(snap.currentTurn.actedIds, [me]);
+  s.end(b.id);
+  mock.timers.reset();
+});
