@@ -233,11 +233,10 @@
   let timerDisplayLeft = 0;
   let timerTick = null;
 
-  let lastWinnerTeam = null;          // 로그에서 감지한 승자(서버 이벤트 fallback)
   let gameOverShown = false;
 
   const seenLogIds = new Set(); // 로그 중복 제한
-  const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   // ─────────────────────────────────────────
   // 로그 색상 분류
@@ -410,12 +409,6 @@
   function addLog({ts,type,message}) {
     if (!message) return;
 
-    // 승자 문구를 감지해 저장(서버에서 battle:ended 이벤트 못 받을 때 fallback)
-    if (/([AB])팀\s*승리/.test(message)) {
-      const m = message.match(/([AB])팀\s*승리/);
-      if (m) lastWinnerTeam = m[1];
-    }
-
     const idKey = `${ts}|${type}|${message}`;
     if (seenLogIds.has(idKey)) return;
     seenLogIds.add(idKey);
@@ -474,7 +467,12 @@
 
   function selectItem(itemType){
     selectedAction = { type:'item', item:itemType };
-    if (itemType === 'dittany' || itemType === 'ditany' || itemType === 'defenseBooster') {
+    if (itemType === 'defenseBooster') {
+      sendAction('item', { item: itemType, targetId: myPlayer.id });
+      hideOverlay();
+      return;
+    }
+    if (itemType === 'dittany' || itemType === 'ditany') {
       overlayTitle.textContent = '아군 대상 선택';
       const tgts = (battleState?.players||[]).filter(p => p.team === myPlayer.team && p.hp > 0);
       overlayTargets.innerHTML = tgts.map(t => `
@@ -553,8 +551,13 @@
     window.__PYXIS_PLAYER_ID = p.id;
   }
 
-  socket.on('connect', ()=>{ socket.emit('join',{ battleId }); });
-  socket.emit('playerAuth',{ battleId, token }, (res)=>{ if(res?.ok) applyAuthed(res); });
+  // 최초 접속과 재접속 모두 인증
+  socket.on('connect', ()=>{
+    socket.emit('playerAuth',{ battleId, token }, (res)=>{
+      if(res?.ok) { applyAuthed(res); renderAll(); }
+      else alert('인증 실패: 링크를 다시 확인해주세요');
+    });
+  });
 
   socket.on('authSuccess', applyAuthed);
   socket.on('auth:success', applyAuthed);
@@ -584,7 +587,7 @@
     gameOverShown = true;
     const ov = document.getElementById('gameOver');
     const wt = document.getElementById('winnerText');
-    wt.textContent = winnerTeam ? `${winnerTeam}팀 승리` : '';
+    wt.textContent = winnerTeam === 'A' ? '불사조 기사단 승리' : winnerTeam === 'B' ? '죽음을 먹는 자 승리' : '무승부';
     ov.classList.add('show');
     // 모든 인터랙션 비활성화
     ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn','readyBtn','chatSend','chatInput']
@@ -598,7 +601,7 @@
   function maybeShowGameOverByStatus(){
     if (!battleState) return;
     if (battleState.status === 'ended') {
-      showGameOverOverlay(lastWinnerTeam); // 없으면 빈 문자열
+      showGameOverOverlay(battleState.winner);
     }
   }
 
@@ -615,7 +618,6 @@
   window.addEventListener('beforeunload', ()=>{ socket.disconnect(); clearInterval(timerTick); });
 
   bind();
-  socket.emit('join',{ battleId });
 })();
 </script>
 </body>

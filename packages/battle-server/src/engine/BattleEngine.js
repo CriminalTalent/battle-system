@@ -15,7 +15,7 @@
  *      · 방어 보정기: 실제 ×2가 쓰였으면 성공, 라운드 내 미발동이면 실패
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 
 const now = () => Date.now();
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -56,17 +56,57 @@ export function createBattleStore() {
   };
   const touch = b => safeCall(onUpdate, b.id);
 
+  // 전투별 예약 타이머 1개 (일시정지/재개용, 전투 객체에는 넣지 않음)
+  const timers = new Map();
+  const clearTimer = id => { clearTimeout(timers.get(id)?.handle); timers.delete(id); };
+  const schedule = (b, ms, fn) => {
+    clearTimer(b.id);
+    const handle = setTimeout(() => {
+      timers.delete(b.id);
+      try { fn(); } catch (e) { console.error('[BattleEngine timer error]', e); }
+    }, ms);
+    timers.set(b.id, { handle, fn, endsAt: now() + ms });
+  };
+
+  function finish(b, winner) {
+    clearTimer(b.id);
+    b.winner = winner;
+    b.status = 'ended'; b.phase = 'idle'; b.turnCursor = null; b.phaseEndsAt = null; b.phaseToken = null;
+  }
+
+  function pause(battleId) {
+    const b = get(battleId); if (!b || b.status !== 'active') return null;
+    const t = timers.get(b.id);
+    b.paused = { at: now(), remain: t ? Math.max(0, t.endsAt - now()) : 0, fn: t?.fn || null };
+    clearTimer(b.id);
+    b.status = 'paused';
+    pushLog(b, '전투가 일시정지되었습니다'); touch(b); return b;
+  }
+
+  function resume(battleId) {
+    const b = get(battleId); if (!b || b.status !== 'paused' || !b.paused) return null;
+    const { at, remain, fn } = b.paused;
+    const gap = now() - at;
+    if (b.hardLimitAt) b.hardLimitAt += gap;
+    if (b.phaseEndsAt) b.phaseEndsAt += gap;
+    b.paused = null; b.status = 'active';
+    if (fn) schedule(b, remain, fn);
+    pushLog(b, '전투가 재개되었습니다'); touch(b); return b;
+  }
+
   const size = () => battles.size;
   const get  = id => battles.get(id) || null;
 
   function snapshot(id) {
     const b = battles.get(id); if (!b) return null;
-    const timeLeftSec = Math.max(0, Math.ceil(((b.phaseEndsAt || now()) - now()) / 1000));
-    const currentPlayer = b.turnCursor?.playerId ? (b.players.find(p => p.id === b.turnCursor.playerId) || null) : null;
+    const ref = b.status === 'paused' && b.paused ? b.paused.at : now();
+    const timeLeftSec = Math.max(0, Math.ceil(((b.phaseEndsAt || ref) - ref) / 1000));
+    const cur = b.turnCursor?.playerId ? b.players.find(p => p.id === b.turnCursor.playerId) : null;
+    const currentPlayer = cur ? { id: cur.id, name: cur.name, team: cur.team, avatar: cur.avatar } : null; // 토큰 제외
     return {
       id: b.id, status: b.status, phase: b.phase, round: b.round,
       currentTeam: b.currentTeam, nextFirstTeam: b.nextFirstTeam,
-      createdAt: b.createdAt, hardLimitAt: b.hardLimitAt,
+      createdAt: b.createdAt, hardLimitAt: b.hardLimitAt, winner: b.winner,
       currentTurn: { round: b.round, currentTeam: b.currentTeam, timeLeftSec, currentPlayer },
       players: b.players.map(p => ({
         id: p.id, name: p.name, team: p.team, avatar: p.avatar,
@@ -92,34 +132,39 @@ export function createBattleStore() {
       turnCursor: null,
       phaseEndsAt: null,
       phaseToken: null,           // ✅ 페이즈 토큰
+      winner: null, paused: null,
     };
     battles.set(id, b); return b;
   }
 
   function addPlayer(battleId, player) {
-    const b = get(battleId); if (!b) return null;
-    const id = player.id || randomUUID();
+    const b = get(battleId); if (!b || b.status !== 'waiting' || !player) return null;
+    const int = (v, min, max, dflt) => (v !== null && v !== '' && Number.isFinite(Number(v))) ? clamp(Math.trunc(Number(v)), min, max) : dflt;
+    const stat = v => int(v, 0, 10, 1);
+    const item = v => int(v, 0, 99, 0);
+    const hp = int(player.hp, 1, 1000, 100);
+    const avatar = String(player.avatar || '');
     const p = {
-      id, team: player.team === 'B' ? 'B' : 'A',
-      name: player.name || `P${b.players.length + 1}`,
-      avatar: player.avatar || '',
-      hp: Number.isFinite(player.hp) ? player.hp : 100,
-      maxHp: Number.isFinite(player.maxHp) ? player.maxHp : (Number.isFinite(player.hp) ? player.hp : 100),
+      id: randomUUID(), team: player.team === 'B' ? 'B' : 'A',
+      name: String(player.name || '').trim().slice(0, 30) || `P${b.players.length + 1}`,
+      avatar: /^\/uploads\/avatars\/[\w.-]+$/.test(avatar) ? avatar : '',
+      hp, maxHp: int(player.maxHp, hp, 1000, hp),
       stats: {
-        attack: +(player.stats?.attack ?? 1),
-        defense:+(player.stats?.defense ?? 1),
-        agility:+(player.stats?.agility ?? 1),
-        luck:   +(player.stats?.luck    ?? 1),
+        attack: stat(player.stats?.attack),
+        defense: stat(player.stats?.defense),
+        agility: stat(player.stats?.agility),
+        luck:    stat(player.stats?.luck),
       },
       items: {
-        dittany:       +(player.items?.dittany ?? player.items?.ditany ?? 0),
-        attackBooster: +(player.items?.attackBooster  ?? player.items?.attack_boost  ?? 0),
-        defenseBooster:+(player.items?.defenseBooster ?? player.items?.defense_boost ?? 0),
+        dittany:        item(player.items?.dittany ?? player.items?.ditany),
+        attackBooster:  item(player.items?.attackBooster  ?? player.items?.attack_boost),
+        defenseBooster: item(player.items?.defenseBooster ?? player.items?.defense_boost),
       },
       ready: false,
-      token: player.token || null,
+      token: randomBytes(16).toString('hex'),
     };
-    b.players.push(p); touch(b); return p;
+    b.players.push(p); touch(b);
+    const { token, ...pub } = p; return pub;
   }
 
   function removePlayer(battleId, playerId) {
@@ -184,31 +229,18 @@ export function createBattleStore() {
     pushLog(b, `=== ${teamLabel(team)} 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
     touch(b);
 
-    // 타임아웃(phaseToken/phase/남은시간 검증)
-    const myToken = b.phaseToken;
-    const checkTimeout = () => {
-      if (b.status !== 'active') return;
-      if (b.phaseToken !== myToken) return;
-      if (!(b.phase === 'A_select' || b.phase === 'B_select')) return;
-      if (b.currentTeam !== team) return;
-
-      const remain = (b.phaseEndsAt || 0) - now();
-      if (remain > 250) { setTimeout(checkTimeout, Math.min(remain + 10, 60_000)); return; }
-
-      if (!b.selectionDone[team]) {
-        const aliveIds = new Set(b.players.filter(x => x.team === team && x.hp > 0).map(x => x.id));
-        const chosenIds= new Set(b.choices[team].map(c => c.playerId));
-        for (const id of aliveIds) {
-          if (!chosenIds.has(id)) b.choices[team].push({ playerId: id, type: 'pass', targetId: null, raw: {} });
-        }
-        b.selectionDone[team] = true;
-        pushLog(b, `[${teamLabel(team)}] 시간 초과 — 자동 진행(pass)`, team === 'A' ? 'teamA' : 'teamB');
-        touch(b);
-        finishSelectOrNext(b);
+    // 선택 시간 초과 처리
+    schedule(b, TEAM_SELECT_MS, () => {
+      if (b.status !== 'active' || b.selectionDone[team]) return;
+      const chosenIds = new Set(b.choices[team].map(c => c.playerId));
+      for (const x of b.players) {
+        if (x.team === team && x.hp > 0 && !chosenIds.has(x.id)) b.choices[team].push({ playerId: x.id, type: 'pass', targetId: null, raw: {} });
       }
-    };
-    const firstDelay = Math.max(0, (b.phaseEndsAt - now()) + 10);
-    setTimeout(checkTimeout, firstDelay);
+      b.selectionDone[team] = true;
+      pushLog(b, `[${teamLabel(team)}] 시간 초과 — 자동 진행(pass)`, team === 'A' ? 'teamA' : 'teamB');
+      touch(b);
+      finishSelectOrNext(b);
+    });
   }
 
   // 선택(의도만 저장, 의도 로그만 송출)
@@ -219,9 +251,20 @@ export function createBattleStore() {
     const p = b.players.find(x => x.id === playerId); if (!p || p.hp <= 0) return null;
     const team = teamOf(p); if (team !== b.currentTeam) return null;
 
-    b.choices[team] = b.choices[team].filter(c => c.playerId !== p.id);
+    // 행동/대상 검증
+    if (!['attack', 'defend', 'dodge', 'item', 'pass'].includes(action?.type)) return null;
+    const target = action.targetId ? (b.players.find(x => x.id === action.targetId) || null) : null;
+    const isEnemy = !!target && target.team !== team && target.hp > 0;
+    if (action.type === 'attack' && !isEnemy) return null;
+    if (action.type === 'item') {
+      const kind = action.item === 'ditany' ? 'dittany' : action.item;
+      if (!['dittany', 'attackBooster', 'defenseBooster'].includes(kind) || !(p.items[kind] > 0)) return null;
+      if (kind === 'attackBooster' && !isEnemy) return null;
+      if (kind === 'dittany' && action.targetId && !(target && target.team === team && target.hp > 0)) return null;
+      if (kind === 'defenseBooster' && action.targetId && action.targetId !== p.id) return null;
+    }
 
-    const target = action?.targetId ? (b.players.find(x => x.id === action.targetId) || null) : null;
+    b.choices[team] = b.choices[team].filter(c => c.playerId !== p.id);
     const intent = {
       playerId: p.id,
       type: action?.type, // attack|defend|dodge|item|pass
@@ -388,7 +431,7 @@ export function createBattleStore() {
         const win = teamAlive(b, 'A') ? 'A' : teamAlive(b, 'B') ? 'B' : null;
         if (win) {
           pushLog(b, `${teamLabel(win)} 승리!`, 'result');
-          b.status = 'ended'; b.phase = 'idle'; b.turnCursor = null; b.phaseEndsAt = null; b.phaseToken = null;
+          finish(b, win);
           touch(b); return;
         }
       }
@@ -402,21 +445,13 @@ export function createBattleStore() {
       b.phaseToken = null;
       pushLog(b, '5초 후 다음 라운드 시작...', 'system'); touch(b);
 
-      setTimeout(() => {
+      schedule(b, ROUND_BREAK_MS, () => {
         if (b.status !== 'active') return;
-        if (now() < b.phaseEndsAt) {
-          setTimeout(() => {
-            if (b.status !== 'active') return;
-            pushLog(b, `${b.round}라운드 시작`, 'system');
-            startSelectPhase(b, b.nextFirstTeam);
-          }, Math.max(0, b.phaseEndsAt - now()));
-          return;
-        }
         pushLog(b, `${b.round}라운드 시작`, 'system');
         startSelectPhase(b, b.nextFirstTeam);
-      }, ROUND_BREAK_MS);
+      });
     };
-    setTimeout(finalize, RESOLVE_WINDOW_MS);
+    schedule(b, RESOLVE_WINDOW_MS, finalize);
   }
 
   // 단일 공격 처리(결과 리턴: { dodged:boolean, damage:number, crit:boolean })
@@ -514,18 +549,18 @@ export function createBattleStore() {
     pushLog(b, `시간 종료 — 생존 HP 합산: ${teamLabel('A')}=${sumA}, ${teamLabel('B')}=${sumB}`, 'result');
     if (sumA === sumB) pushLog(b, '무승부 처리', 'result');
     else pushLog(b, `${teamLabel(sumA > sumB ? 'A' : 'B')} 승리!`, 'result');
-    b.status = 'ended'; b.phase = 'idle'; b.turnCursor = null; b.phaseEndsAt = null; b.phaseToken = null;
+    finish(b, sumA === sumB ? null : (sumA > sumB ? 'A' : 'B'));
   }
 
   function end(battleId) {
     const b = get(battleId); if (!b) return null;
-    b.status = 'ended'; b.phase = 'idle'; b.turnCursor = null; b.phaseEndsAt = null; b.phaseToken = null;
+    if (b.status !== 'ended') finish(b, null);
     touch(b); return b;
   }
 
   function authByToken(battleId, token) {
     const b = get(battleId); if (!b) return null;
-    return b.players.find(p => p.token === token) || null;
+    return (typeof token === 'string' && token) ? (b.players.find(p => p.token === token) || null) : null;
   }
 
   return {
@@ -533,6 +568,6 @@ export function createBattleStore() {
     size, get, snapshot,
     create, addPlayer, removePlayer,
     markReady, start, playerAction,
-    end, authByToken,
+    pause, resume, end, authByToken,
   };
 }

@@ -189,10 +189,9 @@
   let timerDisplayLeft = 0;
   let timerTick = null;
 
-  let lastWinnerTeam = null;
   let gameOverShown = false;
 
-  const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function classForLog(type, message){
     if (type === 'teamA') return 'log-team-a';
@@ -227,12 +226,6 @@
 
   function addLog({ts, type, message}){
     if (!message) return;
-
-    // 승자 문구 감지하여 저장(fallback)
-    if (/([AB])팀\s*승리/.test(message)) {
-      const m = message.match(/([AB])팀\s*승리/);
-      if (m) lastWinnerTeam = m[1];
-    }
 
     const phase = battle?.phase || currentPhase;
     const isSelect = (phase === 'A_select' || phase === 'B_select');
@@ -383,7 +376,7 @@
     gameOverShown = true;
     const ov = document.getElementById('gameOver');
     const wt = document.getElementById('winnerText');
-    wt.textContent = winnerTeam ? `${winnerTeam}팀 승리` : '';
+    wt.textContent = winnerTeam === 'A' ? '불사조 기사단 승리' : winnerTeam === 'B' ? '죽음을 먹는 자 승리' : '무승부';
     ov.classList.add('show');
   }
   socket.on('battle:ended', (d)=> showGameOverOverlay(d?.winner));
@@ -392,7 +385,7 @@
   function maybeShowGameOverByStatus(){
     if (!battle) return;
     if (battle.status === 'ended') {
-      showGameOverOverlay(lastWinnerTeam);
+      showGameOverOverlay(battle.winner);
     }
   }
 

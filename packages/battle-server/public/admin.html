@@ -270,7 +270,19 @@
   };
 
   // 소켓
-  const socket = io({ path: '/socket.io' });
+  let adminKey = '';
+  try { adminKey = sessionStorage.getItem('adminKey') || ''; } catch {}
+  if (!adminKey) adminKey = prompt('관리자 키를 입력하세요') || '';
+  try { sessionStorage.setItem('adminKey', adminKey); } catch {}
+  const adminHeaders = { 'x-admin-key': adminKey };
+  const socket = io({ path: '/socket.io', auth: { adminKey } });
+  socket.on('connect', ()=>{
+    socket.emit('admin:check', {}, (res)=>{
+      if (res?.ok) { if (currentBattleId) socket.emit('join',{battleId:currentBattleId}); return; }
+      try { sessionStorage.removeItem('adminKey'); } catch {}
+      alert('관리자 키가 올바르지 않습니다. 새로고침 후 다시 입력하세요');
+    });
+  });
   const logPanel  = document.getElementById('logPanel');
   const chatPanel = document.getElementById('chatPanel');
 
@@ -282,7 +294,7 @@
   const seenLogs = new Map();
   const seenChats = new Map();
   const now = () => Date.now();
-  const esc = s => s ? s.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function logClass(message, type){
     if (type === 'battle' || type === 'item') {
@@ -393,7 +405,7 @@
   async function uploadAvatar(file){
     const fd=new FormData(); fd.append('avatar',file);
     try{
-      const r=await fetch('/api/upload/avatar',{method:'POST',body:fd});
+      const r=await fetch('/api/upload/avatar',{method:'POST',body:fd,headers:adminHeaders});
       const j=await r.json();
       if(j.url){
         uploadedAvatarUrl=j.url;
@@ -472,7 +484,7 @@
   async function requestLinks(){
     if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
     try{
-      const r = await fetch(`/api/admin/battles/${encodeURIComponent(currentBattleId)}/links`, { method:'POST' });
+      const r = await fetch(`/api/admin/battles/${encodeURIComponent(currentBattleId)}/links`, { method:'POST', headers: adminHeaders });
       const j = await r.json();
       const payload = j?.links || j;
       if(!payload) throw new Error(j?.error || '링크 생성 실패');
