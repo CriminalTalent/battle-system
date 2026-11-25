@@ -70,6 +70,16 @@
   .ready-status{font-size:9px;color:var(--gold);margin-top:2px}
   .remove-btn{background:var(--bad);color:#fff;border:none;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;margin-top:4px}
   .remove-btn:hover{background:#dc2626}
+  .card-actions{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .card-actions .remove-btn{margin-top:0}
+  .edit-btn{background:transparent;color:var(--gold);border:1px solid var(--gold);padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer}
+  .edit-btn:hover{background:var(--gold);color:#1a1306}
+  .lock-note{font-size:9px;color:var(--muted)}
+  .player-card.editing{box-shadow:0 0 0 2px var(--accent),0 0 16px rgba(185,140,255,.45) !important}
+  .player-form.editing{border-color:var(--accent);box-shadow:0 0 16px rgba(185,140,255,.3)}
+  .edit-actions{display:flex;gap:8px}
+  .edit-actions .control-btn{flex:1}
+  .team-name-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 
   .links-section{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px}
   .links-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
@@ -150,13 +160,30 @@
           <div id="linksContainer"></div>
         </div>
       </div>
+
+      <div class="card">
+        <div class="title">팀 이름</div>
+        <div class="control-section">
+          <div class="team-name-grid">
+            <div class="form-field">
+              <label class="form-label" for="teamNameA">A팀</label>
+              <input id="teamNameA" class="form-input" type="text" maxlength="20" placeholder="불사조 기사단"/>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="teamNameB">B팀</label>
+              <input id="teamNameB" class="form-input" type="text" maxlength="20" placeholder="죽음을 먹는 자"/>
+            </div>
+          </div>
+          <button id="btnTeamNames" class="control-btn" type="button" style="width:100%">팀 이름 저장</button>
+        </div>
+      </div>
     </div>
 
     <!-- 가운데: 참가자 추가 + 팀 목록 -->
     <div>
       <div class="card">
-        <div class="title">전투 참가자 추가</div>
-        <div class="player-form">
+        <div class="title" id="playerFormTitle">전투 참가자 추가</div>
+        <div class="player-form" id="playerForm">
           <div class="form-grid">
             <div class="form-field">
               <label class="form-label">이름</label>
@@ -165,8 +192,8 @@
             <div class="form-field">
               <label class="form-label">팀</label>
               <select id="playerTeam" class="form-select">
-                <option value="A">불사조 기사단 팀</option>
-                <option value="B">죽음을 먹는 자 팀</option>
+                <option value="A" data-team-name="A">불사조 기사단</option>
+                <option value="B" data-team-name="B">죽음을 먹는 자</option>
               </select>
             </div>
           </div>
@@ -216,16 +243,19 @@
               <input id="playerDefenseBooster" class="form-input" type="number" value="0" min="0" max="10"/>
             </div>
           </div>
-          <button id="btnAddPlayer" class="control-btn primary" style="width:100%">전투 참가자 추가</button>
+          <div class="edit-actions">
+            <button id="btnAddPlayer" class="control-btn primary" type="button">전투 참가자 추가</button>
+            <button id="btnCancelEdit" class="control-btn" type="button" hidden>수정 취소</button>
+          </div>
         </div>
       </div>
 
       <div class="team-container team-a" style="margin-bottom:12px">
-        <div class="team-title">불사조 기사단 팀</div>
+        <div class="team-title"><span data-team-name="A">불사조 기사단</span> 팀</div>
         <div id="teamA"></div>
       </div>
       <div class="team-container team-b">
-        <div class="team-title">죽음을 먹는 자 팀</div>
+        <div class="team-title"><span data-team-name="B">죽음을 먹는 자</span> 팀</div>
         <div id="teamB"></div>
       </div>
     </div>
@@ -267,7 +297,11 @@
     if (['b','team_b','team-b','eaters','death','죽음을 먹는 자','죽먹','b팀'].includes(s)) return 'B';
     return '-';
   };
-  const teamLabel = (t) => (toAB(t) === 'A' ? '불사조 기사단' : toAB(t) === 'B' ? '죽음을 먹는 자' : '-');
+  const teamLabel = (t) => {
+    const k = toAB(t);
+    if (k === '-') return '-';
+    return window.BattleUI ? BattleUI.teamName(k) : (k === 'A' ? '불사조 기사단' : '죽음을 먹는 자');
+  };
 
   // 절대 URL 보정 (개발호스트 → 배포도메인)
   const PUBLIC_BASE = location.origin.replace(/:\d+$/, '');
@@ -361,8 +395,9 @@
         if ((p.items?.attackBooster || p.items?.attack_boost) > 0) items.push(`공격보정 ${p.items?.attackBooster || p.items?.attack_boost}`);
         if ((p.items?.defenseBooster || p.items?.defense_boost) > 0) items.push(`방어보정 ${p.items?.defenseBooster || p.items?.defense_boost}`);
         const av = p.avatar || '';
+        const editable = battleState?.status === 'waiting' && !p.ready;
         html += `
-        <div class="player-card ${p.hp>0?'':'dead'} ${isCur?'is-current':''}">
+        <div class="player-card ${p.hp>0?'':'dead'} ${isCur?'is-current':''} ${editingId===p.id?'editing':''}">
           <img src="${av}" class="player-avatar" alt="${esc(p.name)}"
                onerror="this.removeAttribute('src');this.style.background='#000'"/>
           <div class="player-info">
@@ -372,7 +407,10 @@
             <div class="stats">공${p.stats?.attack||0} 방${p.stats?.defense||0} 민${p.stats?.agility||0} 행${p.stats?.luck||0}</div>
             <div class="items-info">${items.length ? items.join(', ') : '아이템 없음'}</div>
             <div class="ready-status">${p.ready ? '준비완료' : '대기중'}</div>
-            <button class="remove-btn" onclick="removePlayer('${p.id}')">제거</button>
+            <div class="card-actions">
+              ${editable ? `<button class="edit-btn" type="button" onclick="editPlayer('${esc(p.id)}')">수정</button>` : (battleState?.status === 'waiting' ? '<span class="lock-note">준비 완료 후 수정 잠김</span>' : '')}
+              <button class="remove-btn" onclick="removePlayer('${esc(p.id)}')">제거</button>
+            </div>
           </div>
         </div>`;
       });
@@ -407,7 +445,19 @@
     addLog({ts:Date.now(),type:'notice',message:`전투 종료: ${window.BattleUI ? BattleUI.winnerText(winner) : (winner || '무승부')}`});
   }
 
+  function syncTeamNames(){
+    if (window.BattleUI) BattleUI.applyTeamNames(battleState);
+    const n = battleState?.teamNames || {};
+    for (const t of ['A','B']) {
+      const el = document.getElementById('teamName'+t);
+      if (document.activeElement !== el && !el.dataset.dirty && n[t]) el.value = n[t];
+    }
+    document.getElementById('btnTeamNames').disabled = !currentBattleId || battleState?.status === 'ended';
+  }
+
   function render(){
+    syncTeamNames();
+    syncEditState();
     renderTeams(); updateBattleControls();
     if (battleState?.status === 'ended') showGameOver(battleState.winner);
   }
@@ -462,8 +512,65 @@
   }
 
   // 참가자 추가/제거
+  // ── 참가자 수정 (대기 중, 준비 전만. 서버에서도 같은 조건으로 거부) ──
+  let editingId = null;
+  const STAT_FIELDS = [['playerHP','hp'],['playerAttack','attack'],['playerDefense','defense'],['playerAgility','agility'],['playerLuck','luck'],
+                       ['playerDittany','dittany'],['playerAttackBooster','attackBooster'],['playerDefenseBooster','defenseBooster']];
+  function setEditMode(p){
+    editingId = p ? p.id : null;
+    const el = (id)=>document.getElementById(id);
+    el('playerForm').classList.toggle('editing', !!p);
+    el('playerFormTitle').textContent = p ? `참가자 수정: ${p.name}` : '전투 참가자 추가';
+    el('btnAddPlayer').textContent = p ? '수정 저장' : '전투 참가자 추가';
+    el('btnCancelEdit').hidden = !p;
+    ['playerName','playerTeam','avatarPickBtn'].forEach(id=>{ el(id).disabled = !!p; });
+  }
+  function editPlayer(playerId){
+    const p = battleState?.players?.find(x=>x.id===playerId);
+    if (!p) return;
+    if (battleState.status !== 'waiting' || p.ready) { alert('준비 완료한 참가자는 수정할 수 없습니다'); return; }
+    const el = (id)=>document.getElementById(id);
+    el('playerName').value = p.name;
+    el('playerTeam').value = toAB(p.team) === 'B' ? 'B' : 'A';
+    el('playerHP').value = p.maxHp ?? p.hp;
+    el('playerAttack').value = p.stats?.attack ?? 1;
+    el('playerDefense').value = p.stats?.defense ?? 1;
+    el('playerAgility').value = p.stats?.agility ?? 1;
+    el('playerLuck').value = p.stats?.luck ?? 1;
+    el('playerDittany').value = p.items?.dittany ?? 0;
+    el('playerAttackBooster').value = p.items?.attackBooster ?? 0;
+    el('playerDefenseBooster').value = p.items?.defenseBooster ?? 0;
+    if (p.avatar) el('avatarPreview').src = p.avatar; else el('avatarPreview').removeAttribute('src');
+    setEditMode(p);
+    renderTeams();
+    el('playerForm').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  function syncEditState(){
+    if (!editingId) return;
+    const p = battleState?.players?.find(x=>x.id===editingId);
+    if (!p || p.ready || battleState.status !== 'waiting') {
+      addLog({ts:Date.now(),type:'notice',message:`${p?.name||'참가자'} 수정이 취소되었습니다 (준비 완료 또는 제거됨)`});
+      clearPlayerForm();
+    }
+  }
+  function savePlayerEdit(){
+    const num = (id)=>parseInt(document.getElementById(id).value,10);
+    const patch = {
+      hp: num('playerHP'),
+      stats: { attack:num('playerAttack'), defense:num('playerDefense'), agility:num('playerAgility'), luck:num('playerLuck') },
+      items: { dittany:num('playerDittany'), attackBooster:num('playerAttackBooster'), defenseBooster:num('playerDefenseBooster') },
+    };
+    const id = editingId;
+    socket.emit('updatePlayer',{battleId:currentBattleId,playerId:id,patch},(res)=>{
+      if(res?.ok){ clearPlayerForm(); }
+      else alert('수정 실패: ' + (res?.error||'알 수 없는 오류'));
+    });
+  }
+  function cancelEdit(){ clearPlayerForm(); }
+
   function addPlayer(){
     if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
+    if(editingId){ savePlayerEdit(); return; }
     const name=document.getElementById('playerName').value.trim();
     const team=document.getElementById('playerTeam').value; // A/B
     const hp=parseInt(document.getElementById('playerHP').value,10);
@@ -517,8 +624,25 @@
     el('avatarUpload').value = '';
     uploadedAvatarUrl=null;
     document.getElementById('avatarPreview').removeAttribute('src');
+    const wasEditing = !!editingId;
+    setEditMode(null);
+    if (wasEditing) renderTeams();
   }
   window.removePlayer = removePlayer;
+  window.editPlayer = editPlayer;
+
+  // 팀 이름 저장
+  function saveTeamNames(){
+    if(!currentBattleId){ alert('먼저 전투를 생성해주세요'); return; }
+    const a = document.getElementById('teamNameA'), b = document.getElementById('teamNameB');
+    const teamNames = { A: a.value.trim(), B: b.value.trim() };
+    if (!teamNames.A || !teamNames.B) { alert('두 팀 이름을 모두 입력해주세요'); return; }
+    if (teamNames.A === teamNames.B) { alert('두 팀 이름이 같을 수 없습니다'); return; }
+    socket.emit('setTeamNames',{battleId:currentBattleId,teamNames},(res)=>{
+      if(res?.ok){ delete a.dataset.dirty; delete b.dataset.dirty; }
+      else alert('팀 이름 저장 실패: ' + (res?.error||'알 수 없는 오류'));
+    });
+  }
 
   // 링크 생성(서버가 반환한 안전한 URL을 그대로 사용)
   async function requestLinks(){
@@ -553,7 +677,7 @@
       const labelName = link.playerName || link.name || '참가자';
       const tLabel = link.team ? ` (${teamLabel(link.team)}팀)` : '';
       html+=`<div class="link-item">
-        <div class="link-label">${esc(labelName)}${tLabel}</div>
+        <div class="link-label">${esc(labelName)}${esc(tLabel)}</div>
         <div class="link-url" onclick="copyToClipboard('${url}', event)">${url}</div>
         <button class="copy-btn" onclick="copyToClipboard('${url}', event)">복사</button>
       </div>`;
@@ -589,6 +713,9 @@
   document.getElementById('btnEnd').addEventListener('click',endBattle);
 
   document.getElementById('btnAddPlayer').addEventListener('click',addPlayer);
+  document.getElementById('btnCancelEdit').addEventListener('click',cancelEdit);
+  document.getElementById('btnTeamNames').addEventListener('click',saveTeamNames);
+  ['teamNameA','teamNameB'].forEach(id=>document.getElementById(id).addEventListener('input',(e)=>{ e.target.dataset.dirty='1'; }));
   document.getElementById('avatarPickBtn').addEventListener('click',()=>avatarUpload.click());
   document.getElementById('avatarUpload').addEventListener('change',(e)=>{
     if(e.target.files[0]){

@@ -89,7 +89,7 @@
   <div class="main-grid">
     <div>
       <div class="team-container team-a" style="margin-bottom:12px">
-        <div class="team-title">불사조 기사단</div>
+        <div class="team-title" data-team-name="A">불사조 기사단</div>
         <div id="teamA"></div>
       </div>
 
@@ -124,7 +124,7 @@
 
     <div>
       <div class="team-container team-b" style="margin-bottom:12px">
-        <div class="team-title">죽음을 먹는 자</div>
+        <div class="team-title" data-team-name="B">죽음을 먹는 자</div>
         <div id="teamB"></div>
       </div>
 
@@ -179,6 +179,7 @@
 
   let gameOverShown = false;
 
+  const tn = t => window.BattleUI ? BattleUI.teamName(t) : (t === 'A' ? '불사조 기사단' : t === 'B' ? '죽음을 먹는 자' : String(t ?? ''));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function classForLog(type, message){
@@ -305,8 +306,8 @@
     const info = document.getElementById('turnInfo');
 
     const phaseText =
-      battle?.phase === 'A_select' ? '불사조 기사단 선택 중' :
-      battle?.phase === 'B_select' ? '죽음을 먹는 자 선택 중' :
+      battle?.phase === 'A_select' ? `${tn('A')} 선택 중` :
+      battle?.phase === 'B_select' ? `${tn('B')} 선택 중` :
       battle?.phase === 'resolve'  ? '라운드 해석 중' :
       battle?.phase === 'inter'    ? '다음 라운드 대기' : '대기중';
 
@@ -318,6 +319,7 @@
   }
 
   function renderAll(){
+    if (window.BattleUI) BattleUI.applyTeamNames(battle);
     if (battle?.phase && battle.phase !== currentPhase) {
       currentPhase = battle.phase;
       if (currentPhase === 'resolve' && bufferedResolutionLogs.length) {

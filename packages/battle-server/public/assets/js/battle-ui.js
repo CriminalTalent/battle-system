@@ -2,7 +2,22 @@
    - 팀 표시 이름, 중앙 무대(현재 플레이어/대기 이미지), 승리 안내
    - 외부 이미지 없이 인라인 SVG만 사용 */
 (function () {
+  // 기본 팀 이름. 서버 스냅샷의 teamNames가 오면 applyTeamNames로 갱신
   const TEAM_NAMES = { A: '불사조 기사단', B: '죽음을 먹는 자' };
+  const teamName = t => TEAM_NAMES[t] || String(t ?? '');
+
+  /** 스냅샷의 팀 이름 반영: [data-team-name="A|B"] 요소의 글자를 바꿈 (textContent라 이스케이프 불필요) */
+  function applyTeamNames(snap) {
+    const n = snap?.teamNames;
+    if (n && typeof n === 'object') {
+      if (typeof n.A === 'string' && n.A) TEAM_NAMES.A = n.A;
+      if (typeof n.B === 'string' && n.B) TEAM_NAMES.B = n.B;
+    }
+    document.querySelectorAll('[data-team-name]').forEach(el => {
+      const v = teamName(el.getAttribute('data-team-name'));
+      if (el.textContent !== v) el.textContent = v;
+    });
+  }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const WAIT_SVG = `
@@ -143,5 +158,5 @@
     return winner === 'A' || winner === 'B' ? `${TEAM_NAMES[winner]} 승리` : '무승부';
   }
 
-  window.BattleUI = { TEAM_NAMES, renderStage, hpClass, fillVictory, winnerText };
+  window.BattleUI = { TEAM_NAMES, teamName, applyTeamNames, renderStage, hpClass, fillVictory, winnerText };
 })();

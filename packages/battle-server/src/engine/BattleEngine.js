@@ -27,8 +27,16 @@ const RESOLVE_WINDOW_MS = 3_000;         // 3초
 const d10 = () => 1 + Math.floor(Math.random() * 10);
 const teamOf = (p) => (p?.team === 'B' ? 'B' : 'A');
 
-// ▼ 표시용 팀명(내부 키는 A/B 유지)
-const teamLabel = (t) => (t === 'A' ? '불사조 기사단' : t === 'B' ? '죽음을 먹는자' : String(t));
+// ▼ 표시용 팀명(내부 키는 A/B 유지, 전투별로 관리자가 변경 가능)
+const DEFAULT_TEAM_NAMES = Object.freeze({ A: '불사조 기사단', B: '죽음을 먹는 자' });
+const TEAM_NAME_MAX = 20;
+const teamLabel = (b, t) => (t === 'A' || t === 'B') ? (b?.teamNames?.[t] || DEFAULT_TEAM_NAMES[t]) : String(t);
+const cleanTeamName = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, TEAM_NAME_MAX) : '');
+
+// ▼ 참가자 수치 정규화 (추가/수정 공용)
+const toInt = (v, min, max, dflt) => (v !== null && v !== '' && v !== undefined && Number.isFinite(Number(v))) ? clamp(Math.trunc(Number(v)), min, max) : dflt;
+const statOf = (v, dflt = 1) => toInt(v, 0, 10, dflt);
+const itemOf = (v, dflt = 0) => toInt(v, 0, 99, dflt);
 
 function sortByInitiative(players) {
   return [...players].sort((a, b) => {
@@ -109,6 +117,7 @@ export function createBattleStore() {
       id: b.id, status: b.status, phase: b.phase, round: b.round,
       currentTeam: b.currentTeam, nextFirstTeam: b.nextFirstTeam,
       createdAt: b.createdAt, hardLimitAt: b.hardLimitAt, winner: b.winner,
+      teamNames: { ...b.teamNames },
       currentTurn: { round: b.round, currentTeam: b.currentTeam, timeLeftSec, currentPlayer, actedIds },
       players: b.players.map(p => ({
         id: p.id, name: p.name, team: p.team, avatar: p.avatar,
@@ -135,15 +144,16 @@ export function createBattleStore() {
       phaseEndsAt: null,
       phaseToken: null,           // ✅ 페이즈 토큰
       winner: null, paused: null,
+      teamNames: { ...DEFAULT_TEAM_NAMES },
     };
     battles.set(id, b); return b;
   }
 
   function addPlayer(battleId, player) {
     const b = get(battleId); if (!b || b.status !== 'waiting' || !player) return null;
-    const int = (v, min, max, dflt) => (v !== null && v !== '' && Number.isFinite(Number(v))) ? clamp(Math.trunc(Number(v)), min, max) : dflt;
-    const stat = v => int(v, 0, 10, 1);
-    const item = v => int(v, 0, 99, 0);
+    const int = toInt;
+    const stat = v => statOf(v);
+    const item = v => itemOf(v);
     const hp = int(player.hp, 1, 1000, 100);
     const avatar = String(player.avatar || '');
     const p = {
@@ -167,6 +177,31 @@ export function createBattleStore() {
     };
     b.players.push(p); touch(b);
     const { token, ...pub } = p; return pub;
+  }
+
+  // 관리자 수정: 대기 중 전투에서 아직 준비하지 않은 참가자의 HP·스탯·아이템만
+  function updatePlayer(battleId, playerId, patch) {
+    const b = get(battleId); if (!b || b.status !== 'waiting' || !patch || typeof patch !== 'object') return null;
+    const p = b.players.find(x => x.id === playerId); if (!p || p.ready) return null;
+    if (patch.hp !== undefined) { const hp = toInt(patch.hp, 1, 1000, p.maxHp); p.hp = hp; p.maxHp = hp; }
+    const st = patch.stats || {};
+    for (const k of ['attack', 'defense', 'agility', 'luck']) if (st[k] !== undefined) p.stats[k] = statOf(st[k], p.stats[k]);
+    const it = patch.items || {};
+    for (const k of ['dittany', 'attackBooster', 'defenseBooster']) if (it[k] !== undefined) p.items[k] = itemOf(it[k], p.items[k]);
+    pushLog(b, `${p.name}의 능력치가 수정되었습니다`, 'notice');
+    touch(b);
+    const { token, ...pub } = p; return { ...pub, stats: { ...p.stats }, items: { ...p.items } };
+  }
+
+  // 관리자: 팀 표시 이름 변경 (종료 전까지)
+  function setTeamNames(battleId, names) {
+    const b = get(battleId); if (!b || b.status === 'ended' || !names || typeof names !== 'object') return null;
+    const A = cleanTeamName(names.A) || b.teamNames.A;
+    const B = cleanTeamName(names.B) || b.teamNames.B;
+    if (A === B) return null;
+    b.teamNames = { A, B };
+    pushLog(b, `팀 이름 변경: ${A} / ${B}`, 'notice');
+    touch(b); return { ...b.teamNames };
   }
 
   function removePlayer(battleId, playerId) {
@@ -207,8 +242,8 @@ export function createBattleStore() {
 
     b.currentTeam = first; b.nextFirstTeam = first; b.selectionDone = { A: false, B: false };
 
-    pushLog(b, `선공 결정: ${teamLabel('A')}(민첩 ${Math.floor(avgA)} + ${rA} = ${sA}) vs ${teamLabel('B')}(민첩 ${Math.floor(avgB)} + ${rB} = ${sB})`, 'system');
-    pushLog(b, `${teamLabel(first)}이(가) 선공입니다!`, 'system');
+    pushLog(b, `선공 결정: ${teamLabel(b, 'A')}(민첩 ${Math.floor(avgA)} + ${rA} = ${sA}) vs ${teamLabel(b, 'B')}(민첩 ${Math.floor(avgB)} + ${rB} = ${sB})`, 'system');
+    pushLog(b, `${teamLabel(b, first)}이(가) 선공입니다!`, 'system');
     pushLog(b, '전투가 시작되었습니다!', 'system');
     pushLog(b, `${b.round}라운드 시작`, 'system');
 
@@ -228,7 +263,7 @@ export function createBattleStore() {
     b.phaseEndsAt = now() + TEAM_SELECT_MS;
     b.phaseToken  = randomUUID();
 
-    pushLog(b, `=== ${teamLabel(team)} 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
+    pushLog(b, `=== ${teamLabel(b, team)} 선택 페이즈 시작 ===`, team === 'A' ? 'teamA' : 'teamB');
     touch(b);
 
     // 선택 시간 초과 처리
@@ -239,7 +274,7 @@ export function createBattleStore() {
         if (x.team === team && x.hp > 0 && !chosenIds.has(x.id)) b.choices[team].push({ playerId: x.id, type: 'pass', targetId: null, raw: {} });
       }
       b.selectionDone[team] = true;
-      pushLog(b, `[${teamLabel(team)}] 시간 초과 — 자동 진행(pass)`, team === 'A' ? 'teamA' : 'teamB');
+      pushLog(b, `[${teamLabel(b, team)}] 시간 초과 — 자동 진행(pass)`, team === 'A' ? 'teamA' : 'teamB');
       touch(b);
       finishSelectOrNext(b);
     });
@@ -307,7 +342,7 @@ export function createBattleStore() {
     const done = [...aliveIds].every(id => chosenIds.has(id));
     if (done && !b.selectionDone[team]) {
       b.selectionDone[team] = true;
-      pushLog(b, `[${teamLabel(team)}] ${teamLabel(team)} 선택 완료`, team === 'A' ? 'teamA' : 'teamB');
+      pushLog(b, `[${teamLabel(b, team)}] ${teamLabel(b, team)} 선택 완료`, team === 'A' ? 'teamA' : 'teamB');
       touch(b);
       finishSelectOrNext(b);
     } else {
@@ -432,7 +467,7 @@ export function createBattleStore() {
       if (!bothAlive(b)) {
         const win = teamAlive(b, 'A') ? 'A' : teamAlive(b, 'B') ? 'B' : null;
         if (win) {
-          pushLog(b, `${teamLabel(win)} 승리!`, 'result');
+          pushLog(b, `${teamLabel(b, win)} 승리!`, 'result');
           finish(b, win);
           touch(b); return;
         }
@@ -548,9 +583,9 @@ export function createBattleStore() {
   function endByHpSum(b) {
     const sumA = b.players.filter(p => p.team === 'A' && p.hp > 0).reduce((s, p) => s + p.hp, 0);
     const sumB = b.players.filter(p => p.team === 'B' && p.hp > 0).reduce((s, p) => s + p.hp, 0);
-    pushLog(b, `시간 종료 — 생존 HP 합산: ${teamLabel('A')}=${sumA}, ${teamLabel('B')}=${sumB}`, 'result');
+    pushLog(b, `시간 종료 — 생존 HP 합산: ${teamLabel(b, 'A')}=${sumA}, ${teamLabel(b, 'B')}=${sumB}`, 'result');
     if (sumA === sumB) pushLog(b, '무승부 처리', 'result');
-    else pushLog(b, `${teamLabel(sumA > sumB ? 'A' : 'B')} 승리!`, 'result');
+    else pushLog(b, `${teamLabel(b, sumA > sumB ? 'A' : 'B')} 승리!`, 'result');
     finish(b, sumA === sumB ? null : (sumA > sumB ? 'A' : 'B'));
   }
 
@@ -568,7 +603,7 @@ export function createBattleStore() {
   return {
     setLogger, setUpdate,
     size, get, snapshot,
-    create, addPlayer, removePlayer,
+    create, addPlayer, updatePlayer, setTeamNames, removePlayer,
     markReady, start, playerAction,
     pause, resume, end, authByToken,
   };

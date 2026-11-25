@@ -115,7 +115,7 @@
     <!-- 좌측: A팀 + 채팅 -->
     <div>
       <div class="team-container team-a" style="margin-bottom:12px">
-        <div class="team-title">불사조 기사단</div>
+        <div class="team-title" data-team-name="A">불사조 기사단</div>
         <div id="teamA"></div>
       </div>
 
@@ -138,7 +138,7 @@
                onerror="this.style.background='#000';this.removeAttribute('src')"/>
           <div class="my-details">
             <div id="myName" class="my-name">전투 참가자</div>
-            <div class="my-team"><span id="myTeam">?</span>팀</div>
+            <div class="my-team" id="myTeam">?</div>
           </div>
           <button id="readyBtn" class="ready-btn" type="button">준비 완료</button>
         </div>
@@ -170,7 +170,7 @@
     <!-- 우측: B팀 + 로그 -->
     <div>
       <div class="team-container team-b" style="margin-bottom:12px">
-        <div class="team-title">죽음을 먹는 자</div>
+        <div class="team-title" data-team-name="B">죽음을 먹는 자</div>
         <div id="teamB"></div>
       </div>
 
@@ -222,6 +222,7 @@
   let gameOverShown = false;
 
   const seenLogIds = new Set(); // 로그 중복 제한
+  const tn = t => window.BattleUI ? BattleUI.teamName(t) : (t === 'A' ? '불사조 기사단' : t === 'B' ? '죽음을 먹는 자' : String(t ?? ''));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   // ─────────────────────────────────────────
@@ -251,7 +252,7 @@
     if (live) myPlayer = live;
 
     document.getElementById('myName').textContent = myPlayer.name || '전투 참가자';
-    document.getElementById('myTeam').textContent = myPlayer.team || '?';
+    document.getElementById('myTeam').textContent = myPlayer.team ? tn(myPlayer.team) : '?';
 
     const maxHp = Number.isFinite(myPlayer.maxHp) ? myPlayer.maxHp : 100;
     const hp    = Number.isFinite(myPlayer.hp) ? myPlayer.hp : maxHp;
@@ -349,8 +350,8 @@
     const turn = battleState?.currentTurn || {};
     const phase = battleState?.phase;
     const phaseText =
-      phase === 'A_select' ? '불사조 기사단 선택 중' :
-      phase === 'B_select' ? '죽음을 먹는 자 선택 중' :
+      phase === 'A_select' ? `${tn('A')} 선택 중` :
+      phase === 'B_select' ? `${tn('B')} 선택 중` :
       phase === 'resolve'  ? '라운드 해석 중' :
       phase === 'inter'    ? '다음 라운드 대기' : '대기중';
 
@@ -375,7 +376,7 @@
     });
   }
 
-  function renderAll(){ if(!battleState) return; updateMine(); renderTurn(); renderTeams(); maybeShowGameOverByStatus(); }
+  function renderAll(){ if(!battleState) return; if (window.BattleUI) BattleUI.applyTeamNames(battleState); updateMine(); renderTurn(); renderTeams(); maybeShowGameOverByStatus(); }
 
   // ─────────────────────────────────────────
   // 채팅

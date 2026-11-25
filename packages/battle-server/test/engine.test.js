@@ -83,3 +83,32 @@ test('스냅샷에 이번 선택 페이즈의 선택 완료자가 표시된다',
   s.end(b.id);
   mock.timers.reset();
 });
+
+test('준비 전 참가자만 관리자가 HP·스탯·아이템 수정 가능', () => {
+  const s = createBattleStore();
+  const b = s.create('1v1');
+  const A = s.addPlayer(b.id, { name: 'a', team: 'A' });
+  const B = s.addPlayer(b.id, { name: 'b', team: 'B' });
+  const up = s.updatePlayer(b.id, A.id, { hp: 250, stats: { attack: 4, luck: 99 }, items: { dittany: 3 } });
+  assert.equal(up.hp, 250); assert.equal(up.maxHp, 250);
+  assert.equal(up.stats.attack, 4); assert.equal(up.stats.luck, 10); assert.equal(up.stats.defense, 1);
+  assert.equal(up.items.dittany, 3); assert.equal(up.token, undefined);
+  s.markReady(b.id, A.id);
+  assert.equal(s.updatePlayer(b.id, A.id, { hp: 1 }), null);
+  assert.equal(b.players[0].hp, 250);
+  s.markReady(b.id, B.id); s.start(b.id);
+  assert.equal(s.updatePlayer(b.id, B.id, { hp: 1 }), null);
+  s.end(b.id);
+});
+
+test('팀 이름 변경과 스냅샷 반영', () => {
+  const s = createBattleStore();
+  const b = s.create('1v1');
+  assert.deepEqual(s.snapshot(b.id).teamNames, { A: '불사조 기사단', B: '죽음을 먹는 자' });
+  assert.deepEqual(s.setTeamNames(b.id, { A: '  레드\u0007팀 ', B: '' }), { A: '레드팀', B: '죽음을 먹는 자' });
+  assert.equal(s.setTeamNames(b.id, { A: '같음', B: '같음' }), null);
+  assert.equal(s.setTeamNames(b.id, { A: 'x'.repeat(50) }).A.length, 20);
+  assert.equal(s.snapshot(b.id).teamNames.B, '죽음을 먹는 자');
+  s.end(b.id);
+  assert.equal(s.setTeamNames(b.id, { A: '새이름' }), null);
+});
