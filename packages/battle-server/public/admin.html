@@ -7,18 +7,9 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230081B4'/%3E%3Ctext x='32' y='40' font-size='28' text-anchor='middle' fill='white' font-family='system-ui,sans-serif'%3EP%3C/text%3E%3C/svg%3E" />
 <script src="/socket.io/socket.io.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="/assets/css/battle-theme.css" rel="stylesheet">
+<script src="/assets/js/battle-ui.js"></script>
 <style>
-  :root{
-    --bg1:#0e0e0e; --bg2:#141414;
-    --glass-1:rgba(0,0,0,.7); --glass-2:rgba(0,0,0,.5);
-    --border:rgba(220,199,162,.3);
-    --text:#F8F9FA; --muted:#A9AFB6;
-    --gold:#DCC7A2; --gold2:#E6D2A8;
-    --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-    --shadow:0 10px 30px rgba(0,0,0,.45);
-    --team-a-color:#8b5757; --team-b-color:#5d6b8d;
-    --result-bg:#DCC7A2; --result-text:#000;
-  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:linear-gradient(135deg,#000813,#001122);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:8px}
   .container{max-width:1400px;margin:0 auto}
@@ -38,8 +29,20 @@
   .control-btn.primary:hover:not(:disabled){background:var(--gold2)}
   .control-btn.danger{background:var(--bad);color:#fff}
   .control-btn.danger:hover:not(:disabled){background:#dc2626}
-  #btnCreate{background:#000 !important;border:1px solid var(--gold) !important;color:var(--gold) !important}
-  #btnCreate:hover{background:var(--gold2) !important;color:#000 !important}
+  /* 시작 버튼을 크게, 전투 생성은 아래로 분리해 작게 (오클릭 방지) */
+  .status-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  .battle-id{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .control-btn.start-btn{width:100%;padding:14px 12px;font-size:16px;letter-spacing:.1em;margin-bottom:8px;
+    background:linear-gradient(180deg,#5CF2B5,var(--ok));color:#04281a;border:none;box-shadow:0 0 18px rgba(46,229,157,.35)}
+  .control-btn.start-btn:hover:not(:disabled){background:linear-gradient(180deg,#8CFFD0,#5CF2B5);color:#04281a}
+  .control-btn.start-btn:disabled{background:rgba(46,229,157,.15);color:var(--muted);box-shadow:none}
+  .control-grid.three{grid-template-columns:repeat(3,1fr);margin-bottom:0}
+  .create-section{margin-top:4px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;background:rgba(0,0,0,.25)}
+  .create-section .create-head{font-size:11px;color:var(--muted);margin-bottom:6px}
+  .create-row{display:flex;gap:6px;align-items:center}
+  .create-row .form-select{flex:1;min-width:0}
+  #btnCreate{flex:none;background:transparent;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:6px 10px;font-weight:600}
+  #btnCreate:hover:not(:disabled){background:transparent;border-color:var(--gold);color:var(--gold)}
 
   .player-form{background:var(--glass-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
@@ -112,23 +115,27 @@
       <div class="card">
         <div class="title">전투 제어</div>
         <div class="control-section">
-          <div class="form-field">
-            <label class="form-label">전투 모드</label>
-            <select id="battleMode" class="form-select">
-              <option value="1v1">1v1</option>
-              <option value="2v2" selected>2v2</option>
-              <option value="3v3">3v3</option>
-              <option value="4v4">4v4</option>
-            </select>
+          <div class="status-row">
+            <span id="statusBadge" class="status-badge">전투 없음</span>
+            <span id="battleIdText" class="battle-id"></span>
           </div>
-          <div class="control-grid single">
-            <button id="btnCreate" class="control-btn">전투 생성</button>
-          </div>
-          <div class="control-grid">
-            <button id="btnStart" class="control-btn" disabled>시작</button>
+          <button id="btnStart" class="control-btn start-btn" disabled>전투 시작</button>
+          <div class="control-grid three">
             <button id="btnPause" class="control-btn" disabled>일시정지</button>
             <button id="btnResume" class="control-btn" disabled>재개</button>
             <button id="btnEnd" class="control-btn danger" disabled>종료</button>
+          </div>
+        </div>
+        <div class="create-section">
+          <div class="create-head">새 전투 만들기</div>
+          <div class="create-row">
+            <select id="battleMode" class="form-select" aria-label="전투 모드">
+              <option value="1v1" selected>1v1</option>
+              <option value="2v2">2v2</option>
+              <option value="3v3">3v3</option>
+              <option value="4v4">4v4</option>
+            </select>
+            <button id="btnCreate" class="control-btn" type="button">새 전투 생성</button>
           </div>
         </div>
       </div>
@@ -213,11 +220,11 @@
         </div>
       </div>
 
-      <div class="team-container" style="margin-bottom:12px">
+      <div class="team-container team-a" style="margin-bottom:12px">
         <div class="team-title">불사조 기사단 팀</div>
         <div id="teamA"></div>
       </div>
-      <div class="team-container">
+      <div class="team-container team-b">
         <div class="team-title">죽음을 먹는 자 팀</div>
         <div id="teamB"></div>
       </div>
@@ -238,6 +245,14 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 게임 종료 오버레이 -->
+<div id="gameOver" class="game-over-overlay" aria-hidden="true">
+  <div class="game-over-box">
+    <div class="game-over-title">전투가 종료되었습니다.</div>
+    <div class="game-over-winner" id="winnerText"></div>
   </div>
 </div>
 
@@ -338,19 +353,21 @@
     const renderTeam = (players, targetId) => {
       let html = '';
       players.forEach(p => {
-        const hpPct = Math.max(0, p.hp/(p.maxHp||100)*100);
+        const hpPct = Math.max(0, Math.min(100, p.hp/(p.maxHp||100)*100));
+        const hpCls = window.BattleUI ? BattleUI.hpClass(hpPct) : '';
+        const isCur = battleState?.currentTurn?.currentPlayer?.id === p.id;
         const items = [];
         if ((p.items?.dittany || p.items?.ditany) > 0) items.push(`디터니 ${p.items?.dittany || p.items?.ditany}`);
         if ((p.items?.attackBooster || p.items?.attack_boost) > 0) items.push(`공격보정 ${p.items?.attackBooster || p.items?.attack_boost}`);
         if ((p.items?.defenseBooster || p.items?.defense_boost) > 0) items.push(`방어보정 ${p.items?.defenseBooster || p.items?.defense_boost}`);
         const av = p.avatar || '';
         html += `
-        <div class="player-card ${p.hp>0?'':'dead'}">
+        <div class="player-card ${p.hp>0?'':'dead'} ${isCur?'is-current':''}">
           <img src="${av}" class="player-avatar" alt="${esc(p.name)}"
                onerror="this.removeAttribute('src');this.style.background='#000'"/>
           <div class="player-info">
             <div class="player-name">${esc(p.name)}</div>
-            <div class="hp"><span style="width:${hpPct}%"></span></div>
+            <div class="hp"><span class="${hpCls}" style="width:${hpPct}%"></span></div>
             <div class="hp-text">HP ${p.hp}/${p.maxHp||100}</div>
             <div class="stats">공${p.stats?.attack||0} 방${p.stats?.defense||0} 민${p.stats?.agility||0} 행${p.stats?.luck||0}</div>
             <div class="items-info">${items.length ? items.join(', ') : '아이템 없음'}</div>
@@ -372,13 +389,36 @@
     document.getElementById('btnPause').disabled  = s !== 'active';
     document.getElementById('btnResume').disabled = s !== 'paused';
     document.getElementById('btnEnd').disabled    = !s || s === 'ended';
+    const badge = document.getElementById('statusBadge');
+    const label = { waiting:'대기 중', active:'진행 중', paused:'일시정지', ended:'종료' }[s] || '전투 없음';
+    badge.textContent = label;
+    badge.className = 'status-badge' + (s ? ' ' + s : '');
+    document.getElementById('battleIdText').textContent = currentBattleId ? `ID ${currentBattleId}` : '';
   }
 
-  function render(){ renderTeams(); updateBattleControls(); }
+  // 전투 종료 안내 (전투마다 한 번)
+  let gameOverShownFor = null;
+  function showGameOver(winner){
+    if (!currentBattleId || gameOverShownFor === currentBattleId) return;
+    gameOverShownFor = currentBattleId;
+    const ov = document.getElementById('gameOver');
+    if (window.BattleUI) BattleUI.fillVictory(ov, winner, battleState);
+    else { document.getElementById('winnerText').textContent = winner === 'A' ? '불사조 기사단 승리' : winner === 'B' ? '죽음을 먹는 자 승리' : '무승부'; ov.classList.add('show'); }
+    addLog({ts:Date.now(),type:'notice',message:`전투 종료: ${window.BattleUI ? BattleUI.winnerText(winner) : (winner || '무승부')}`});
+  }
+
+  function render(){
+    renderTeams(); updateBattleControls();
+    if (battleState?.status === 'ended') showGameOver(battleState.winner);
+  }
 
   // 전투 생성/제어
   function createBattle(){
     const mode=document.getElementById('battleMode').value;
+    const s = battleState?.status;
+    if (currentBattleId && s && s !== 'ended' &&
+        !confirm(`진행 중인 전투가 있습니다 (${s === 'waiting' ? '대기 중' : s === 'paused' ? '일시정지' : '진행 중'}).\n새 ${mode} 전투를 만들고 이 화면을 새 전투로 바꿀까요?\n(전투를 시작하려면 '전투 시작' 버튼을 누르세요)`)) return;
+    document.getElementById('gameOver').classList.remove('show');
     socket.emit('createBattle',{mode},(res)=>{
       if(res?.ok){
         currentBattleId = res.battleId || res.battle?.id || null;
@@ -578,6 +618,7 @@
     render();
   };
   socket.on('battle:update', onSnap);
+  socket.on('battle:ended', (d)=>{ if (battleState) { battleState.status = 'ended'; if (d && 'winner' in d) battleState.winner = d.winner; } showGameOver(d?.winner ?? battleState?.winner); updateBattleControls(); });
   socket.on('battle:log', addLog);
   socket.on('chatMessage', addChat);
 

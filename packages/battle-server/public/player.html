@@ -6,19 +6,9 @@
 <title>전투 참가자</title>
 <script src="/socket.io/socket.io.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="/assets/css/battle-theme.css" rel="stylesheet">
+<script src="/assets/js/battle-ui.js"></script>
 <style>
-  :root{
-    --bg1:#0e0e0e; --bg2:#141414;
-    --glass-1:rgba(0,0,0,.7); --glass-2:rgba(0,0,0,.5);
-    --border:rgba(220,199,162,.3);
-    --text:#F8F9FA; --muted:#A9AFB6;
-    --gold:#DCC7A2; --gold2:#E6D2A8;
-    --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
-    --shadow:0 10px 30px rgba(0,0,0,.45);
-    --team-a-color:#8b5757;  /* A팀 로그 배경 */
-    --team-b-color:#5d6b8d;  /* B팀 로그 배경 */
-    --result-bg:#DCC7A2; --result-text:#000;
-  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:linear-gradient(135deg,#000813,#001122);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100vh;padding:8px}
   .container{max-width:1400px;margin:0 auto}
@@ -67,11 +57,8 @@
   /* 현재 턴/타이머/액션(하단) */
   .battle-main{text-align:center}
   .current-player{display:flex;align-items:center;justify-content:center;margin-bottom:10px}
-  .current-avatar{
-    width:220px;height:220px;
-    border-radius:16px;object-fit:cover;border:4px solid var(--gold);background:#000
-  }
-  @media (max-width:767px){ .current-avatar{ width:190px;height:190px; } }
+  .current-stage{width:240px;height:240px}
+  @media (max-width:767px){ .current-stage{ width:200px;height:200px; } }
   .turn-info{font-size:16px;margin-bottom:6px;color:var(--text);font-weight:600}
   .timer-display{color:var(--gold);font-size:28px;margin-bottom:4px;font-weight:700}
   .timer-seconds{font-size:12px;color:var(--muted);margin-bottom:10px}
@@ -127,7 +114,7 @@
   <div class="main-grid">
     <!-- 좌측: A팀 + 채팅 -->
     <div>
-      <div class="team-container" style="margin-bottom:12px">
+      <div class="team-container team-a" style="margin-bottom:12px">
         <div class="team-title">불사조 기사단</div>
         <div id="teamA"></div>
       </div>
@@ -164,8 +151,7 @@
       <!-- 현재 턴 & 액션 (하단) -->
       <div class="card battle-main">
         <div class="current-player">
-          <img id="currentPortrait" class="current-avatar" alt="현재 플레이어"
-               onerror="this.style.background='#000';this.removeAttribute('src')"/>
+          <div id="currentStage" class="stage current-stage"></div>
         </div>
         <div id="turnInfo" class="turn-info">대기 중...</div>
         <div id="timerDisplay" class="timer-display">5:00</div>
@@ -183,7 +169,7 @@
 
     <!-- 우측: B팀 + 로그 -->
     <div>
-      <div class="team-container" style="margin-bottom:12px">
+      <div class="team-container team-b" style="margin-bottom:12px">
         <div class="team-title">죽음을 먹는 자</div>
         <div id="teamB"></div>
       </div>
@@ -270,7 +256,9 @@
     const maxHp = Number.isFinite(myPlayer.maxHp) ? myPlayer.maxHp : 100;
     const hp    = Number.isFinite(myPlayer.hp) ? myPlayer.hp : maxHp;
     const pct   = Math.max(0, Math.min(100, Math.round((hp / Math.max(1,maxHp)) * 100)));
-    document.getElementById('myHpFill').style.width = pct + '%';
+    const myFill = document.getElementById('myHpFill');
+    myFill.style.width = pct + '%';
+    myFill.className = window.BattleUI ? BattleUI.hpClass(pct) : '';
     document.getElementById('myHpText').textContent = `HP ${hp}/${maxHp}`;
 
     const st = myPlayer.stats || {};
@@ -304,14 +292,16 @@
       if ((p.items?.attackBooster ?? 0) > 0) items.push(`공격보정 ${p.items.attackBooster}`);
       if ((p.items?.defenseBooster ?? 0) > 0) items.push(`방어보정 ${p.items.defenseBooster}`);
       const ready = p.ready ? '준비완료' : '대기중';
+      const isCur = battleState?.currentTurn?.currentPlayer?.id === p.id;
+      const hpCls = window.BattleUI ? BattleUI.hpClass(pct) : '';
 
       return `
-      <div class="player-card ${hp>0?'':'dead'}">
+      <div class="player-card ${hp>0?'':'dead'} ${isCur?'is-current':''}">
         <img src="${p.avatar||''}" class="player-avatar" alt="${esc(p.name)}"
              onerror="this.style.background='#000';this.removeAttribute('src')"/>
         <div class="player-info">
           <div class="player-name">${esc(p.name)}</div>
-          <div class="hp"><span style="width:${pct}%"></span></div>
+          <div class="hp"><span class="${hpCls}" style="width:${pct}%"></span></div>
           <div class="hp-text">HP ${hp}/${maxHp}</div>
           <div class="stats">공${p.stats?.attack||0} 방${p.stats?.defense||0} 민${p.stats?.agility||0} 행${p.stats?.luck||0}</div>
           <div class="items-info">${items.length?items.join(', '):'아이템 없음'}</div>
@@ -347,6 +337,9 @@
     const ss = (t%60).toString().padStart(2,'0');
     document.getElementById('timerDisplay').textContent = `${mm}:${ss}`;
     document.getElementById('timerSeconds').textContent = `${t}초`;
+    const ph = battleState?.phase;
+    document.getElementById('timerDisplay').classList.toggle('urgent',
+      t > 0 && t <= 10 && battleState?.status === 'active' && (ph === 'A_select' || ph === 'B_select'));
   }
 
   // ─────────────────────────────────────────
@@ -365,9 +358,8 @@
     document.getElementById('turnInfo').textContent =
       cp?.name ? `${phaseText} - ${cp.name} 차례` : phaseText;
 
-    // 초상
-    const curImg = document.getElementById('currentPortrait');
-    if (cp?.avatar) { curImg.src = cp.avatar; } else { curImg.removeAttribute('src'); curImg.style.background = '#000'; }
+    // 초상 (현재 플레이어가 없으면 대기 이미지)
+    if (window.BattleUI) BattleUI.renderStage(document.getElementById('currentStage'), battleState);
 
     // 타이머
     const t = Math.max(0, turn?.timeLeftSec|0);
@@ -587,16 +579,25 @@
     if (gameOverShown) return;
     gameOverShown = true;
     const ov = document.getElementById('gameOver');
-    const wt = document.getElementById('winnerText');
-    wt.textContent = winnerTeam === 'A' ? '불사조 기사단 승리' : winnerTeam === 'B' ? '죽음을 먹는 자 승리' : '무승부';
-    ov.classList.add('show');
+    if (window.BattleUI) {
+      BattleUI.fillVictory(ov, winnerTeam, battleState);
+    } else {
+      document.getElementById('winnerText').textContent = winnerTeam === 'A' ? '불사조 기사단 승리' : winnerTeam === 'B' ? '죽음을 먹는 자 승리' : '무승부';
+      ov.classList.add('show');
+    }
+    const mine = myPlayer?.team;
+    if (mine && (winnerTeam === 'A' || winnerTeam === 'B')) {
+      const det = ov.querySelector('.game-over-detail');
+      if (det) det.insertAdjacentHTML('afterbegin', `<div style="font-size:16px;font-weight:800;margin-bottom:4px">${mine === winnerTeam ? '우리 팀 승리!' : '아쉽지만 패배했습니다'}</div>`);
+    }
+    addLog({ ts: Date.now(), type: 'result', message: `전투 종료: ${window.BattleUI ? BattleUI.winnerText(winnerTeam) : (winnerTeam || '무승부')}` });
     // 모든 인터랙션 비활성화
     ['attackBtn','defendBtn','dodgeBtn','itemBtn','passBtn','readyBtn','chatSend','chatInput']
       .forEach(id=>{ const el=document.getElementById(id); if(el){ el.disabled=true; el.classList.add('done'); } });
   }
   // 서버 이벤트 우선
-  socket.on('battle:ended', (d)=> showGameOverOverlay(d?.winner));
-  socket.on('battleEnded',  (d)=> showGameOverOverlay(d?.winner));
+  socket.on('battle:ended', (d)=> showGameOverOverlay(d?.winner ?? battleState?.winner));
+  socket.on('battleEnded',  (d)=> showGameOverOverlay(d?.winner ?? battleState?.winner));
 
   // 스냅샷만으로 종료를 감지하는 보조 로직(로그에서 승자 문구 파악)
   function maybeShowGameOverByStatus(){

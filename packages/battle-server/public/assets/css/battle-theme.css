@@ -1,0 +1,227 @@
+/* =====================================================================
+   전투 화면 공용 테마 (admin / player / spectator)
+   - 고객사별 색상·폰트 변경은 아래 :root 토큰만 수정하면 됩니다.
+   - 페이지 고유 레이아웃은 각 HTML의 <style>에 있습니다.
+   ===================================================================== */
+:root{
+  /* 브랜드 */
+  --brand-font: Cinzel, 'Noto Serif KR', serif;
+  --body-font: system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  --gold:#F5D58A; --gold2:#FFE7A8; --gold-deep:#C99A3B;
+  --accent:#B98CFF;
+
+  /* 배경 */
+  --bg-base:#07061a;
+  --bg-glow-a:rgba(255,72,96,.22);
+  --bg-glow-b:rgba(70,130,255,.24);
+  --bg-glow-c:rgba(185,140,255,.18);
+
+  /* 팀 색 (A = 왼쪽, B = 오른쪽) */
+  --team-a:#FF5A6E; --team-a-2:#FF9A5A;
+  --team-b:#4F8BFF; --team-b-2:#36E0C8;
+
+  /* 표면 */
+  --glass-1:rgba(18,16,44,.78); --glass-2:rgba(8,8,26,.62);
+  --border:rgba(245,213,138,.28); --border-strong:rgba(245,213,138,.6);
+  --text:#F8F7FF; --muted:#B4B2CC;
+  --ok:#2EE59D; --warn:#FFB547; --bad:#FF4D5E;
+  --shadow:0 14px 40px rgba(0,0,0,.55);
+  --glow:0 0 24px rgba(245,213,138,.35);
+  --radius:14px;
+
+  /* 로그 색 */
+  --team-a-color:rgba(255,90,110,.32); --team-b-color:rgba(79,139,255,.32);
+  --result-bg:linear-gradient(90deg,rgba(245,213,138,.95),rgba(255,231,168,.85)); --result-text:#1a1306;
+}
+
+/* ---------- 기본 ---------- */
+body{
+  background:
+    radial-gradient(900px 600px at 0% 0%, var(--bg-glow-a), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, var(--bg-glow-b), transparent 60%),
+    radial-gradient(1200px 700px at 50% 120%, var(--bg-glow-c), transparent 60%),
+    var(--bg-base) !important;
+  background-attachment:fixed !important;
+  color:var(--text);
+  font-family:var(--body-font);
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 22%, #fff8, transparent),
+    radial-gradient(1px 1px at 72% 12%, #fff6, transparent),
+    radial-gradient(1.5px 1.5px at 42% 68%, #fff5, transparent),
+    radial-gradient(1px 1px at 88% 52%, #fff7, transparent),
+    radial-gradient(1px 1px at 22% 88%, #fff5, transparent),
+    radial-gradient(1.5px 1.5px at 62% 38%, #fff4, transparent);
+  animation:twinkle 6s ease-in-out infinite alternate;
+}
+@keyframes twinkle{ from{opacity:.25} to{opacity:.6} }
+.container{position:relative;z-index:1}
+
+.header{
+  font-family:var(--brand-font) !important;
+  font-size:30px !important;font-weight:700;letter-spacing:.14em !important;
+  background:linear-gradient(90deg,var(--team-a),var(--gold),var(--team-b));
+  -webkit-background-clip:text;background-clip:text;color:transparent !important;
+  filter:drop-shadow(0 0 14px rgba(245,213,138,.35));
+}
+
+/* ---------- 카드 ---------- */
+.card,.team-container,.my-info{
+  background:linear-gradient(160deg,rgba(40,34,90,.55),var(--glass-1)) !important;
+  border:1px solid var(--border) !important;border-radius:var(--radius) !important;
+  box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.06) !important;
+  backdrop-filter:blur(6px);
+}
+.card{margin-bottom:12px}
+.title,.team-title{font-family:var(--brand-font) !important;color:var(--gold) !important;text-shadow:0 0 10px rgba(245,213,138,.35)}
+
+/* 팀 패널 색 구분 */
+.team-container.team-a{border-color:rgba(255,90,110,.55) !important;box-shadow:var(--shadow),0 0 22px rgba(255,90,110,.18) !important}
+.team-container.team-b{border-color:rgba(79,139,255,.55) !important;box-shadow:var(--shadow),0 0 22px rgba(79,139,255,.18) !important}
+.team-container.team-a .team-title{color:var(--team-a) !important;text-shadow:0 0 12px rgba(255,90,110,.5)}
+.team-container.team-b .team-title{color:var(--team-b) !important;text-shadow:0 0 12px rgba(79,139,255,.5)}
+.team-container.team-a .player-card{border-left:3px solid var(--team-a) !important}
+.team-container.team-b .player-card{border-left:3px solid var(--team-b) !important}
+
+/* ---------- 참가자 카드 / HP ---------- */
+.player-card{transition:transform .2s, box-shadow .2s}
+.player-card:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.player-card.dead{opacity:.45;filter:grayscale(.8)}
+.player-card.is-current{box-shadow:0 0 0 2px var(--gold),0 0 18px rgba(245,213,138,.45) !important}
+.player-name{color:var(--gold2) !important}
+/* 이미지가 없을 때 깨진 아이콘 대신 기본 실루엣 */
+img.player-avatar:not([src]),img.player-avatar[src=""],img.my-avatar:not([src]),img.my-avatar[src=""],
+img.preview:not([src]),img.preview[src=""],.target img:not([src]),.target img[src=""]{
+  content:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23161335'/%3E%3Ccircle cx='16' cy='12' r='6' fill='%23F5D58A' opacity='.7'/%3E%3Cpath d='M5 30c1-7 6-10 11-10s10 3 11 10z' fill='%23F5D58A' opacity='.7'/%3E%3C/svg%3E");
+}
+.hp,.my-hp{background:rgba(0,0,0,.55) !important}
+.hp>span,.my-hp>span{
+  background:linear-gradient(90deg,#2EE59D,#9BFF6B) !important;
+  box-shadow:0 0 8px rgba(46,229,157,.6);
+  transition:width .5s cubic-bezier(.2,.8,.2,1) !important;
+}
+.hp>span.mid,.my-hp>span.mid{background:linear-gradient(90deg,#FFB547,#FFE066) !important;box-shadow:0 0 8px rgba(255,181,71,.6)}
+.hp>span.low,.my-hp>span.low{background:linear-gradient(90deg,#FF4D5E,#FF8A5A) !important;box-shadow:0 0 8px rgba(255,77,94,.7)}
+
+/* ---------- 버튼 ---------- */
+.act,.cheer-btn,.ready-btn{
+  border-color:var(--gold) !important;color:var(--gold) !important;
+  background:linear-gradient(180deg,rgba(245,213,138,.08),rgba(245,213,138,.02)) !important;
+  transition:transform .15s, box-shadow .2s, background .2s !important;
+}
+.act:hover:not(:disabled),.cheer-btn:hover,.ready-btn:hover:not(.done){
+  background:linear-gradient(180deg,var(--gold2),var(--gold)) !important;color:#1a1306 !important;
+  box-shadow:var(--glow);transform:translateY(-2px);
+}
+.act:not(:disabled){animation:actPulse 2.2s ease-in-out infinite}
+@keyframes actPulse{0%,100%{box-shadow:0 0 0 rgba(245,213,138,0)}50%{box-shadow:0 0 16px rgba(245,213,138,.45)}}
+.send-btn,.enter-btn{background:linear-gradient(180deg,var(--gold2),var(--gold)) !important;color:#1a1306 !important}
+
+/* ---------- 로그 ---------- */
+.log-item{border-left:3px solid transparent}
+.log-team-a{background:var(--team-a-color) !important;border-left-color:var(--team-a)}
+.log-team-b{background:var(--team-b-color) !important;border-left-color:var(--team-b)}
+.log-result{background:var(--result-bg) !important;color:var(--result-text) !important;font-weight:600}
+.log-winner{background:linear-gradient(90deg,var(--gold-deep),var(--gold2)) !important;color:#1a1306 !important;font-weight:800;font-size:12px !important;padding:6px 8px !important}
+
+/* ---------- 상태 배지 ---------- */
+.status-badge{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  font-size:11px;font-weight:700;letter-spacing:.04em;border:1px solid var(--border);
+  background:rgba(0,0,0,.4);color:var(--muted);white-space:nowrap;flex:none
+}
+.status-badge::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.status-badge.waiting{color:var(--warn)}
+.status-badge.active{color:var(--ok)}
+.status-badge.paused{color:var(--accent)}
+.status-badge.ended{color:var(--bad)}
+
+/* ---------- 중앙 무대 (현재 플레이어 / 대기 이미지) ---------- */
+.stage{
+  position:relative;margin:0 auto 12px;border-radius:18px;overflow:hidden;
+  border:3px solid var(--gold);background:#05040f;
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 0 30px rgba(245,213,138,.35);
+}
+.stage.team-a{border-color:var(--team-a);box-shadow:0 0 34px rgba(255,90,110,.5)}
+.stage.team-b{border-color:var(--team-b);box-shadow:0 0 34px rgba(79,139,255,.5)}
+.stage > img,.stage > .stage-initial,.stage > .stage-waiting{position:absolute;inset:0;width:100%;height:100%}
+.stage > img{object-fit:cover;border:0 !important;border-radius:0 !important;max-width:none !important;margin:0 !important}
+.stage-initial{
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--brand-font);font-size:96px;font-weight:700;color:var(--gold2);
+  background:radial-gradient(circle at 50% 40%,rgba(245,213,138,.25),transparent 65%),#0b0920;
+  text-shadow:0 0 24px rgba(245,213,138,.6)
+}
+.stage-waiting{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  background:radial-gradient(circle at 50% 45%,rgba(185,140,255,.25),transparent 60%),#07061a}
+.stage-waiting svg{width:62%;height:auto;max-height:78%}
+.stage-waiting .wait-label{font-family:var(--brand-font);color:var(--gold2);font-size:15px;letter-spacing:.12em;text-shadow:0 0 10px rgba(245,213,138,.5)}
+.stage [hidden]{display:none !important}
+.wait-ring{transform-origin:100px 100px;animation:spin 14s linear infinite}
+.wait-ring.rev{animation-duration:9s;animation-direction:reverse}
+.wait-hand{transform-origin:100px 100px;animation:spin 4s linear infinite}
+.wait-core{animation:corePulse 2s ease-in-out infinite;transform-origin:100px 100px}
+.wait-spark{animation:sparkle 2.4s ease-in-out infinite}
+.wait-spark:nth-of-type(2){animation-delay:.6s}.wait-spark:nth-of-type(3){animation-delay:1.2s}.wait-spark:nth-of-type(4){animation-delay:1.8s}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes corePulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}
+@keyframes sparkle{0%,100%{opacity:.15}50%{opacity:1}}
+
+.timer-display{
+  font-family:var(--brand-font);font-size:40px !important;
+  background:linear-gradient(180deg,var(--gold2),var(--gold-deep));-webkit-background-clip:text;background-clip:text;color:transparent !important;
+  filter:drop-shadow(0 0 10px rgba(245,213,138,.45))
+}
+.timer-display.urgent{background:linear-gradient(180deg,#FF8A5A,var(--bad));-webkit-background-clip:text;background-clip:text;animation:urgent 1s ease-in-out infinite}
+@keyframes urgent{50%{transform:scale(1.06)}}
+
+/* ---------- 승리 안내 ---------- */
+.game-over-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}
+.game-over-overlay.show{opacity:1;visibility:visible}
+.game-over-overlay{
+  background:radial-gradient(circle at 50% 40%,rgba(40,28,80,.92),rgba(3,2,10,.96)) !important;
+  overflow:hidden
+}
+.game-over-overlay::before{
+  content:"";position:absolute;left:50%;top:42%;width:1600px;height:1600px;margin:-800px 0 0 -800px;
+  background:repeating-conic-gradient(from 0deg,rgba(245,213,138,.10) 0deg 8deg,transparent 8deg 20deg);
+  animation:spin 40s linear infinite;pointer-events:none
+}
+.game-over-overlay.win-a::before{background:repeating-conic-gradient(from 0deg,rgba(255,90,110,.14) 0deg 8deg,transparent 8deg 20deg)}
+.game-over-overlay.win-b::before{background:repeating-conic-gradient(from 0deg,rgba(79,139,255,.14) 0deg 8deg,transparent 8deg 20deg)}
+.game-over-box{
+  position:relative;text-align:center;max-width:520px !important;padding:32px 28px !important;
+  background:linear-gradient(160deg,rgba(50,40,110,.85),rgba(12,10,32,.92)) !important;
+  border:2px solid var(--gold) !important;border-radius:22px !important;
+  box-shadow:0 0 60px rgba(245,213,138,.35),var(--shadow);
+  transform:scale(.85);transition:transform .45s cubic-bezier(.2,1.4,.4,1)
+}
+.game-over-overlay.show .game-over-box{transform:scale(1)}
+.win-a .game-over-box{border-color:var(--team-a) !important;box-shadow:0 0 70px rgba(255,90,110,.45),var(--shadow)}
+.win-b .game-over-box{border-color:var(--team-b) !important;box-shadow:0 0 70px rgba(79,139,255,.45),var(--shadow)}
+.trophy{width:96px;height:96px;margin:0 auto 8px;display:block;filter:drop-shadow(0 0 18px rgba(245,213,138,.7));animation:corePulse 2.4s ease-in-out infinite}
+.game-over-title{font-family:var(--brand-font) !important;color:var(--muted) !important;font-size:15px !important;letter-spacing:.2em;margin-bottom:6px !important}
+.game-over-winner{
+  font-family:var(--brand-font);font-size:34px !important;font-weight:800 !important;line-height:1.25;
+  background:linear-gradient(180deg,var(--gold2),var(--gold-deep));-webkit-background-clip:text;background-clip:text;color:transparent !important;
+  margin-bottom:10px
+}
+.win-a .game-over-winner{background:linear-gradient(180deg,#FFD0D6,var(--team-a))}
+.win-b .game-over-winner{background:linear-gradient(180deg,#D6E4FF,var(--team-b))}
+.win-a .game-over-winner,.win-b .game-over-winner{-webkit-background-clip:text;background-clip:text}
+.game-over-detail{color:var(--text);font-size:13px;line-height:1.6;margin-bottom:14px}
+.game-over-detail .members{color:var(--gold2);font-weight:700}
+.game-over-close{
+  background:transparent;color:var(--gold);border:1px solid var(--gold);padding:8px 18px;border-radius:999px;
+  font-size:12px;font-weight:700;cursor:pointer
+}
+.game-over-close:hover{background:var(--gold);color:#1a1306}
+.confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-20px;width:8px;height:14px;border-radius:2px;opacity:.9;animation:fall linear infinite}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
