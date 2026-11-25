@@ -4,7 +4,7 @@
 const config = {
   apps: [
     {
-      name: 'pyxis-battle-system',
+      name: 'battle-system',
       cwd: '/root/battle-system',
       script: 'packages/battle-server/index.js',
       exec_mode: 'fork',
@@ -54,7 +54,7 @@ const config = {
         NODE_ENV: 'production',
         HOST: '0.0.0.0',
         PORT: 3001,
-        CORS_ORIGIN: 'https://pyxisbattlesystem.monster,http://65.21.147.119:3001,*',
+        CORS_ORIGIN: 'https://example.com,http://65.21.147.119:3001,*',
         LOG_LEVEL: 'info'
       },
 
@@ -70,7 +70,7 @@ const config = {
         NODE_ENV: 'production',
         HOST: '0.0.0.0',
         PORT: 3001,
-        CORS_ORIGIN: 'https://pyxisbattlesystem.monster,http://65.21.147.119:3001',
+        CORS_ORIGIN: 'https://example.com,http://65.21.147.119:3001',
         LOG_LEVEL: 'info'
       }
     }
