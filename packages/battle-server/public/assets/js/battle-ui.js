@@ -3,7 +3,7 @@
    - 외부 이미지 없이 인라인 SVG만 사용 */
 (function () {
   // 기본 팀 이름. 서버 스냅샷의 teamNames가 오면 applyTeamNames로 갱신
-  const TEAM_NAMES = { A: '불사조 기사단', B: '죽음을 먹는 자' };
+  const TEAM_NAMES = { A: 'A팀', B: 'B팀' };
   const teamName = t => TEAM_NAMES[t] || String(t ?? '');
 
   /** 스냅샷의 팀 이름 반영: [data-team-name="A|B"] 요소의 글자를 바꿈 (textContent라 이스케이프 불필요) */

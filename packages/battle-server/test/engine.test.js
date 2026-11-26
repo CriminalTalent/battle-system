@@ -104,11 +104,11 @@ test('준비 전 참가자만 관리자가 HP·스탯·아이템 수정 가능',
 test('팀 이름 변경과 스냅샷 반영', () => {
   const s = createBattleStore();
   const b = s.create('1v1');
-  assert.deepEqual(s.snapshot(b.id).teamNames, { A: '불사조 기사단', B: '죽음을 먹는 자' });
-  assert.deepEqual(s.setTeamNames(b.id, { A: '  레드\u0007팀 ', B: '' }), { A: '레드팀', B: '죽음을 먹는 자' });
+  assert.deepEqual(s.snapshot(b.id).teamNames, { A: 'A팀', B: 'B팀' });
+  assert.deepEqual(s.setTeamNames(b.id, { A: '  레드\u0007팀 ', B: '' }), { A: '레드팀', B: 'B팀' });
   assert.equal(s.setTeamNames(b.id, { A: '같음', B: '같음' }), null);
   assert.equal(s.setTeamNames(b.id, { A: 'x'.repeat(50) }).A.length, 20);
-  assert.equal(s.snapshot(b.id).teamNames.B, '죽음을 먹는 자');
+  assert.equal(s.snapshot(b.id).teamNames.B, 'B팀');
   s.end(b.id);
   assert.equal(s.setTeamNames(b.id, { A: '새이름' }), null);
 });

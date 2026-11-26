@@ -28,7 +28,7 @@ const d10 = () => 1 + Math.floor(Math.random() * 10);
 const teamOf = (p) => (p?.team === 'B' ? 'B' : 'A');
 
 // ▼ 표시용 팀명(내부 키는 A/B 유지, 전투별로 관리자가 변경 가능)
-const DEFAULT_TEAM_NAMES = Object.freeze({ A: '불사조 기사단', B: '죽음을 먹는 자' });
+const DEFAULT_TEAM_NAMES = Object.freeze({ A: 'A팀', B: 'B팀' });
 const TEAM_NAME_MAX = 20;
 const teamLabel = (b, t) => (t === 'A' || t === 'B') ? (b?.teamNames?.[t] || DEFAULT_TEAM_NAMES[t]) : String(t);
 const cleanTeamName = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, TEAM_NAME_MAX) : '');
